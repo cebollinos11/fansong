@@ -1,15 +1,19 @@
 import { z } from 'zod';
+import { MAX_ELEVATION, TERRAIN_FEATURES } from '@fansong/engine';
 import type {
   AttackCommand,
+  BoardData,
   ChooseActivation,
   Command,
   EndActivation,
   GameEvent,
   GameState,
   GuardCommand,
+  HexTerrain,
   MoveCommand,
   Owner,
   ShootCommand,
+  TerrainFeature,
   Unit,
 } from '@fansong/engine';
 import type { MatchSetup, Seat } from '@fansong/content';
@@ -87,11 +91,22 @@ export const commandSchema = z.discriminatedUnion('type', [
 
 // --- State (server-authoritative — schema exists for shape + resync checks) --
 
+export const terrainFeatureSchema = z.enum(TERRAIN_FEATURES as [TerrainFeature, ...TerrainFeature[]]);
+
+/** One hex's non-default terrain; both keys optional (sparse, like the engine). */
+export const hexTerrainSchema = z
+  .object({
+    elevation: z.number().int().min(0).max(MAX_ELEVATION).optional(),
+    feature: terrainFeatureSchema.optional(),
+  })
+  .strict();
+
 export const boardDataSchema = z
   .object({
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     blocked: z.array(z.string()),
+    terrain: z.record(z.string().regex(/^\d+,\d+$/), hexTerrainSchema).optional(),
   })
   .strict();
 
@@ -258,5 +273,7 @@ export type SchemaDriftChecks = [
   Expect<Eq<z.infer<typeof guardCommandSchema>, GuardCommand>>,
   Expect<Eq<z.infer<typeof endActivationSchema>, EndActivation>>,
   Expect<Eq<z.infer<typeof unitSchema>, Unit>>,
+  Expect<Eq<z.infer<typeof boardDataSchema>, BoardData>>,
+  Expect<Eq<z.infer<typeof hexTerrainSchema>, HexTerrain>>,
   Expect<Eq<z.infer<typeof ownerSchema>, Owner>>,
 ];

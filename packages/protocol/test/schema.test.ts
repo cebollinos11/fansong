@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createDemoGame, getLegalCommands, reduce, type Command } from '@fansong/engine';
+import { createDemoGame, createGame, getLegalCommands, reduce, type Command } from '@fansong/engine';
 import {
+  boardDataSchema,
   commandSchema,
   gameEventSchema,
   gameStateSchema,
@@ -60,6 +61,53 @@ describe('gameStateSchema', () => {
     }
     const wire = JSON.parse(JSON.stringify(state)) as unknown;
     expect(gameStateSchema.parse(wire)).toEqual(state);
+  });
+});
+
+describe('boardDataSchema terrain', () => {
+  const terrainGame = () =>
+    createGame({
+      seed: 5,
+      board: {
+        width: 6,
+        height: 5,
+        terrain: {
+          '1,1': { elevation: 2 },
+          '2,2': { elevation: 1, feature: 'forest' },
+          '3,3': { feature: 'rock' },
+          '4,1': { feature: 'building', elevation: 3 },
+        },
+      },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 } }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 } }],
+      ],
+    });
+
+  it('round-trips a state whose board has terrain', () => {
+    const state = terrainGame();
+    expect(state.board.terrain).toBeDefined();
+    const wire = JSON.parse(JSON.stringify(state)) as unknown;
+    expect(gameStateSchema.parse(wire)).toEqual(state);
+  });
+
+  it('keeps a flat board free of a terrain key', () => {
+    const parsed = gameStateSchema.parse(JSON.parse(JSON.stringify(createDemoGame(1))));
+    expect('terrain' in parsed.board).toBe(false);
+  });
+
+  it('rejects malformed terrain', () => {
+    const board = { width: 4, height: 4, blocked: [] as string[] };
+    const bad = [
+      { '1,1': { elevation: 4 } },
+      { '1,1': { elevation: -1 } },
+      { '1,1': { elevation: 1.5 } },
+      { '1,1': { feature: 'lava' } },
+      { '1,1': { elevation: 1, extra: true } },
+      { 'a,b': { elevation: 1 } },
+    ];
+    for (const terrain of bad) expect(boardDataSchema.safeParse({ ...board, terrain }).success).toBe(false);
+    expect(boardDataSchema.safeParse({ ...board, terrain: { '0,3': { feature: 'forest' } } }).success).toBe(true);
   });
 });
 

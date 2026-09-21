@@ -26,3 +26,9 @@
   (Attack/Shot) and `guardBonus`/`attackerBonus` (riposte), spread in only when non-zero so flat
   games' events are unchanged. Also added these optional fields to the protocol event schema now
   (non-strict zod objects would otherwise silently strip them over the wire).
+- Task 5: protocol `boardDataSchema` gains optional `terrain` (`z.record` keyed `^\d+,\d+$` →
+  strict `hexTerrainSchema`: int elevation 0..MAX_ELEVATION, feature from `TERRAIN_FEATURES`).
+  Protocol now imports those two runtime constants from the engine (it was type-only before).
+  Elevation 0 is accepted on the wire (engine normalises it away). Added `BoardData`/`HexTerrain`
+  drift guards. There is no `GameConfig` schema in protocol (setup travels as `MatchSetup`); map
+  and mode fields for that come in task 32.
