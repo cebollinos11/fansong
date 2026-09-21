@@ -167,7 +167,11 @@ no rules — remove three.js and the game still runs in the CLI.
    end-to-end in the CLI. *Playable without any UI.*
 3. **M2 — Content:** ✅ point-buy builder + a few original preset warbands, with
    validation. (`packages/content`; CLI `--p0/--p1/--list`.)
-4. **M3 — 3D UI:** three.js board + React HUD for local hotseat and vs-AI.
+4. **M3 — 3D UI:** ✅ Vite + React shell with a three.js `<canvas>` board for
+   local hotseat and vs-AI. A thin view over the engine (`apps/web`): it
+   subscribes to engine events to animate and translates clicks into `Command`s
+   validated against `getLegalCommands`; army setup reuses `packages/content`
+   and the AI opponent reuses `chooseCommand`. No game rules live in the UI.
 5. **M4 — Online:** Worker + Durable Objects, WebSocket sync, matchmaking,
    deploy to Cloudflare.
 6. **M5 — Polish:** more special abilities, morale depth, animations, replay viewer.

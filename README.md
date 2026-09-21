@@ -3,10 +3,12 @@
 A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: M0–M2 complete.** A full AI-vs-AI game is playable in the terminal —
-now with original **preset warbands** and a **point-buy** cost model — plus
-Vitest coverage of the rules, the costing, and full preset matchups. No UI yet:
-the engine is a pure, deterministic state machine.
+**Status: M0–M3 complete.** A full AI-vs-AI game is playable in the terminal —
+with original **preset warbands** and a **point-buy** cost model — and there is
+now a **3D web UI** (`apps/web`: Vite + React + three.js) for local hotseat and
+vs-AI play. Vitest covers the rules, the costing, full preset matchups, and the
+UI's engine bridge. The engine remains a pure, deterministic state machine; the
+UI is a thin view over it.
 
 ## Layout
 
@@ -17,6 +19,8 @@ packages/
   content/  point-buy costing, warband validation, original preset warbands
 tools/
   cli/      `pnpm play` — headless AI-vs-AI runner with a turn-by-turn log
+apps/
+  web/      Vite + React + three.js UI — a thin view over the engine
 ```
 
 ## Quick start
@@ -71,3 +75,29 @@ seed replays identically).
 `packages/content/test` covers the costing and validation; the
 `tools/cli/test` preset-match suite plays every preset pairing to a decisive,
 reproducible finish.
+
+## 3D UI (M3)
+
+`apps/web` is a Vite + React shell with a three.js `<canvas>` board for local
+**hotseat** and **vs-AI** play. It is a strictly thin view over the engine:
+
+- **No game rules.** All legality comes from `getLegalCommands`; the board only
+  projects that list into highlights (green move tiles, attackable enemies,
+  selectable units) and turns clicks back into `Command`s.
+- **Event-driven animation.** It subscribes to engine transitions and animates
+  from `GameState` (units lerp between cells, knockdowns tilt, kills fade) plus
+  transient combat flashes from events like `AttackResolved`/`UnitKilled`.
+- **Reuse, not reimplementation.** Army setup uses `buildMatch` + `PRESETS` +
+  `validateWarband` from `packages/content`, and the vs-AI opponent is the same
+  `chooseCommand` heuristic used by the CLI and the test bot.
+
+The engine is driven through a single `MatchController` (`src/game/`), which
+validates every command against `getLegalCommands` before `reduce` — the exact
+seam a future Cloudflare Durable Object (M4) will slot into. Its behaviour is
+covered headlessly by `apps/web/test` (no DOM), including a full AI-vs-AI game
+played entirely through the controller.
+
+```bash
+pnpm --filter @fansong/web dev      # dev server at http://localhost:5173
+pnpm --filter @fansong/web build    # production build
+```
