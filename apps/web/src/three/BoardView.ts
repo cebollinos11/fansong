@@ -4,6 +4,7 @@ import { vecKey, type BoardData, type GameEvent, type GameState, type Vec } from
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
+import { featureLayout, type FeaturePiece } from './features.js';
 import { hexElevation, surfaceY, TILE_TOP, tileHeight, tileSideColor, tileTopColor } from './terrain.js';
 import { spriteFor } from './unitSprites.js';
 
@@ -160,7 +161,7 @@ export class BoardView {
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
     : 1;
   private readonly highlightGroup = new THREE.Group();
-  /** Board tiles, raycast for cell picking (each carries `userData.cell`). */
+  /** Board tiles and feature meshes, raycast for cell picking (each carries `userData.cell`). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
   private width = 0;
@@ -243,7 +244,54 @@ export class BoardView {
       }
     }
 
+    this.buildFeatures(state.board);
     this.positionCamera();
+  }
+
+  /** Low-poly rocks, buildings and trees; pickable as the hex they stand on. */
+  private buildFeatures(board: BoardData): void {
+    const materials = new Map<number, THREE.MeshStandardMaterial>();
+    const material = (color: number) => {
+      let m = materials.get(color);
+      if (!m) {
+        m = new THREE.MeshStandardMaterial({ color, flatShading: true });
+        materials.set(color, m);
+      }
+      return m;
+    };
+    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    const coneGeo = new THREE.ConeGeometry(1, 1, 7);
+    const trunkGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
+    const meshFor = (p: FeaturePiece): THREE.Mesh => {
+      switch (p.kind) {
+        case 'rock': {
+          const m = new THREE.Mesh(rockGeo, material(p.color));
+          m.scale.set(p.radius, p.radius * p.squash, p.radius);
+          m.rotation.y = p.rotY;
+          return m;
+        }
+        case 'box': {
+          const m = new THREE.Mesh(boxGeo, material(p.color));
+          m.scale.set(p.w, p.h, p.d);
+          m.rotation.y = p.rotY;
+          return m;
+        }
+        case 'cone':
+        case 'trunk': {
+          const m = new THREE.Mesh(p.kind === 'cone' ? coneGeo : trunkGeo, material(p.color));
+          m.scale.set(p.radius, p.h, p.radius);
+          return m;
+        }
+      }
+    };
+    for (const p of featureLayout(board, (v) => this.cellToWorld(v), HEX_SIZE)) {
+      const mesh = meshFor(p);
+      mesh.position.set(p.x, p.y, p.z);
+      mesh.userData.cell = p.cell;
+      this.tiles.push(mesh);
+      this.scene.add(mesh);
+    }
   }
 
   /** Reconcile unit meshes and highlights with the given view model. */
@@ -754,7 +802,7 @@ export class BoardView {
       return;
     }
 
-    // The nearest tile hit resolves raised hexes by their top or side faces.
+    // The nearest tile or feature hit resolves raised hexes by their top or side faces.
     const tileCell = this.raycaster.intersectObjects(this.tiles, false)[0]?.object.userData.cell as Vec | undefined;
     if (tileCell) {
       this.onCellClick?.(tileCell);

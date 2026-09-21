@@ -46,3 +46,12 @@
   follow. Cell picking now raycasts the tile meshes (so tops *and* cliff faces resolve to the
   right hex), falling back to the ground plane. Legacy `blocked` pillars rise 0.4 above their hex.
   Verified visually with a throwaway elevated replay in the replay viewer (Playwright).
+- Task 8: new pure `apps/web/src/three/features.ts` (`featureLayout(board, centre, hexSize)` →
+  typed pieces: `rock` dodecahedron clusters, `box` building bodies/roofs, `cone`/`trunk` trees;
+  deterministic per-cell jitter via `cellNoise`) + `apps/web/test/features.test.ts`. Adjacent
+  building hexes get one wall+roof connector box per pair along the centre line, so blocks read
+  as one structure; only joined at equal elevation (a cross-level connector would float or
+  clip). Forest trees sit on the hex rim so a unit in the forest stays visible. BoardView builds
+  meshes with shared unit geometries + flat-shaded materials cached by colour; feature meshes
+  carry `userData.cell` and are raycast with the tiles, so clicking a tree/rock picks its hex.
+  Verified visually (Playwright screenshot of a throwaway terrain replay).
