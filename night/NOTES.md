@@ -106,3 +106,16 @@
   diff-friendly format (one hex row per line, one zone per line); a test pins every map file to
   that canonical form, so author maps by generating them through `mapToJson`. Editor export can
   reuse it (task 25).
+- Task 14: added `maps/rolling-hills.json` and `maps/old-forest.json` (both 14×12, edge-column
+  deploy zones like `flatMap`), registered after `open-field`. Maps are authored in code by
+  `packages/content/scripts/build-maps.ts` (`pnpm tsx packages/content/scripts/build-maps.ts`;
+  typechecked via content's tsconfig) — tasks 15/16 should add their maps there. Decisions:
+  premade maps use an even width and are laid out point-symmetrically ((x,y)→(W-1-x,H-1-y) is an
+  exact isometry on the odd-q grid), and a test enforces symmetry of terrain, deploy zones, flags
+  and hill for *every* built-in map. Rolling Hills: central level-3 plateau (10 hexes, the `hill`
+  objective) plus flanking level-2/1 hills, 10 features. Old Forest: ~60 forest hexes from
+  deterministic symmetric noise, a central glade + two side clearings, 4 rocks, lighter forest in
+  column 2/11; provides `flags` at (0,5)/(13,6) so it supports CTF. New
+  `test/mapSelfPlay.test.ts` plays 4 AI-vs-AI annihilation games per built-in map (varied presets)
+  and checks no living unit stands on an impassable hex; content gained `@fansong/ai` as a
+  devDependency for this (no cycle: ai depends only on engine).

@@ -34,7 +34,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 13. Content: built-in map registry loading `packages/content/maps/*.json` (`listMaps`/`getMap`).
 
 ## Premade maps (each: validates + AI-vs-AI annihilation self-play test; mode tests added in 36)
-- [ ] 14. Maps: Rolling Hills, Old Forest.
+- [x] 14. Maps: Rolling Hills, Old Forest.
 - [ ] 15. Maps: Ruined Village, Rocky Pass.
 - [ ] 16. Maps: Twin Towers, Crossroads.
 - [ ] 17. Setup: `MatchSetup.mapId`; map picker in Setup screen; replays/config carry the map.

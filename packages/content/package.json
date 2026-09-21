@@ -14,5 +14,8 @@
   "dependencies": {
     "@fansong/engine": "workspace:*",
     "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@fansong/ai": "workspace:*"
   }
 }

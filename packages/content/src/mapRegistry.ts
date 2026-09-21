@@ -1,4 +1,6 @@
+import oldForest from '../maps/old-forest.json';
 import openField from '../maps/open-field.json';
+import rollingHills from '../maps/rolling-hills.json';
 import { parseMap, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
 
@@ -13,7 +15,7 @@ import { validateMap } from './mapValidate.js';
  * Order is the display order of the Setup map picker; the first map is the
  * default.
  */
-const RAW_MAPS: unknown[] = [openField];
+const RAW_MAPS: unknown[] = [openField, rollingHills, oldForest];
 
 function load(json: unknown): MapDef {
   const map = parseMap(json);
