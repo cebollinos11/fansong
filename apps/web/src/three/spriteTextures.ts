@@ -2,13 +2,11 @@ import * as THREE from 'three';
 import { spriteUrl } from './unitSprites.js';
 
 /**
- * Loads Wesnoth unit sprites as team-coloured, alpha-cropped textures.
+ * Loads Wesnoth unit sprites as team-coloured texture atlases.
  *
  * Wesnoth marks the team-colour parts of a sprite with an exact "magenta"
  * palette and recolours those pixels per side. We replicate that mapping
- * (data/core/team-colors.cfg + src/color_range.cpp) on a canvas, then crop to
- * the opaque bounding box so the cutout's bottom edge sits on the unit's base.
- * The baked-in drop shadow is stripped.
+ * (data/core/team-colors.cfg + src/color_range.cpp) on a canvas.
  */
 
 /** Wesnoth's reference palette; entry 0 is the average shade. */
@@ -58,15 +56,40 @@ function buildMapping(range: ColorRange): Map<number, [number, number, number]> 
 
 const MAPPINGS = [buildMapping(TEAM_RANGES[0]), buildMapping(TEAM_RANGES[1])] as const;
 
-export interface SpriteTexture {
-  texture: THREE.Texture;
-  /** Cropped size in source pixels, for sizing the cutout consistently. */
-  width: number;
-  height: number;
+/** Where one frame sits in the atlas, in texture UV space (flipY'd, like three.js). */
+export interface FrameRect {
+  u: number;
+  v: number;
 }
 
+/**
+ * All of one unit's frames, team-coloured, packed into a single texture.
+ *
+ * Wesnoth draws every frame centred on the hex, whatever its size, so frames
+ * share an anchor: each is centred in a uniform cell, and the anchor is the
+ * base image's feet (lowest opaque row, horizontal middle). The cutout pins that
+ * point to its base, so the unit never jitters between frames.
+ */
+export interface SpriteAtlas {
+  texture: THREE.Texture;
+  frames: Map<string, FrameRect>;
+  /** Cell size in source pixels. */
+  cellW: number;
+  cellH: number;
+  /** UV size of one cell. */
+  repeatU: number;
+  repeatV: number;
+  /** Anchor inside a cell, in pixels from its left / top edge. */
+  anchorX: number;
+  anchorY: number;
+  /** Alpha (0-255) at a texture UV, for pixel-accurate picking. */
+  alphaAt(u: number, v: number): number;
+}
+
+const PAD = 4; // gap between cells so mipmaps don't bleed neighbouring frames
+
 const images = new Map<string, Promise<HTMLImageElement>>();
-const textures = new Map<string, Promise<SpriteTexture>>();
+const atlases = new Map<string, Promise<SpriteAtlas>>();
 
 function loadImage(path: string): Promise<HTMLImageElement> {
   let p = images.get(path);
@@ -82,28 +105,96 @@ function loadImage(path: string): Promise<HTMLImageElement> {
   return p;
 }
 
-/** A team-coloured, cropped texture for `path`, cached per (sprite, owner). */
-export function loadSpriteTexture(path: string, owner: 0 | 1): Promise<SpriteTexture> {
-  const key = `${owner}:${path}`;
-  let p = textures.get(key);
+/**
+ * A team-coloured atlas of `frames` (the first is the base image), cached per
+ * (sprite, owner). Frames that fail to load are skipped, not fatal.
+ */
+export function loadSpriteAtlas(sprite: string, frames: string[], owner: 0 | 1): Promise<SpriteAtlas> {
+  const key = `${owner}:${sprite}`;
+  let p = atlases.get(key);
   if (!p) {
-    p = loadImage(path).then((img) => buildTexture(img, MAPPINGS[owner]));
-    textures.set(key, p);
+    p = Promise.all(frames.map((f) => loadImage(f).catch(() => null))).then((imgs) => {
+      const loaded = frames.flatMap((f, i) => (imgs[i] ? [[f, imgs[i]!] as const] : []));
+      if (loaded.length === 0 || loaded[0]![0] !== frames[0]) throw new Error(`failed to load sprite ${sprite}`);
+      return buildAtlas(loaded, MAPPINGS[owner]);
+    });
+    atlases.set(key, p);
   }
   return p;
 }
 
-function buildTexture(img: HTMLImageElement, mapping: Map<number, [number, number, number]>): SpriteTexture {
-  const w = img.naturalWidth;
-  const h = img.naturalHeight;
-  const src = document.createElement('canvas');
-  src.width = w;
-  src.height = h;
-  const ctx = src.getContext('2d', { willReadFrequently: true })!;
-  ctx.drawImage(img, 0, 0);
-  const data = ctx.getImageData(0, 0, w, h);
-  const px = data.data;
+function buildAtlas(
+  frames: readonly (readonly [string, HTMLImageElement])[],
+  mapping: Map<number, [number, number, number]>,
+): SpriteAtlas {
+  const cellW = Math.max(...frames.map(([, img]) => img.naturalWidth));
+  const cellH = Math.max(...frames.map(([, img]) => img.naturalHeight));
+  const cols = Math.ceil(Math.sqrt(frames.length));
+  const rows = Math.ceil(frames.length / cols);
+  const atlasW = cols * (cellW + PAD);
+  const atlasH = rows * (cellH + PAD);
 
+  const canvas = document.createElement('canvas');
+  canvas.width = atlasW;
+  canvas.height = atlasH;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+
+  const rects = new Map<string, FrameRect>();
+  let anchorX = cellW / 2;
+  let anchorY = cellH - 1;
+  frames.forEach(([path, img], i) => {
+    const x = (i % cols) * (cellW + PAD) + Math.floor((cellW - img.naturalWidth) / 2);
+    const y = Math.floor(i / cols) * (cellH + PAD) + Math.floor((cellH - img.naturalHeight) / 2);
+    ctx.drawImage(img, x, y);
+    const bounds = recolor(ctx, x, y, img.naturalWidth, img.naturalHeight, mapping);
+    const cx = (i % cols) * (cellW + PAD);
+    const cy = Math.floor(i / cols) * (cellH + PAD);
+    if (i === 0 && bounds) {
+      anchorX = (bounds.minX + bounds.maxX + 1) / 2 - cx;
+      anchorY = bounds.maxY + 1 - cy;
+    }
+    rects.set(path, { u: cx / atlasW, v: 1 - (cy + cellH) / atlasH });
+  });
+
+  const alpha = ctx.getImageData(0, 0, atlasW, atlasH).data;
+  const alphaAt = (u: number, v: number): number => {
+    const x = Math.floor(u * atlasW);
+    const y = Math.floor((1 - v) * atlasH);
+    if (x < 0 || y < 0 || x >= atlasW || y >= atlasH) return 0;
+    return alpha[(y * atlasW + x) * 4 + 3]!;
+  };
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.magFilter = THREE.NearestFilter; // keep the pixel art crisp up close
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  return {
+    texture,
+    frames: rects,
+    cellW,
+    cellH,
+    repeatU: cellW / atlasW,
+    repeatV: cellH / atlasH,
+    anchorX,
+    anchorY,
+    alphaAt,
+  };
+}
+
+/**
+ * Recolour one drawn frame in place (magenta -> team) and strip its drop
+ * shadow. Returns the opaque bounds in canvas pixels, or null if it's empty.
+ */
+function recolor(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  w: number,
+  h: number,
+  mapping: Map<number, [number, number, number]>,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  const data = ctx.getImageData(x0, y0, w, h);
+  const px = data.data;
   let minX = w;
   let minY = h;
   let maxX = -1;
@@ -125,19 +216,20 @@ function buildTexture(img: HTMLImageElement, mapping: Map<number, [number, numbe
       if (y > maxY) maxY = y;
     }
   }
-  ctx.putImageData(data, 0, 0);
-  if (maxX < 0) [minX, minY, maxX, maxY] = [0, 0, w - 1, h - 1]; // fully transparent: keep as-is
+  ctx.putImageData(data, x0, y0);
+  return maxX < 0 ? null : { minX: minX + x0, minY: minY + y0, maxX: maxX + x0, maxY: maxY + y0 };
+}
 
-  const cw = maxX - minX + 1;
-  const ch = maxY - minY + 1;
-  const out = document.createElement('canvas');
-  out.width = cw;
-  out.height = ch;
-  out.getContext('2d')!.drawImage(src, minX, minY, cw, ch, 0, 0, cw, ch);
+const projectiles = new Map<string, THREE.Texture>();
 
-  const texture = new THREE.CanvasTexture(out);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.magFilter = THREE.NearestFilter; // keep the pixel art crisp up close
-  texture.minFilter = THREE.LinearMipmapLinearFilter;
-  return { texture, width: cw, height: ch };
+/** A missile image (path relative to `public/sprites/`), drawn as-is. */
+export function projectileTexture(path: string): THREE.Texture {
+  let t = projectiles.get(path);
+  if (!t) {
+    t = new THREE.TextureLoader().load(`${import.meta.env.BASE_URL}sprites/${path}`);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.magFilter = THREE.NearestFilter;
+    projectiles.set(path, t);
+  }
+  return t;
 }

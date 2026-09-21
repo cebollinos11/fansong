@@ -1,7 +1,8 @@
 /**
  * Which Wesnoth unit sprite stands in for each FanSong unit. Paths are relative
  * to Wesnoth's `data/core/images/units/` and mirrored under
- * `public/sprites/units/` (fetch them with `pnpm --filter @fansong/web sprites`).
+ * `public/sprites/units/`; `pnpm --filter @fansong/web sprites` imports them, and
+ * their animations, from a local Wesnoth checkout (see scripts/import-wesnoth.ts).
  *
  * Wesnoth art is GPL-2.0-or-later; see `public/sprites/CREDITS.md`.
  */

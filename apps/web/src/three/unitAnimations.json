@@ -1,0 +1,2785 @@
+{
+ "goblins/knight.png": {
+  "move": {
+   "frames": [
+    [
+     "goblins/knight-moving.png",
+     150
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "goblins/knight.png",
+      100
+     ],
+     [
+      "goblins/knight-attack.png",
+      200
+     ],
+     [
+      "goblins/knight-moving.png",
+      250
+     ],
+     [
+      "goblins/knight.png",
+      50
+     ]
+    ],
+    "hitMs": 350
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "goblins/knight-defend-1.png",
+     1
+    ],
+    [
+     "goblins/knight-defend-2.png",
+     250
+    ],
+    [
+     "goblins/knight-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "goblins/knight-defend-1.png",
+     1
+    ],
+    [
+     "goblins/knight-defend-2.png",
+     250
+    ],
+    [
+     "goblins/knight-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "goblins/spearman.png": {
+  "idle": {
+   "frames": [
+    [
+     "goblins/spearman-idle-1.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-2.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-3.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-4.png",
+     300
+    ],
+    [
+     "goblins/spearman-idle-5.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-6.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-7.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-8.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-9.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-10.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-11.png",
+     150
+    ],
+    [
+     "goblins/spearman-idle-12.png",
+     150
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "goblins/spearman-attack-se1.png",
+      100
+     ],
+     [
+      "goblins/spearman-attack-se2.png",
+      200
+     ],
+     [
+      "goblins/spearman-attack-se1.png",
+      100
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "goblins/spearman.png",
+      100
+     ],
+     [
+      "goblins/spearman-attack-se1.png",
+      150
+     ]
+    ],
+    "hitMs": 200,
+    "missile": "projectiles/spear-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "goblins/spearman.png",
+     1
+    ],
+    [
+     "goblins/spearman-defend.png",
+     250
+    ],
+    [
+     "goblins/spearman.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "goblins/spearman.png",
+     1
+    ],
+    [
+     "goblins/spearman-defend.png",
+     250
+    ],
+    [
+     "goblins/spearman.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "goblins/spearman-die-1.png",
+     240
+    ],
+    [
+     "goblins/spearman-die-2.png",
+     240
+    ],
+    [
+     "goblins/spearman-die-3.png",
+     240
+    ],
+    [
+     "goblins/spearman-die-4.png",
+     240
+    ]
+   ]
+  }
+ },
+ "goblins/wolf-rider.png": {
+  "idle": {
+   "frames": [
+    [
+     "goblins/wolf-rider-idle-1.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-2.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-3.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-4.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-5.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-4.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-3.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-4.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-5.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-4.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-3.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-2.png",
+     100
+    ],
+    [
+     "goblins/wolf-rider-idle-1.png",
+     100
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "goblins/wolf-rider-moving.png",
+     150
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "goblins/wolf-rider.png",
+      100
+     ],
+     [
+      "goblins/wolf-rider-attack.png",
+      200
+     ],
+     [
+      "goblins/wolf-rider-moving.png",
+      250
+     ],
+     [
+      "goblins/wolf-rider.png",
+      50
+     ]
+    ],
+    "hitMs": 350
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "goblins/wolf-rider-defend-1.png",
+     1
+    ],
+    [
+     "goblins/wolf-rider-defend-2.png",
+     250
+    ],
+    [
+     "goblins/wolf-rider-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "goblins/wolf-rider-defend-1.png",
+     1
+    ],
+    [
+     "goblins/wolf-rider-defend-2.png",
+     250
+    ],
+    [
+     "goblins/wolf-rider-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "goblins/wolf-rider-die-1.png",
+     200
+    ],
+    [
+     "goblins/wolf-rider-die-2.png",
+     200
+    ],
+    [
+     "goblins/wolf-rider-die-3.png",
+     200
+    ],
+    [
+     "goblins/wolf-rider-die-4.png",
+     200
+    ]
+   ]
+  }
+ },
+ "human-loyalists/general.png": {
+  "standing": {
+   "frames": [
+    [
+     "human-loyalists/general.png",
+     600
+    ],
+    [
+     "human-loyalists/general-breeze1.png",
+     400
+    ],
+    [
+     "human-loyalists/general-breeze2.png",
+     400
+    ],
+    [
+     "human-loyalists/general-breeze3.png",
+     400
+    ],
+    [
+     "human-loyalists/general-breeze4.png",
+     200
+    ],
+    [
+     "human-loyalists/general-breeze1.png",
+     600
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/general-melee1.png",
+      130
+     ],
+     [
+      "human-loyalists/general-melee2.png",
+      110
+     ],
+     [
+      "human-loyalists/general-melee3.png",
+      110
+     ],
+     [
+      "human-loyalists/general-melee4.png",
+      75
+     ],
+     [
+      "human-loyalists/general-melee5.png",
+      100
+     ],
+     [
+      "human-loyalists/general-melee6.png",
+      125
+     ],
+     [
+      "human-loyalists/general.png",
+      125
+     ]
+    ],
+    "hitMs": 525
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-loyalists/general-crossbow.png",
+      100
+     ],
+     [
+      "human-loyalists/general-crossbow-attack1.png",
+      150
+     ],
+     [
+      "human-loyalists/general-crossbow-attack2.png",
+      150
+     ],
+     [
+      "human-loyalists/general-crossbow.png",
+      300
+     ]
+    ],
+    "hitMs": 400,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/general-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/general-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/general-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/general-crossbow.png",
+     1
+    ],
+    [
+     "human-loyalists/general-crossbow-defend.png",
+     250
+    ],
+    [
+     "human-loyalists/general-crossbow.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "leading": {
+   "frames": [
+    [
+     "human-loyalists/general-leading1.png",
+     75
+    ],
+    [
+     "human-loyalists/general-leading2.png",
+     75
+    ],
+    [
+     "human-loyalists/general-leading3.png",
+     200
+    ],
+    [
+     "human-loyalists/general-leading2.png",
+     75
+    ],
+    [
+     "human-loyalists/general-leading1.png",
+     75
+    ]
+   ]
+  }
+ },
+ "human-loyalists/halberdier.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/halberdier-slash-se-1.png",
+      130
+     ],
+     [
+      "human-loyalists/halberdier-slash-se-2.png",
+      100
+     ],
+     [
+      "human-loyalists/halberdier-slash-se-3.png",
+      100
+     ],
+     [
+      "human-loyalists/halberdier-slash-se-4.png",
+      125
+     ],
+     [
+      "human-loyalists/halberdier-slash-se-1.png",
+      100
+     ],
+     [
+      "human-loyalists/halberdier.png",
+      75
+     ]
+    ],
+    "hitMs": 380
+   },
+   {
+    "frames": [
+     [
+      "human-loyalists/halberdier-pierce-se-1.png",
+      100
+     ],
+     [
+      "human-loyalists/halberdier-pierce-se-2.png",
+      100
+     ],
+     [
+      "human-loyalists/halberdier-pierce-se-1.png",
+      100
+     ],
+     [
+      "human-loyalists/halberdier.png",
+      100
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/halberdier-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/halberdier-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/halberdier-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/halberdier-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/halberdier-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/halberdier-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-loyalists/heavyinfantry.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/heavyinfantry-attack-1.png",
+      70
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-2.png",
+      70
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-3.png",
+      70
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-4.png",
+      70
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-5.png",
+      70
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-6.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-7.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-8.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-9.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-10.png",
+      100
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-11.png",
+      75
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-12.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-13.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-14.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry-attack-15.png",
+      50
+     ],
+     [
+      "human-loyalists/heavyinfantry.png",
+      100
+     ]
+    ],
+    "hitMs": 550
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/heavyinfantry-defend-2.png",
+     1
+    ],
+    [
+     "human-loyalists/heavyinfantry-defend-1.png",
+     250
+    ],
+    [
+     "human-loyalists/heavyinfantry-defend-2.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/heavyinfantry-defend-2.png",
+     1
+    ],
+    [
+     "human-loyalists/heavyinfantry-defend-1.png",
+     250
+    ],
+    [
+     "human-loyalists/heavyinfantry-defend-2.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-loyalists/lieutenant-crossbow.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/lieutenant.png",
+      50
+     ],
+     [
+      "human-loyalists/lieutenant-attack-sword-1.png",
+      75
+     ],
+     [
+      "human-loyalists/lieutenant-attack-sword-2.png",
+      150
+     ],
+     [
+      "human-loyalists/lieutenant-attack-sword-3.png",
+      100
+     ]
+    ],
+    "hitMs": 225
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-loyalists/lieutenant-crossbow.png",
+      100
+     ],
+     [
+      "human-loyalists/lieutenant-crossbow-attack1.png",
+      150
+     ],
+     [
+      "human-loyalists/lieutenant-crossbow-attack2.png",
+      150
+     ],
+     [
+      "human-loyalists/lieutenant-crossbow.png",
+      300
+     ]
+    ],
+    "hitMs": 400,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/lieutenant-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/lieutenant-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/lieutenant-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/lieutenant-crossbow.png",
+     1
+    ],
+    [
+     "human-loyalists/lieutenant-crossbow-defend.png",
+     250
+    ],
+    [
+     "human-loyalists/lieutenant-crossbow.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "human-loyalists/lieutenant-die-1.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-2.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-3.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-4.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-5.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-6.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-7.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-8.png",
+     75
+    ],
+    [
+     "human-loyalists/lieutenant-die-9.png",
+     75
+    ]
+   ]
+  }
+ },
+ "human-loyalists/longbowman.png": {
+  "idle": {
+   "frames": [
+    [
+     "human-loyalists/longbowman-idle-1.png",
+     1000
+    ],
+    [
+     "human-loyalists/longbowman-idle-2.png",
+     400
+    ],
+    [
+     "human-loyalists/longbowman-idle-3.png",
+     100
+    ],
+    [
+     "human-loyalists/longbowman-idle-4.png",
+     200
+    ],
+    [
+     "human-loyalists/longbowman-idle-3.png",
+     100
+    ],
+    [
+     "human-loyalists/longbowman-idle-4.png",
+     200
+    ],
+    [
+     "human-loyalists/longbowman-idle-3.png",
+     100
+    ],
+    [
+     "human-loyalists/longbowman-idle-4.png",
+     200
+    ],
+    [
+     "human-loyalists/longbowman-idle-3.png",
+     100
+    ],
+    [
+     "human-loyalists/longbowman-idle-4.png",
+     400
+    ],
+    [
+     "human-loyalists/longbowman-idle-1.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/longbowman-melee-defend-1.png",
+      50
+     ],
+     [
+      "human-loyalists/longbowman-melee-attack-1.png",
+      100
+     ],
+     [
+      "human-loyalists/longbowman-melee-attack-2.png",
+      100
+     ],
+     [
+      "human-loyalists/longbowman-melee-attack-3.png",
+      100
+     ],
+     [
+      "human-loyalists/longbowman-melee-attack-4.png",
+      100
+     ],
+     [
+      "human-loyalists/longbowman-melee-defend-1.png",
+      50
+     ]
+    ],
+    "hitMs": 275
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-loyalists/longbowman-bow.png",
+      65
+     ],
+     [
+      "human-loyalists/longbowman-bow-attack-1.png",
+      75
+     ],
+     [
+      "human-loyalists/longbowman-bow-attack-2.png",
+      75
+     ],
+     [
+      "human-loyalists/longbowman-bow-attack-3.png",
+      100
+     ],
+     [
+      "human-loyalists/longbowman-bow-attack-4.png",
+      130
+     ],
+     [
+      "human-loyalists/longbowman-bow-attack-1.png",
+      65
+     ]
+    ],
+    "hitMs": 445,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/longbowman-melee-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/longbowman-melee-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/longbowman-melee-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/longbowman-bow.png",
+     1
+    ],
+    [
+     "human-loyalists/longbowman-bow-defend.png",
+     250
+    ],
+    [
+     "human-loyalists/longbowman-bow.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-loyalists/master-at-arms.png": {
+  "idle": {
+   "frames": [
+    [
+     "human-loyalists/master-at-arms-victory-1.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-2.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-3.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-4.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-5.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-6.png",
+     1000
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-5.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-4.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-3.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-2.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-1.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/master-at-arms.png",
+      25
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-2-1.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-2-2.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-3-3.png",
+      150
+     ],
+     [
+      "human-loyalists/master-at-arms-recover-1.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-recover-2.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms.png",
+      25
+     ]
+    ],
+    "hitMs": 200
+   },
+   {
+    "frames": [
+     [
+      "human-loyalists/master-at-arms.png",
+      25
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-2-1.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-2-2.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-2-3.png",
+      150
+     ],
+     [
+      "human-loyalists/master-at-arms-recover-1.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-recover-2.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms.png",
+      25
+     ]
+    ],
+    "hitMs": 200
+   },
+   {
+    "frames": [
+     [
+      "human-loyalists/master-at-arms.png",
+      25
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-1-1.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-1-2.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-melee-1-3.png",
+      150
+     ],
+     [
+      "human-loyalists/master-at-arms-recover-1.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms-recover-2.png",
+      50
+     ],
+     [
+      "human-loyalists/master-at-arms.png",
+      25
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-loyalists/master-at-arms-crossbow-1.png",
+      100
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-2.png",
+      100
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-3.png",
+      100
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-4.png",
+      200
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-5.png",
+      200
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-6.png",
+      100
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-3.png",
+      100
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-2.png",
+      100
+     ],
+     [
+      "human-loyalists/master-at-arms-crossbow-1.png",
+      100
+     ]
+    ],
+    "hitMs": 600,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/master-at-arms-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/master-at-arms-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/master-at-arms-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/master-at-arms-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/master-at-arms-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/master-at-arms-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "victory": {
+   "frames": [
+    [
+     "human-loyalists/master-at-arms-victory-1.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-2.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-3.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-4.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-5.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-6.png",
+     1000
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-5.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-4.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-3.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-2.png",
+     100
+    ],
+    [
+     "human-loyalists/master-at-arms-victory-1.png",
+     100
+    ]
+   ]
+  }
+ },
+ "human-loyalists/pikeman.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/pikeman.png",
+      100
+     ],
+     [
+      "human-loyalists/pikeman-attack-se.png",
+      250
+     ],
+     [
+      "human-loyalists/pikeman.png",
+      75
+     ]
+    ],
+    "hitMs": 250
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/pikeman-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/pikeman-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/pikeman-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/pikeman-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/pikeman-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/pikeman-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-loyalists/royalguard.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/royalguard-attack-sword1.png",
+      90
+     ],
+     [
+      "human-loyalists/royalguard-attack-sword2.png",
+      90
+     ],
+     [
+      "human-loyalists/royalguard-attack-sword3.png",
+      100
+     ],
+     [
+      "human-loyalists/royalguard-attack-sword4.png",
+      100
+     ],
+     [
+      "human-loyalists/royalguard-attack-sword5.png",
+      130
+     ],
+     [
+      "human-loyalists/royalguard.png",
+      120
+     ]
+    ],
+    "hitMs": 350
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/royalguard-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/royalguard-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/royalguard-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/royalguard-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/royalguard-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/royalguard-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-loyalists/sergeant.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/sergeant-attack-sword-1.png",
+      75
+     ],
+     [
+      "human-loyalists/sergeant-attack-sword-2.png",
+      150
+     ],
+     [
+      "human-loyalists/sergeant-attack-sword-3.png",
+      100
+     ],
+     [
+      "human-loyalists/sergeant-attack-sword-4.png",
+      75
+     ],
+     [
+      "human-loyalists/sergeant.png",
+      25
+     ]
+    ],
+    "hitMs": 250
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-loyalists/sergeant-crossbow.png",
+      100
+     ],
+     [
+      "human-loyalists/sergeant-crossbow-attack1.png",
+      150
+     ],
+     [
+      "human-loyalists/sergeant-crossbow-attack2.png",
+      150
+     ],
+     [
+      "human-loyalists/sergeant-crossbow.png",
+      300
+     ]
+    ],
+    "hitMs": 400,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/sergeant-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/sergeant-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/sergeant-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/sergeant-crossbow.png",
+     1
+    ],
+    [
+     "human-loyalists/sergeant-crossbow-defend.png",
+     250
+    ],
+    [
+     "human-loyalists/sergeant-crossbow.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "leading": {
+   "frames": [
+    [
+     "human-loyalists/sergeant-lead-1.png",
+     150
+    ],
+    [
+     "human-loyalists/sergeant-lead-2.png",
+     450
+    ],
+    [
+     "human-loyalists/sergeant-lead-1.png",
+     150
+    ]
+   ]
+  }
+ },
+ "human-loyalists/shocktrooper.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/shocktrooper-attack-1.png",
+      85
+     ],
+     [
+      "human-loyalists/shocktrooper-attack-2.png",
+      100
+     ],
+     [
+      "human-loyalists/shocktrooper-attack-3.png",
+      125
+     ],
+     [
+      "human-loyalists/shocktrooper-attack-4.png",
+      50
+     ],
+     [
+      "human-loyalists/shocktrooper-attack-5.png",
+      50
+     ],
+     [
+      "human-loyalists/shocktrooper-attack-6.png",
+      50
+     ]
+    ],
+    "hitMs": 260
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/shocktrooper-defend-2.png",
+     1
+    ],
+    [
+     "human-loyalists/shocktrooper-defend-1.png",
+     250
+    ],
+    [
+     "human-loyalists/shocktrooper-defend-2.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/shocktrooper-defend-2.png",
+     1
+    ],
+    [
+     "human-loyalists/shocktrooper-defend-1.png",
+     250
+    ],
+    [
+     "human-loyalists/shocktrooper-defend-2.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-loyalists/siegetrooper.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/siegetrooper-attack-1.png",
+      85
+     ],
+     [
+      "human-loyalists/siegetrooper-attack-2.png",
+      100
+     ],
+     [
+      "human-loyalists/siegetrooper-attack-3.png",
+      125
+     ],
+     [
+      "human-loyalists/siegetrooper-attack-4.png",
+      50
+     ],
+     [
+      "human-loyalists/siegetrooper-attack-5.png",
+      50
+     ],
+     [
+      "human-loyalists/siegetrooper-attack-6.png",
+      50
+     ]
+    ],
+    "hitMs": 260
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/siegetrooper-defend-2.png",
+     1
+    ],
+    [
+     "human-loyalists/siegetrooper-defend-1.png",
+     250
+    ],
+    [
+     "human-loyalists/siegetrooper-defend-2.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/siegetrooper-defend-2.png",
+     1
+    ],
+    [
+     "human-loyalists/siegetrooper-defend-1.png",
+     250
+    ],
+    [
+     "human-loyalists/siegetrooper-defend-2.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-loyalists/spearman.png": {
+  "standing": {
+   "frames": [
+    [
+     "human-loyalists/spearman-stand-s-1.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-2.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-3.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-4.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-5.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-6.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-7.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-6.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-7.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-6.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-5.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-4.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-3.png",
+     200
+    ],
+    [
+     "human-loyalists/spearman-stand-s-2.png",
+     200
+    ]
+   ]
+  },
+  "idle": {
+   "frames": [
+    [
+     "human-loyalists/spearman-idle1.png",
+     100
+    ],
+    [
+     "human-loyalists/spearman-idle2.png",
+     100
+    ],
+    [
+     "human-loyalists/spearman-idle3.png",
+     100
+    ],
+    [
+     "human-loyalists/spearman-idle4.png",
+     400
+    ],
+    [
+     "human-loyalists/spearman-idle3.png",
+     100
+    ],
+    [
+     "human-loyalists/spearman-idle2.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/spearman-attack-se-1.png",
+      100
+     ],
+     [
+      "human-loyalists/spearman-attack-se-2.png",
+      100
+     ],
+     [
+      "human-loyalists/spearman-attack-se-3.png",
+      75
+     ],
+     [
+      "human-loyalists/spearman-attack-se-3.png",
+      50
+     ],
+     [
+      "human-loyalists/spearman-attack-se-2.png",
+      120
+     ],
+     [
+      "human-loyalists/spearman-attack-se-1.png",
+      80
+     ],
+     [
+      "human-loyalists/spearman.png",
+      1
+     ]
+    ],
+    "hitMs": 325
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-loyalists/spearman-attack-ranged1.png",
+      100
+     ],
+     [
+      "human-loyalists/spearman-attack-ranged2.png",
+      50
+     ],
+     [
+      "human-loyalists/spearman-attack-ranged2.png",
+      50
+     ],
+     [
+      "human-loyalists/spearman-attack-ranged3.png",
+      100
+     ]
+    ],
+    "hitMs": 250,
+    "missile": "projectiles/spear-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/spearman-defend.png",
+     1
+    ],
+    [
+     "human-loyalists/spearman-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/spearman-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/spearman-defend.png",
+     1
+    ],
+    [
+     "human-loyalists/spearman-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/spearman-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "human-loyalists/spearman-death1.png",
+     125
+    ],
+    [
+     "human-loyalists/spearman-death2.png",
+     125
+    ],
+    [
+     "human-loyalists/spearman-death3.png",
+     125
+    ],
+    [
+     "human-loyalists/spearman-death4.png",
+     125
+    ]
+   ]
+  }
+ },
+ "human-loyalists/swordsman.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-loyalists/swordsman-attack-se-1.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman-attack-se-2.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman-attack-se-3.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman-attack-se-4.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman-attack-se-5.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman-attack-se-6.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman-attack-se-7.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman-attack-se-8.png",
+      100
+     ],
+     [
+      "human-loyalists/swordsman.png",
+      50
+     ]
+    ],
+    "hitMs": 600
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-loyalists/swordsman-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/swordsman-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/swordsman-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-loyalists/swordsman-defend-1.png",
+     1
+    ],
+    [
+     "human-loyalists/swordsman-defend-2.png",
+     250
+    ],
+    [
+     "human-loyalists/swordsman-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-outlaws/footpad.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-outlaws/footpad-melee-1.png",
+      80
+     ],
+     [
+      "human-outlaws/footpad-melee-2.png",
+      90
+     ],
+     [
+      "human-outlaws/footpad-melee-3.png",
+      130
+     ],
+     [
+      "human-outlaws/footpad-melee-4.png",
+      200
+     ]
+    ],
+    "hitMs": 300
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-outlaws/footpad-attack1.png",
+      250
+     ],
+     [
+      "human-outlaws/footpad-attack2.png",
+      100
+     ],
+     [
+      "human-outlaws/footpad.png",
+      100
+     ]
+    ],
+    "hitMs": 400,
+    "missile": "projectiles/stone.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-outlaws/footpad.png",
+     1
+    ],
+    [
+     "human-outlaws/footpad-defend.png",
+     250
+    ],
+    [
+     "human-outlaws/footpad.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-outlaws/footpad.png",
+     1
+    ],
+    [
+     "human-outlaws/footpad-defend.png",
+     250
+    ],
+    [
+     "human-outlaws/footpad.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-peasants/peasant.png": {
+  "idle": {
+   "frames": [
+    [
+     "human-peasants/peasant-idle-1.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-idle-2.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-idle-3.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-idle-4.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-idle-5.png",
+     200
+    ],
+    [
+     "human-peasants/peasant-idle-6.png",
+     200
+    ],
+    [
+     "human-peasants/peasant-idle-7.png",
+     200
+    ],
+    [
+     "human-peasants/peasant-idle-4.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-idle-2.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-idle-1.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-peasants/peasant-attack1.png",
+      100
+     ],
+     [
+      "human-peasants/peasant-attack2.png",
+      100
+     ],
+     [
+      "human-peasants/peasant-attack3.png",
+      150
+     ],
+     [
+      "human-peasants/peasant-attack4.png",
+      100
+     ],
+     [
+      "human-peasants/peasant-attack5.png",
+      100
+     ],
+     [
+      "human-peasants/peasant.png",
+      1
+     ]
+    ],
+    "hitMs": 350
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-peasants/peasant-ranged1.png",
+      150
+     ],
+     [
+      "human-peasants/peasant-ranged2.png",
+      350
+     ]
+    ],
+    "hitMs": 150,
+    "missile": "projectiles/pitchfork-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-peasants/peasant.png",
+     1
+    ],
+    [
+     "human-peasants/peasant-defend.png",
+     250
+    ],
+    [
+     "human-peasants/peasant.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-peasants/peasant.png",
+     1
+    ],
+    [
+     "human-peasants/peasant-defend.png",
+     250
+    ],
+    [
+     "human-peasants/peasant.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "human-peasants/peasant-die1.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-die2.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-die3.png",
+     100
+    ],
+    [
+     "human-peasants/peasant-die4.png",
+     150
+    ],
+    [
+     "human-peasants/peasant-die5.png",
+     150
+    ],
+    [
+     "human-peasants/peasant-die6.png",
+     150
+    ],
+    [
+     "human-peasants/peasant-die7.png",
+     200
+    ],
+    [
+     "human-peasants/peasant-die8.png",
+     200
+    ],
+    [
+     "human-peasants/peasant-die9.png",
+     200
+    ]
+   ]
+  }
+ },
+ "human-peasants/ruffian.png": {
+  "idle": {
+   "frames": [
+    [
+     "human-peasants/ruffian-idle-1.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-2.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-3.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-4.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-5.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-4.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-3.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-2.png",
+     200
+    ],
+    [
+     "human-peasants/ruffian-idle-1.png",
+     200
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-peasants/ruffian-attack-1.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-2.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-3.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-4.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-5.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-6.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-7.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-8.png",
+      100
+     ],
+     [
+      "human-peasants/ruffian-attack-9.png",
+      100
+     ]
+    ],
+    "hitMs": 600
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-peasants/ruffian-defend-1.png",
+     1
+    ],
+    [
+     "human-peasants/ruffian-defend-2.png",
+     250
+    ],
+    [
+     "human-peasants/ruffian-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-peasants/ruffian-defend-1.png",
+     1
+    ],
+    [
+     "human-peasants/ruffian-defend-2.png",
+     250
+    ],
+    [
+     "human-peasants/ruffian-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "human-peasants/woodsman.png": {
+  "idle": {
+   "frames": [
+    [
+     "human-peasants/woodsman-idle-1.png",
+     100
+    ],
+    [
+     "human-peasants/woodsman-idle-2.png",
+     150
+    ],
+    [
+     "human-peasants/woodsman-idle-3.png",
+     200
+    ],
+    [
+     "human-peasants/woodsman-idle-4.png",
+     150
+    ],
+    [
+     "human-peasants/woodsman-idle-5.png",
+     150
+    ],
+    [
+     "human-peasants/woodsman-idle-6.png",
+     200
+    ],
+    [
+     "human-peasants/woodsman-idle-7.png",
+     1200
+    ],
+    [
+     "human-peasants/woodsman-idle-8.png",
+     200
+    ],
+    [
+     "human-peasants/woodsman-idle-9.png",
+     1200
+    ],
+    [
+     "human-peasants/woodsman-idle-10.png",
+     150
+    ],
+    [
+     "human-peasants/woodsman-idle-11.png",
+     150
+    ],
+    [
+     "human-peasants/woodsman-idle-12.png",
+     100
+    ],
+    [
+     "human-peasants/woodsman-idle-13.png",
+     100
+    ],
+    [
+     "human-peasants/woodsman-idle-14.png",
+     1300
+    ],
+    [
+     "human-peasants/woodsman-idle-3.png",
+     200
+    ],
+    [
+     "human-peasants/woodsman-idle-2.png",
+     200
+    ],
+    [
+     "human-peasants/woodsman-idle-1.png",
+     150
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "human-peasants/woodsman.png",
+      100
+     ],
+     [
+      "human-peasants/woodsman-melee-1.png",
+      200
+     ],
+     [
+      "human-peasants/woodsman.png",
+      100
+     ]
+    ],
+    "hitMs": 250
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "human-peasants/woodsman-bow.png",
+      65
+     ],
+     [
+      "human-peasants/woodsman-bow-attack-1.png",
+      75
+     ],
+     [
+      "human-peasants/woodsman-bow-attack-2.png",
+      75
+     ],
+     [
+      "human-peasants/woodsman-bow-attack-3.png",
+      100
+     ],
+     [
+      "human-peasants/woodsman-bow-attack-4.png",
+      130
+     ],
+     [
+      "human-peasants/woodsman-bow-attack-1.png",
+      65
+     ]
+    ],
+    "hitMs": 445,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "human-peasants/woodsman.png",
+     1
+    ],
+    [
+     "human-peasants/woodsman-defend.png",
+     250
+    ],
+    [
+     "human-peasants/woodsman.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "human-peasants/woodsman-bow.png",
+     1
+    ],
+    [
+     "human-peasants/woodsman-bow-defend.png",
+     250
+    ],
+    [
+     "human-peasants/woodsman-bow.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "orcs/grunt.png": {
+  "standing": {
+   "frames": [
+    [
+     "orcs/grunt.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-1.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-2.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-3.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-4.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-5.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-4.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-3.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-2.png",
+     250
+    ],
+    [
+     "orcs/grunt-breeze-1.png",
+     250
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "orcs/grunt.png",
+      50
+     ],
+     [
+      "orcs/grunt-defend-1.png",
+      50
+     ],
+     [
+      "orcs/grunt-attack-1.png",
+      100
+     ],
+     [
+      "orcs/grunt-attack-2.png",
+      75
+     ],
+     [
+      "orcs/grunt-attack-3.png",
+      100
+     ],
+     [
+      "orcs/grunt-attack-4.png",
+      50
+     ],
+     [
+      "orcs/grunt-attack-5.png",
+      75
+     ],
+     [
+      "orcs/grunt.png",
+      75
+     ]
+    ],
+    "hitMs": 300
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "orcs/grunt-defend-1.png",
+     1
+    ],
+    [
+     "orcs/grunt-defend-2.png",
+     250
+    ],
+    [
+     "orcs/grunt-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "orcs/grunt-defend-1.png",
+     1
+    ],
+    [
+     "orcs/grunt-defend-2.png",
+     250
+    ],
+    [
+     "orcs/grunt-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "orcs/grunt-die-1.png",
+     120
+    ],
+    [
+     "orcs/grunt-die-2.png",
+     120
+    ],
+    [
+     "orcs/grunt-die-3.png",
+     120
+    ],
+    [
+     "orcs/grunt-die-4.png",
+     100
+    ],
+    [
+     "orcs/grunt-die-5.png",
+     100
+    ],
+    [
+     "orcs/grunt-die-6.png",
+     80
+    ],
+    [
+     "orcs/grunt-die-7.png",
+     70
+    ],
+    [
+     "orcs/grunt-die-8.png",
+     170
+    ]
+   ]
+  }
+ },
+ "orcs/leader.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "orcs/leader.png",
+      50
+     ],
+     [
+      "orcs/leader-defend-1.png",
+      50
+     ],
+     [
+      "orcs/leader-attack-1.png",
+      100
+     ],
+     [
+      "orcs/leader-attack-2.png",
+      75
+     ],
+     [
+      "orcs/leader-attack-3.png",
+      100
+     ],
+     [
+      "orcs/leader-attack-4.png",
+      50
+     ],
+     [
+      "orcs/leader-attack-5.png",
+      75
+     ],
+     [
+      "orcs/leader.png",
+      75
+     ]
+    ],
+    "hitMs": 300
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "orcs/leader-ranged-attack-1.png",
+      150
+     ],
+     [
+      "orcs/leader-ranged-attack-2.png",
+      150
+     ]
+    ],
+    "hitMs": 300,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "orcs/leader-defend-1.png",
+     1
+    ],
+    [
+     "orcs/leader-defend-2.png",
+     250
+    ],
+    [
+     "orcs/leader-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "orcs/leader-ranged.png",
+     1
+    ],
+    [
+     "orcs/leader-ranged-defend.png",
+     250
+    ],
+    [
+     "orcs/leader-ranged.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "leading": {
+   "frames": [
+    [
+     "orcs/leader-lead-1.png",
+     150
+    ],
+    [
+     "orcs/leader-lead-2.png",
+     450
+    ],
+    [
+     "orcs/leader-lead-1.png",
+     150
+    ]
+   ]
+  }
+ },
+ "orcs/warrior.png": {
+  "standing": {
+   "frames": [
+    [
+     "orcs/warrior.png",
+     200
+    ],
+    [
+     "orcs/warrior-breeze-1.png",
+     200
+    ],
+    [
+     "orcs/warrior-breeze-2.png",
+     200
+    ],
+    [
+     "orcs/warrior-breeze-3.png",
+     200
+    ],
+    [
+     "orcs/warrior-breeze-4.png",
+     200
+    ],
+    [
+     "orcs/warrior-breeze-5.png",
+     200
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "orcs/warrior-attack-1.png",
+      80
+     ],
+     [
+      "orcs/warrior-attack-2.png",
+      90
+     ],
+     [
+      "orcs/warrior-attack-3.png",
+      90
+     ],
+     [
+      "orcs/warrior-attack-4.png",
+      90
+     ],
+     [
+      "orcs/warrior-attack-5.png",
+      100
+     ],
+     [
+      "orcs/warrior-attack-6.png",
+      150
+     ],
+     [
+      "orcs/warrior-attack-7.png",
+      250
+     ],
+     [
+      "orcs/warrior.png",
+      1
+     ]
+    ],
+    "hitMs": 0
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "orcs/warrior-defend-1.png",
+     1
+    ],
+    [
+     "orcs/warrior-defend-2.png",
+     250
+    ],
+    [
+     "orcs/warrior-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "orcs/warrior-defend-1.png",
+     1
+    ],
+    [
+     "orcs/warrior-defend-2.png",
+     250
+    ],
+    [
+     "orcs/warrior-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ }
+}

@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { vecKey, type GameEvent, type GameState, type Vec } from '@fansong/engine';
-import { loadSpriteTexture } from './spriteTextures.js';
+import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
+import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
+import { UnitAnimator } from './unitAnimator.js';
 import { spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
@@ -35,8 +37,7 @@ const MOVE_COLOR = 0x3ddc84;
 const ATTACK_COLOR = 0xff5252;
 const SELECT_COLOR = 0xffd54a;
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
-const SHOT_COLOR = 0x9fd0ff; // ranged tracer
-const RIPOSTE_COLOR = 0xffd54a; // guard riposte tracer
+const SHOT_COLOR = 0x9fd0ff; // ranged tracer, for a shooter without a missile image
 
 // Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
 const TILE_TOP = 0.1; // tiles are 0.2 tall, centred on y = 0
@@ -44,6 +45,14 @@ const BASE_RADIUS = 0.36;
 const BASE_HEIGHT = 0.06;
 const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
 const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so the steep view doesn't squash it
+
+// Animation timing (ms). Clip timings come from Wesnoth; these fill the gaps.
+const LUNGE = 0.3; // how far (world units) a melee strike leans into its target
+const MOVE_ANIM_MS = 600; // the slide between hexes, roughly (see the position lerp)
+const DEFEND_LEAD_MS = 126; // Wesnoth's defend reaction starts this long before impact
+const DEATH_FADE_MS = 600; // fade after a death clip (or instead of one)
+const ROUT_MS = 700; // a routed unit flees toward its own board edge while fading
+const MAX_QUEUE_MS = 1500; // most a new batch waits behind the previous one's animations
 
 // Camera limits: stay above the table, and never tip over the top into a flip.
 const CAMERA_MIN_POLAR = 0.12; // radians from straight down
@@ -68,17 +77,54 @@ interface Tracer {
   max: number;
 }
 
+interface Missile {
+  sprite: THREE.Sprite;
+  from: THREE.Vector3;
+  to: THREE.Vector3;
+  start: number;
+  end: number;
+  /** Lobbed projectiles (stones, spears) arc; arrows and bolts fly flat. */
+  arc: number;
+}
+
+/** The status flags that change how a unit is drawn. */
+interface UnitFlags {
+  dead: boolean;
+  knocked: boolean;
+  guarding: boolean;
+}
+
 interface UnitObj {
+  owner: 0 | 1;
   group: THREE.Group;
-  /** Turns the cutout to face the camera (yaw only, so it stays upright). */
+  /** Turns the cutout to face the camera (yaw only, so it stays upright); carries the melee lunge. */
   facing: THREE.Group;
   /** Knockdown pivot at the cutout's feet. */
   tilt: THREE.Group;
+  /** Flips the cutout to face screen-right. */
+  mirror: THREE.Group;
   sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  base: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  anims: SpriteAnimations;
+  animator: UnitAnimator;
+  atlas: SpriteAtlas | null;
+  shownImage: string | null;
+  /** World-space direction the unit last moved or struck in. */
+  heading: THREE.Vector3;
+  faceRight: boolean;
   targetPos: THREE.Vector3;
   targetTilt: number;
-  dead: boolean;
+  /** Flags from the latest GameState. */
+  state: UnitFlags;
+  /** Flags as drawn; lag `state` until `holdUntil` so blows land on the hit frame. */
+  shown: UnitFlags;
+  holdUntil: number;
+  /** Set by a UnitRouted event: leave by fleeing, not by dying. */
+  routed: boolean;
+  /** Board times the fade-out starts / ends, while dying or fleeing. */
+  fade: { start: number; end: number; flee: THREE.Vector3 | null } | null;
+  lunge: { dir: THREE.Vector3; start: number; hit: number; end: number } | null;
   /** 0..1 transient hit flash, decays each frame. */
   flash: number;
 }
@@ -87,8 +133,7 @@ interface UnitObj {
  * Thin three.js view of a FanSong board. It renders the grid, terrain and units
  * and reports clicks (as a cell and/or a unit id) back through callbacks — it
  * never decides legality. Unit transforms are lerped toward targets derived from
- * `GameState`, so movement/knockdown/death animate; engine events add transient
- * combat flashes.
+ * `GameState`; engine events drive Wesnoth sprite animations on a short timeline.
  */
 export class BoardView {
   onUnitClick: ((id: string) => void) | null = null;
@@ -105,6 +150,17 @@ export class BoardView {
 
   private readonly units = new Map<string, UnitObj>();
   private readonly tracers: Tracer[] = [];
+  private readonly missiles: Missile[] = [];
+  /** Deferred animation steps, run once board time reaches `at` (ms). */
+  private readonly timeline: { at: number; fn: () => void }[] = [];
+  /** Board time (ms) since the view was created; drives all animation. */
+  private now = 0;
+  /** When the current batch of combat animations finishes. */
+  private busyUntil = 0;
+  /** Dev aid: `?animSpeed=0.25` plays animations at quarter speed. */
+  private readonly animSpeed = import.meta.env.DEV
+    ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
+    : 1;
   private readonly highlightGroup = new THREE.Group();
   private width = 0;
   private height = 0;
@@ -189,15 +245,15 @@ export class BoardView {
         obj.group.position.copy(this.unitWorld(u.pos));
       }
       obj.targetPos = this.unitWorld(u.pos);
-      obj.targetTilt = u.knockedDown ? Math.PI / 2.4 : 0;
-      obj.dead = u.dead;
+      obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead };
 
       const isActive = state.activeUnitId === u.id;
       const isSelected = vm.selectedUnitId === u.id;
       const isSelectable = vm.selectableUnitIds.includes(u.id);
       const isAttackTarget = vm.attackTargetIds.includes(u.id);
       const isGuarding = u.guarding && !u.dead;
-      obj.ring.visible = isActive || isSelected || isSelectable || isAttackTarget || isGuarding;
+      obj.ring.visible =
+        !obj.fade && (isActive || isSelected || isSelectable || isAttackTarget || isGuarding);
       const ringColor = isAttackTarget
         ? ATTACK_COLOR
         : isActive || isSelected
@@ -221,28 +277,57 @@ export class BoardView {
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
   }
 
-  /** Trigger transient combat FX from a batch of engine events. */
+  /**
+   * Play a batch of engine events as Wesnoth-style animations. Steps are laid
+   * out on a timeline: each strike plays its attack clip, the target reacts on
+   * the clip's hit frame, and knockdowns/deaths wait for that same moment
+   * (the GameState that already contains them is held back until then).
+   */
   animateEvents(events: GameEvent[]): void {
+    let t = Math.min(MAX_QUEUE_MS, Math.max(0, this.busyUntil - this.now));
+    let lastHit = t; // when the most recent blow lands, for its consequences
+    const hold = (id: string, until: number) => {
+      const obj = this.units.get(id);
+      if (obj) obj.holdUntil = Math.max(obj.holdUntil, this.now + until);
+    };
+
     for (const e of events) {
-      if (e.type === 'AttackResolved') {
-        this.flashUnit(e.attackerId, 0.6);
-        this.flashUnit(e.targetId, 1);
-      } else if (e.type === 'ShotResolved') {
-        this.addTracer(e.attackerId, e.targetId, SHOT_COLOR);
-        this.flashUnit(e.targetId, 1);
+      if (e.type === 'UnitMoved') {
+        const obj = this.units.get(e.unitId);
+        if (obj) {
+          this.setHeading(obj, this.unitWorld(e.to).sub(this.unitWorld(e.from)));
+          obj.animator.moveFor(MOVE_ANIM_MS);
+        }
+      } else if (e.type === 'ActivationChosen') {
+        const obj = this.units.get(e.unitId);
+        if (obj?.anims.leading) this.at(t, () => obj.animator.play(obj.anims.leading));
+      } else if (e.type === 'AttackResolved' || e.type === 'ShotResolved') {
+        const s = this.strike(e.attackerId, e.targetId, e.type === 'AttackResolved' ? 'melee' : 'ranged', t);
+        lastHit = s.hit;
+        t = s.end;
       } else if (e.type === 'GuardRiposte') {
-        // The guard strikes back along the line of the incoming attack.
-        this.addTracer(e.guardId, e.attackerId, RIPOSTE_COLOR);
-        this.flashUnit(e.guardId, 0.9);
-        this.flashUnit(e.attackerId, e.prevented ? 1 : 0.5);
+        const s = this.strike(e.guardId, e.attackerId, 'melee', t);
+        lastHit = s.hit;
+        t = s.end;
       } else if (e.type === 'ToughnessSaved') {
-        this.flashUnit(e.unitId, 0.7);
-      } else if (e.type === 'UnitKilled' || e.type === 'UnitRouted') {
-        this.flashUnit(e.unitId, 1);
-      } else if (e.type === 'UnitKnockedDown') {
-        this.flashUnit(e.unitId, 0.8);
+        this.at(lastHit, () => this.flashUnit(e.unitId, 0.7));
+      } else if (e.type === 'UnitKnockedDown' || e.type === 'UnitKilled') {
+        hold(e.unitId, lastHit);
+      } else if (e.type === 'UnitRouted') {
+        const obj = this.units.get(e.unitId);
+        if (obj) obj.routed = true;
+        hold(e.unitId, lastHit + 300);
+      } else if (e.type === 'GameOver') {
+        this.at(t + 400, () => {
+          for (const obj of this.units.values()) {
+            if (obj.owner === e.winner && !obj.state.dead) {
+              obj.animator.play(obj.anims.victory ?? obj.anims.leading);
+            }
+          }
+        });
       }
     }
+    this.busyUntil = Math.max(this.busyUntil, this.now + t);
   }
 
   /** Return the camera to the framing it had when the board was built. */
@@ -284,29 +369,68 @@ export class BoardView {
     ring.position.y = 0.12;
     ring.visible = false;
 
-    // The cutout: a unit quad with its origin at the bottom edge, sized once the
-    // sprite loads. Alpha-tested (not blended) so overlapping cutouts need no sorting.
-    const spriteGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    // The cutout: one atlas cell on a quad whose origin is the frames' shared
+    // anchor (the base image's feet), sized once the atlas loads. Alpha-tested,
+    // not blended, so overlapping cutouts need no sorting.
     const sprite = new THREE.Mesh(
-      spriteGeo,
+      new THREE.PlaneGeometry(1, 1),
       new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide }),
     );
     sprite.userData.unitId = id;
+    sprite.userData.isCutout = true;
     sprite.visible = false;
 
+    const mirror = new THREE.Group();
+    mirror.add(sprite);
     const tilt = new THREE.Group();
-    tilt.add(sprite);
+    tilt.rotation.x = -SPRITE_LEAN;
+    tilt.add(mirror);
     const facing = new THREE.Group();
     facing.position.y = TILE_TOP + BASE_HEIGHT;
     facing.add(tilt);
 
-    loadSpriteTexture(spriteFor(name), owner).then(
-      ({ texture, width, height }) => {
+    const spriteName = spriteFor(name);
+    const anims = animationsFor(spriteName);
+    const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
+    const obj: UnitObj = {
+      owner,
+      group,
+      facing,
+      tilt,
+      mirror,
+      sprite,
+      base,
+      ring,
+      anims,
+      animator: new UnitAnimator(spriteName, anims),
+      atlas: null,
+      shownImage: null,
+      // Everyone starts facing the enemy: P0 deploys on the left, P1 on the right.
+      heading: new THREE.Vector3(owner === 0 ? 1 : -1, 0, 0),
+      faceRight: owner === 0,
+      targetPos: new THREE.Vector3(),
+      targetTilt: 0,
+      state: flags(),
+      shown: flags(),
+      holdUntil: 0,
+      routed: false,
+      fade: null,
+      lunge: null,
+      flash: 0,
+    };
+
+    loadSpriteAtlas(spriteName, framesOf(spriteName), owner).then(
+      (atlas) => {
         if (this.disposed) return;
-        sprite.material.map = texture;
+        obj.atlas = atlas;
+        const map = atlas.texture.clone(); // shares the uploaded image; its own UV window
+        map.repeat.set(atlas.repeatU, atlas.repeatV);
+        map.needsUpdate = true;
+        sprite.material.map = map;
         sprite.material.needsUpdate = true;
-        // Wesnoth sprites face left; mirror P0 (deployed on the left) to face the enemy.
-        sprite.scale.set(width * SPRITE_PX * (owner === 0 ? -1 : 1), height * SPRITE_PX, 1);
+        sprite.geometry.translate(0.5 - atlas.anchorX / atlas.cellW, atlas.anchorY / atlas.cellH - 0.5, 0);
+        sprite.scale.set(atlas.cellW * SPRITE_PX, atlas.cellH * SPRITE_PX, 1);
+        obj.shownImage = null; // force the current frame onto the new map
         sprite.visible = true;
       },
       (err) => console.error(err),
@@ -315,17 +439,196 @@ export class BoardView {
     group.add(ring, base, facing);
     group.name = name;
     this.scene.add(group);
-    return {
-      group,
-      facing,
-      tilt,
+    return obj;
+  }
+
+  /** Run `fn` once board time is `delayMs` from now. */
+  private at(delayMs: number, fn: () => void): void {
+    this.timeline.push({ at: this.now + delayMs, fn });
+  }
+
+  private setHeading(obj: UnitObj, dir: THREE.Vector3): void {
+    dir.y = 0;
+    if (dir.lengthSq() > 1e-6) obj.heading.copy(dir.normalize());
+  }
+
+  /**
+   * Lay out one strike starting `at` ms from now: the attacker's clip, its
+   * lunge or missile, and the target's reaction timed to the clip's hit frame.
+   * Returns the hit and end times, relative to now.
+   */
+  private strike(
+    attackerId: string,
+    targetId: string,
+    range: 'melee' | 'ranged',
+    at: number,
+  ): { hit: number; end: number } {
+    const a = this.units.get(attackerId);
+    const d = this.units.get(targetId);
+    if (!a || !d) return { hit: at, end: at };
+    const options: RangedClip[] | undefined = range === 'melee' ? a.anims.melee : a.anims.ranged;
+    const clip = options?.[Math.floor(Math.random() * options.length)];
+    const dur = clip ? clipDuration(clip) : 400;
+    const hit = clip?.hitMs ?? dur / 2;
+
+    this.at(at, () => {
+      const toTarget = d.group.position.clone().sub(a.group.position).setY(0);
+      this.setHeading(a, toTarget.clone());
+      this.setHeading(d, toTarget.clone().negate());
+      a.animator.play(clip);
+      if (range === 'melee') {
+        const dir = toTarget.normalize().multiplyScalar(LUNGE);
+        a.lunge = { dir, start: this.now, hit: this.now + hit, end: this.now + dur };
+      } else if (clip?.missile) {
+        this.launchMissile(a, d, clip.missile, hit - (clip.missileMs ?? 150), hit);
+      } else {
+        this.at(hit, () => this.addTracer(attackerId, targetId, SHOT_COLOR));
+      }
+    });
+    const defend: Clip | undefined =
+      range === 'melee'
+        ? (d.anims.defendMelee ?? d.anims.defendRanged)
+        : (d.anims.defendRanged ?? d.anims.defendMelee);
+    this.at(at + hit - (defend?.hitMs ?? DEFEND_LEAD_MS), () => {
+      if (!d.animator.busy) d.animator.play(defend);
+    });
+    this.at(at + hit, () => this.flashUnit(targetId, 0.8));
+    return { hit: at + hit, end: at + dur };
+  }
+
+  private launchMissile(from: UnitObj, to: UnitObj, image: string, startIn: number, hitIn: number): void {
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: projectileTexture(image), alphaTest: 0.5 }));
+    sprite.scale.setScalar(72 * SPRITE_PX * 0.8);
+    sprite.visible = false;
+    this.scene.add(sprite);
+    const lift = TILE_TOP + BASE_HEIGHT + 0.55;
+    this.missiles.push({
       sprite,
-      ring,
-      targetPos: new THREE.Vector3(),
-      targetTilt: 0,
-      dead: false,
-      flash: 0,
-    };
+      from: from.group.position.clone().setY(lift),
+      to: to.group.position.clone().setY(lift),
+      start: this.now + Math.max(0, startIn),
+      end: this.now + Math.max(1, hitIn),
+      arc: /stone|spear|pitchfork/.test(image) ? 0.35 : 0.08,
+    });
+  }
+
+  /** Apply held-back state changes (knockdown, death, guard) once their blow has landed. */
+  private syncShown(obj: UnitObj): void {
+    const { state, shown } = obj;
+    if (state.dead && !shown.dead) this.startLeaving(obj);
+    if (!state.dead && shown.dead) this.revive(obj); // replay rewind
+    obj.shown = { ...state };
+    obj.targetTilt = state.knocked ? Math.PI / 2.4 : 0;
+  }
+
+  private startLeaving(obj: UnitObj): void {
+    obj.lunge = null;
+    obj.ring.visible = false;
+    let fadeIn = 0;
+    let flee: THREE.Vector3 | null = null;
+    if (obj.routed) {
+      flee = new THREE.Vector3(obj.owner === 0 ? -1 : 1, 0, 0);
+      this.setHeading(obj, flee.clone());
+      obj.animator.moveFor(ROUT_MS);
+    } else if (!obj.shown.knocked) {
+      // Wesnoth plays the death clip, then fades; without one it just fades.
+      fadeIn = obj.animator.play(obj.anims.death, { hold: true });
+    }
+    obj.fade = { start: this.now + fadeIn, end: this.now + fadeIn + (flee ? ROUT_MS : DEATH_FADE_MS), flee };
+    // Blend while fading; a low alpha test still drops the cleared background.
+    obj.sprite.material.alphaTest = 0.01;
+    for (const m of [obj.sprite.material, obj.base.material]) {
+      m.transparent = true;
+      m.needsUpdate = true;
+    }
+  }
+
+  private revive(obj: UnitObj): void {
+    obj.fade = null;
+    obj.routed = false;
+    obj.animator.stop();
+    obj.group.visible = true;
+    obj.sprite.material.alphaTest = 0.5;
+    for (const m of [obj.sprite.material, obj.base.material]) {
+      m.transparent = false;
+      m.opacity = 1;
+      m.needsUpdate = true;
+    }
+  }
+
+  /** Per-frame unit animation: frame, facing, lunge, tilt, fade and flash. */
+  private animateUnit(obj: UnitObj, dtMs: number, lerp: number, camRight: THREE.Vector3): void {
+    obj.group.position.lerp(obj.targetPos, lerp);
+    if (this.now >= obj.holdUntil) this.syncShown(obj);
+
+    // On Guard, hold the braced defence pose.
+    const guardPose = obj.anims.defendMelee?.frames[1]?.[0] ?? null;
+    obj.animator.pose = obj.shown.guarding && !obj.shown.knocked ? guardPose : null;
+    obj.animator.restless = !obj.shown.knocked && !obj.fade;
+    const image = obj.animator.update(dtMs);
+    if (obj.atlas && image !== obj.shownImage) {
+      const rect = obj.atlas.frames.get(image) ?? obj.atlas.frames.get(obj.animator.base);
+      if (rect) obj.sprite.material.map?.offset.set(rect.u, rect.v);
+      obj.shownImage = image;
+    }
+
+    // Wesnoth art faces screen-left; flip when the unit's heading points screen-right.
+    const side = obj.heading.dot(camRight);
+    if (Math.abs(side) > 0.05) obj.faceRight = side > 0;
+    obj.mirror.scale.x = obj.faceRight ? -1 : 1;
+
+    obj.facing.rotation.y = Math.atan2(
+      this.camera.position.x - obj.group.position.x,
+      this.camera.position.z - obj.group.position.z,
+    );
+    obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
+
+    // Melee lunge: lean in until the hit frame, then settle back.
+    const off = new THREE.Vector3();
+    if (obj.lunge) {
+      const { dir, start, hit, end } = obj.lunge;
+      if (this.now >= end) obj.lunge = null;
+      else {
+        const k = this.now < hit ? (this.now - start) / Math.max(1, hit - start) : (end - this.now) / Math.max(1, end - hit);
+        off.addScaledVector(dir, THREE.MathUtils.clamp(k, 0, 1));
+      }
+    }
+
+    if (obj.fade) {
+      const f = THREE.MathUtils.clamp((this.now - obj.fade.start) / (obj.fade.end - obj.fade.start), 0, 1);
+      if (obj.fade.flee) off.addScaledVector(obj.fade.flee, f * HEX_COL_STEP);
+      obj.sprite.material.opacity = 1 - f;
+      obj.base.material.opacity = 1 - f;
+      obj.group.visible = f < 1;
+    }
+    obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT, off.z);
+
+    if (obj.flash > 0) {
+      obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);
+      // A basic material's colour multiplies the texture; > 1 washes it toward white.
+      obj.sprite.material.color.setScalar(1 + obj.flash * 2.5);
+    }
+  }
+
+  private animateMissiles(): void {
+    for (let i = this.missiles.length - 1; i >= 0; i--) {
+      const m = this.missiles[i]!;
+      const f = (this.now - m.start) / (m.end - m.start);
+      if (f >= 1) {
+        this.scene.remove(m.sprite);
+        m.sprite.material.dispose();
+        this.missiles.splice(i, 1);
+        continue;
+      }
+      m.sprite.visible = f >= 0;
+      if (f < 0) continue;
+      m.sprite.position.lerpVectors(m.from, m.to, f);
+      m.sprite.position.y += Math.sin(Math.PI * f) * m.arc;
+      // Point the (north-facing) image along its on-screen direction of travel.
+      const a = m.from.clone().project(this.camera);
+      const b = m.to.clone().project(this.camera);
+      m.sprite.material.rotation = Math.atan2(b.y - a.y, (b.x - a.x) * this.camera.aspect) - Math.PI / 2;
+    }
   }
 
   private drawHighlights(moveTargets: Vec[]): void {
@@ -353,7 +656,7 @@ export class BoardView {
     if (obj) obj.flash = Math.max(obj.flash, amount);
   }
 
-  /** Draw a short-lived bolt between two units (a shot or a riposte). */
+  /** Draw a short-lived bolt between two units (a shot without a missile image). */
   private addTracer(fromId: string, toId: string, color: number): void {
     const from = this.units.get(fromId);
     const to = this.units.get(toId);
@@ -369,32 +672,28 @@ export class BoardView {
 
   private render = (): void => {
     if (this.disposed) return;
-    const dt = Math.min(this.clock.getDelta(), 0.05);
+    const rawDt = this.clock.getDelta();
+    const dt = Math.min(rawDt, 0.05);
     const lerp = 1 - Math.pow(0.001, dt); // frame-rate independent smoothing
 
     this.clampCameraTarget();
     this.controls.update();
 
-    for (const obj of this.units.values()) {
-      obj.group.position.lerp(obj.targetPos, lerp);
-      obj.facing.rotation.y = Math.atan2(
-        this.camera.position.x - obj.group.position.x,
-        this.camera.position.z - obj.group.position.z,
-      );
-      obj.tilt.rotation.x = -SPRITE_LEAN;
-      obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
-
-      const targetScale = obj.dead ? 0.001 : 1;
-      const s = obj.group.scale.x + (targetScale - obj.group.scale.x) * lerp;
-      obj.group.scale.setScalar(Math.max(0.001, s));
-      obj.group.visible = !(obj.dead && s < 0.02);
-
-      if (obj.flash > 0) {
-        obj.flash = Math.max(0, obj.flash - dt * 3);
-        // A basic material's colour multiplies the texture; > 1 washes it toward white.
-        obj.sprite.material.color.setScalar(1 + obj.flash * 2.5);
-      }
+    // Animations run on wall-clock time (a slow frame doesn't slow them down);
+    // only a long stall, like a background tab, is capped.
+    const dtMs = Math.min(rawDt, 0.25) * 1000 * this.animSpeed;
+    this.now += dtMs;
+    for (let i = 0; i < this.timeline.length; ) {
+      const step = this.timeline[i]!;
+      if (step.at <= this.now) {
+        this.timeline.splice(i, 1);
+        step.fn();
+      } else i++;
     }
+
+    const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
+    this.animateMissiles();
 
     // Fade and retire tracers.
     for (let i = this.tracers.length - 1; i >= 0; i--) {
@@ -432,7 +731,7 @@ export class BoardView {
     const meshes: THREE.Object3D[] = [];
     for (const obj of this.units.values()) if (obj.group.visible) meshes.push(obj.group);
     const unitHits = this.raycaster.intersectObjects(meshes, true);
-    const unitId = unitHits[0]?.object.userData.unitId as string | undefined;
+    const unitId = unitHits.find((h) => this.isSolidHit(h))?.object.userData.unitId as string | undefined;
     if (unitId) {
       this.onUnitClick?.(unitId);
       return;
@@ -444,6 +743,15 @@ export class BoardView {
       if (cell) this.onCellClick?.(cell);
     }
   };
+
+  /** A cutout's quad is larger than its figure: only count clicks on opaque pixels. */
+  private isSolidHit(hit: THREE.Intersection): boolean {
+    if (!hit.object.userData.isCutout || !hit.uv) return true;
+    const obj = this.units.get(hit.object.userData.unitId as string);
+    const map = obj?.sprite.material.map;
+    if (!obj?.atlas || !map) return false;
+    return obj.atlas.alphaAt(map.offset.x + hit.uv.x * map.repeat.x, map.offset.y + hit.uv.y * map.repeat.y) > 0;
+  }
 
   private resize(): void {
     const w = this.container.clientWidth || 1;
