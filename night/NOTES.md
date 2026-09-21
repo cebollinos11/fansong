@@ -10,3 +10,7 @@
   move-destination checks and neighbours already respect them; added `Board.elevation/feature`.
   Skipped a separate `isPassable` (it would equal `!isBlocked`). Protocol `boardDataSchema` is
   `.strict()` and will reject terrain until task 5.
+- Task 2: `lineOfSight` treats any feature (rock/building/forest) on an *intermediate* hex as
+  blocking (new exported `blocksSight`); endpoints never block, so units in forest see/are seen.
+  For symmetry the line is always drawn from the lexically lower (x, then y) endpoint, so
+  edge-grazing ties round identically both ways. Golden replay unchanged by the canonicalisation.

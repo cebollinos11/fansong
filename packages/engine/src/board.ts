@@ -65,6 +65,11 @@ export function isImpassableFeature(f: TerrainFeature | undefined): boolean {
   return f === 'rock' || f === 'building';
 }
 
+/** Does this feature stop line of sight passing *through* its hex? */
+export function blocksSight(f: TerrainFeature | undefined): boolean {
+  return f !== undefined;
+}
+
 export interface Board {
   readonly width: number;
   readonly height: number;
@@ -86,7 +91,11 @@ export interface Board {
    * window itself.
    */
   cellsWithin(v: Vec, r: number): Vec[];
-  /** Line of sight; blocked terrain (and optionally occupied cells) break it. */
+  /**
+   * Line of sight between hex centres (symmetric). Any intervening blocked cell,
+   * rock/building/forest hex, or (optionally) occupied cell breaks it; the
+   * endpoints themselves never do.
+   */
   lineOfSight(a: Vec, b: Vec, occupied?: (v: Vec) => boolean): boolean;
 }
 
@@ -206,12 +215,16 @@ export function makeHexGrid(data: BoardData): Board {
       return cells;
     },
     lineOfSight(a, b, occupied) {
-      const line = cubeLine(offsetToCube(a), offsetToCube(b));
-      // Endpoints never count as blockers; an intermediate blocked/occupied cell
-      // breaks sight.
+      // Always draw the line in a canonical direction (lower column, then lower
+      // row, first) so an edge-grazing tie rounds the same way whichever end is
+      // looking: sight is symmetric.
+      const [from, to] = a.x < b.x || (a.x === b.x && a.y <= b.y) ? [a, b] : [b, a];
+      const line = cubeLine(offsetToCube(from), offsetToCube(to));
+      // Endpoints never count as blockers, so a unit standing in a forest sees
+      // out and is seen; an intermediate blocked/forest/occupied cell breaks sight.
       for (let i = 1; i < line.length - 1; i++) {
         const cell = cubeToOffset(line[i]!);
-        if (isBlocked(cell) || (occupied?.(cell) ?? false)) return false;
+        if (isBlocked(cell) || blocksSight(feature(cell)) || (occupied?.(cell) ?? false)) return false;
       }
       return true;
     },

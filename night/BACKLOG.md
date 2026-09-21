@@ -10,7 +10,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 1. Engine: sparse terrain in `BoardData` (optional per-hex `elevation` 0–3 and `feature`
       rock/building/forest), `Board` accessors (`elevation`, `feature`, `isPassable`), `GameConfig`
       pass-through; test that a default game's state JSON has no new keys.
-- [ ] 2. Engine: LOS with features — rock/building block, forest blocks *through* but not into/out of;
+- [x] 2. Engine: LOS with features — rock/building block, forest blocks *through* but not into/out of;
       legacy `blocked` still blocks; tests incl. symmetry and edge-graze determinism.
 - [ ] 3. Engine: movement pathing — a Move destination must be reachable in ≤ `move` steps over
       passable hexes (BFS around rocks/buildings/legacy blocked; units don't block paths so the
