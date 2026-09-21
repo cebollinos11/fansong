@@ -1,4 +1,4 @@
-import type { BoardData, Vec } from './board.js';
+import type { BoardData, HexTerrain, Vec } from './board.js';
 import { seedRng } from './rng.js';
 import type { GameState, Owner, Unit } from './types.js';
 
@@ -18,7 +18,13 @@ export interface UnitSpec {
 
 export interface GameConfig {
   seed: number;
-  board: { width: number; height: number; blocked?: string[] };
+  board: {
+    width: number;
+    height: number;
+    blocked?: string[];
+    /** Sparse per-hex elevation/feature, keyed "x,y" (see {@link BoardData.terrain}). */
+    terrain?: Record<string, HexTerrain>;
+  };
   /** Units for each player. */
   warbands: [UnitSpec[], UnitSpec[]];
   /** Player who leads round 1 (default 0). */
@@ -46,12 +52,36 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
   };
 }
 
+/**
+ * Copy a sparse terrain map, dropping default entries (elevation 0, no feature)
+ * and sorting keys so equal terrain always serialises identically. Returns
+ * `undefined` when nothing non-default remains.
+ */
+export function normalizeTerrain(
+  terrain: Record<string, HexTerrain> | undefined,
+): Record<string, HexTerrain> | undefined {
+  if (!terrain) return undefined;
+  const out: Record<string, HexTerrain> = {};
+  for (const key of Object.keys(terrain).sort()) {
+    const t = terrain[key]!;
+    const hex: HexTerrain = {};
+    if (t.elevation) hex.elevation = t.elevation;
+    if (t.feature) hex.feature = t.feature;
+    if (hex.elevation !== undefined || hex.feature !== undefined) out[key] = hex;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 export function createGame(config: GameConfig): GameState {
   const board: BoardData = {
     width: config.board.width,
     height: config.board.height,
     blocked: config.board.blocked ? [...config.board.blocked] : [],
   };
+  const terrain = normalizeTerrain(config.board.terrain);
+  // Only attach terrain when there is some, so a flat board's state shape (and
+  // therefore every existing replay hash) is unchanged.
+  if (terrain) board.terrain = terrain;
 
   const units: Unit[] = [
     ...config.warbands[0].map((s, i) => makeUnit(s, 0, i)),

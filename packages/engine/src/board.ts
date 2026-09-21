@@ -26,19 +26,55 @@ export function vecKey(v: Vec): string {
   return `${v.x},${v.y}`;
 }
 
+/**
+ * A terrain feature occupying a whole hex (at most one per hex).
+ * - `rock`, `building`: impassable and block line of sight.
+ * - `forest`: passable; blocks sight *through* it, but a unit inside can see and
+ *   be seen from outside.
+ */
+export type TerrainFeature = 'rock' | 'building' | 'forest';
+
+export const TERRAIN_FEATURES: ReadonlyArray<TerrainFeature> = ['rock', 'building', 'forest'];
+
+/** Highest hex elevation (elevations are integers `0..MAX_ELEVATION`). */
+export const MAX_ELEVATION = 3;
+
+/** Non-default terrain of one hex. Omitted keys mean elevation 0 / no feature. */
+export interface HexTerrain {
+  elevation?: number;
+  feature?: TerrainFeature;
+}
+
 /** Serialisable board description held in GameState. */
 export interface BoardData {
   width: number;
   height: number;
   /** Impassable / LoS-blocking cell keys ("x,y"). */
   blocked: string[];
+  /**
+   * Sparse per-hex terrain keyed by "x,y" — only hexes with a non-zero elevation
+   * or a feature appear. The key itself is omitted entirely on a flat,
+   * featureless board, so such a board serialises exactly as it did before
+   * terrain existed (and old replays/golden hashes are unaffected).
+   */
+  terrain?: Record<string, HexTerrain>;
+}
+
+/** Does this feature stop movement into its hex? */
+export function isImpassableFeature(f: TerrainFeature | undefined): boolean {
+  return f === 'rock' || f === 'building';
 }
 
 export interface Board {
   readonly width: number;
   readonly height: number;
   inBounds(v: Vec): boolean;
+  /** Impassable: a legacy blocked cell or a rock/building hex. */
   isBlocked(v: Vec): boolean;
+  /** Integer elevation of a hex (0 when flat or out of bounds). */
+  elevation(v: Vec): number;
+  /** The hex's terrain feature, if any. */
+  feature(v: Vec): TerrainFeature | undefined;
   /** Hex (cube) distance between two cells. */
   distance(a: Vec, b: Vec): number;
   /** In-bounds, unblocked adjacent cells (every cell at distance 1). */
@@ -126,10 +162,13 @@ function cubeLine(a: Cube, b: Cube): Cube[] {
 
 export function makeHexGrid(data: BoardData): Board {
   const blocked = new Set(data.blocked);
+  const terrain = data.terrain ?? {};
   const { width, height } = data;
 
   const inBounds = (v: Vec) => v.x >= 0 && v.y >= 0 && v.x < width && v.y < height;
-  const isBlocked = (v: Vec) => blocked.has(vecKey(v));
+  const feature = (v: Vec): TerrainFeature | undefined => terrain[vecKey(v)]?.feature;
+  const elevation = (v: Vec): number => terrain[vecKey(v)]?.elevation ?? 0;
+  const isBlocked = (v: Vec) => blocked.has(vecKey(v)) || isImpassableFeature(feature(v));
 
   const distance = (a: Vec, b: Vec) => cubeDistance(offsetToCube(a), offsetToCube(b));
 
@@ -138,6 +177,8 @@ export function makeHexGrid(data: BoardData): Board {
     height,
     inBounds,
     isBlocked,
+    elevation,
+    feature,
     distance,
     neighbors(v) {
       const c = offsetToCube(v);

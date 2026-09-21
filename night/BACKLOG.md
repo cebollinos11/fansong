@@ -7,7 +7,7 @@ must serialise to exactly the same `GameState` JSON as before, so the golden rep
 is untouched — new state is **optional/sparse** and omitted when default.
 
 ## Engine model & rules
-- [ ] 1. Engine: sparse terrain in `BoardData` (optional per-hex `elevation` 0–3 and `feature`
+- [x] 1. Engine: sparse terrain in `BoardData` (optional per-hex `elevation` 0–3 and `feature`
       rock/building/forest), `Board` accessors (`elevation`, `feature`, `isPassable`), `GameConfig`
       pass-through; test that a default game's state JSON has no new keys.
 - [ ] 2. Engine: LOS with features — rock/building block, forest blocks *through* but not into/out of;
