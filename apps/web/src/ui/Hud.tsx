@@ -89,13 +89,13 @@ export function Hud(props: Props): JSX.Element {
                   </p>
                   <div className="dice-row">
                     {interaction.diceChoices.map((n) => (
-                      <button key={n} className="dice" onClick={() => props.onActivate(n)}>
-                        {n} {n === 1 ? 'die' : 'dice'}
+                      <button key={n} className="dice" title={`Press ${n}`} onClick={() => props.onActivate(n)}>
+                        {n} {n === 1 ? 'die' : 'dice'} <kbd>{n}</kbd>
                       </button>
                     ))}
                   </div>
                   <p className="hint">
-                    More dice = more actions but higher turnover risk. One die can never turn over.
+                    More dice = more actions but higher turnover risk. One die can never turn over. Tip: press 1–3 to roll.
                   </p>
                 </>
               ) : (

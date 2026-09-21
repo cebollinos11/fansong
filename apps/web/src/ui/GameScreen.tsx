@@ -71,6 +71,22 @@ export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Elemen
     client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
   };
 
+  // Keyboard shortcut: with a unit selected, 1/2/3 commits that many dice.
+  useEffect(() => {
+    if (!myTurn || state.phase !== 'awaitingActivation' || !selectedUnitId) return;
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      const diceCount = Number(e.key);
+      if (!interaction.diceChoices.includes(diceCount)) return;
+      e.preventDefault();
+      client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [myTurn, state.phase, selectedUnitId, interaction, client]);
+
   const handleEndActivation = (): void => {
     if (!myTurn) return;
     client.send({ type: 'EndActivation' });

@@ -294,6 +294,16 @@ button.ghost {
   flex: 1;
 }
 
+.dice-row .dice kbd {
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 button.secondary {
   width: 100%;
   margin-top: 6px;
