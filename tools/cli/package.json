@@ -1,0 +1,17 @@
+{
+  "name": "@fansong/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "fansong-play": "./src/play.ts"
+  },
+  "scripts": {
+    "play": "tsx src/play.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fansong/ai": "workspace:*",
+    "@fansong/engine": "workspace:*"
+  }
+}
