@@ -160,13 +160,13 @@ no rules — remove three.js and the game still runs in the CLI.
 
 ## 10. Roadmap
 
-1. **M0 — Scaffold:** monorepo, engine skeleton, seeded RNG, `reduce` /
+1. **M0 — Scaffold:** ✅ monorepo, engine skeleton, seeded RNG, `reduce` /
    `getLegalCommands` stubs, Vitest, CLI harness printing a board.
-2. **M1 — Core loop (headless):** grid, movement, activation + dice + the
+2. **M1 — Core loop (headless):** ✅ grid, movement, activation + dice + the
    alternating turnover twist, opposed combat, kill/knockdown. AI-vs-AI runs
    end-to-end in the CLI. *Playable without any UI.*
-3. **M2 — Content:** point-buy builder + a few original preset warbands, with
-   validation.
+3. **M2 — Content:** ✅ point-buy builder + a few original preset warbands, with
+   validation. (`packages/content`; CLI `--p0/--p1/--list`.)
 4. **M3 — 3D UI:** three.js board + React HUD for local hotseat and vs-AI.
 5. **M4 — Online:** Worker + Durable Objects, WebSocket sync, matchmaking,
    deploy to Cloudflare.
