@@ -96,3 +96,13 @@
   byte-identical to the legacy `layOutWarband` (tested for every preset pair incl. 12-unit
   overflow). Callers (CLI, `configFromSetup`) still use the legacy board path; switching them to
   maps is task 17.
+- Task 13: new `packages/content/src/mapRegistry.ts` — `listMaps()`, `getMap(id)`, `DEFAULT_MAP_ID`.
+  Decisions: map JSON files are imported *explicitly* (no `import.meta.glob`/fs) so Vite, wrangler
+  and tsx all inline them — verified via web build and `wrangler deploy --dry-run`; a test reads
+  `maps/` with fs and fails if a file isn't registered or isn't named `<id>.json`. Each built-in
+  map is `parseMap`+`validateMap`'d at module load and throws if invalid (duplicate ids too).
+  Added `maps/open-field.json` (tested equal to `DEFAULT_MAP`) as the first/default entry so the
+  loader is exercised before the premade maps land. Added `mapToJson(map)` in `map.ts`: a stable,
+  diff-friendly format (one hex row per line, one zone per line); a test pins every map file to
+  that canonical form, so author maps by generating them through `mapToJson`. Editor export can
+  reuse it (task 25).

@@ -31,7 +31,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
       for a warband, objectives valid per mode; `supportedModes(map)`. Tests.
 - [x] 12. Content: `mapToBoard` + deploy warbands into map deploy zones; `buildMatch` accepts a map;
       the default flat map reproduces the legacy config exactly. Tests.
-- [ ] 13. Content: built-in map registry loading `packages/content/maps/*.json` (`listMaps`/`getMap`).
+- [x] 13. Content: built-in map registry loading `packages/content/maps/*.json` (`listMaps`/`getMap`).
 
 ## Premade maps (each: validates + AI-vs-AI annihilation self-play test; mode tests added in 36)
 - [ ] 14. Maps: Rolling Hills, Old Forest.

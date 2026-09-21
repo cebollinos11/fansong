@@ -99,6 +99,33 @@ export function parseMap(json: unknown): MapDef {
   return result.data;
 }
 
+/**
+ * Serialise a map as stable, diff-friendly JSON: top-level keys on their own
+ * lines, one map row of hexes per line, one zone per line. `parseMap` reads it
+ * back to an equal map. Used for the built-in map files and editor export.
+ */
+export function mapToJson(map: MapDef): string {
+  const j = (v: unknown): string => JSON.stringify(v);
+  const rows: string[] = [];
+  for (let y = 0; y < map.height; y++) {
+    rows.push(`    ${map.hexes.slice(y * map.width, (y + 1) * map.width).map(j).join(', ')}`);
+  }
+  const zones = (zs: readonly Vec[][]): string => `[\n${zs.map((z) => `    ${j(z)}`).join(',\n')}\n  ]`;
+  const objectives = Object.entries(map.objectives).filter(([, v]) => v !== undefined);
+  const lines = [
+    `  "id": ${j(map.id)}`,
+    `  "name": ${j(map.name)}`,
+    `  "width": ${map.width}`,
+    `  "height": ${map.height}`,
+    `  "hexes": [\n${rows.join(',\n')}\n  ]`,
+    `  "deployZones": ${zones(map.deployZones)}`,
+    objectives.length === 0
+      ? `  "objectives": {}`
+      : `  "objectives": {\n${objectives.map(([k, v]) => `    ${j(k)}: ${j(v)}`).join(',\n')}\n  }`,
+  ];
+  return `{\n${lines.join(',\n')}\n}\n`;
+}
+
 /** The terrain of hex `v`, or undefined when it's outside the map / hex list. */
 export function mapHexAt(map: MapDef, v: Vec): MapHex | undefined {
   if (v.x < 0 || v.y < 0 || v.x >= map.width || v.y >= map.height) return undefined;
