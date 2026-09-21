@@ -1,4 +1,4 @@
-import { unitById, type GameEvent, type GameState } from '@fansong/engine';
+import { unitById, type GameEvent, type GameState, type TerrainFeature } from '@fansong/engine';
 
 function name(state: GameState, id: string | null): string {
   if (!id) return '(none)';
@@ -48,15 +48,23 @@ export function formatEvent(state: GameState, e: GameEvent): string {
   }
 }
 
+const FEATURE_GLYPH: Record<TerrainFeature, string> = {
+  rock: '^',
+  building: 'B',
+  forest: 'T',
+};
+
 /**
  * ASCII render of the flat-top hex board (offset "odd-q" coordinates: odd columns
  * sit half a cell lower, so vertical neighbours interlock). A cell's glyph is its
- * unit's initial (P0 upper-case, P1 lower-case); '#' is blocked terrain, '·' an
- * empty cell.
+ * unit's initial (P0 upper-case, P1 lower-case); otherwise '#' is legacy blocked
+ * terrain, '^' rock, 'B' building, 'T' forest and '·' an empty cell. A raised hex
+ * shows its elevation (1–3) as a digit right after the glyph.
  */
 export function renderBoard(state: GameState): string {
   const { width, height } = state.board;
   const blocked = new Set(state.board.blocked);
+  const terrain = state.board.terrain ?? {};
 
   const glyphAt = (x: number, y: number): string => {
     const unit = state.units.find((u) => !u.dead && u.pos.x === x && u.pos.y === y);
@@ -64,10 +72,14 @@ export function renderBoard(state: GameState): string {
       const g = unit.name[0] ?? '?';
       return unit.owner === 0 ? g.toUpperCase() : g.toLowerCase();
     }
-    return blocked.has(`${x},${y}`) ? '#' : '·';
+    if (blocked.has(`${x},${y}`)) return '#';
+    const feature = terrain[`${x},${y}`]?.feature;
+    return feature ? FEATURE_GLYPH[feature] : '·';
   };
 
   // One text line per half-row; odd columns are dropped a half-row (one line).
+  // Neighbouring columns never share a line, so the spacer after a glyph is
+  // free to carry that hex's elevation.
   const lineCount = height * 2 + 1;
   const canvas: string[][] = Array.from({ length: lineCount }, () =>
     Array.from({ length: width * 2 }, () => ' '),
@@ -76,6 +88,8 @@ export function renderBoard(state: GameState): string {
     for (let y = 0; y < height; y++) {
       const li = y * 2 + (x % 2);
       canvas[li]![x * 2] = glyphAt(x, y);
+      const elevation = terrain[`${x},${y}`]?.elevation ?? 0;
+      if (elevation > 0) canvas[li]![x * 2 + 1] = String(elevation);
     }
   }
 

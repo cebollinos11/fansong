@@ -32,3 +32,8 @@
   Elevation 0 is accepted on the wire (engine normalises it away). Added `BoardData`/`HexTerrain`
   drift guards. There is no `GameConfig` schema in protocol (setup travels as `MatchSetup`); map
   and mode fields for that come in task 32.
+- Task 6: CLI `renderBoard` draws features as `^` rock / `B` building / `T` forest (legacy
+  `blocked` stays `#`; a unit's initial wins over a feature, e.g. a unit in forest). Elevation
+  1–3 is printed as a digit in the spacer column right after the glyph (neighbouring columns
+  sit on alternate lines, so that column is always free). Flat boards render exactly as before.
+  Added `tools/cli/test/format.test.ts`.

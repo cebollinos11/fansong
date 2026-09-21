@@ -18,7 +18,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 4. Engine: high ground +1 (melee attack, guard riposte, shoot) for a standing combatant on a
       higher hex; optional bonus fields on combat events only when non-zero. Tests.
 - [x] 5. Protocol: extend board/config zod schemas with terrain; round-trip tests.
-- [ ] 6. CLI: ASCII board shows features (`^` rock, `B` building, `T` forest) and elevation.
+- [x] 6. CLI: ASCII board shows features (`^` rock, `B` building, `T` forest) and elevation.
 
 ## Rendering
 - [ ] 7. Web: hexes extruded by elevation with shaded side faces; units and picking sit on top.
