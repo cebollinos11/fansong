@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { vecKey, type GameEvent, type GameState, type Vec } from '@fansong/engine';
+import { loadSpriteTexture } from './spriteTextures.js';
+import { spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
 export interface BoardViewModel {
@@ -35,6 +37,13 @@ const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
 const SHOT_COLOR = 0x9fd0ff; // ranged tracer
 const RIPOSTE_COLOR = 0xffd54a; // guard riposte tracer
 
+// Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
+const TILE_TOP = 0.1; // tiles are 0.2 tall, centred on y = 0
+const BASE_RADIUS = 0.36;
+const BASE_HEIGHT = 0.06;
+const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
+const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so the steep view doesn't squash it
+
 /** Round fractional cube coords to the nearest hex (matches the engine's board). */
 function cubeRound(fq: number, fr: number, fs: number): { q: number; r: number } {
   let q = Math.round(fq);
@@ -56,7 +65,11 @@ interface Tracer {
 
 interface UnitObj {
   group: THREE.Group;
-  body: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
+  /** Turns the cutout to face the camera (yaw only, so it stays upright). */
+  facing: THREE.Group;
+  /** Knockdown pivot at the cutout's feet. */
+  tilt: THREE.Group;
+  sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   targetPos: THREE.Vector3;
   targetTilt: number;
@@ -232,18 +245,13 @@ export class BoardView {
 
   private createUnit(id: string, owner: 0 | 1, name: string): UnitObj {
     const group = new THREE.Group();
-    const bodyGeo = new THREE.CylinderGeometry(0.3, 0.36, 0.9, 20);
-    const body = new THREE.Mesh(
-      bodyGeo,
-      new THREE.MeshStandardMaterial({ color: OWNER_COLORS[owner], roughness: 0.5 }),
-    );
-    body.position.y = 0.45;
-    body.userData.unitId = id;
 
-    const headGeo = new THREE.SphereGeometry(0.2, 16, 16);
-    const head = new THREE.Mesh(headGeo, body.material);
-    head.position.y = 1.05;
-    head.userData.unitId = id;
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(BASE_RADIUS, BASE_RADIUS, BASE_HEIGHT, 28),
+      new THREE.MeshStandardMaterial({ color: OWNER_COLORS[owner], roughness: 0.6 }),
+    );
+    base.position.y = TILE_TOP + BASE_HEIGHT / 2;
+    base.userData.unitId = id;
 
     const ringGeo = new THREE.RingGeometry(0.42, 0.52, 28);
     const ring = new THREE.Mesh(
@@ -254,10 +262,48 @@ export class BoardView {
     ring.position.y = 0.12;
     ring.visible = false;
 
-    group.add(ring, body, head);
+    // The cutout: a unit quad with its origin at the bottom edge, sized once the
+    // sprite loads. Alpha-tested (not blended) so overlapping cutouts need no sorting.
+    const spriteGeo = new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
+    const sprite = new THREE.Mesh(
+      spriteGeo,
+      new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide }),
+    );
+    sprite.userData.unitId = id;
+    sprite.visible = false;
+
+    const tilt = new THREE.Group();
+    tilt.add(sprite);
+    const facing = new THREE.Group();
+    facing.position.y = TILE_TOP + BASE_HEIGHT;
+    facing.add(tilt);
+
+    loadSpriteTexture(spriteFor(name), owner).then(
+      ({ texture, width, height }) => {
+        if (this.disposed) return;
+        sprite.material.map = texture;
+        sprite.material.needsUpdate = true;
+        // Wesnoth sprites face left; mirror P0 (deployed on the left) to face the enemy.
+        sprite.scale.set(width * SPRITE_PX * (owner === 0 ? -1 : 1), height * SPRITE_PX, 1);
+        sprite.visible = true;
+      },
+      (err) => console.error(err),
+    );
+
+    group.add(ring, base, facing);
     group.name = name;
     this.scene.add(group);
-    return { group, body, ring, targetPos: new THREE.Vector3(), targetTilt: 0, dead: false, flash: 0 };
+    return {
+      group,
+      facing,
+      tilt,
+      sprite,
+      ring,
+      targetPos: new THREE.Vector3(),
+      targetTilt: 0,
+      dead: false,
+      flash: 0,
+    };
   }
 
   private drawHighlights(moveTargets: Vec[]): void {
@@ -306,7 +352,12 @@ export class BoardView {
 
     for (const obj of this.units.values()) {
       obj.group.position.lerp(obj.targetPos, lerp);
-      obj.group.rotation.z += (obj.targetTilt - obj.group.rotation.z) * lerp;
+      obj.facing.rotation.y = Math.atan2(
+        this.camera.position.x - obj.group.position.x,
+        this.camera.position.z - obj.group.position.z,
+      );
+      obj.tilt.rotation.x = -SPRITE_LEAN;
+      obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
 
       const targetScale = obj.dead ? 0.001 : 1;
       const s = obj.group.scale.x + (targetScale - obj.group.scale.x) * lerp;
@@ -315,8 +366,8 @@ export class BoardView {
 
       if (obj.flash > 0) {
         obj.flash = Math.max(0, obj.flash - dt * 3);
-        obj.body.material.emissive.setHex(0xffffff);
-        obj.body.material.emissiveIntensity = obj.flash;
+        // A basic material's colour multiplies the texture; > 1 washes it toward white.
+        obj.sprite.material.color.setScalar(1 + obj.flash * 2.5);
       }
     }
 

@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "sprites": "tsx scripts/fetch-sprites.ts"
   },
   "dependencies": {
     "@fansong/ai": "workspace:*",
