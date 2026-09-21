@@ -37,3 +37,12 @@
   1–3 is printed as a digit in the spacer column right after the glyph (neighbouring columns
   sit on alternate lines, so that column is always free). Flat boards render exactly as before.
   Added `tools/cli/test/format.test.ts`.
+- Task 7: new pure `apps/web/src/three/terrain.ts` (`hexElevation`, `surfaceY`, `tileHeight`,
+  top/side colours) + `apps/web/test/terrain.test.ts`. Every tile prism stands on a shared floor
+  (y = -0.1) and rises 0.32 per level; side faces (cylinder material group 0) are a darker shade
+  of the top, and raised tops tint toward an olive "high ground" colour. Flat tiles keep their
+  exact old size/position/checkerboard (sides now slightly darker than tops). Units' groups are
+  lifted by the hex's elevation (lerped, so moves climb/descend); highlights, missiles and tracers
+  follow. Cell picking now raycasts the tile meshes (so tops *and* cliff faces resolve to the
+  right hex), falling back to the ground plane. Legacy `blocked` pillars rise 0.4 above their hex.
+  Verified visually with a throwaway elevated replay in the replay viewer (Playwright).

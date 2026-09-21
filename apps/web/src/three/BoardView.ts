@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { vecKey, type GameEvent, type GameState, type Vec } from '@fansong/engine';
+import { vecKey, type BoardData, type GameEvent, type GameState, type Vec } from '@fansong/engine';
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
+import { hexElevation, surfaceY, TILE_TOP, tileHeight, tileSideColor, tileTopColor } from './terrain.js';
 import { spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
@@ -22,8 +23,6 @@ export interface BoardViewModel {
 }
 
 const OWNER_COLORS = [0x4f9dff, 0xff6b5b] as const; // P0 blue, P1 red
-const TILE_LIGHT = 0x2a3140;
-const TILE_DARK = 0x232936;
 const BLOCKED_COLOR = 0x4a4038;
 
 // Flat-top hex layout. Cells are offset "odd-q" coords (x = column, y = row);
@@ -40,7 +39,6 @@ const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
 const SHOT_COLOR = 0x9fd0ff; // ranged tracer, for a shooter without a missile image
 
 // Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
-const TILE_TOP = 0.1; // tiles are 0.2 tall, centred on y = 0
 const BASE_RADIUS = 0.36;
 const BASE_HEIGHT = 0.06;
 const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
@@ -162,6 +160,9 @@ export class BoardView {
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
     : 1;
   private readonly highlightGroup = new THREE.Group();
+  /** Board tiles, raycast for cell picking (each carries `userData.cell`). */
+  private readonly tiles: THREE.Mesh[] = [];
+  private board: BoardData | null = null;
   private width = 0;
   private height = 0;
   private disposed = false;
@@ -206,23 +207,38 @@ export class BoardView {
 
   /** Build the static board (grid + terrain). Call once per match. */
   buildBoard(state: GameState): void {
+    this.board = state.board;
     this.width = state.board.width;
     this.height = state.board.height;
     const blocked = new Set(state.board.blocked);
 
     // A flat-top hex prism: a 6-sided cylinder, whose default orientation already
     // points its vertices along ±X (columns) and its flat edges along ±Z (rows).
-    const tileGeo = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, 0.2, 6);
+    // Every prism stands on the same floor and rises to its hex's elevation; its
+    // side faces (the cylinder's first material group) are shaded darker than the top.
+    const geos = new Map<number, THREE.CylinderGeometry>();
+    const tileGeo = (height: number) => {
+      let geo = geos.get(height);
+      if (!geo) {
+        geo = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, height, 6);
+        geos.set(height, geo);
+      }
+      return geo;
+    };
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        const key = vecKey({ x, y });
-        const isBlocked = blocked.has(key);
-        const color = isBlocked ? BLOCKED_COLOR : (x + y) % 2 === 0 ? TILE_LIGHT : TILE_DARK;
-        const mat = new THREE.MeshStandardMaterial({ color });
-        const tile = new THREE.Mesh(tileGeo, mat);
-        const w = this.cellToWorld({ x, y });
-        tile.position.set(w.x, isBlocked ? 0.25 : 0, w.z);
-        if (isBlocked) tile.scale.y = 3;
+        const cell = { x, y };
+        const isBlocked = blocked.has(vecKey(cell));
+        const elev = hexElevation(state.board, cell);
+        const top = new THREE.MeshStandardMaterial({ color: isBlocked ? BLOCKED_COLOR : tileTopColor(cell, elev) });
+        const side = isBlocked ? top : new THREE.MeshStandardMaterial({ color: tileSideColor(cell, elev) });
+        // Legacy blocked cells stay a tall pillar above whatever their elevation is.
+        const height = tileHeight(elev) + (isBlocked ? 0.4 : 0);
+        const tile = new THREE.Mesh(tileGeo(height), [side, top, top]);
+        const w = this.cellToWorld(cell);
+        tile.position.set(w.x, surfaceY(elev) + (isBlocked ? 0.4 : 0) - height / 2, w.z);
+        tile.userData.cell = cell;
+        this.tiles.push(tile);
         this.scene.add(tile);
       }
     }
@@ -504,8 +520,8 @@ export class BoardView {
     const lift = TILE_TOP + BASE_HEIGHT + 0.55;
     this.missiles.push({
       sprite,
-      from: from.group.position.clone().setY(lift),
-      to: to.group.position.clone().setY(lift),
+      from: from.group.position.clone().setY(from.targetPos.y + lift),
+      to: to.group.position.clone().setY(to.targetPos.y + lift),
       start: this.now + Math.max(0, startIn),
       end: this.now + Math.max(1, hitIn),
       arc: /stone|spear|pitchfork/.test(image) ? 0.35 : 0.08,
@@ -647,7 +663,7 @@ export class BoardView {
       const tile = new THREE.Mesh(geo, mat);
       tile.rotation.x = -Math.PI / 2;
       const w = this.cellToWorld(t);
-      tile.position.set(w.x, 0.13, w.z);
+      tile.position.set(w.x, this.surfaceAt(t) + 0.03, w.z);
       this.highlightGroup.add(tile);
     }
   }
@@ -662,8 +678,8 @@ export class BoardView {
     const from = this.units.get(fromId);
     const to = this.units.get(toId);
     if (!from || !to) return;
-    const a = from.group.position.clone().setY(0.7);
-    const b = to.group.position.clone().setY(0.7);
+    const a = from.group.position.clone().setY(from.targetPos.y + 0.7);
+    const b = to.group.position.clone().setY(to.targetPos.y + 0.7);
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1 });
     const line = new THREE.Line(geo, mat);
@@ -738,6 +754,12 @@ export class BoardView {
       return;
     }
 
+    // The nearest tile hit resolves raised hexes by their top or side faces.
+    const tileCell = this.raycaster.intersectObjects(this.tiles, false)[0]?.object.userData.cell as Vec | undefined;
+    if (tileCell) {
+      this.onCellClick?.(tileCell);
+      return;
+    }
     const point = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.groundPlane, point)) {
       const cell = this.worldToCell(point);
@@ -807,9 +829,15 @@ export class BoardView {
     return { x, z };
   }
 
+  /** Where a unit's group sits: the hex centre, raised by the hex's elevation. */
   private unitWorld(v: Vec): THREE.Vector3 {
     const w = this.cellToWorld(v);
-    return new THREE.Vector3(w.x, 0, w.z);
+    return new THREE.Vector3(w.x, this.surfaceAt(v) - TILE_TOP, w.z);
+  }
+
+  /** World Y of a cell's top surface. */
+  private surfaceAt(v: Vec): number {
+    return surfaceY(this.board ? hexElevation(this.board, v) : 0);
   }
 
   /** Pixel-to-hex: invert the flat-top mapping, then cube-round to the nearest cell. */
