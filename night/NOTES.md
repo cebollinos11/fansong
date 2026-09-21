@@ -74,3 +74,14 @@
   structural — size limits, hex count and bounds checks are left to `validateMap` (task 11).
   Legacy `blocked` cells are not part of the map format (features cover it). No `GameMode` type
   yet; it arrives with the mode model (tasks 11/26).
+- Task 11: new `packages/content/src/mapValidate.ts` — `validateMap(map, mode?, limits?)` →
+  `{ ok, errors }` (reports every problem at once, like `validateWarband`), `supportedModes(map)`
+  and `MAP_LIMITS`. Added a type-only `GameMode` + `GAME_MODES` in `packages/engine/src/mode.ts`
+  now (no state impact) so content and later tasks share one mode type. Decisions: map size
+  6–24 on each axis; each deploy zone needs >= 12 hexes (`DEFAULT_RULES.maxUnits`, room for a
+  full warband), passable (forest/elevation OK), no duplicates, zones disjoint; every deploy hex
+  must sit in one walkable region (BFS via the engine board) so no unit can be stranded. Every
+  objective the map *provides* must be valid even when not playing that mode: flag bases
+  passable + distinct (may sit in/out of deploy zones); hill/conquest zones non-empty, passable,
+  not overlapping deploy zones, conquest zones mutually disjoint. Annihilation and kill-the-king
+  need no objectives; an invalid map supports no modes.

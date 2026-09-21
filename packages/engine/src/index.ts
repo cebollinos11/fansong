@@ -1,4 +1,5 @@
 export * from './board.js';
+export * from './mode.js';
 export * from './rng.js';
 export * from './combat.js';
 export * from './types.js';

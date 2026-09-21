@@ -27,7 +27,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 
 ## Map format
 - [x] 10. Content: `MapDef` type + zod schema (id, name, width, height, hexes, deployZones, objectives).
-- [ ] 11. Content: `validateMap` — size limits, hex count, deploy zones on passable hexes with room
+- [x] 11. Content: `validateMap` — size limits, hex count, deploy zones on passable hexes with room
       for a warband, objectives valid per mode; `supportedModes(map)`. Tests.
 - [ ] 12. Content: `mapToBoard` + deploy warbands into map deploy zones; `buildMatch` accepts a map;
       the default flat map reproduces the legacy config exactly. Tests.

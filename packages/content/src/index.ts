@@ -4,3 +4,4 @@ export * from './presets.js';
 export * from './deploy.js';
 export * from './match.js';
 export * from './map.js';
+export * from './mapValidate.js';
