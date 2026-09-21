@@ -172,8 +172,12 @@ no rules — remove three.js and the game still runs in the CLI.
    subscribes to engine events to animate and translates clicks into `Command`s
    validated against `getLegalCommands`; army setup reuses `packages/content`
    and the AI opponent reuses `chooseCommand`. No game rules live in the UI.
-5. **M4 — Online:** Worker + Durable Objects, WebSocket sync, matchmaking,
-   deploy to Cloudflare.
+5. **M4 — Online:** ✅ Worker + Durable Objects, WebSocket sync, matchmaking.
+   A zod wire protocol (`packages/protocol`) is the trust boundary; a
+   transport-agnostic `RoomEngine` and pure `Matchmaker` (`apps/worker`) hold
+   all authority and are covered headlessly, with thin Durable Object + Worker
+   adapters and a `wrangler.toml` over them. The web app plays local *or* online
+   through one `MatchClient` seam. `wrangler deploy` ships it to Cloudflare.
 6. **M5 — Polish:** more special abilities, morale depth, animations, replay viewer.
 
 ---

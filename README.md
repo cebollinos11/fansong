@@ -3,12 +3,15 @@
 A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: M0–M3 complete.** A full AI-vs-AI game is playable in the terminal —
-with original **preset warbands** and a **point-buy** cost model — and there is
-now a **3D web UI** (`apps/web`: Vite + React + three.js) for local hotseat and
-vs-AI play. Vitest covers the rules, the costing, full preset matchups, and the
-UI's engine bridge. The engine remains a pure, deterministic state machine; the
-UI is a thin view over it.
+**Status: M0–M4 complete.** A full AI-vs-AI game is playable in the terminal —
+with original **preset warbands** and a **point-buy** cost model — there is a
+**3D web UI** (`apps/web`: Vite + React + three.js) for local hotseat and vs-AI
+play, and there is now **online multiplayer**: a Cloudflare Worker + Durable
+Objects backend (`apps/worker`) with matchmaking and WebSocket sync, spoken
+through a zod wire protocol (`packages/protocol`). Vitest covers the rules, the
+costing, full preset matchups, the UI's engine bridge, the wire schemas, and the
+server room (including full games played through the network seam). The engine
+remains a pure, deterministic state machine; every client is a thin view over it.
 
 ## Layout
 
@@ -17,18 +20,21 @@ packages/
   engine/   pure TS state machine: RNG, board, reduce, getLegalCommands, combat
   ai/       deterministic heuristic opponent (also the test bot)
   content/  point-buy costing, warband validation, original preset warbands
+  protocol/ zod wire schemas + client/server message envelopes (the trust boundary)
 tools/
   cli/      `pnpm play` — headless AI-vs-AI runner with a turn-by-turn log
 apps/
-  web/      Vite + React + three.js UI — a thin view over the engine
+  web/      Vite + React + three.js UI — plays local or online via one seam
+  worker/   Cloudflare Worker + Durable Objects — authoritative rooms + matchmaking
 ```
 
 ## Quick start
 
 ```bash
 pnpm install
-pnpm test                 # 59 tests: rng, board, combat, turnover, rounds,
-                          #           costing, validation, deploy, self-play
+pnpm test                 # 106 tests: rng, board, combat, turnover, rounds,
+                          #            costing, validation, deploy, self-play,
+                          #            wire schemas, matchmaking, server rooms
 pnpm play                 # watch two demo AIs fight (seed 42)
 pnpm play --list          # list the preset warbands
 pnpm play --p0 iron-wardens --p1 ashfang-raiders   # a preset matchup
@@ -101,3 +107,36 @@ played entirely through the controller.
 pnpm --filter @fansong/web dev      # dev server at http://localhost:5173
 pnpm --filter @fansong/web build    # production build
 ```
+
+## Online multiplayer (M4)
+
+Online play is **server-authoritative**, and the server reuses the exact same
+engine as everything else:
+
+- **`packages/protocol`** — a **zod** wire protocol. `commandSchema` is the trust
+  boundary: the server never `reduce`s a client frame it hasn't validated first.
+  Compile-time drift guards assert the schemas stay identical to the engine's own
+  types, so the wire and the engine can't silently diverge.
+- **`apps/worker`** — the backend, built headless-first:
+  - **`RoomEngine`** — a transport-agnostic authoritative game room, the
+    server-side twin of the web client's `MatchController`. Every command goes
+    through the same `applyCommand` guard (validate against `getLegalCommands`,
+    then `reduce`), and AI seats are played with the same `chooseCommand`
+    heuristic as the CLI. It speaks only a tiny `RoomConnection` interface, so its
+    whole behaviour — seat binding, authority, legality, presence, AI turns — is
+    tested with fake sockets and **zero Cloudflare runtime**.
+  - **`Matchmaker`** — pairing as a pure state machine (PvE = instant AI match;
+    PvP = host-and-join with a persisted queue).
+  - **Durable Objects + Worker** (`GameRoomDO`, `MatchmakerDO`, `index.ts`) are
+    thin adapters: they only shuttle bytes between WebSockets and the pure core.
+
+```bash
+pnpm --filter @fansong/worker dev       # local worker at http://localhost:8787
+pnpm --filter @fansong/worker deploy    # deploy to Cloudflare (needs `wrangler login`)
+```
+
+Point the web app at a deployed worker with `VITE_SERVER_URL` (it defaults to the
+local `wrangler dev` address). In the setup screen, pick **Online vs a human** to
+host a room; the next player to queue drops into it. The `apps/web` client plays
+local *or* online through one `MatchClient` interface — the board, HUD, and
+interaction code never know which they're driving.

@@ -13,6 +13,7 @@
     "@fansong/ai": "workspace:*",
     "@fansong/content": "workspace:*",
     "@fansong/engine": "workspace:*",
+    "@fansong/protocol": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.169.0"

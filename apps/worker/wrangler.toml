@@ -1,0 +1,20 @@
+name = "fansong"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+# The authoritative game rooms and the global matchmaker are Durable Objects.
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoomDO"
+
+[[durable_objects.bindings]]
+name = "MATCHMAKER"
+class_name = "MatchmakerDO"
+
+# Durable Objects must be declared in a migration before first deploy.
+[[migrations]]
+tag = "v1"
+new_classes = ["GameRoomDO", "MatchmakerDO"]
+
+[observability]
+enabled = true

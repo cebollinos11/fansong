@@ -15,7 +15,12 @@ import {
 export interface Transition {
   state: GameState;
   events: GameEvent[];
-  command: Command;
+  /**
+   * The command that produced this transition. Absent for a state *reset* with
+   * no single originating command — e.g. an online client receiving its initial
+   * `welcome` snapshot or a `sync` after a resync.
+   */
+  command?: Command;
 }
 
 export type Subscriber = (t: Transition) => void;

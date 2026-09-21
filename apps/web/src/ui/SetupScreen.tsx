@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { PRESET_IDS, PRESETS, validateWarband, warbandCost, type MatchSetup, type Seat } from '@fansong/content';
+import { PRESET_IDS, PRESETS, validateWarband, warbandCost, type MatchSetup } from '@fansong/content';
+import type { Launch } from '../game/launch.js';
 
 interface Props {
   initial: MatchSetup;
-  onStart: (setup: MatchSetup) => void;
+  onStart: (launch: Launch) => void;
 }
 
-type Mode = 'vsAI' | 'hotseat';
+type Mode = 'vsAI' | 'hotseat' | 'online';
 
-function seatsForMode(mode: Mode): [Seat, Seat] {
-  return mode === 'vsAI' ? ['human', 'ai'] : ['human', 'human'];
+function launchFor(mode: Mode, presets: [string, string], seed: number): Launch {
+  if (mode === 'online') return { kind: 'online', presets, seed };
+  const seats = mode === 'vsAI' ? (['human', 'ai'] as const) : (['human', 'human'] as const);
+  return { kind: 'local', setup: { presets, seats: [seats[0], seats[1]], seed } };
 }
 
 export function SetupScreen({ initial, onStart }: Props): JSX.Element {
@@ -18,8 +21,10 @@ export function SetupScreen({ initial, onStart }: Props): JSX.Element {
   const [p1, setP1] = useState(initial.presets[1]);
   const [seed, setSeed] = useState(initial.seed);
 
-  const start = () =>
-    onStart({ presets: [p0, p1], seats: seatsForMode(mode), seed: Number.isFinite(seed) ? seed : 0 });
+  const start = () => onStart(launchFor(mode, [p0, p1], Number.isFinite(seed) ? seed : 0));
+
+  const label0 = mode === 'vsAI' ? 'You — Player 0' : mode === 'online' ? 'Player 0 (you host)' : 'Player 0';
+  const label1 = mode === 'vsAI' ? 'AI — Player 1' : mode === 'online' ? 'Player 1 (opponent)' : 'Player 1';
 
   return (
     <div className="setup">
@@ -37,19 +42,22 @@ export function SetupScreen({ initial, onStart }: Props): JSX.Element {
             <input type="radio" checked={mode === 'hotseat'} onChange={() => setMode('hotseat')} />
             Local hotseat (two humans)
           </label>
+          <label>
+            <input type="radio" checked={mode === 'online'} onChange={() => setMode('online')} />
+            Online vs a human (matchmaking)
+          </label>
         </fieldset>
 
+        {mode === 'online' ? (
+          <p className="hint">
+            You'll host a room and wait for the next player to queue. The first player to join
+            takes Player 1; the host picks both warbands and the seed.
+          </p>
+        ) : null}
+
         <div className="warband-cols">
-          <WarbandPicker
-            label={mode === 'vsAI' ? 'You — Player 0' : 'Player 0'}
-            value={p0}
-            onChange={setP0}
-          />
-          <WarbandPicker
-            label={mode === 'vsAI' ? 'AI — Player 1' : 'Player 1'}
-            value={p1}
-            onChange={setP1}
-          />
+          <WarbandPicker label={label0} value={p0} onChange={setP0} />
+          <WarbandPicker label={label1} value={p1} onChange={setP1} />
         </div>
 
         <label className="seed-row">
@@ -62,7 +70,7 @@ export function SetupScreen({ initial, onStart }: Props): JSX.Element {
         </label>
 
         <button className="primary" onClick={start}>
-          Start battle
+          {mode === 'online' ? 'Find a match' : 'Start battle'}
         </button>
       </div>
     </div>

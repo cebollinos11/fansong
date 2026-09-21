@@ -312,6 +312,18 @@ button.secondary {
   border: 1px solid var(--accent);
 }
 
+.banner.net {
+  background: rgba(120, 160, 255, 0.12);
+  border: 1px solid rgba(120, 160, 255, 0.5);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.error {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
 .inspector {
   background: var(--panel-2);
   border: 1px solid var(--line);

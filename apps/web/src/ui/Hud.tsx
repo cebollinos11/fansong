@@ -1,11 +1,15 @@
-import { aliveUnits, unitById, type GameState } from '@fansong/engine';
+import { aliveUnits, unitById, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
 import { isAiSeat, type MatchSetup } from '@fansong/content';
+import type { ClientStatus } from '../game/client.js';
 import type { LogEntry } from './log.js';
 
 interface Props {
   state: GameState;
   setup: MatchSetup;
+  /** Seats the local player operates (for "You" vs "Opponent" labelling). */
+  controlledSeats: readonly Owner[];
+  status: ClientStatus;
   interaction: Interaction;
   selectedUnitId: string | null;
   /** True when the local human may act right now. */
@@ -16,15 +20,32 @@ interface Props {
   onExit: () => void;
 }
 
-function seatLabel(setup: MatchSetup, owner: 0 | 1): string {
-  return isAiSeat(setup, owner) ? 'AI' : 'You';
+function seatLabel(setup: MatchSetup, controlled: readonly Owner[], owner: Owner): string {
+  if (isAiSeat(setup, owner)) return 'AI';
+  if (controlled.includes(owner)) return 'You';
+  return 'Opponent';
+}
+
+/** A one-line connection banner for online play; null when there's nothing to say. */
+function statusBanner(status: ClientStatus): string | null {
+  switch (status.phase) {
+    case 'connecting':
+      return 'Connecting…';
+    case 'waiting':
+      return 'Waiting for an opponent to join…';
+    case 'disconnected':
+      return `Disconnected: ${status.reason}`;
+    case 'ready':
+      return null;
+  }
 }
 
 export function Hud(props: Props): JSX.Element {
-  const { state, setup, interaction, selectedUnitId, humanTurn } = props;
+  const { state, setup, controlledSeats, status, interaction, selectedUnitId, humanTurn } = props;
   const gameOver = state.phase === 'gameOver';
   const selected = selectedUnitId ? unitById(state, selectedUnitId) : null;
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
+  const banner = statusBanner(status);
 
   return (
     <aside className="hud">
@@ -35,11 +56,13 @@ export function Hud(props: Props): JSX.Element {
         </button>
       </div>
 
+      {banner ? <div className="banner net">{banner}</div> : null}
+
       <div className="scoreline">
         {([0, 1] as const).map((owner) => (
           <div key={owner} className={`score p${owner}${state.active === owner && !gameOver ? ' active' : ''}`}>
             <span className="score-name">
-              P{owner} · {seatLabel(setup, owner)}
+              P{owner} · {seatLabel(setup, controlledSeats, owner)}
             </span>
             <span className="score-count">{aliveUnits(state, owner).length} alive</span>
             {state.benched[owner] && !gameOver ? <span className="benched">benched</span> : null}
@@ -49,12 +72,14 @@ export function Hud(props: Props): JSX.Element {
 
       {gameOver ? (
         <div className="banner win">
-          Player {state.winner} ({seatLabel(setup, state.winner as 0 | 1)}) wins!
+          Player {state.winner} ({seatLabel(setup, controlledSeats, state.winner as Owner)}) wins!
         </div>
       ) : (
         <div className="turn-panel">
           {!humanTurn ? (
-            <p className="thinking">AI is thinking…</p>
+            <p className="thinking">
+              {isAiSeat(setup, state.active) ? 'AI is thinking…' : "Opponent's turn…"}
+            </p>
           ) : state.phase === 'awaitingActivation' ? (
             <div>
               {selected ? (

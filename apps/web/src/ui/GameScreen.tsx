@@ -1,100 +1,97 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { GameEvent, GameState, Vec } from '@fansong/engine';
-import { AiDriver } from '../game/ai-driver.js';
-import { MatchController } from '../game/controller.js';
-import { createMatchFromPresets, isAiSeat, type MatchSetup } from '@fansong/content';
+import type { ClientStatus, MatchClient } from '../game/client.js';
 import { deriveInteraction } from '../game/interaction.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { Hud } from './Hud.js';
 import { appendEvents, type LogEntry } from './log.js';
 
 interface Props {
-  setup: MatchSetup;
+  client: MatchClient;
   onExit: () => void;
 }
 
-export function GameScreen({ setup, onExit }: Props): JSX.Element {
-  // The controller owns the authoritative GameState for this match; created once.
-  const controllerRef = useRef<MatchController | null>(null);
-  if (!controllerRef.current) controllerRef.current = new MatchController(createMatchFromPresets(setup));
-  const controller = controllerRef.current;
-
-  const [state, setState] = useState<GameState>(controller.getState());
+export function GameScreen({ client, onExit }: Props): JSX.Element {
+  const [state, setState] = useState<GameState>(client.getState());
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [status, setStatus] = useState<ClientStatus>(client.status());
 
-  // Subscribe to transitions and drive AI seats. Runs once for the match.
+  // Subscribe to transitions (local reduce or server delta — same seam) and to
+  // connection status. The client owns the state; the screen only renders it.
   useEffect(() => {
-    const unsub = controller.subscribe(({ state: next, events: evs }) => {
+    const unsub = client.subscribe(({ state: next, events: evs }) => {
       setState(next);
       setEvents(evs);
       setLog((prev) => appendEvents(prev, next, evs));
       setSelectedUnitId(null);
     });
-    const driver = new AiDriver(controller, setup);
-    driver.start();
+    const unsubStatus = client.onStatus(setStatus);
+    setStatus(client.status());
     return () => {
-      driver.stop();
       unsub();
+      unsubStatus();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [client]);
 
-  const humanTurn = state.phase !== 'gameOver' && !isAiSeat(setup, state.active);
-  const interaction = useMemo(() => deriveInteraction(controller.legalCommands()), [state, controller]);
+  const ready = status.phase === 'ready';
+  const myTurn =
+    ready && state.phase !== 'gameOver' && client.controlledSeats.includes(state.active);
+  const interaction = useMemo(() => deriveInteraction(client.legalCommands()), [state, client]);
 
   const handleUnitClick = (id: string): void => {
-    if (!humanTurn) return;
+    if (!myTurn) return;
     if (state.phase === 'awaitingActivation') {
       if (interaction.selectableUnitIds.includes(id)) setSelectedUnitId(id);
       return;
     }
     if (state.phase === 'acting' && interaction.attackTargetIds.includes(id) && state.activeUnitId) {
-      controller.apply({ type: 'Attack', attackerId: state.activeUnitId, targetId: id });
+      client.send({ type: 'Attack', attackerId: state.activeUnitId, targetId: id });
     }
   };
 
   const handleCellClick = (cell: Vec): void => {
-    if (!humanTurn) return;
+    if (!myTurn) return;
     if (state.phase === 'acting' && state.activeUnitId) {
       const legalMove = interaction.moveTargets.some((t) => t.x === cell.x && t.y === cell.y);
-      if (legalMove) controller.apply({ type: 'Move', unitId: state.activeUnitId, to: cell });
+      if (legalMove) client.send({ type: 'Move', unitId: state.activeUnitId, to: cell });
       return;
     }
-    // Clicking empty ground during activation clears the current selection.
     if (state.phase === 'awaitingActivation') setSelectedUnitId(null);
   };
 
   const handleActivate = (diceCount: number): void => {
-    if (!humanTurn || !selectedUnitId) return;
-    controller.apply({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
+    if (!myTurn || !selectedUnitId) return;
+    client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
   };
 
   const handleEndActivation = (): void => {
-    if (!humanTurn) return;
-    controller.apply({ type: 'EndActivation' });
+    if (!myTurn) return;
+    client.send({ type: 'EndActivation' });
   };
 
   return (
     <div className="game">
       <BoardCanvas
         state={state}
-        moveTargets={humanTurn && state.phase === 'acting' ? interaction.moveTargets : []}
-        attackTargetIds={humanTurn && state.phase === 'acting' ? interaction.attackTargetIds : []}
-        selectableUnitIds={humanTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
+        moveTargets={myTurn && state.phase === 'acting' ? interaction.moveTargets : []}
+        attackTargetIds={myTurn && state.phase === 'acting' ? interaction.attackTargetIds : []}
+        selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
         selectedUnitId={selectedUnitId}
-        interactive={humanTurn}
+        interactive={myTurn}
         events={events}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
       />
       <Hud
         state={state}
-        setup={setup}
+        setup={client.setup}
+        controlledSeats={client.controlledSeats}
+        status={status}
         interaction={interaction}
         selectedUnitId={selectedUnitId}
-        humanTurn={humanTurn}
+        humanTurn={myTurn}
         log={log}
         onActivate={handleActivate}
         onEndActivation={handleEndActivation}
