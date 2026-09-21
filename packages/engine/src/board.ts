@@ -92,6 +92,13 @@ export interface Board {
    */
   cellsWithin(v: Vec, r: number): Vec[];
   /**
+   * Movement reach: every passable cell reachable from `v` in `1..steps` steps,
+   * walking only through in-bounds, unblocked hexes (BFS around rocks, buildings
+   * and legacy blocked cells). Occupancy is ignored — the caller decides whether
+   * a destination may hold another unit. Returned as a set of `"x,y"` keys.
+   */
+  reachableWithin(v: Vec, steps: number): Set<string>;
+  /**
    * Line of sight between hex centres (symmetric). Any intervening blocked cell,
    * rock/building/forest hex, or (optionally) occupied cell breaks it; the
    * endpoints themselves never do.
@@ -181,6 +188,16 @@ export function makeHexGrid(data: BoardData): Board {
 
   const distance = (a: Vec, b: Vec) => cubeDistance(offsetToCube(a), offsetToCube(b));
 
+  const neighbors = (v: Vec): Vec[] => {
+    const c = offsetToCube(v);
+    const result: Vec[] = [];
+    for (const d of CUBE_DIRS) {
+      const n = cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s });
+      if (inBounds(n) && !isBlocked(n)) result.push(n);
+    }
+    return result;
+  };
+
   return {
     width,
     height,
@@ -189,15 +206,7 @@ export function makeHexGrid(data: BoardData): Board {
     elevation,
     feature,
     distance,
-    neighbors(v) {
-      const c = offsetToCube(v);
-      const result: Vec[] = [];
-      for (const d of CUBE_DIRS) {
-        const n = cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s });
-        if (inBounds(n) && !isBlocked(n)) result.push(n);
-      }
-      return result;
-    },
+    neighbors,
     cellsWithin(v, r) {
       const c = offsetToCube(v);
       const cells: Vec[] = [];
@@ -213,6 +222,25 @@ export function makeHexGrid(data: BoardData): Board {
         }
       }
       return cells;
+    },
+    reachableWithin(v, steps) {
+      const start = vecKey(v);
+      const seen = new Set<string>([start]);
+      let frontier: Vec[] = [v];
+      for (let step = 0; step < steps && frontier.length > 0; step++) {
+        const next: Vec[] = [];
+        for (const cell of frontier) {
+          for (const n of neighbors(cell)) {
+            const k = vecKey(n);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            next.push(n);
+          }
+        }
+        frontier = next;
+      }
+      seen.delete(start);
+      return seen;
     },
     lineOfSight(a, b, occupied) {
       // Always draw the line in a canonical direction (lower column, then lower

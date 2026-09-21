@@ -14,3 +14,9 @@
   blocking (new exported `blocksSight`); endpoints never block, so units in forest see/are seen.
   For symmetry the line is always drawn from the lexically lower (x, then y) endpoint, so
   edge-grazing ties round identically both ways. Golden replay unchanged by the canonicalisation.
+- Task 3: `Board.reachableWithin(from, steps)` — BFS over `neighbors` (which already skip
+  out-of-bounds/blocked/rock/building), returns a `Set` of "x,y" keys, start excluded. Legal
+  moves still iterate `cellsWithin` order (filtered by reach + unoccupied) so command order,
+  AI choices and the golden replay are unchanged; `handleMove` rejects unreachable
+  destinations ("destination unreachable within move range"). Units never block paths.
+  Web/AI/CLI derive move targets from legal commands, so no other callers needed changes.

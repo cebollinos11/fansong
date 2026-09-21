@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makeHexGrid, type BoardData, type Vec } from '../src/board.js';
 import { createDemoGame, createGame, normalizeTerrain, type GameConfig } from '../src/setup.js';
+import { getLegalCommands } from '../src/legal.js';
+import { reduce } from '../src/reduce.js';
 
 const base: GameConfig = {
   seed: 1,
@@ -127,5 +129,77 @@ describe('line of sight with terrain features', () => {
     expect(viaTop.lineOfSight(p, q)).toBe(results[0]);
     expect(viaTop.lineOfSight(q, p)).toBe(results[0]);
     expect(viaBottom.lineOfSight(q, p)).toBe(results[1]);
+  });
+});
+
+describe('movement pathing around impassable terrain', () => {
+  // A rock wall down column 2 with a single gap at the bottom row.
+  const wall: GameConfig = {
+    seed: 3,
+    board: {
+      width: 6,
+      height: 5,
+      blocked: ['2,3'],
+      terrain: { '2,0': { feature: 'rock' }, '2,1': { feature: 'building' }, '2,2': { feature: 'rock' } },
+    },
+    warbands: [
+      [{ name: 'Runner', quality: 1, combat: 3, move: 3, pos: { x: 1, y: 1 } }],
+      [{ name: 'Far', quality: 1, combat: 3, pos: { x: 5, y: 4 } }],
+    ],
+  };
+
+  it('reachableWithin walks around blocked hexes and ignores the start', () => {
+    const g = makeHexGrid({ width: 6, height: 5, blocked: ['2,3'], terrain: wall.board.terrain });
+    const from = { x: 1, y: 1 };
+    const reach3 = g.reachableWithin(from, 3);
+    expect(reach3.has('1,1')).toBe(false);
+    expect(reach3.has('2,4')).toBe(true); // through the gap
+    expect(reach3.has('2,2')).toBe(false); // rock
+    // (3,1) is 2 hexes away as the crow flies but needs the detour via the gap.
+    expect(g.distance(from, { x: 3, y: 1 })).toBe(2);
+    expect(reach3.has('3,1')).toBe(false);
+    expect(g.reachableWithin(from, 6).has('3,1')).toBe(true);
+    expect(g.reachableWithin(from, 0).size).toBe(0);
+  });
+
+  it('forest is passable for pathing', () => {
+    const g = makeHexGrid({ width: 3, height: 1, blocked: [], terrain: { '1,0': { feature: 'forest' } } });
+    expect(g.reachableWithin({ x: 0, y: 0 }, 2)).toEqual(new Set(['1,0', '2,0']));
+  });
+
+  it('on an open board, reach equals every in-range cell', () => {
+    const g = makeHexGrid({ width: 7, height: 7, blocked: [] });
+    const from = { x: 3, y: 3 };
+    const reach = g.reachableWithin(from, 2);
+    expect([...reach].sort()).toEqual(g.cellsWithin(from, 2).map((v) => `${v.x},${v.y}`).sort());
+  });
+
+  it('legal moves and reduce both use path reachability', () => {
+    const acting = reduce(createGame(wall), { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 1 }).state;
+    const moves = getLegalCommands(acting).filter((c) => c.type === 'Move');
+    const dests = moves.map((c) => (c.type === 'Move' ? `${c.to.x},${c.to.y}` : ''));
+    expect(dests).toContain('2,4');
+    expect(dests).not.toContain('3,1');
+    expect(() => reduce(acting, { type: 'Move', unitId: 'p0u0', to: { x: 3, y: 1 } })).toThrow(/unreachable/);
+    const moved = reduce(acting, { type: 'Move', unitId: 'p0u0', to: { x: 2, y: 4 } }).state;
+    expect(moved.units.find((u) => u.id === 'p0u0')!.pos).toEqual({ x: 2, y: 4 });
+  });
+
+  it('other units do not block the path, only the destination', () => {
+    // One-hex-wide corridor: the runner may pass its ally to reach the far side.
+    const corridor: GameConfig = {
+      seed: 3,
+      board: { width: 4, height: 1 },
+      warbands: [
+        [
+          { name: 'Runner', quality: 1, combat: 3, move: 3, pos: { x: 0, y: 0 } },
+          { name: 'Ally', quality: 1, combat: 3, pos: { x: 1, y: 0 } },
+        ],
+        [{ name: 'Far', quality: 1, combat: 3, pos: { x: 3, y: 0 } }],
+      ],
+    };
+    const acting = reduce(createGame(corridor), { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 1 }).state;
+    const dests = getLegalCommands(acting).flatMap((c) => (c.type === 'Move' ? [`${c.to.x},${c.to.y}`] : []));
+    expect(dests).toEqual(['2,0']);
   });
 });

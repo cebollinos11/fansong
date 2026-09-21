@@ -121,6 +121,9 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   if (!board.inBounds(to)) throw new Error('destination out of bounds');
   if (board.isBlocked(to)) throw new Error('destination blocked');
   if (board.distance(unit.pos, to) > unit.move) throw new Error('destination beyond move range');
+  if (!board.reachableWithin(unit.pos, unit.move).has(vecKey(to))) {
+    throw new Error('destination unreachable within move range');
+  }
   if (isOccupied(s, to, unit.id)) throw new Error('destination occupied');
 
   const from = { ...unit.pos };
