@@ -5,7 +5,7 @@ import {
   createGame,
   getLegalCommands,
   hashGameState,
-  makeSquareGrid,
+  makeHexGrid,
   reduce,
   recordReplay,
   runReplay,
@@ -35,7 +35,7 @@ const duel: GameConfig = {
  */
 function greedy(state: GameState): Command {
   const legal = getLegalCommands(state);
-  const board = makeSquareGrid(state.board);
+  const board = makeHexGrid(state.board);
   const attack = legal.find((c) => c.type === 'Attack');
   if (attack) return attack;
   const enemies = state.units.filter((u) => !u.dead && u.owner !== state.active);
@@ -85,7 +85,7 @@ describe('runReplay', () => {
   });
 
   it('handles an empty replay (final === initial)', () => {
-    const run = runReplay({ version: 1, config: duel, commands: [] });
+    const run = runReplay({ version: 2, config: duel, commands: [] });
     expect(run.frames).toHaveLength(0);
     expect(run.final).toBe(run.initial);
   });

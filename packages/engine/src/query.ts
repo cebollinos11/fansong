@@ -1,4 +1,4 @@
-import { vecKey, type Vec } from './board.js';
+import { vecKey, type Board, type Vec } from './board.js';
 import type { GameState, Owner, Unit } from './types.js';
 
 export function unitById(state: GameState, id: string): Unit | undefined {
@@ -27,13 +27,11 @@ export function isOccupied(state: GameState, v: Vec, ignoreId?: string): boolean
   return state.units.some((u) => !u.dead && u.id !== ignoreId && u.pos.x === v.x && u.pos.y === v.y);
 }
 
-/** Is `unit` adjacent to a living enemy (i.e. locked in melee)? */
-export function inMelee(state: GameState, unit: Unit): boolean {
+/** Is `unit` adjacent to a living enemy (i.e. locked in melee)? Adjacency is a
+ * board question (distance 1), so it never assumes a grid geometry. */
+export function inMelee(state: GameState, unit: Unit, board: Board): boolean {
   return state.units.some(
-    (u) =>
-      !u.dead &&
-      u.owner !== unit.owner &&
-      Math.max(Math.abs(u.pos.x - unit.pos.x), Math.abs(u.pos.y - unit.pos.y)) === 1,
+    (u) => !u.dead && u.owner !== unit.owner && board.distance(u.pos, unit.pos) === 1,
   );
 }
 

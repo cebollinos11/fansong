@@ -1,6 +1,13 @@
 /**
- * Spatial model. Everything spatial goes through the `Board` interface so a hex
- * board could replace the square grid later without touching the rules.
+ * Spatial model. Everything spatial goes through the `Board` interface so no rule
+ * ever does coordinate math itself — distance, adjacency, cells-in-range, line of
+ * sight, and in-bounds are all questions the board answers.
+ *
+ * The board is a **flat-top hex grid** with a rectangular footprint. Cells are
+ * stored as **offset coordinates** in the existing `Vec {x, y}` (x = column,
+ * y = row, "odd-q" layout), so the wire schema, `"x,y"` blocked keys, and all the
+ * `{x, y}` plumbing are unchanged. All hex math is done in **cube coordinates**,
+ * converted internally — offset is only ever the storage/serialisation shape.
  *
  * Only plain `BoardData` is stored in GameState (so it clones/serialises
  * cleanly); a `Board` is reconstructed from that data by the engine each reduce.
@@ -32,72 +39,140 @@ export interface Board {
   readonly height: number;
   inBounds(v: Vec): boolean;
   isBlocked(v: Vec): boolean;
-  /** Chebyshev (king-move) distance on the square grid. */
+  /** Hex (cube) distance between two cells. */
   distance(a: Vec, b: Vec): number;
-  /** In-bounds, unblocked 8-directional neighbours. */
+  /** In-bounds, unblocked adjacent cells (every cell at distance 1). */
   neighbors(v: Vec): Vec[];
-  /** Bresenham supercover LoS; blocked terrain (and optionally occupied cells) break it. */
+  /**
+   * Every in-bounds cell (excluding the centre) at distance `1..r`, in a
+   * deterministic order. Not filtered by blocked/occupied — the caller decides
+   * what a given rule treats as passable — so a rule never loops a coordinate
+   * window itself.
+   */
+  cellsWithin(v: Vec, r: number): Vec[];
+  /** Line of sight; blocked terrain (and optionally occupied cells) break it. */
   lineOfSight(a: Vec, b: Vec, occupied?: (v: Vec) => boolean): boolean;
 }
 
-const DIRS: ReadonlyArray<Vec> = [
-  { x: -1, y: -1 }, { x: 0, y: -1 }, { x: 1, y: -1 },
-  { x: -1, y: 0 }, { x: 1, y: 0 },
-  { x: -1, y: 1 }, { x: 0, y: 1 }, { x: 1, y: 1 },
+// --- Cube coordinates (internal working representation) -------------------
+// A cube coord (q, r, s) always satisfies q + r + s === 0. Offset <-> cube uses
+// the "odd-q" convention for flat-top hexes: odd columns are shoved half a row.
+
+interface Cube {
+  q: number;
+  r: number;
+  s: number;
+}
+
+function offsetToCube(v: Vec): Cube {
+  const q = v.x;
+  const r = v.y - (v.x - (v.x & 1)) / 2;
+  return { q, r, s: -q - r };
+}
+
+function cubeToOffset(c: Cube): Vec {
+  const x = c.q;
+  const y = c.r + (c.q - (c.q & 1)) / 2;
+  return { x, y };
+}
+
+function cubeDistance(a: Cube, b: Cube): number {
+  return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.s - b.s)) / 2;
+}
+
+/** The six flat-top hex directions, in cube space (fixed order for determinism). */
+const CUBE_DIRS: ReadonlyArray<Cube> = [
+  { q: 1, r: 0, s: -1 },
+  { q: 1, r: -1, s: 0 },
+  { q: 0, r: -1, s: 1 },
+  { q: -1, r: 0, s: 1 },
+  { q: -1, r: 1, s: 0 },
+  { q: 0, r: 1, s: -1 },
 ];
 
-export function makeSquareGrid(data: BoardData): Board {
+function cubeRound(fq: number, fr: number, fs: number): Cube {
+  let q = Math.round(fq);
+  let r = Math.round(fr);
+  let s = Math.round(fs);
+  const dq = Math.abs(q - fq);
+  const dr = Math.abs(r - fr);
+  const ds = Math.abs(s - fs);
+  if (dq > dr && dq > ds) q = -r - s;
+  else if (dr > ds) r = -q - s;
+  else s = -q - r;
+  return { q, r, s };
+}
+
+/**
+ * Cells a hex line passes through, from `a` to `b` inclusive. A tiny epsilon
+ * nudge keeps a line that grazes an edge/vertex from rounding ambiguously, so the
+ * draw is deterministic.
+ */
+function cubeLine(a: Cube, b: Cube): Cube[] {
+  const n = cubeDistance(a, b);
+  if (n === 0) return [a];
+  // Nudge the endpoints off exact edges (redblobgames' standard trick).
+  const eq = 1e-6;
+  const cells: Cube[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const q = a.q + (b.q - a.q) * t + eq;
+    const r = a.r + (b.r - a.r) * t + eq;
+    const s = a.s + (b.s - a.s) * t - 2 * eq;
+    cells.push(cubeRound(q, r, s));
+  }
+  return cells;
+}
+
+export function makeHexGrid(data: BoardData): Board {
   const blocked = new Set(data.blocked);
   const { width, height } = data;
 
   const inBounds = (v: Vec) => v.x >= 0 && v.y >= 0 && v.x < width && v.y < height;
   const isBlocked = (v: Vec) => blocked.has(vecKey(v));
 
+  const distance = (a: Vec, b: Vec) => cubeDistance(offsetToCube(a), offsetToCube(b));
+
   return {
     width,
     height,
     inBounds,
     isBlocked,
-    distance: (a, b) => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)),
-    neighbors: (v) => DIRS.map((d) => ({ x: v.x + d.x, y: v.y + d.y })).filter((n) => inBounds(n) && !isBlocked(n)),
-    lineOfSight: (a, b, occupied) => supercoverLoS(a, b, isBlocked, occupied),
+    distance,
+    neighbors(v) {
+      const c = offsetToCube(v);
+      const result: Vec[] = [];
+      for (const d of CUBE_DIRS) {
+        const n = cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s });
+        if (inBounds(n) && !isBlocked(n)) result.push(n);
+      }
+      return result;
+    },
+    cellsWithin(v, r) {
+      const c = offsetToCube(v);
+      const cells: Vec[] = [];
+      // Enumerate the cube range [-r, r]^3 (with q+r+s=0), deterministic order.
+      for (let dq = -r; dq <= r; dq++) {
+        const loR = Math.max(-r, -dq - r);
+        const hiR = Math.min(r, -dq + r);
+        for (let dr = loR; dr <= hiR; dr++) {
+          if (dq === 0 && dr === 0) continue;
+          const ds = -dq - dr;
+          const cell = cubeToOffset({ q: c.q + dq, r: c.r + dr, s: c.s + ds });
+          if (inBounds(cell)) cells.push(cell);
+        }
+      }
+      return cells;
+    },
+    lineOfSight(a, b, occupied) {
+      const line = cubeLine(offsetToCube(a), offsetToCube(b));
+      // Endpoints never count as blockers; an intermediate blocked/occupied cell
+      // breaks sight.
+      for (let i = 1; i < line.length - 1; i++) {
+        const cell = cubeToOffset(line[i]!);
+        if (isBlocked(cell) || (occupied?.(cell) ?? false)) return false;
+      }
+      return true;
+    },
   };
-}
-
-/**
- * Bresenham "supercover" line of sight: sight is clear if no *intermediate* cell
- * is blocked terrain or (when `occupied` is supplied) occupied. Endpoints are
- * never counted as blockers.
- */
-function supercoverLoS(
-  a: Vec,
-  b: Vec,
-  isBlocked: (v: Vec) => boolean,
-  occupied?: (v: Vec) => boolean,
-): boolean {
-  let x = a.x;
-  let y = a.y;
-  const dx = Math.abs(b.x - a.x);
-  const dy = Math.abs(b.y - a.y);
-  const sx = a.x < b.x ? 1 : -1;
-  const sy = a.y < b.y ? 1 : -1;
-  let err = dx - dy;
-
-  // Guard against pathological loops; grids are small.
-  const maxSteps = dx + dy + 2;
-  for (let i = 0; i < maxSteps; i++) {
-    if (x === b.x && y === b.y) return true;
-    const blocker = (x !== a.x || y !== a.y) && (isBlocked({ x, y }) || (occupied?.({ x, y }) ?? false));
-    if (blocker) return false;
-    const e2 = 2 * err;
-    if (e2 > -dy) {
-      err -= dy;
-      x += sx;
-    }
-    if (e2 < dx) {
-      err += dx;
-      y += sy;
-    }
-  }
-  return x === b.x && y === b.y;
 }

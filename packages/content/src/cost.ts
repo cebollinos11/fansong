@@ -14,7 +14,7 @@ export interface Profile {
   quality: number;
   /** Melee value added to the d6 in opposed rolls. Higher is better. */
   combat: number;
-  /** Max Chebyshev cells per Move action. Higher is better. */
+  /** Max hex cells per Move action. Higher is better. */
   move: number;
   /** Ranged attack range in cells (0/omitted = melee only). */
   ranged?: number;
@@ -43,8 +43,13 @@ export const COST_WEIGHTS = {
   perQuality: 4,
   /** Each point of Combat is worth this much. */
   perCombat: 5,
-  /** Each cell of Move away from {@link BASELINE_MOVE} is worth this much. */
-  perMove: 3,
+  /**
+   * Each cell of Move away from {@link BASELINE_MOVE} is worth this much. On the
+   * hex board a cell of extra reach opens a disc of `3r(r+1)` cells (smaller than
+   * a square king-move window), so mobility is priced a touch below a point of
+   * Combat.
+   */
+  perMove: 2,
   /** Each cell of ranged reach is worth this much (attacking without reprisal). */
   perRanged: 3,
   /** Flat surcharge for the Tough trait (a free save against the first kill). */

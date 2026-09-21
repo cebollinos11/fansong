@@ -17,7 +17,7 @@ round.
 
 | Area | Decision |
 |------|----------|
-| Space model | **Square grid** (behind a `Board` interface so hex could be swapped later) |
+| Space model | **Flat-top hex grid** (M6; behind a `Board` interface — was a square grid through M5) |
 | MVP scope | **Core loop first** — activation, the alternating turnover twist, movement, opposed combat, kill/knockdown, minimal morale |
 | AI opponent | **Heuristic only** (pure, deterministic; doubles as the test bot) |
 | Content | **Point-buy builder + a few original preset warbands** |
@@ -73,9 +73,14 @@ Durable Objects + Hono + WebSockets (backend).
 
 ## 4. Engine design
 
-**Board:** square grid, config-driven cell size behind a `Board` interface so a
-hex board could replace it. 8-directional movement, Chebyshev/graph distance,
-grid line-of-sight (Bresenham supercover). Facing optional for MVP.
+**Board:** a **flat-top hex grid** (M6) with a rectangular footprint, behind a
+`Board` interface so no rule ever does coordinate math itself. Cells are stored
+as offset "odd-q" coordinates in the `Vec {x, y}` (x = column, y = row); all hex
+math (distance, neighbours, cells-in-range, line of sight) is done in cube
+coordinates, converted internally. Melee = adjacent hex (6 neighbours); ranged
+uses a cube-lerp hex line for LoS. (Through M5 this was a square grid with
+Chebyshev distance and Bresenham LoS; the swap only touched `board.ts` plus the
+thin views, because everything spatial already routed through `Board`.)
 
 **Core state:** board dims + terrain; units (id, owner, Quality, Combat,
 position, status flags such as knocked-down / benched / activated-this-round);
@@ -196,6 +201,22 @@ no rules — remove three.js and the game still runs in the CLI.
      export/import) reusing the event-driven board.
    - **Animations** — the three.js view gained a ranged/riposte tracer, a guard
      ring, and toughness/rout flashes. UI only — no rules moved into the client.
+7. **M6 — Hex board:** ✅ replaced the square grid with a **flat-top hex grid**
+   (rectangular footprint, offset "odd-q" coordinates in the same `Vec {x, y}`,
+   cube math internally). First the abstraction leaks were closed so every
+   spatial question — distance, adjacency, cells-in-range, line of sight,
+   in-bounds — routes through the `Board` interface (a new `cellsWithin`, and
+   `inMelee`/morale radius now ask the board); then `makeSquareGrid` was swapped
+   for `makeHexGrid`. Melee is an adjacent hex (6 neighbours), ranged fire uses a
+   cube-lerp hex line, and the fear radius is hex distance. The `Replay` version
+   was bumped to **2** (state coordinates and rule outcomes changed, so v1
+   replays no longer load) and the golden fixture regenerated. Because a hex disc
+   of radius *r* covers `3r(r+1)` cells (less than a square king-move window),
+   `perMove` was repriced (3 → 2) and the four presets' stat lines were re-tuned
+   until AI-vs-AI over every pairing × 20 seeds sat in a 43–54% band with no
+   degenerate warband. The CLI ASCII board and the three.js view (hex-prism
+   tiles, flat-top `cellToWorld`, pixel-to-hex picking, camera framing) were
+   updated — UI only, no rules in the client.
 
 ---
 

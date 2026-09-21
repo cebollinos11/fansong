@@ -1,4 +1,4 @@
-import { makeSquareGrid, vecKey, type Vec } from './board.js';
+import { makeHexGrid, vecKey, type Vec } from './board.js';
 import { enemiesOf, inMelee, isOccupied, occupiedKeys, unitAvailable, unitById } from './query.js';
 import type { Command, GameState } from './types.js';
 
@@ -30,7 +30,7 @@ export function getLegalCommands(state: GameState): Command[] {
   const unit = state.activeUnitId ? unitById(state, state.activeUnitId) : undefined;
   if (!unit || unit.dead || state.actionsRemaining <= 0) return commands;
 
-  const board = makeSquareGrid(state.board);
+  const board = makeHexGrid(state.board);
 
   // Attacks: any adjacent living enemy.
   for (const enemy of enemiesOf(state, unit.owner)) {
@@ -41,7 +41,7 @@ export function getLegalCommands(state: GameState): Command[] {
 
   // Shots: a ranged unit not itself in melee may fire on a non-adjacent enemy
   // within range and clear line of sight (intervening units block the lane).
-  if (unit.traits.ranged >= 1 && !inMelee(state, unit)) {
+  if (unit.traits.ranged >= 1 && !inMelee(state, unit, board)) {
     const occ = occupiedKeys(state);
     const seeThrough = (v: Vec) => occ.has(vecKey(v));
     for (const enemy of enemiesOf(state, unit.owner)) {
@@ -57,17 +57,13 @@ export function getLegalCommands(state: GameState): Command[] {
     commands.push({ type: 'Guard', unitId: unit.id });
   }
 
-  // Moves: every empty, unblocked, in-bounds cell within move range.
-  const r = unit.move;
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      if (dx === 0 && dy === 0) continue;
-      const to: Vec = { x: unit.pos.x + dx, y: unit.pos.y + dy };
-      if (!board.inBounds(to) || board.isBlocked(to)) continue;
-      if (board.distance(unit.pos, to) > r) continue;
-      if (isOccupied(state, to)) continue;
-      commands.push({ type: 'Move', unitId: unit.id, to });
-    }
+  // Moves: every empty, unblocked cell within move range. The board enumerates
+  // the cells-in-range (whatever the grid geometry); the rule only decides which
+  // are passable (unblocked, unoccupied).
+  for (const to of board.cellsWithin(unit.pos, unit.move)) {
+    if (board.isBlocked(to)) continue;
+    if (isOccupied(state, to)) continue;
+    commands.push({ type: 'Move', unitId: unit.id, to });
   }
 
   return commands;

@@ -50,10 +50,10 @@ describe('replay-io', () => {
 
   it('rejects malformed replays', () => {
     expect(() => parseReplay('not json')).toThrow();
-    expect(() => parseReplay(JSON.stringify({ version: 2, config: {}, commands: [] }))).toThrow(/version/);
-    expect(() => parseReplay(JSON.stringify({ version: 1, commands: [] }))).toThrow(/config/);
+    expect(() => parseReplay(JSON.stringify({ version: 99, config: {}, commands: [] }))).toThrow(/version/);
+    expect(() => parseReplay(JSON.stringify({ version: 2, commands: [] }))).toThrow(/config/);
     expect(() =>
-      parseReplay(JSON.stringify({ version: 1, config: {}, commands: [{ type: 'Nope' }] })),
+      parseReplay(JSON.stringify({ version: 2, config: {}, commands: [{ type: 'Nope' }] })),
     ).toThrow(/command/);
   });
 });

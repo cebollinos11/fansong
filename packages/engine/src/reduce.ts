@@ -1,4 +1,4 @@
-import { makeSquareGrid, vecKey } from './board.js';
+import { makeHexGrid, vecKey, type Board } from './board.js';
 import { computeCombatResult } from './combat.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
@@ -117,7 +117,7 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   if (unit.id !== unitId) throw new Error(`unit '${unitId}' is not the activating unit`);
   if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
 
-  const board = makeSquareGrid(s.board);
+  const board = makeHexGrid(s.board);
   if (!board.inBounds(to)) throw new Error('destination out of bounds');
   if (board.isBlocked(to)) throw new Error('destination blocked');
   if (board.distance(unit.pos, to) > unit.move) throw new Error('destination beyond move range');
@@ -144,13 +144,13 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   if (target.dead) throw new Error('target already dead');
   if (target.owner === attacker.owner) throw new Error('cannot attack a friendly unit');
 
-  const board = makeSquareGrid(s.board);
+  const board = makeHexGrid(s.board);
   if (board.distance(attacker.pos, target.pos) !== 1) throw new Error('target not adjacent');
 
   // Guard reaction: a guarding defender strikes first. If the riposte kills or
   // knocks the attacker down, the incoming attack is prevented entirely.
   if (target.guarding && target.traits.guard) {
-    const prevented = resolveRiposte(s, events, target, attacker);
+    const prevented = resolveRiposte(s, events, target, attacker, board);
     if (prevented) {
       s.actionsRemaining -= 1; // the attack action is spent even though it was repelled
       if (checkGameOver(s, events)) return;
@@ -180,14 +180,14 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   let attackerEnded = false;
   switch (result) {
     case 'defenderKilled':
-      strike(s, target, attacker.id, events);
+      strike(s, target, attacker.id, events, board);
       break;
     case 'defenderKnockedDown':
       target.knockedDown = true;
       events.push({ type: 'UnitKnockedDown', unitId: target.id });
       break;
     case 'attackerKilled':
-      strike(s, attacker, target.id, events);
+      strike(s, attacker, target.id, events, board);
       attackerEnded = true;
       break;
     case 'attackerKnockedDown':
@@ -213,14 +213,14 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   if (attacker.id !== attackerId) throw new Error(`unit '${attackerId}' is not the activating unit`);
   if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
   if (attacker.traits.ranged < 1) throw new Error('unit has no ranged attack');
-  if (inMelee(s, attacker)) throw new Error('cannot shoot while in melee');
+  const board = makeHexGrid(s.board);
+  if (inMelee(s, attacker, board)) throw new Error('cannot shoot while in melee');
 
   const target = unitById(s, targetId);
   if (!target) throw new Error(`unknown target '${targetId}'`);
   if (target.dead) throw new Error('target already dead');
   if (target.owner === attacker.owner) throw new Error('cannot shoot a friendly unit');
 
-  const board = makeSquareGrid(s.board);
   const d = board.distance(attacker.pos, target.pos);
   if (d < 2) throw new Error('target too close to shoot');
   if (d > attacker.traits.ranged) throw new Error('target beyond ranged range');
@@ -250,7 +250,7 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
     result,
   });
 
-  if (result === 'defenderKilled') strike(s, target, attacker.id, events);
+  if (result === 'defenderKilled') strike(s, target, attacker.id, events, board);
   else if (result === 'defenderKnockedDown') {
     target.knockedDown = true;
     events.push({ type: 'UnitKnockedDown', unitId: target.id });
@@ -280,7 +280,7 @@ function handleGuard(s: GameState, events: GameEvent[], unitId: string): void {
  * outcomes matter — the guard never wounds itself parrying. Returns whether the
  * attack is prevented (attacker killed or knocked down).
  */
-function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker: Unit): boolean {
+function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker: Unit, board: Board): boolean {
   const gd = rollD6(s.rngState);
   const ad = rollD6(gd.state);
   s.rngState = ad.state;
@@ -302,7 +302,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   });
 
   if (result === 'defenderKilled') {
-    strike(s, attacker, guard.id, events);
+    strike(s, attacker, guard.id, events, board);
   } else if (result === 'defenderKnockedDown' && !attacker.knockedDown) {
     attacker.knockedDown = true;
     events.push({ type: 'UnitKnockedDown', unitId: attacker.id });
@@ -316,9 +316,9 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
  * warband may rout. Tough saves that downgrade the blow to a knockdown are not a
  * death, so they raise no morale check.
  */
-function strike(s: GameState, unit: Unit, byId: string | null, events: GameEvent[]): boolean {
+function strike(s: GameState, unit: Unit, byId: string | null, events: GameEvent[], board: Board): boolean {
   const died = resolveKill(unit, byId, events);
-  if (died) resolveCombatMorale(s, events, unit);
+  if (died) resolveCombatMorale(s, events, unit, board);
   return died;
 }
 

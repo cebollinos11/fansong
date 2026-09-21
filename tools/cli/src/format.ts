@@ -48,28 +48,39 @@ export function formatEvent(state: GameState, e: GameEvent): string {
   }
 }
 
-/** ASCII render of the board. Living units shown by id digit; '#' blocked, '.' empty. */
+/**
+ * ASCII render of the flat-top hex board (offset "odd-q" coordinates: odd columns
+ * sit half a cell lower, so vertical neighbours interlock). A cell's glyph is its
+ * unit's initial (P0 upper-case, P1 lower-case); '#' is blocked terrain, '·' an
+ * empty cell.
+ */
 export function renderBoard(state: GameState): string {
   const { width, height } = state.board;
   const blocked = new Set(state.board.blocked);
-  const rows: string[] = [];
-  rows.push('   ' + Array.from({ length: width }, (_, x) => x).join(' '));
-  for (let y = 0; y < height; y++) {
-    const cells: string[] = [];
-    for (let x = 0; x < width; x++) {
-      const unit = state.units.find((u) => !u.dead && u.pos.x === x && u.pos.y === y);
-      if (unit) {
-        const glyph = unit.name[0] ?? '?';
-        cells.push(unit.owner === 0 ? glyph.toUpperCase() : glyph.toLowerCase());
-      } else if (blocked.has(`${x},${y}`)) {
-        cells.push('#');
-      } else {
-        cells.push('.');
-      }
+
+  const glyphAt = (x: number, y: number): string => {
+    const unit = state.units.find((u) => !u.dead && u.pos.x === x && u.pos.y === y);
+    if (unit) {
+      const g = unit.name[0] ?? '?';
+      return unit.owner === 0 ? g.toUpperCase() : g.toLowerCase();
     }
-    rows.push(`${String(y).padStart(2)} ${cells.join(' ')}`);
+    return blocked.has(`${x},${y}`) ? '#' : '·';
+  };
+
+  // One text line per half-row; odd columns are dropped a half-row (one line).
+  const lineCount = height * 2 + 1;
+  const canvas: string[][] = Array.from({ length: lineCount }, () =>
+    Array.from({ length: width * 2 }, () => ' '),
+  );
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      const li = y * 2 + (x % 2);
+      canvas[li]![x * 2] = glyphAt(x, y);
+    }
   }
-  return rows.join('\n');
+
+  const header = '  ' + Array.from({ length: width }, (_, x) => (x % 10).toString()).join(' ');
+  return header + '\n' + canvas.map((line) => line.join('').replace(/\s+$/, '')).join('\n');
 }
 
 /** Roster summary: which units are alive, on which side. */

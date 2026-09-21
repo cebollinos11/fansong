@@ -1,4 +1,4 @@
-import { runReplay, type Replay } from '@fansong/engine';
+import { REPLAY_VERSION, runReplay, type Replay } from '@fansong/engine';
 import { commandSchema } from '@fansong/protocol';
 
 /**
@@ -38,7 +38,7 @@ export function parseReplay(text: string): Replay {
   }
   if (typeof raw !== 'object' || raw === null) throw new Error('Replay must be an object.');
   const obj = raw as Record<string, unknown>;
-  if (obj.version !== 1) throw new Error('Unsupported replay version.');
+  if (obj.version !== REPLAY_VERSION) throw new Error('Unsupported replay version.');
   if (typeof obj.config !== 'object' || obj.config === null) throw new Error('Replay is missing its config.');
   if (!Array.isArray(obj.commands)) throw new Error('Replay is missing its command list.');
 
@@ -48,7 +48,7 @@ export function parseReplay(text: string): Replay {
     return parsed.data;
   });
 
-  const replay: Replay = { version: 1, config: obj.config as Replay['config'], commands };
+  const replay: Replay = { version: REPLAY_VERSION, config: obj.config as Replay['config'], commands };
   // The ultimate validation: it must actually reproduce a game.
   try {
     runReplay(replay);

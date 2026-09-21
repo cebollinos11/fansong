@@ -3,7 +3,8 @@
 A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: M0–M5 complete.** A full AI-vs-AI game is playable in the terminal —
+**Status: M0–M6 complete.** The game plays on a **flat-top hex grid** (M6). A
+full AI-vs-AI game is playable in the terminal —
 with original **preset warbands**, a **point-buy** cost model, **special-ability
 traits** (ranged, tough, guard) and **morale** (fear + rout) — there is a
 **3D web UI** (`apps/web`: Vite + React + three.js) for local hotseat and vs-AI
@@ -20,7 +21,7 @@ thin view over it.
 
 ```
 packages/
-  engine/   pure TS state machine: RNG, board, reduce, getLegalCommands, combat
+  engine/   pure TS state machine: RNG, hex board, reduce, getLegalCommands, combat
   ai/       deterministic heuristic opponent (also the test bot)
   content/  point-buy costing, warband validation, original preset warbands
   protocol/ zod wire schemas + client/server message envelopes (the trust boundary)
@@ -35,7 +36,7 @@ apps/
 
 ```bash
 pnpm install
-pnpm test                 # 151 tests: rng, board, combat, turnover, rounds,
+pnpm test                 # 158 tests: rng, hex board, combat, turnover, rounds,
                           #            abilities, morale, replay/golden,
                           #            costing, validation, deploy, self-play,
                           #            wire schemas, matchmaking, server rooms
@@ -176,6 +177,30 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
   drift. In `apps/web`, a finished local game can be **watched back** (play /
   step / scrub) and **exported/imported as JSON**, reusing the event-driven board
   — with new FX for shots, ripostes, toughness saves, guard stances, and routs.
+
+## Hex board (M6)
+
+The battlefield is a **flat-top hex grid** with a rectangular footprint (the
+square grid through M5 was always kept behind a `Board` interface for exactly
+this swap):
+
+- **One seam for all geometry.** Distance, adjacency, cells-in-range, line of
+  sight, and in-bounds are the `Board`'s job — no rule does coordinate math
+  itself. Cells are stored as offset "odd-q" coordinates in the same
+  `Vec {x, y}` (x = column, y = row), so the wire schema and `"x,y"` keys are
+  unchanged; all hex math runs in cube coordinates, converted internally.
+- **Rules on hexes.** Melee is an adjacent hex (6 neighbours), ranged fire needs
+  a clear cube-lerp hex line (intervening units/terrain block, endpoints don't),
+  the Move action still reaches any unblocked, unoccupied cell within `move`
+  hexes, and the fear radius is hex distance.
+- **Balance.** A hex disc of radius *r* holds `3r(r+1)` cells — less reach than a
+  square king-move window — so `perMove` was repriced (3 → 2) and the four
+  presets re-tuned. AI-vs-AI over every pairing × 20 seeds now sits in a 43–54%
+  win band with no degenerate warband, and every game still terminates decisively.
+- **Replays.** The `Replay` version is bumped to **2** (coordinates and outcomes
+  changed), so pre-M6 replays no longer load; the golden fixture was regenerated.
+- **Views.** The CLI prints a staggered hex ASCII board and the three.js view
+  draws hex-prism tiles with correct pixel-to-hex click picking — UI only.
 
 The engine is still the whole game: remove three.js, React, and the worker and a
 seed + command list replays byte-for-byte in the terminal.

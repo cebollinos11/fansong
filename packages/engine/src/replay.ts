@@ -10,7 +10,9 @@ import type { Command, GameEvent, GameState } from './types.js';
  * golden-replay test pins, and it depends on nothing but the pure engine.
  */
 
-export const REPLAY_VERSION = 1 as const;
+// Bumped to 2 for the hex board (M6): the state shape's coordinates are now hex
+// offsets and rule outcomes differ, so v1 replays no longer reproduce.
+export const REPLAY_VERSION = 2 as const;
 
 export interface Replay {
   version: typeof REPLAY_VERSION;

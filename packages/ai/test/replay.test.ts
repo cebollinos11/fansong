@@ -43,7 +43,7 @@ describe('recordReplay + runReplay', () => {
   it('captures a decisive game as a bounded command list', () => {
     const replay = recordReplay(demoConfig(42), chooseCommand);
     expect(replay.commands.length).toBeGreaterThan(0);
-    expect(replay.version).toBe(1);
+    expect(replay.version).toBe(2);
     expect(runReplay(replay).final.winner).not.toBeNull();
   });
 });

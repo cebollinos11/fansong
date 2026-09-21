@@ -40,7 +40,7 @@ export interface Unit {
   quality: number;
   /** Combat value, added to a d6 in opposed melee rolls. */
   combat: number;
-  /** Max Chebyshev cells moved per Move action. */
+  /** Max hex cells moved per Move action. */
   move: number;
   pos: Vec;
   dead: boolean;

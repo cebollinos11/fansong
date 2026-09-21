@@ -2,7 +2,7 @@ import {
   aliveUnits,
   enemiesOf,
   getLegalCommands,
-  makeSquareGrid,
+  makeHexGrid,
   unitById,
   type Board,
   type Command,
@@ -25,7 +25,7 @@ export function chooseCommand(state: GameState): Command {
   if (commands.length === 0) {
     throw new Error('chooseCommand called with no legal commands');
   }
-  const board = makeSquareGrid(state.board);
+  const board = makeHexGrid(state.board);
 
   let best = commands[0]!;
   let bestScore = -Infinity;

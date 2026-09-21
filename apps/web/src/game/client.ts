@@ -1,3 +1,4 @@
+import { REPLAY_VERSION } from '@fansong/engine';
 import type { Command, GameState, Owner, Replay } from '@fansong/engine';
 import type { SeatPresence } from '@fansong/protocol';
 import { configFromSetup, createMatchFromPresets, isAiSeat, type MatchSetup } from '@fansong/content';
@@ -94,7 +95,7 @@ export class LocalMatchClient implements MatchClient {
   }
 
   getReplay(): Replay {
-    return { version: 1, config: configFromSetup(this.setup), commands: [...this.recorded] };
+    return { version: REPLAY_VERSION, config: configFromSetup(this.setup), commands: [...this.recorded] };
   }
 
   dispose(): void {

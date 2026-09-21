@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createDemoGame,
   getLegalCommands,
+  makeHexGrid,
   reduce,
   vecKey,
   type Command,
@@ -73,6 +74,7 @@ function assertInvariants(
   }
 
   const occupied = new Set<string>();
+  const living: GameState['units'] = [];
   for (const u of state.units) {
     // Every unit stays on the board.
     expect(u.pos.x).toBeGreaterThanOrEqual(0);
@@ -85,6 +87,19 @@ function assertInvariants(
     const key = vecKey(u.pos);
     expect(occupied.has(key)).toBe(false);
     occupied.add(key);
+    living.push(u);
+  }
+
+  // Geometry invariant: adjacency and distance agree everywhere. Two units are
+  // board-neighbours iff they are exactly distance 1 apart — so the melee rule
+  // (distance === 1) and the neighbour relation can never disagree.
+  const board = makeHexGrid(state.board);
+  for (const a of living) {
+    const nbrKeys = new Set(board.neighbors(a.pos).map(vecKey));
+    for (const b of living) {
+      if (a.id === b.id) continue;
+      expect(nbrKeys.has(vecKey(b.pos))).toBe(board.distance(a.pos, b.pos) === 1);
+    }
   }
 
   // The activating unit, if any, is alive and belongs to the active player.

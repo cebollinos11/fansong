@@ -17,7 +17,7 @@ export const PRESETS: Record<string, Warband> = {
     name: 'Iron Wardens',
     units: [
       { name: 'Warden-Captain', quality: 2, combat: 4, move: 3 },
-      { name: 'Ironguard', quality: 3, combat: 4, move: 3 },
+      { name: 'Ironguard', quality: 3, combat: 3, move: 3 },
       { name: 'Bulwark', quality: 3, combat: 3, move: 3, tough: true },
       { name: 'Sentinel', quality: 3, combat: 3, move: 3 },
       { name: 'Halberdier', quality: 4, combat: 3, move: 3 },
@@ -27,12 +27,12 @@ export const PRESETS: Record<string, Warband> = {
   'ashfang-raiders': {
     name: 'Ashfang Raiders',
     units: [
-      { name: 'Raid-Leader', quality: 2, combat: 3, move: 4 },
+      { name: 'Raid-Leader', quality: 2, combat: 4, move: 4 },
       { name: 'Marauder', quality: 3, combat: 3, move: 4 },
       { name: 'Reaver', quality: 3, combat: 3, move: 4 },
-      { name: 'Wolf-Prowler', quality: 3, combat: 2, move: 5 },
-      { name: 'Outrider', quality: 3, combat: 2, move: 5 },
-      { name: 'Whelp', quality: 4, combat: 2, move: 4 },
+      { name: 'Wolf-Prowler', quality: 3, combat: 3, move: 5 },
+      { name: 'Outrider', quality: 3, combat: 3, move: 5 },
+      { name: 'Whelp', quality: 4, combat: 2, move: 3 },
     ],
   },
   'free-company': {
@@ -43,7 +43,7 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Pikeman', quality: 3, combat: 3, move: 3 },
       { name: 'Slinger', quality: 3, combat: 2, move: 4, ranged: 3 },
       { name: 'Halberd-Recruit', quality: 4, combat: 3, move: 3 },
-      { name: 'Recruit', quality: 4, combat: 2, move: 3 },
+      { name: 'Recruit', quality: 4, combat: 3, move: 3 },
     ],
   },
   'hollow-watch': {
@@ -52,8 +52,8 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Watch-Captain', quality: 2, combat: 4, move: 3, guard: true },
       { name: 'Shield-Warden', quality: 3, combat: 3, move: 3, tough: true },
       { name: 'Longbow', quality: 3, combat: 2, move: 3, ranged: 4 },
-      { name: 'Crossbow', quality: 4, combat: 2, move: 3, ranged: 3 },
-      { name: 'Sentry', quality: 4, combat: 3, move: 3 },
+      { name: 'Crossbow', quality: 4, combat: 3, move: 3, ranged: 3 },
+      { name: 'Sentry', quality: 3, combat: 3, move: 3 },
     ],
   },
 };

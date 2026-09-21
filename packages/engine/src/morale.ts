@@ -1,3 +1,4 @@
+import type { Board } from './board.js';
 import { rollD6 } from './rng.js';
 import { aliveUnits, livingCount } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
@@ -15,15 +16,11 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  * events, so it replays exactly and is fully unit-testable.
  */
 
-/** Friends within this Chebyshev radius of a fresh casualty must test nerve. */
+/** Friends within this board-distance radius of a fresh casualty must test nerve. */
 export const MORALE_RADIUS = 2;
 
 /** A warband breaks when its living count falls to this fraction of its start. */
 export const ROUT_FRACTION = 1 / 3;
-
-function chebyshev(a: Unit, b: Unit): number {
-  return Math.max(Math.abs(a.pos.x - b.pos.x), Math.abs(a.pos.y - b.pos.y));
-}
 
 /** Roll one nerve check for a unit, record it, and report whether it passed. */
 function nerveCheck(s: GameState, events: GameEvent[], unit: Unit): boolean {
@@ -40,15 +37,15 @@ function nerveCheck(s: GameState, events: GameEvent[], unit: Unit): boolean {
  * break threshold. Mutates `s` and appends events. Rout removals never trigger
  * further fear, so the cascade is bounded.
  */
-export function resolveCombatMorale(s: GameState, events: GameEvent[], victim: Unit): void {
-  fearCheck(s, events, victim);
+export function resolveCombatMorale(s: GameState, events: GameEvent[], victim: Unit, board: Board): void {
+  fearCheck(s, events, victim, board);
   routCheck(s, events, victim.owner);
 }
 
-function fearCheck(s: GameState, events: GameEvent[], victim: Unit): void {
+function fearCheck(s: GameState, events: GameEvent[], victim: Unit, board: Board): void {
   for (const u of aliveUnits(s, victim.owner)) {
     if (u.id === victim.id || u.knockedDown) continue;
-    if (chebyshev(u, victim) > MORALE_RADIUS) continue;
+    if (board.distance(u.pos, victim.pos) > MORALE_RADIUS) continue;
     if (!nerveCheck(s, events, u)) {
       u.knockedDown = true;
       events.push({ type: 'UnitKnockedDown', unitId: u.id });

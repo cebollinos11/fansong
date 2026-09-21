@@ -20,12 +20,33 @@ const OWNER_COLORS = [0x4f9dff, 0xff6b5b] as const; // P0 blue, P1 red
 const TILE_LIGHT = 0x2a3140;
 const TILE_DARK = 0x232936;
 const BLOCKED_COLOR = 0x4a4038;
+
+// Flat-top hex layout. Cells are offset "odd-q" coords (x = column, y = row);
+// world placement uses the standard flat-top hex-to-pixel mapping, and picking
+// inverts it with cube rounding, so a click always resolves to the right hex.
+const HEX_SIZE = 0.62; // hex "radius" (centre to a vertex) in world units
+const SQRT3 = Math.sqrt(3);
+const HEX_COL_STEP = 1.5 * HEX_SIZE; // world X between adjacent columns
+const HEX_ROW_STEP = SQRT3 * HEX_SIZE; // world Z between adjacent rows
 const MOVE_COLOR = 0x3ddc84;
 const ATTACK_COLOR = 0xff5252;
 const SELECT_COLOR = 0xffd54a;
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
 const SHOT_COLOR = 0x9fd0ff; // ranged tracer
 const RIPOSTE_COLOR = 0xffd54a; // guard riposte tracer
+
+/** Round fractional cube coords to the nearest hex (matches the engine's board). */
+function cubeRound(fq: number, fr: number, fs: number): { q: number; r: number } {
+  let q = Math.round(fq);
+  let r = Math.round(fr);
+  let s = Math.round(fs);
+  const dq = Math.abs(q - fq);
+  const dr = Math.abs(r - fr);
+  const ds = Math.abs(s - fs);
+  if (dq > dr && dq > ds) q = -r - s;
+  else if (dr > ds) r = -q - s;
+  return { q, r };
+}
 
 interface Tracer {
   line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
@@ -104,7 +125,9 @@ export class BoardView {
     this.height = state.board.height;
     const blocked = new Set(state.board.blocked);
 
-    const tileGeo = new THREE.BoxGeometry(0.96, 0.2, 0.96);
+    // A flat-top hex prism: a 6-sided cylinder, whose default orientation already
+    // points its vertices along ±X (columns) and its flat edges along ±Z (rows).
+    const tileGeo = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, 0.2, 6);
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const key = vecKey({ x, y });
@@ -240,7 +263,8 @@ export class BoardView {
   private drawHighlights(moveTargets: Vec[]): void {
     this.highlightGroup.clear();
     if (moveTargets.length === 0) return;
-    const geo = new THREE.PlaneGeometry(0.9, 0.9);
+    // A flat hexagon matching the tile footprint (a 6-gon lies flat in XZ).
+    const geo = new THREE.CircleGeometry(HEX_SIZE * 0.9, 6);
     const mat = new THREE.MeshBasicMaterial({
       color: MOVE_COLOR,
       transparent: true,
@@ -354,13 +378,27 @@ export class BoardView {
   }
 
   private positionCamera(): void {
-    const span = Math.max(this.width, this.height);
-    this.camera.position.set(0, span * 1.15, this.height * 0.85 + 3);
+    // Frame the full hex footprint (in world units), not the cell counts.
+    const spanX = HEX_COL_STEP * (this.width - 1) + 2 * HEX_SIZE;
+    const spanZ = HEX_ROW_STEP * (this.height - 1 + 0.5) + 2 * HEX_SIZE;
+    const span = Math.max(spanX, spanZ);
+    this.camera.position.set(0, span * 0.95, spanZ * 0.62 + 3);
     this.camera.lookAt(0, 0, 0);
   }
 
+  /** World X of column 0 / Z of row 0, so the board is centred on the origin. */
+  private get originX(): number {
+    return (HEX_COL_STEP * (this.width - 1)) / 2;
+  }
+  private get originZ(): number {
+    return (HEX_ROW_STEP * (this.height - 1 + 0.5)) / 2;
+  }
+
+  /** Flat-top hex centre for an offset "odd-q" cell. */
   private cellToWorld(v: Vec): { x: number; z: number } {
-    return { x: v.x - (this.width - 1) / 2, z: v.y - (this.height - 1) / 2 };
+    const x = HEX_COL_STEP * v.x - this.originX;
+    const z = HEX_ROW_STEP * (v.y + 0.5 * (v.x & 1)) - this.originZ;
+    return { x, z };
   }
 
   private unitWorld(v: Vec): THREE.Vector3 {
@@ -368,9 +406,16 @@ export class BoardView {
     return new THREE.Vector3(w.x, 0, w.z);
   }
 
+  /** Pixel-to-hex: invert the flat-top mapping, then cube-round to the nearest cell. */
   private worldToCell(point: THREE.Vector3): Vec | null {
-    const x = Math.round(point.x + (this.width - 1) / 2);
-    const y = Math.round(point.z + (this.height - 1) / 2);
+    const px = point.x + this.originX;
+    const pz = point.z + this.originZ;
+    const fq = ((2 / 3) * px) / HEX_SIZE;
+    const fr = ((-1 / 3) * px + (SQRT3 / 3) * pz) / HEX_SIZE;
+    const { q, r } = cubeRound(fq, fr, -fq - fr);
+    // axial -> offset "odd-q"
+    const x = q;
+    const y = r + (q - (q & 1)) / 2;
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return null;
     return { x, y };
   }
