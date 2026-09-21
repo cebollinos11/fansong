@@ -201,8 +201,85 @@ function rockyPass(): MapDef {
 }
 
 // ---------------------------------------------------------------------------
+// Twin Towers — each side has a raised plateau (elevation 3) near its home
+// edge, stepping down in rings; its flag sits on top. Rock walls guard the
+// plateau's front, leaving ramps at the flanks, so a raider must climb into
+// the defenders' high ground. Between the towers lies low ground with
+// scattered copses and a slight central rise. Built for capture-the-flag.
+function twinTowers(): MapDef {
+  const W = 14;
+  const H = 12;
+  const grid = makeHexGrid({ width: W, height: H, blocked: [] });
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  const towers = [{ x: 3, y: 5 }, mirror({ x: 3, y: 5 })];
+  // Wall: the front arc of the ring at distance 2, minus its two ends (the ramps).
+  const isWall = (v: Vec) =>
+    towers.some((t, i) => {
+      if (grid.distance(t, v) !== 2) return false;
+      const ahead = i === 0 ? v.x - t.x : t.x - v.x; // columns towards the enemy
+      return ahead >= 1 && Math.abs(v.y - t.y) <= 1;
+    });
+  const centre = (v: Vec) => (v.x === 6 || v.x === 7) && (v.y === 5 || v.y === 6);
 
-const MAPS: MapDef[] = [rollingHills(), oldForest(), ruinedVillage(), rockyPass()];
+  const map = build('twin-towers', 'Twin Towers', W, H, (v) => {
+    const d = Math.min(...towers.map((t) => grid.distance(t, v)));
+    const elevation = Math.max(0, 3 - Math.max(0, d - 1));
+    if (isWall(v)) return { elevation, feature: 'rock' };
+    if (centre(v)) return { elevation: 1 };
+    if (d >= 4 && v.x >= 4 && v.x <= 9 && symNoise(v, W, H, 0x7e117) < 0.22) {
+      return { elevation, feature: 'forest' };
+    }
+    return { elevation };
+  });
+  map.objectives = { flags: [towers[0]!, towers[1]!] };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Crossroads — two roads cross at the centre of a patchwork of farmland:
+// the east–west road along rows 5–6 and the north–south road along columns
+// 6–7. The three conquest zones sit on the north road, at the crossing and on
+// the south road; the crossing, raised a step, doubles as the
+// king-of-the-hill zone. Between the roads are farmsteads (buildings),
+// copses and low rises that screen the approaches.
+function crossroads(): MapDef {
+  const W = 14;
+  const H = 12;
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  const isRoad = (v: Vec) => v.y === 5 || v.y === 6 || v.x === 6 || v.x === 7;
+  const crossing = (v: Vec) => (v.x === 6 || v.x === 7) && (v.y === 5 || v.y === 6);
+  // The north-road zone: columns 5–8 of rows 1–2 (road plus verges). Its
+  // mirror is the south-road zone.
+  const north = (v: Vec) => v.x >= 5 && v.x <= 8 && (v.y === 1 || v.y === 2);
+  const south = (v: Vec) => north(mirror(v));
+  const onZone = (v: Vec) => crossing(v) || north(v) || south(v);
+
+  const map = build('crossroads', 'Crossroads', W, H, (v) => {
+    if (crossing(v)) return { elevation: 1 };
+    const home = Math.min(v.x, W - 1 - v.x);
+    if (isRoad(v) || onZone(v) || home <= 1) return { elevation: 0 };
+    const n = symNoise(v, W, H, 0xc2055);
+    const rise = symNoise(v, W, H, 0x215e) < 0.3 ? 1 : 0;
+    if (n < 0.18) return { elevation: 0, feature: 'building' };
+    if (n < 0.4) return { elevation: rise, feature: 'forest' };
+    if (n < 0.46) return { elevation: rise, feature: 'rock' };
+    return { elevation: rise };
+  });
+  const hexes = (pred: (v: Vec) => boolean) =>
+    map.hexes
+      .map((_, i) => ({ x: i % W, y: Math.floor(i / W) }))
+      .filter(pred)
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+  map.objectives = {
+    hill: hexes(crossing),
+    conquest: [hexes(north), hexes(crossing), hexes(south)],
+  };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+
+const MAPS: MapDef[] = [rollingHills(), oldForest(), ruinedVillage(), rockyPass(), twinTowers(), crossroads()];
 
 for (const map of MAPS) {
   const { ok, errors } = validateMap(map);

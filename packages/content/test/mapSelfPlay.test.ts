@@ -40,9 +40,15 @@ describe('built-in maps', () => {
         for (let y = 0; y < map.height; y++)
           for (let x = 0; x < map.width; x++) expect(mapHexAt(map, mirror(map, { x, y }))).toEqual(mapHexAt(map, { x, y }));
         expect(sortVecs(map.deployZones[1])).toEqual(sortVecs(map.deployZones[0].map((v) => mirror(map, v))));
-        const { flags, hill } = map.objectives;
+        const { flags, hill, conquest } = map.objectives;
         if (flags) expect(flags[1]).toEqual(mirror(map, flags[0]));
         if (hill) expect(sortVecs(hill.map((v) => mirror(map, v)))).toEqual(sortVecs(hill));
+        if (conquest) {
+          // Zone 2 is its own mirror image; zones 1 and 3 mirror each other.
+          const mirrored = (zone: Vec[]) => sortVecs(zone.map((v) => mirror(map, v)));
+          expect(mirrored(conquest[1])).toEqual(sortVecs(conquest[1]));
+          expect(mirrored(conquest[0])).toEqual(sortVecs(conquest[2]));
+        }
       });
 
       it('completes AI-vs-AI annihilation games with a winner', () => {
@@ -104,5 +110,33 @@ describe('premade map character', () => {
     for (const v of passes) expect(mapHexAt(map, v)?.elevation).toBe(2);
     for (const v of map.objectives.hill!) expect(passes).toContainEqual(v);
     expect(supportedModes(map)).toContain('king-of-the-hill');
+  });
+
+  it('Twin Towers puts each flag on its own level-3 plateau behind a rock wall', () => {
+    const map = getMap('twin-towers')!;
+    const grid = makeHexGrid({ width: map.width, height: map.height, blocked: [] });
+    const [home0] = map.objectives.flags!;
+    expect(mapHexAt(map, home0)?.elevation).toBe(3);
+    // The flag's plateau (every hex within 1) is level 3 and open.
+    for (const v of map.hexes.map((_, i) => ({ x: i % map.width, y: Math.floor(i / map.width) })))
+      if (grid.distance(home0, v) <= 1) expect(mapHexAt(map, v)).toEqual({ elevation: 3 });
+    // The flag is closer to its owner's deploy zone than to the enemy's.
+    const nearest = (zone: Vec[]) => Math.min(...zone.map((v) => grid.distance(home0, v)));
+    expect(nearest(map.deployZones[0])).toBeLessThan(nearest(map.deployZones[1]));
+    expect(count(map, (h) => h.feature === 'rock')).toBeGreaterThanOrEqual(6);
+    expect(supportedModes(map)).toContain('capture-the-flag');
+  });
+
+  it('Crossroads has open roads and three conquest zones along the north–south road', () => {
+    const map = getMap('crossroads')!;
+    for (let i = 0; i < map.width; i++) {
+      for (const y of [5, 6]) expect(mapHexAt(map, { x: i, y })?.feature).toBeUndefined();
+      for (const x of [6, 7]) if (i < map.height) expect(mapHexAt(map, { x, y: i })?.feature).toBeUndefined();
+    }
+    const [a, b, c] = map.objectives.conquest!;
+    expect([a.length, b.length, c.length]).toEqual([8, 4, 8]);
+    expect(sortVecs(map.objectives.hill!)).toEqual(sortVecs(b));
+    expect(count(map, (h) => h.feature === 'building')).toBeGreaterThanOrEqual(10);
+    expect(supportedModes(map)).toEqual(expect.arrayContaining(['conquest', 'king-of-the-hill']));
   });
 });
