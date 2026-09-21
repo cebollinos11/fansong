@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { PRESET_IDS, PRESETS, validateWarband, warbandCost } from '@fansong/content';
-import type { MatchSetup, Seat } from '../game/types.js';
+import { PRESET_IDS, PRESETS, validateWarband, warbandCost, type MatchSetup, type Seat } from '@fansong/content';
 
 interface Props {
   initial: MatchSetup;

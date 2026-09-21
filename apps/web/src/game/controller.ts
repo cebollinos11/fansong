@@ -1,6 +1,8 @@
 import {
+  applyCommand,
+  commandsEqual,
   getLegalCommands,
-  reduce,
+  isLegalCommand,
   type Command,
   type GameEvent,
   type GameState,
@@ -20,10 +22,12 @@ export type Subscriber = (t: Transition) => void;
 
 /**
  * The single point through which the UI touches the engine. It owns the current
- * `GameState`, exposes the legal moves, applies a `Command` (validating it
- * against `getLegalCommands` first), and notifies subscribers with the resulting
- * events so views can animate. It holds **no game rules** — every decision is
- * delegated to `@fansong/engine`.
+ * `GameState`, exposes the legal moves, applies a `Command` (validated by the
+ * engine's {@link applyCommand} guard first), and notifies subscribers with the
+ * resulting events so views can animate. It holds **no game rules** — every
+ * decision is delegated to `@fansong/engine`. The same validate-then-reduce
+ * seam a Durable Object will drive server-side (M4) lives in the engine, so the
+ * client and the server agree on legality by construction.
  */
 export class MatchController {
   private state: GameState;
@@ -44,7 +48,7 @@ export class MatchController {
 
   /** Whether a command is currently legal (structural match against the list). */
   isLegal(command: Command): boolean {
-    return this.legalCommands().some((c) => commandsEqual(c, command));
+    return isLegalCommand(this.state, command);
   }
 
   /**
@@ -54,10 +58,7 @@ export class MatchController {
    * commands it derived from {@link legalCommands}).
    */
   apply(command: Command): GameEvent[] {
-    if (!this.isLegal(command)) {
-      throw new Error(`illegal command: ${describe(command)}`);
-    }
-    const { state, events } = reduce(this.state, command);
+    const { state, events } = applyCommand(this.state, command);
     this.state = state;
     for (const sub of this.subscribers) sub({ state, events, command });
     return events;
@@ -69,21 +70,5 @@ export class MatchController {
   }
 }
 
-/** Structural equality for commands, so the UI can match one against the legal list. */
-export function commandsEqual(a: Command, b: Command): boolean {
-  if (a.type !== b.type) return false;
-  switch (a.type) {
-    case 'ChooseActivation':
-      return b.type === 'ChooseActivation' && a.unitId === b.unitId && a.diceCount === b.diceCount;
-    case 'Move':
-      return b.type === 'Move' && a.unitId === b.unitId && a.to.x === b.to.x && a.to.y === b.to.y;
-    case 'Attack':
-      return b.type === 'Attack' && a.attackerId === b.attackerId && a.targetId === b.targetId;
-    case 'EndActivation':
-      return b.type === 'EndActivation';
-  }
-}
-
-function describe(command: Command): string {
-  return JSON.stringify(command);
-}
+/** Re-exported from the engine, where command equality now lives. */
+export { commandsEqual };

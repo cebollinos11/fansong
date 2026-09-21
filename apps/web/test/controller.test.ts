@@ -1,10 +1,9 @@
 import { chooseCommand } from '@fansong/ai';
+import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { getLegalCommands } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { commandsEqual, MatchController } from '../src/game/controller.js';
 import { deriveInteraction } from '../src/game/interaction.js';
-import { createMatch } from '../src/game/setup.js';
-import type { MatchSetup } from '../src/game/types.js';
 
 const SETUP: MatchSetup = {
   presets: ['iron-wardens', 'ashfang-raiders'],
@@ -14,19 +13,19 @@ const SETUP: MatchSetup = {
 
 describe('MatchController', () => {
   it('exposes the engine legal commands unchanged', () => {
-    const state = createMatch(SETUP);
+    const state = createMatchFromPresets(SETUP);
     const controller = new MatchController(state);
     expect(controller.legalCommands()).toEqual(getLegalCommands(state));
     expect(controller.legalCommands().length).toBeGreaterThan(0);
   });
 
   it('rejects a command that is not currently legal', () => {
-    const controller = new MatchController(createMatch(SETUP));
+    const controller = new MatchController(createMatchFromPresets(SETUP));
     expect(() => controller.apply({ type: 'EndActivation' })).toThrow(/illegal command/);
   });
 
   it('applies a legal command, advances state, and notifies subscribers', () => {
-    const controller = new MatchController(createMatch(SETUP));
+    const controller = new MatchController(createMatchFromPresets(SETUP));
     let received = 0;
     controller.subscribe(({ events }) => {
       received += events.length;
@@ -36,11 +35,11 @@ describe('MatchController', () => {
     expect(events.length).toBeGreaterThan(0);
     expect(received).toBe(events.length);
     // State moved on: it is a distinct object from what we started with.
-    expect(controller.getState()).not.toBe(createMatch(SETUP));
+    expect(controller.getState()).not.toBe(createMatchFromPresets(SETUP));
   });
 
   it('drives a full game to completion using only legal commands (thin over the engine)', () => {
-    const controller = new MatchController(createMatch({ ...SETUP, seed: 7 }));
+    const controller = new MatchController(createMatchFromPresets({ ...SETUP, seed: 7 }));
     let steps = 0;
     while (controller.getState().phase !== 'gameOver' && steps < 5000) {
       const command = chooseCommand(controller.getState());
@@ -56,7 +55,7 @@ describe('MatchController', () => {
 
 describe('deriveInteraction', () => {
   it('projects activation options at the start of a match', () => {
-    const state = createMatch(SETUP);
+    const state = createMatchFromPresets(SETUP);
     const interaction = deriveInteraction(getLegalCommands(state));
     expect(interaction.selectableUnitIds.length).toBeGreaterThan(0);
     expect(interaction.diceChoices).toEqual([1, 2, 3]);
@@ -65,7 +64,7 @@ describe('deriveInteraction', () => {
   });
 
   it('projects moves and end-activation once a unit is acting', () => {
-    const controller = new MatchController(createMatch(SETUP));
+    const controller = new MatchController(createMatchFromPresets(SETUP));
     // Activate the first unit until we land in the 'acting' phase.
     for (const c of controller.legalCommands()) {
       if (c.type === 'ChooseActivation' && c.diceCount === 3) {

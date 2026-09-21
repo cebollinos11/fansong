@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { GameScreen } from './ui/GameScreen.js';
 import { SetupScreen } from './ui/SetupScreen.js';
-import { DEFAULT_SETUP, type MatchSetup } from './game/types.js';
+import { DEFAULT_SETUP, type MatchSetup } from '@fansong/content';
 
 /** A match is keyed by a monotonic id so starting a new one remounts GameScreen. */
 interface ActiveMatch {

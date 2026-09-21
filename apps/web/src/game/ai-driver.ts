@@ -1,6 +1,6 @@
 import { chooseCommand } from '@fansong/ai';
 import type { MatchController } from './controller.js';
-import { isAiSeat, type MatchSetup } from './types.js';
+import { isAiSeat, type MatchSetup } from '@fansong/content';
 
 /**
  * Drives AI-controlled seats. After every transition it checks whether the

@@ -2,9 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameEvent, GameState, Vec } from '@fansong/engine';
 import { AiDriver } from '../game/ai-driver.js';
 import { MatchController } from '../game/controller.js';
+import { createMatchFromPresets, isAiSeat, type MatchSetup } from '@fansong/content';
 import { deriveInteraction } from '../game/interaction.js';
-import { createMatch } from '../game/setup.js';
-import { isAiSeat, type MatchSetup } from '../game/types.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { Hud } from './Hud.js';
 import { appendEvents, type LogEntry } from './log.js';
@@ -17,7 +16,7 @@ interface Props {
 export function GameScreen({ setup, onExit }: Props): JSX.Element {
   // The controller owns the authoritative GameState for this match; created once.
   const controllerRef = useRef<MatchController | null>(null);
-  if (!controllerRef.current) controllerRef.current = new MatchController(createMatch(setup));
+  if (!controllerRef.current) controllerRef.current = new MatchController(createMatchFromPresets(setup));
   const controller = controllerRef.current;
 
   const [state, setState] = useState<GameState>(controller.getState());

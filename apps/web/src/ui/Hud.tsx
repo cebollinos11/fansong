@@ -1,6 +1,6 @@
 import { aliveUnits, unitById, type GameState } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
-import { isAiSeat, type MatchSetup } from '../game/types.js';
+import { isAiSeat, type MatchSetup } from '@fansong/content';
 import type { LogEntry } from './log.js';
 
 interface Props {
