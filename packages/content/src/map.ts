@@ -111,7 +111,10 @@ export function mapToJson(map: MapDef): string {
     rows.push(`    ${map.hexes.slice(y * map.width, (y + 1) * map.width).map(j).join(', ')}`);
   }
   const zones = (zs: readonly Vec[][]): string => `[\n${zs.map((z) => `    ${j(z)}`).join(',\n')}\n  ]`;
-  const objectives = Object.entries(map.objectives).filter(([, v]) => v !== undefined);
+  // Schema key order, so the output doesn't depend on how the object was built.
+  const objectives = (['flags', 'hill', 'conquest'] as const)
+    .map((k) => [k, map.objectives[k]] as const)
+    .filter(([, v]) => v !== undefined);
   const lines = [
     `  "id": ${j(map.id)}`,
     `  "name": ${j(map.name)}`,

@@ -59,6 +59,14 @@ describe('mapToJson', () => {
     expect(text.split('\n').filter((l) => l.trimStart().startsWith('{"elevation"'))).toHaveLength(6);
   });
 
+  it('writes objective keys in schema order whatever the insertion order', () => {
+    const map = flatMap(4, 3, 'order', 'Order');
+    map.objectives = { hill: [{ x: 2, y: 1 }], flags: [{ x: 0, y: 0 }, { x: 3, y: 2 }] };
+    const text = mapToJson(map);
+    expect(text.indexOf('"flags"')).toBeLessThan(text.indexOf('"hill"'));
+    expect(mapToJson(parseMap(JSON.parse(text)))).toBe(text);
+  });
+
   it('writes empty objectives compactly', () => {
     expect(mapToJson(flatMap(6, 6))).toContain('"objectives": {}\n}');
   });

@@ -131,8 +131,78 @@ function oldForest(): MapDef {
 }
 
 // ---------------------------------------------------------------------------
+// Ruined Village — blocks of buildings cut by streets: a main street along the
+// middle rows, a cross street either side of the centre, and back lanes. Some
+// houses have fallen to rubble (rock) or overgrown gardens (forest). The
+// market square at the heart of the village is raised a step and is the
+// king-of-the-hill zone.
+function ruinedVillage(): MapDef {
+  const W = 14;
+  const H = 12;
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  // Building blocks are these column pairs × row pairs; everything else in the
+  // village is street. Both sets map onto themselves under the 180° mirror.
+  const blockCols = [3, 4, 6, 7, 9, 10];
+  const blockRows = [0, 1, 3, 4, 7, 8, 10, 11];
+  // The market square: the central block pair plus the main street between them.
+  const market = (v: Vec) => (v.x === 6 || v.x === 7) && v.y >= 4 && v.y <= 7;
 
-const MAPS: MapDef[] = [rollingHills(), oldForest()];
+  const map = build('ruined-village', 'Ruined Village', W, H, (v) => {
+    if (market(v)) return { elevation: 1 };
+    if (!blockCols.includes(v.x) || !blockRows.includes(v.y)) return { elevation: 0 };
+    const n = symNoise(v, W, H, 0x7111a6e);
+    if (n < 0.6) return { elevation: 0, feature: 'building' };
+    if (n < 0.72) return { elevation: 0, feature: 'rock' };
+    if (n < 0.82) return { elevation: 0, feature: 'forest' };
+    return { elevation: 0 };
+  });
+  map.objectives = {
+    flags: [{ x: 0, y: 5 }, mirror({ x: 0, y: 5 })],
+    hill: map.hexes
+      .map((_, i) => ({ x: i % W, y: Math.floor(i / W) }))
+      .filter(market)
+      .sort((a, b) => a.y - b.y || a.x - b.x),
+  };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+// Rocky Pass — a rocky ridge runs down the middle of the field, crossed only
+// by three narrow passes: one at the centre and one near each board edge. The
+// slopes rise towards the ridge, so whoever holds a pass holds the high
+// ground; boulders litter the approaches. The centre pass is the
+// king-of-the-hill zone.
+function rockyPass(): MapDef {
+  const W = 14;
+  const H = 12;
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  // Pass rows through the ridge (columns 6–7). Row r in column 6 mirrors to row
+  // H-1-r in column 7, so the set is symmetric.
+  const passRows = [1, 5, 6, 10];
+  const centrePass = (v: Vec) => (v.x === 6 || v.x === 7) && (v.y === 5 || v.y === 6);
+  const boulders = [{ x: 3, y: 2 }, { x: 4, y: 8 }, { x: 5, y: 4 }, { x: 2, y: 9 }, { x: 3, y: 10 }];
+  const isBoulder = (v: Vec) => boulders.some((b) => [b, mirror(b)].some((u) => u.x === v.x && u.y === v.y));
+  const slope = [0, 0, 0, 0, 1, 2, 2, 2, 2, 1, 0, 0, 0, 0]; // elevation by column
+
+  const map = build('rocky-pass', 'Rocky Pass', W, H, (v) => {
+    const elevation = slope[v.x]!;
+    if (v.x === 6 || v.x === 7) {
+      return passRows.includes(v.y) ? { elevation } : { elevation: 3, feature: 'rock' };
+    }
+    return isBoulder(v) ? { elevation, feature: 'rock' } : { elevation };
+  });
+  map.objectives = {
+    hill: map.hexes
+      .map((_, i) => ({ x: i % W, y: Math.floor(i / W) }))
+      .filter(centrePass)
+      .sort((a, b) => a.y - b.y || a.x - b.x),
+  };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+
+const MAPS: MapDef[] = [rollingHills(), oldForest(), ruinedVillage(), rockyPass()];
 
 for (const map of MAPS) {
   const { ok, errors } = validateMap(map);

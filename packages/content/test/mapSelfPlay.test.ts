@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
-import { createGame, getLegalCommands, makeHexGrid, reduce, type GameState } from '@fansong/engine';
+import { createGame, getLegalCommands, makeHexGrid, reduce, type GameState, type Vec } from '@fansong/engine';
 import { buildMatch } from '../src/deploy.js';
 import { mapHexAt, type MapDef } from '../src/map.js';
 import { getMap, listMaps } from '../src/mapRegistry.js';
@@ -78,5 +78,31 @@ describe('premade map character', () => {
     const map = getMap('old-forest')!;
     expect(count(map, (h) => h.feature === 'forest')).toBeGreaterThan(map.hexes.length / 3);
     expect(supportedModes(map)).toContain('capture-the-flag');
+  });
+
+  it('Ruined Village has building blocks, open streets and a raised market square', () => {
+    const map = getMap('ruined-village')!;
+    expect(count(map, (h) => h.feature === 'building')).toBeGreaterThanOrEqual(20);
+    // The main street (rows 5–6) runs unobstructed from edge to edge.
+    for (let x = 0; x < map.width; x++)
+      for (const y of [5, 6]) expect(mapHexAt(map, { x, y })?.feature).toBeUndefined();
+    for (const v of map.objectives.hill!) expect(mapHexAt(map, v)?.elevation).toBe(1);
+    expect(supportedModes(map)).toEqual(expect.arrayContaining(['king-of-the-hill', 'capture-the-flag']));
+  });
+
+  it('Rocky Pass is split by a rock ridge crossed only at a few high-ground passes', () => {
+    const map = getMap('rocky-pass')!;
+    const passes: Vec[] = [];
+    for (let y = 0; y < map.height; y++) {
+      for (const x of [6, 7]) {
+        const hex = mapHexAt(map, { x, y })!;
+        if (hex.feature === undefined) passes.push({ x, y });
+        else expect(hex.feature).toBe('rock');
+      }
+    }
+    expect(passes.length).toBeLessThanOrEqual(8);
+    for (const v of passes) expect(mapHexAt(map, v)?.elevation).toBe(2);
+    for (const v of map.objectives.hill!) expect(passes).toContainEqual(v);
+    expect(supportedModes(map)).toContain('king-of-the-hill');
   });
 });

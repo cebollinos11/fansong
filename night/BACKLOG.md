@@ -35,7 +35,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 
 ## Premade maps (each: validates + AI-vs-AI annihilation self-play test; mode tests added in 36)
 - [x] 14. Maps: Rolling Hills, Old Forest.
-- [ ] 15. Maps: Ruined Village, Rocky Pass.
+- [x] 15. Maps: Ruined Village, Rocky Pass.
 - [ ] 16. Maps: Twin Towers, Crossroads.
 - [ ] 17. Setup: `MatchSetup.mapId`; map picker in Setup screen; replays/config carry the map.
 
