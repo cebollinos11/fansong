@@ -6,8 +6,10 @@ import type {
   EndActivation,
   GameEvent,
   GameState,
+  GuardCommand,
   MoveCommand,
   Owner,
+  ShootCommand,
   Unit,
 } from '@fansong/engine';
 import type { MatchSetup, Seat } from '@fansong/content';
@@ -55,6 +57,21 @@ export const attackCommandSchema = z
   })
   .strict();
 
+export const shootCommandSchema = z
+  .object({
+    type: z.literal('Shoot'),
+    attackerId: z.string().min(1),
+    targetId: z.string().min(1),
+  })
+  .strict();
+
+export const guardCommandSchema = z
+  .object({
+    type: z.literal('Guard'),
+    unitId: z.string().min(1),
+  })
+  .strict();
+
 export const endActivationSchema = z
   .object({ type: z.literal('EndActivation') })
   .strict();
@@ -63,6 +80,8 @@ export const commandSchema = z.discriminatedUnion('type', [
   chooseActivationSchema,
   moveCommandSchema,
   attackCommandSchema,
+  shootCommandSchema,
+  guardCommandSchema,
   endActivationSchema,
 ]);
 
@@ -73,6 +92,14 @@ export const boardDataSchema = z
     width: z.number().int().positive(),
     height: z.number().int().positive(),
     blocked: z.array(z.string()),
+  })
+  .strict();
+
+export const unitTraitsSchema = z
+  .object({
+    ranged: z.number().int().min(0),
+    tough: z.boolean(),
+    guard: z.boolean(),
   })
   .strict();
 
@@ -88,6 +115,8 @@ export const unitSchema = z
     dead: z.boolean(),
     knockedDown: z.boolean(),
     activatedThisRound: z.boolean(),
+    traits: unitTraitsSchema,
+    guarding: z.boolean(),
   })
   .strict();
 
@@ -101,6 +130,8 @@ export const gameStateSchema = z
     initiativeLeader: ownerSchema,
     active: ownerSchema,
     benched: z.tuple([z.boolean(), z.boolean()]),
+    broken: z.tuple([z.boolean(), z.boolean()]),
+    startCount: z.tuple([z.number().int(), z.number().int()]),
     phase: phaseSchema,
     activeUnitId: z.string().nullable(),
     actionsRemaining: z.number().int(),
@@ -143,6 +174,38 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseScore: z.number(),
     result: combatResultSchema,
   }),
+  z.object({
+    type: z.literal('ShotResolved'),
+    attackerId: z.string(),
+    targetId: z.string(),
+    attackDie: z.number(),
+    defenseDie: z.number(),
+    attackScore: z.number(),
+    defenseScore: z.number(),
+    result: combatResultSchema,
+  }),
+  z.object({ type: z.literal('GuardDeclared'), unitId: z.string() }),
+  z.object({
+    type: z.literal('GuardRiposte'),
+    guardId: z.string(),
+    attackerId: z.string(),
+    guardDie: z.number(),
+    attackerDie: z.number(),
+    guardScore: z.number(),
+    attackerScore: z.number(),
+    result: combatResultSchema,
+    prevented: z.boolean(),
+  }),
+  z.object({ type: z.literal('ToughnessSaved'), unitId: z.string() }),
+  z.object({
+    type: z.literal('NerveCheck'),
+    unitId: z.string(),
+    quality: z.number(),
+    die: z.number(),
+    passed: z.boolean(),
+  }),
+  z.object({ type: z.literal('WarbandBroken'), player: ownerSchema }),
+  z.object({ type: z.literal('UnitRouted'), unitId: z.string() }),
   z.object({ type: z.literal('UnitKnockedDown'), unitId: z.string() }),
   z.object({ type: z.literal('UnitKilled'), unitId: z.string(), byId: z.string().nullable() }),
   z.object({ type: z.literal('ActivationEnded'), unitId: z.string() }),
@@ -185,6 +248,8 @@ export type SchemaDriftChecks = [
   Expect<Eq<z.infer<typeof chooseActivationSchema>, ChooseActivation>>,
   Expect<Eq<z.infer<typeof moveCommandSchema>, MoveCommand>>,
   Expect<Eq<z.infer<typeof attackCommandSchema>, AttackCommand>>,
+  Expect<Eq<z.infer<typeof shootCommandSchema>, ShootCommand>>,
+  Expect<Eq<z.infer<typeof guardCommandSchema>, GuardCommand>>,
   Expect<Eq<z.infer<typeof endActivationSchema>, EndActivation>>,
   Expect<Eq<z.infer<typeof unitSchema>, Unit>>,
   Expect<Eq<z.infer<typeof ownerSchema>, Owner>>,

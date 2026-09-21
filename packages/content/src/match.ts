@@ -1,4 +1,4 @@
-import { createGame, type GameState, type Owner } from '@fansong/engine';
+import { createGame, type GameConfig, type GameState, type Owner } from '@fansong/engine';
 import { DEFAULT_BOARD, buildMatch, type BoardSize } from './deploy.js';
 import { getPreset } from './presets.js';
 import { validateWarband, type Warband } from './warband.js';
@@ -42,11 +42,21 @@ export function resolveWarband(id: string): Warband {
 }
 
 /**
+ * The engine {@link GameConfig} a {@link MatchSetup} deploys to — the seed +
+ * board + laid-out warbands. This is exactly what {@link createMatchFromPresets}
+ * builds its state from, so recording it alongside a game's command list yields a
+ * replay that reproduces the match.
+ */
+export function configFromSetup(setup: MatchSetup, board: BoardSize = DEFAULT_BOARD): GameConfig {
+  const p0 = resolveWarband(setup.presets[0]);
+  const p1 = resolveWarband(setup.presets[1]);
+  return buildMatch(p0, p1, { seed: setup.seed, board });
+}
+
+/**
  * Turn a {@link MatchSetup} into an engine {@link GameState}, reusing the same
  * `buildMatch` deployment the CLI uses. No caller lays units out itself.
  */
 export function createMatchFromPresets(setup: MatchSetup, board: BoardSize = DEFAULT_BOARD): GameState {
-  const p0 = resolveWarband(setup.presets[0]);
-  const p1 = resolveWarband(setup.presets[1]);
-  return createGame(buildMatch(p0, p1, { seed: setup.seed, board }));
+  return createGame(configFromSetup(setup, board));
 }

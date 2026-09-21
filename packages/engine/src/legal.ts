@@ -1,5 +1,5 @@
-import { makeSquareGrid, type Vec } from './board.js';
-import { enemiesOf, isOccupied, unitAvailable, unitById } from './query.js';
+import { makeSquareGrid, vecKey, type Vec } from './board.js';
+import { enemiesOf, inMelee, isOccupied, occupiedKeys, unitAvailable, unitById } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -37,6 +37,24 @@ export function getLegalCommands(state: GameState): Command[] {
     if (board.distance(unit.pos, enemy.pos) === 1) {
       commands.push({ type: 'Attack', attackerId: unit.id, targetId: enemy.id });
     }
+  }
+
+  // Shots: a ranged unit not itself in melee may fire on a non-adjacent enemy
+  // within range and clear line of sight (intervening units block the lane).
+  if (unit.traits.ranged >= 1 && !inMelee(state, unit)) {
+    const occ = occupiedKeys(state);
+    const seeThrough = (v: Vec) => occ.has(vecKey(v));
+    for (const enemy of enemiesOf(state, unit.owner)) {
+      const d = board.distance(unit.pos, enemy.pos);
+      if (d >= 2 && d <= unit.traits.ranged && board.lineOfSight(unit.pos, enemy.pos, seeThrough)) {
+        commands.push({ type: 'Shoot', attackerId: unit.id, targetId: enemy.id });
+      }
+    }
+  }
+
+  // Guard: a guard-capable unit may assume a defensive stance (ends its activation).
+  if (unit.traits.guard) {
+    commands.push({ type: 'Guard', unitId: unit.id });
   }
 
   // Moves: every empty, unblocked, in-bounds cell within move range.

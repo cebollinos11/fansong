@@ -21,6 +21,20 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `  ${name(state, e.unitId)} moves (${e.from.x},${e.from.y}) -> (${e.to.x},${e.to.y})`;
     case 'AttackResolved':
       return `  ${name(state, e.attackerId)} attacks ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie}) -> ${e.result}`;
+    case 'ShotResolved':
+      return `  ${name(state, e.attackerId)} shoots ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie}) -> ${e.result}`;
+    case 'GuardDeclared':
+      return `  ${name(state, e.unitId)} raises guard`;
+    case 'GuardRiposte':
+      return `  ⚔ ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)}: ${e.guardScore} vs ${e.attackerScore} (d${e.guardDie}/d${e.attackerDie}) -> ${e.result}${e.prevented ? ' (attack stopped)' : ''}`;
+    case 'ToughnessSaved':
+      return `    ${name(state, e.unitId)} shrugs off the blow (Tough)`;
+    case 'NerveCheck':
+      return `    ${name(state, e.unitId)} nerve check d${e.die} vs Q${e.quality} -> ${e.passed ? 'holds' : 'falters'}`;
+    case 'WarbandBroken':
+      return `  ‼ P${e.player}'s warband BREAKS`;
+    case 'UnitRouted':
+      return `    ⚑ ${name(state, e.unitId)} routs and flees the field`;
     case 'UnitKnockedDown':
       return `    ${name(state, e.unitId)} is knocked down`;
     case 'UnitKilled':

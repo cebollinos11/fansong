@@ -56,7 +56,11 @@ function scoreCommand(state: GameState, board: Board, command: Command): number 
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
       const dist = nearestEnemyDistance(board, unit.pos, enemies);
-      const canAttack = dist === 1;
+      // A unit that can already fight this turn — in melee, or a shooter with a
+      // foe in range — is the one worth activating first.
+      const canMelee = dist === 1;
+      const canShoot = unit.traits.ranged >= 2 && dist >= 2 && dist <= unit.traits.ranged;
+      const canAttack = canMelee || canShoot;
       // Prefer the unit that can already fight, else the one closest to a foe.
       const unitScore = canAttack ? 100_000 : 10_000 - dist * 100;
 
@@ -83,10 +87,36 @@ function scoreCommand(state: GameState, board: Board, command: Command): number 
       return score;
     }
 
+    case 'Shoot': {
+      // Shooting deals damage with no risk of reprisal — nearly as good as a
+      // melee blow, and better against a soft or already-downed target.
+      const target = unitById(state, command.targetId)!;
+      let score = 900_000;
+      if (target.knockedDown) score += 5_000;
+      score += (6 - target.combat) * 100; // pick off the weakest reachable foe
+      return score;
+    }
+
     case 'Move': {
+      const mover = unitById(state, command.unitId)!;
       const dist = nearestEnemyDistance(board, command.to, enemies);
-      // Close the distance; always beats ending, never beats attacking.
+      // A ranged unit seeks a standoff: inside its range but out of melee, so it
+      // can shoot next turn instead of being dragged into a fight. (When a shot
+      // is already available, Shoot outscores every Move anyway.)
+      if (mover.traits.ranged >= 2) {
+        const r = mover.traits.ranged;
+        if (dist >= 2 && dist <= r) return 120_000 + dist; // in the sweet spot — hold at the edge of range
+        if (dist < 2) return 40_000; // stepping into melee is a last resort for a shooter
+        return 100_000 - dist * 100; // out of range: close the gap
+      }
+      // Melee: close the distance; always beats ending, never beats attacking.
       return 100_000 - dist * 100;
+    }
+
+    case 'Guard': {
+      // A last-resort defensive stance: only when there's nothing better to do
+      // (no attack, no useful move). Kept just above ending the activation.
+      return 1;
     }
 
     case 'EndActivation':

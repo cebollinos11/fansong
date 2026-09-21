@@ -178,7 +178,24 @@ no rules — remove three.js and the game still runs in the CLI.
    all authority and are covered headlessly, with thin Durable Object + Worker
    adapters and a `wrangler.toml` over them. The web app plays local *or* online
    through one `MatchClient` seam. `wrangler deploy` ships it to Cloudflare.
-6. **M5 — Polish:** more special abilities, morale depth, animations, replay viewer.
+6. **M5 — Polish:** ✅ more special abilities, morale depth, a replay viewer, and
+   animations for the new events. Kept inside the pure seam:
+   - **Special abilities** — three original traits behind the command/legal-move
+     seams: **Ranged** (a `Shoot` command — non-adjacent, needs line of sight,
+     no reprisal, blocked while in melee), **Tough** (first would-be kill becomes
+     a knockdown), and **Guard** (a `Guard` action; a guarding unit ripostes the
+     first melee attacker and can prevent the blow). Priced in `packages/content`
+     and understood by the AI (`chooseCommand`).
+   - **Morale depth** — beyond the turnover: a combat kill forces **fear** nerve
+     checks on nearby friends (fail = knocked down), and a warband ground to a
+     third of its starting size **breaks** once and **routs** (failed survivors
+     flee). New events/state, deterministic and RNG-seeded.
+   - **Replay viewer** — a `Replay` is `GameConfig + command list`; `runReplay`
+     reproduces it, a golden fixture pins the final-state hash against accidental
+     rule drift, and `apps/web` steps through a finished game (with JSON
+     export/import) reusing the event-driven board.
+   - **Animations** — the three.js view gained a ranged/riposte tracer, a guard
+     ring, and toughness/rout flashes. UI only — no rules moved into the client.
 
 ---
 

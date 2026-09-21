@@ -37,7 +37,17 @@ export function layOutWarband(units: WarbandUnit[], owner: Owner, board: BoardSi
     const y = top + rowIndex;
     const pos: Vec = { x, y };
 
-    specs.push({ name: unit.name, quality: unit.quality, combat: unit.combat, move: unit.move, pos });
+    specs.push({
+      name: unit.name,
+      quality: unit.quality,
+      combat: unit.combat,
+      move: unit.move,
+      pos,
+      // Carry the special-ability traits through to the engine profile.
+      ranged: unit.ranged,
+      tough: unit.tough,
+      guard: unit.guard,
+    });
   });
 
   return specs;

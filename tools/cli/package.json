@@ -8,6 +8,7 @@
   },
   "scripts": {
     "play": "tsx src/play.ts",
+    "gen:golden": "tsx src/gen-golden.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -27,6 +27,16 @@ export function isOccupied(state: GameState, v: Vec, ignoreId?: string): boolean
   return state.units.some((u) => !u.dead && u.id !== ignoreId && u.pos.x === v.x && u.pos.y === v.y);
 }
 
+/** Is `unit` adjacent to a living enemy (i.e. locked in melee)? */
+export function inMelee(state: GameState, unit: Unit): boolean {
+  return state.units.some(
+    (u) =>
+      !u.dead &&
+      u.owner !== unit.owner &&
+      Math.max(Math.abs(u.pos.x - unit.pos.x), Math.abs(u.pos.y - unit.pos.y)) === 1,
+  );
+}
+
 /** A unit that can still be activated this round. */
 export function unitAvailable(u: Unit): boolean {
   return !u.dead && !u.activatedThisRound;

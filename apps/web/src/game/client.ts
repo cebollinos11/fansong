@@ -1,9 +1,8 @@
-import type { Command, GameState, Owner } from '@fansong/engine';
+import type { Command, GameState, Owner, Replay } from '@fansong/engine';
 import type { SeatPresence } from '@fansong/protocol';
-import { isAiSeat, type MatchSetup } from '@fansong/content';
+import { configFromSetup, createMatchFromPresets, isAiSeat, type MatchSetup } from '@fansong/content';
 import { AiDriver } from './ai-driver.js';
 import { MatchController, type Transition } from './controller.js';
-import { createMatchFromPresets } from '@fansong/content';
 
 /** Connection/readiness state, surfaced to the HUD. Local play is always ready. */
 export type ClientStatus =
@@ -30,6 +29,12 @@ export interface MatchClient {
   subscribe(sub: (t: Transition) => void): () => void;
   onStatus(cb: (s: ClientStatus) => void): () => void;
   status(): ClientStatus;
+  /**
+   * The game so far as a replayable `seed + command list`, or `null` if this
+   * client can't produce one. Only the local client records; online play is
+   * driven by server deltas, so it opts out.
+   */
+  getReplay(): Replay | null;
   dispose(): void;
 }
 
@@ -48,11 +53,18 @@ export class LocalMatchClient implements MatchClient {
   readonly controlledSeats: readonly Owner[];
   private readonly controller: MatchController;
   private readonly driver: AiDriver;
+  /** Every command applied, in order — the command list half of a {@link Replay}. */
+  private readonly recorded: Command[] = [];
+  private readonly unrecord: () => void;
 
   constructor(setup: MatchSetup) {
     this.setup = setup;
     this.controller = new MatchController(createMatchFromPresets(setup));
     this.controlledSeats = humanSeats(setup);
+    // Record every applied command (human and AI alike) for replay.
+    this.unrecord = this.controller.subscribe(({ command }) => {
+      if (command) this.recorded.push(command);
+    });
     this.driver = new AiDriver(this.controller, setup);
     this.driver.start();
   }
@@ -81,7 +93,12 @@ export class LocalMatchClient implements MatchClient {
     return { phase: 'ready', presence: null };
   }
 
+  getReplay(): Replay {
+    return { version: 1, config: configFromSetup(this.setup), commands: [...this.recorded] };
+  }
+
   dispose(): void {
+    this.unrecord();
     this.driver.stop();
   }
 }

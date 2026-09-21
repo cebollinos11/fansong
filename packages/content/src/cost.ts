@@ -16,6 +16,12 @@ export interface Profile {
   combat: number;
   /** Max Chebyshev cells per Move action. Higher is better. */
   move: number;
+  /** Ranged attack range in cells (0/omitted = melee only). */
+  ranged?: number;
+  /** Tough: first would-be kill downgraded to a knockdown. */
+  tough?: boolean;
+  /** Guard: may riposte the first melee attacker. */
+  guard?: boolean;
 }
 
 /** Inclusive `[min, max]` legal range for each stat. */
@@ -23,6 +29,7 @@ export const STAT_BOUNDS = {
   quality: [2, 6] as const,
   combat: [1, 6] as const,
   move: [1, 8] as const,
+  ranged: [0, 8] as const,
 };
 
 /** The Move value a profile is costed against as "free"; deviations adjust cost. */
@@ -38,6 +45,12 @@ export const COST_WEIGHTS = {
   perCombat: 5,
   /** Each cell of Move away from {@link BASELINE_MOVE} is worth this much. */
   perMove: 3,
+  /** Each cell of ranged reach is worth this much (attacking without reprisal). */
+  perRanged: 3,
+  /** Flat surcharge for the Tough trait (a free save against the first kill). */
+  tough: 12,
+  /** Flat surcharge for the Guard trait (a defensive riposte). */
+  guard: 10,
 };
 
 function inRange(value: number, [min, max]: readonly [number, number]): boolean {
@@ -53,6 +66,8 @@ export function statErrors(p: Profile): string[] {
     errors.push(`combat ${p.combat} out of range ${STAT_BOUNDS.combat.join('..')}`);
   if (!inRange(p.move, STAT_BOUNDS.move))
     errors.push(`move ${p.move} out of range ${STAT_BOUNDS.move.join('..')}`);
+  if (!inRange(p.ranged ?? 0, STAT_BOUNDS.ranged))
+    errors.push(`ranged ${p.ranged} out of range ${STAT_BOUNDS.ranged.join('..')}`);
   return errors;
 }
 
@@ -61,12 +76,15 @@ export function statErrors(p: Profile): string[] {
  * untrusted profiles should run {@link statErrors} first. Always >= 1.
  */
 export function unitCost(p: Profile): number {
-  const { base, perQuality, perCombat, perMove } = COST_WEIGHTS;
+  const { base, perQuality, perCombat, perMove, perRanged, tough, guard } = COST_WEIGHTS;
   const qualityMax = STAT_BOUNDS.quality[1]; // worst quality = cheapest
   const cost =
     base +
     (qualityMax - p.quality) * perQuality +
     p.combat * perCombat +
-    (p.move - BASELINE_MOVE) * perMove;
+    (p.move - BASELINE_MOVE) * perMove +
+    (p.ranged ?? 0) * perRanged +
+    (p.tough ? tough : 0) +
+    (p.guard ? guard : 0);
   return Math.max(1, cost);
 }

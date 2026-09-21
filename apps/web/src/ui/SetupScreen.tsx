@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { PRESET_IDS, PRESETS, validateWarband, warbandCost, type MatchSetup } from '@fansong/content';
+import type { Replay } from '@fansong/engine';
 import type { Launch } from '../game/launch.js';
+import { parseReplay } from '../game/replay-io.js';
 
 interface Props {
   initial: MatchSetup;
   onStart: (launch: Launch) => void;
+  onLoadReplay: (replay: Replay) => void;
 }
 
 type Mode = 'vsAI' | 'hotseat' | 'online';
@@ -15,13 +18,24 @@ function launchFor(mode: Mode, presets: [string, string], seed: number): Launch 
   return { kind: 'local', setup: { presets, seats: [seats[0], seats[1]], seed } };
 }
 
-export function SetupScreen({ initial, onStart }: Props): JSX.Element {
+export function SetupScreen({ initial, onStart, onLoadReplay }: Props): JSX.Element {
   const [mode, setMode] = useState<Mode>(initial.seats[1] === 'ai' ? 'vsAI' : 'hotseat');
   const [p0, setP0] = useState(initial.presets[0]);
   const [p1, setP1] = useState(initial.presets[1]);
   const [seed, setSeed] = useState(initial.seed);
+  const [replayError, setReplayError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const start = () => onStart(launchFor(mode, [p0, p1], Number.isFinite(seed) ? seed : 0));
+
+  const loadReplayFile = async (file: File): Promise<void> => {
+    setReplayError(null);
+    try {
+      onLoadReplay(parseReplay(await file.text()));
+    } catch (e) {
+      setReplayError(e instanceof Error ? e.message : String(e));
+    }
+  };
 
   const label0 = mode === 'vsAI' ? 'You — Player 0' : mode === 'online' ? 'Player 0 (you host)' : 'Player 0';
   const label1 = mode === 'vsAI' ? 'AI — Player 1' : mode === 'online' ? 'Player 1 (opponent)' : 'Player 1';
@@ -72,6 +86,24 @@ export function SetupScreen({ initial, onStart }: Props): JSX.Element {
         <button className="primary" onClick={start}>
           {mode === 'online' ? 'Find a match' : 'Start battle'}
         </button>
+
+        <div className="replay-load">
+          <button className="ghost" onClick={() => fileInput.current?.click()}>
+            Load a replay…
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) void loadReplayFile(file);
+              e.target.value = ''; // allow re-selecting the same file
+            }}
+          />
+          {replayError ? <p className="error">{replayError}</p> : null}
+        </div>
       </div>
     </div>
   );

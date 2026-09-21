@@ -1,30 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Replay } from '@fansong/engine';
 import { GameScreen } from './ui/GameScreen.js';
 import { SetupScreen } from './ui/SetupScreen.js';
+import { ReplayScreen } from './ui/ReplayScreen.js';
 import { DEFAULT_SETUP } from '@fansong/content';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
 import { connectOnline } from './net/server.js';
 
-/** A launch is keyed by a monotonic id so starting a new match remounts cleanly. */
-interface ActiveLaunch {
-  id: number;
-  launch: Launch;
-}
+/** Which screen the app is showing. A match is keyed so a new one remounts cleanly. */
+type View =
+  | { kind: 'setup' }
+  | { kind: 'match'; id: number; launch: Launch }
+  | { kind: 'replay'; id: number; replay: Replay };
 
 export function App(): JSX.Element {
-  const [active, setActive] = useState<ActiveLaunch | null>(null);
+  const [view, setView] = useState<View>({ kind: 'setup' });
 
-  if (!active) {
+  if (view.kind === 'setup') {
     return (
       <SetupScreen
         initial={DEFAULT_SETUP}
-        onStart={(launch) => setActive({ id: Date.now(), launch })}
+        onStart={(launch) => setView({ kind: 'match', id: Date.now(), launch })}
+        onLoadReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
       />
     );
   }
 
-  return <MatchHost key={active.id} launch={active.launch} onExit={() => setActive(null)} />;
+  if (view.kind === 'replay') {
+    return <ReplayScreen key={view.id} replay={view.replay} onExit={() => setView({ kind: 'setup' })} />;
+  }
+
+  return (
+    <MatchHost
+      key={view.id}
+      launch={view.launch}
+      onExit={() => setView({ kind: 'setup' })}
+      onWatchReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
+    />
+  );
 }
 
 /**
@@ -33,7 +47,15 @@ export function App(): JSX.Element {
  * first, showing a lobby state until the socket is up (the in-game HUD then
  * shows "waiting for opponent" until the second player arrives).
  */
-function MatchHost({ launch, onExit }: { launch: Launch; onExit: () => void }): JSX.Element {
+function MatchHost({
+  launch,
+  onExit,
+  onWatchReplay,
+}: {
+  launch: Launch;
+  onExit: () => void;
+  onWatchReplay: (replay: Replay) => void;
+}): JSX.Element {
   const [client, setClient] = useState<MatchClient | null>(null);
   const [error, setError] = useState<string | null>(null);
   const clientRef = useRef<MatchClient | null>(null);
@@ -82,7 +104,7 @@ function MatchHost({ launch, onExit }: { launch: Launch; onExit: () => void }): 
       </Lobby>
     );
   }
-  return <GameScreen client={client} onExit={onExit} />;
+  return <GameScreen client={client} onExit={onExit} onWatchReplay={onWatchReplay} />;
 }
 
 function Lobby({ children, onExit }: { children: React.ReactNode; onExit: () => void }): JSX.Element {

@@ -1,8 +1,9 @@
-import { makeSquareGrid } from './board.js';
+import { makeSquareGrid, vecKey } from './board.js';
 import { computeCombatResult } from './combat.js';
+import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
-import { isOccupied, livingCount, playerHasAvailable, unitAvailable, unitById } from './query.js';
-import type { Command, GameEvent, GameState, Owner, ReduceResult, Unit } from './types.js';
+import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
+import type { CombatResult, Command, GameEvent, GameState, Owner, ReduceResult, Unit } from './types.js';
 
 /** Turnover happens at 2 or more failed activation dice. */
 export const TURNOVER_FAILURES = 2;
@@ -24,6 +25,12 @@ export function reduce(state: GameState, command: Command): ReduceResult {
       break;
     case 'Attack':
       handleAttack(s, events, command.attackerId, command.targetId);
+      break;
+    case 'Shoot':
+      handleShoot(s, events, command.attackerId, command.targetId);
+      break;
+    case 'Guard':
+      handleGuard(s, events, command.unitId);
       break;
     case 'EndActivation':
       handleEndActivation(s, events);
@@ -59,6 +66,8 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   if (diceCount < 1 || diceCount > 3) throw new Error(`diceCount must be 1..3, got ${diceCount}`);
 
   unit.activatedThisRound = true;
+  // Activating drops any Guard stance held from a previous round.
+  unit.guarding = false;
   events.push({ type: 'ActivationChosen', player: s.active, unitId, diceCount });
 
   const { dice, state: rngState } = rollDice(s.rngState, diceCount);
@@ -138,6 +147,18 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   const board = makeSquareGrid(s.board);
   if (board.distance(attacker.pos, target.pos) !== 1) throw new Error('target not adjacent');
 
+  // Guard reaction: a guarding defender strikes first. If the riposte kills or
+  // knocks the attacker down, the incoming attack is prevented entirely.
+  if (target.guarding && target.traits.guard) {
+    const prevented = resolveRiposte(s, events, target, attacker);
+    if (prevented) {
+      s.actionsRemaining -= 1; // the attack action is spent even though it was repelled
+      if (checkGameOver(s, events)) return;
+      endActivation(s, events);
+      return;
+    }
+  }
+
   const atk = rollD6(s.rngState);
   const def = rollD6(atk.state);
   s.rngState = def.state;
@@ -159,14 +180,14 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   let attackerEnded = false;
   switch (result) {
     case 'defenderKilled':
-      kill(target, attacker.id, events);
+      strike(s, target, attacker.id, events);
       break;
     case 'defenderKnockedDown':
       target.knockedDown = true;
       events.push({ type: 'UnitKnockedDown', unitId: target.id });
       break;
     case 'attackerKilled':
-      kill(attacker, target.id, events);
+      strike(s, attacker, target.id, events);
       attackerEnded = true;
       break;
     case 'attackerKnockedDown':
@@ -182,6 +203,140 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
 
   if (checkGameOver(s, events)) return;
   if (attackerEnded || s.actionsRemaining <= 0) endActivation(s, events);
+}
+
+// --- Shoot ----------------------------------------------------------------
+
+function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targetId: string): void {
+  requirePhase(s, 'acting');
+  const attacker = activeUnit(s);
+  if (attacker.id !== attackerId) throw new Error(`unit '${attackerId}' is not the activating unit`);
+  if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
+  if (attacker.traits.ranged < 1) throw new Error('unit has no ranged attack');
+  if (inMelee(s, attacker)) throw new Error('cannot shoot while in melee');
+
+  const target = unitById(s, targetId);
+  if (!target) throw new Error(`unknown target '${targetId}'`);
+  if (target.dead) throw new Error('target already dead');
+  if (target.owner === attacker.owner) throw new Error('cannot shoot a friendly unit');
+
+  const board = makeSquareGrid(s.board);
+  const d = board.distance(attacker.pos, target.pos);
+  if (d < 2) throw new Error('target too close to shoot');
+  if (d > attacker.traits.ranged) throw new Error('target beyond ranged range');
+  const occ = occupiedKeys(s);
+  if (!board.lineOfSight(attacker.pos, target.pos, (v) => occ.has(vecKey(v))))
+    throw new Error('no line of sight to target');
+
+  const atk = rollD6(s.rngState);
+  const def = rollD6(atk.state);
+  s.rngState = def.state;
+  const attackScore = attacker.combat + atk.die;
+  const defenseScore = target.combat + def.die;
+
+  // A shot only ever harms the target — the shooter takes no return damage.
+  let result: CombatResult = 'clash';
+  if (attackScore >= defenseScore * 2) result = 'defenderKilled';
+  else if (attackScore > defenseScore) result = target.knockedDown ? 'defenderKilled' : 'defenderKnockedDown';
+
+  events.push({
+    type: 'ShotResolved',
+    attackerId,
+    targetId,
+    attackDie: atk.die,
+    defenseDie: def.die,
+    attackScore,
+    defenseScore,
+    result,
+  });
+
+  if (result === 'defenderKilled') strike(s, target, attacker.id, events);
+  else if (result === 'defenderKnockedDown') {
+    target.knockedDown = true;
+    events.push({ type: 'UnitKnockedDown', unitId: target.id });
+  }
+
+  s.actionsRemaining -= 1;
+  if (checkGameOver(s, events)) return;
+  if (s.actionsRemaining <= 0) endActivation(s, events);
+}
+
+// --- Guard ----------------------------------------------------------------
+
+function handleGuard(s: GameState, events: GameEvent[], unitId: string): void {
+  requirePhase(s, 'acting');
+  const unit = activeUnit(s);
+  if (unit.id !== unitId) throw new Error(`unit '${unitId}' is not the activating unit`);
+  if (!unit.traits.guard) throw new Error('unit cannot Guard');
+
+  unit.guarding = true;
+  events.push({ type: 'GuardDeclared', unitId });
+  endActivation(s, events);
+}
+
+/**
+ * A guarding unit's pre-emptive strike against an incoming melee attacker. The
+ * guard is treated as the aggressor; only defender-side (attacker-harming)
+ * outcomes matter — the guard never wounds itself parrying. Returns whether the
+ * attack is prevented (attacker killed or knocked down).
+ */
+function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker: Unit): boolean {
+  const gd = rollD6(s.rngState);
+  const ad = rollD6(gd.state);
+  s.rngState = ad.state;
+  const guardScore = guard.combat + gd.die;
+  const attackerScore = attacker.combat + ad.die;
+  const result = computeCombatResult(guardScore, attackerScore, attacker.knockedDown, guard.knockedDown);
+  const prevented = result === 'defenderKilled' || result === 'defenderKnockedDown';
+
+  events.push({
+    type: 'GuardRiposte',
+    guardId: guard.id,
+    attackerId: attacker.id,
+    guardDie: gd.die,
+    attackerDie: ad.die,
+    guardScore,
+    attackerScore,
+    result,
+    prevented,
+  });
+
+  if (result === 'defenderKilled') {
+    strike(s, attacker, guard.id, events);
+  } else if (result === 'defenderKnockedDown' && !attacker.knockedDown) {
+    attacker.knockedDown = true;
+    events.push({ type: 'UnitKnockedDown', unitId: attacker.id });
+  }
+  return prevented;
+}
+
+/**
+ * A killing blow from combat: apply it (honouring Tough), and if the unit
+ * actually dies, resolve the morale fallout — nearby friends test nerve, and the
+ * warband may rout. Tough saves that downgrade the blow to a knockdown are not a
+ * death, so they raise no morale check.
+ */
+function strike(s: GameState, unit: Unit, byId: string | null, events: GameEvent[]): boolean {
+  const died = resolveKill(unit, byId, events);
+  if (died) resolveCombatMorale(s, events, unit);
+  return died;
+}
+
+/**
+ * Apply a killing blow, honouring Tough: a tough unit that is not already
+ * knocked down is knocked down instead (its one free save). Returns whether the
+ * unit actually died. Morale-free — callers that represent a *combat* death use
+ * {@link strike}.
+ */
+function resolveKill(unit: Unit, byId: string | null, events: GameEvent[]): boolean {
+  if (unit.traits.tough && !unit.knockedDown) {
+    unit.knockedDown = true;
+    events.push({ type: 'ToughnessSaved', unitId: unit.id });
+    events.push({ type: 'UnitKnockedDown', unitId: unit.id });
+    return false;
+  }
+  kill(unit, byId, events);
+  return true;
 }
 
 function kill(unit: Unit, byId: string | null, events: GameEvent[]): void {

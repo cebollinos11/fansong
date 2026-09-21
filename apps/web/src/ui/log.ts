@@ -26,6 +26,20 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `  ${name(state, e.unitId)} moves to (${e.to.x}, ${e.to.y})`;
     case 'AttackResolved':
       return `  ${name(state, e.attackerId)} (${e.attackScore}) attacks ${name(state, e.targetId)} (${e.defenseScore}) → ${e.result}`;
+    case 'ShotResolved':
+      return `  ${name(state, e.attackerId)} (${e.attackScore}) shoots ${name(state, e.targetId)} (${e.defenseScore}) → ${e.result}`;
+    case 'GuardDeclared':
+      return `  ${name(state, e.unitId)} raises guard`;
+    case 'GuardRiposte':
+      return `  ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)} → ${e.result}${e.prevented ? ' (attack stopped)' : ''}`;
+    case 'ToughnessSaved':
+      return `  ${name(state, e.unitId)} shrugs off the blow (Tough)`;
+    case 'NerveCheck':
+      return null; // implied by the knockdown/rout it produces; keep the log terse
+    case 'WarbandBroken':
+      return `  Player ${e.player}'s warband breaks!`;
+    case 'UnitRouted':
+      return `  ${name(state, e.unitId)} routs and flees`;
     case 'UnitKnockedDown':
       return `  ${name(state, e.unitId)} is knocked down`;
     case 'UnitKilled':

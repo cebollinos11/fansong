@@ -3,6 +3,32 @@ import type { BoardData, Vec } from './board.js';
 /** Two players: 0 and 1. */
 export type Owner = 0 | 1;
 
+/**
+ * Optional special abilities a unit may carry. Kept as an always-present record
+ * (defaults meaning "none") so the wire schema and cost model can treat every
+ * unit uniformly. Each is priced in `packages/content` and understood by the AI.
+ */
+export interface UnitTraits {
+  /**
+   * Maximum range of a ranged (Shoot) attack, in cells. `0` = melee only. A
+   * ranged unit can shoot a non-adjacent enemy within range and line of sight,
+   * and takes no return damage — but cannot shoot while itself in melee.
+   */
+  ranged: number;
+  /**
+   * Tough: the first would-be kill against this unit is downgraded to a
+   * knockdown. A unit that is *already* knocked down dies normally.
+   */
+  tough: boolean;
+  /**
+   * Guard: this unit may take a Guard action to enter a defensive stance. While
+   * guarding, the first melee attacker it faces is met with a pre-emptive strike
+   * (a "riposte"); if the riposte kills or knocks the attacker down, the attack
+   * is prevented. The stance clears when the unit next activates.
+   */
+  guard: boolean;
+}
+
 export interface Unit {
   id: string;
   owner: Owner;
@@ -21,6 +47,10 @@ export interface Unit {
   knockedDown: boolean;
   /** True once the unit has activated this round (success or turnover). */
   activatedThisRound: boolean;
+  /** Special abilities (see {@link UnitTraits}). */
+  traits: UnitTraits;
+  /** Dynamic: in a Guard stance (set by a Guard action, cleared on next activation). */
+  guarding: boolean;
 }
 
 export type Phase = 'awaitingActivation' | 'acting' | 'gameOver';
@@ -35,6 +65,10 @@ export interface GameState {
   active: Owner;
   /** Benched[p] = player p turned over and is done for the round. */
   benched: [boolean, boolean];
+  /** Broken[p] = player p's warband has failed its rout check (a one-time collapse). */
+  broken: [boolean, boolean];
+  /** Living unit count each player started with, for the rout threshold. */
+  startCount: [number, number];
   phase: Phase;
   /** Unit currently mid-activation (during 'acting'). */
   activeUnitId: string | null;
@@ -67,11 +101,28 @@ export interface AttackCommand {
   targetId: string;
 }
 
+export interface ShootCommand {
+  type: 'Shoot';
+  attackerId: string;
+  targetId: string;
+}
+
+export interface GuardCommand {
+  type: 'Guard';
+  unitId: string;
+}
+
 export interface EndActivation {
   type: 'EndActivation';
 }
 
-export type Command = ChooseActivation | MoveCommand | AttackCommand | EndActivation;
+export type Command =
+  | ChooseActivation
+  | MoveCommand
+  | AttackCommand
+  | ShootCommand
+  | GuardCommand
+  | EndActivation;
 
 // --- Events ---------------------------------------------------------------
 
@@ -98,6 +149,34 @@ export type GameEvent =
       defenseScore: number;
       result: CombatResult;
     }
+  | {
+      type: 'ShotResolved';
+      attackerId: string;
+      targetId: string;
+      attackDie: number;
+      defenseDie: number;
+      attackScore: number;
+      defenseScore: number;
+      /** Only ever a defender-side outcome (a shooter takes no return damage). */
+      result: CombatResult;
+    }
+  | { type: 'GuardDeclared'; unitId: string }
+  | {
+      type: 'GuardRiposte';
+      guardId: string;
+      attackerId: string;
+      guardDie: number;
+      attackerDie: number;
+      guardScore: number;
+      attackerScore: number;
+      result: CombatResult;
+      /** True if the riposte stopped the incoming attack (attacker killed/knocked down). */
+      prevented: boolean;
+    }
+  | { type: 'ToughnessSaved'; unitId: string }
+  | { type: 'NerveCheck'; unitId: string; quality: number; die: number; passed: boolean }
+  | { type: 'WarbandBroken'; player: Owner }
+  | { type: 'UnitRouted'; unitId: string }
   | { type: 'UnitKnockedDown'; unitId: string }
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }

@@ -6,9 +6,11 @@ import type { Warband } from './warband.js';
  * {@link DEFAULT_RULES} (<= 200 pts); the preset test asserts that invariant.
  *
  * Design intent (so the AI-vs-AI matchups stay interesting):
- *  - iron-wardens : slow, tough, disciplined — wins by grinding.
- *  - ashfang-raiders : fast and fragile — wins by reaching you first.
- *  - free-company : a balanced generalist baseline.
+ *  - iron-wardens : slow, tough, disciplined — wins by grinding; a Tough bulwark.
+ *  - ashfang-raiders : fast and fragile — wins by reaching you first (melee only).
+ *  - free-company : a balanced generalist baseline with a ranged skirmisher.
+ *  - hollow-watch : a defensive garrison showcasing all three M5 traits
+ *    (Ranged bows, a Tough shield-warden, and a Guard captain).
  */
 export const PRESETS: Record<string, Warband> = {
   'iron-wardens': {
@@ -16,7 +18,7 @@ export const PRESETS: Record<string, Warband> = {
     units: [
       { name: 'Warden-Captain', quality: 2, combat: 4, move: 3 },
       { name: 'Ironguard', quality: 3, combat: 4, move: 3 },
-      { name: 'Bulwark', quality: 3, combat: 3, move: 3 },
+      { name: 'Bulwark', quality: 3, combat: 3, move: 3, tough: true },
       { name: 'Sentinel', quality: 3, combat: 3, move: 3 },
       { name: 'Halberdier', quality: 4, combat: 3, move: 3 },
       { name: 'Levy', quality: 4, combat: 2, move: 3 },
@@ -39,9 +41,19 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Sergeant', quality: 3, combat: 4, move: 3 },
       { name: 'Swordsman', quality: 3, combat: 3, move: 3 },
       { name: 'Pikeman', quality: 3, combat: 3, move: 3 },
-      { name: 'Footpad', quality: 3, combat: 2, move: 4 },
+      { name: 'Slinger', quality: 3, combat: 2, move: 4, ranged: 3 },
       { name: 'Halberd-Recruit', quality: 4, combat: 3, move: 3 },
       { name: 'Recruit', quality: 4, combat: 2, move: 3 },
+    ],
+  },
+  'hollow-watch': {
+    name: 'Hollow Watch',
+    units: [
+      { name: 'Watch-Captain', quality: 2, combat: 4, move: 3, guard: true },
+      { name: 'Shield-Warden', quality: 3, combat: 3, move: 3, tough: true },
+      { name: 'Longbow', quality: 3, combat: 2, move: 3, ranged: 4 },
+      { name: 'Crossbow', quality: 4, combat: 2, move: 3, ranged: 3 },
+      { name: 'Sentry', quality: 4, combat: 3, move: 3 },
     ],
   },
 };

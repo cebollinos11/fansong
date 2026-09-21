@@ -4,6 +4,8 @@ export * from './combat.js';
 export * from './types.js';
 export * from './query.js';
 export * from './legal.js';
+export * from './morale.js';
 export * from './reduce.js';
 export * from './apply.js';
 export * from './setup.js';
+export * from './replay.js';

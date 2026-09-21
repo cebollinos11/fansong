@@ -23,6 +23,15 @@ const BLOCKED_COLOR = 0x4a4038;
 const MOVE_COLOR = 0x3ddc84;
 const ATTACK_COLOR = 0xff5252;
 const SELECT_COLOR = 0xffd54a;
+const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
+const SHOT_COLOR = 0x9fd0ff; // ranged tracer
+const RIPOSTE_COLOR = 0xffd54a; // guard riposte tracer
+
+interface Tracer {
+  line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+  life: number;
+  max: number;
+}
 
 interface UnitObj {
   group: THREE.Group;
@@ -55,6 +64,7 @@ export class BoardView {
   private readonly resizeObserver: ResizeObserver;
 
   private readonly units = new Map<string, UnitObj>();
+  private readonly tracers: Tracer[] = [];
   private readonly highlightGroup = new THREE.Group();
   private width = 0;
   private height = 0;
@@ -134,14 +144,18 @@ export class BoardView {
       const isSelected = vm.selectedUnitId === u.id;
       const isSelectable = vm.selectableUnitIds.includes(u.id);
       const isAttackTarget = vm.attackTargetIds.includes(u.id);
-      obj.ring.visible = isActive || isSelected || isSelectable || isAttackTarget;
+      const isGuarding = u.guarding && !u.dead;
+      obj.ring.visible = isActive || isSelected || isSelectable || isAttackTarget || isGuarding;
       const ringColor = isAttackTarget
         ? ATTACK_COLOR
         : isActive || isSelected
           ? SELECT_COLOR
-          : 0x8fa3bf;
+          : isGuarding
+            ? GUARD_COLOR
+            : 0x8fa3bf;
       obj.ring.material.color.setHex(ringColor);
-      obj.ring.material.opacity = isActive || isSelected || isAttackTarget ? 0.95 : 0.4;
+      obj.ring.material.opacity =
+        isActive || isSelected || isAttackTarget ? 0.95 : isGuarding ? 0.7 : 0.4;
     }
     // Remove meshes for units no longer present (shouldn't happen, but be safe).
     for (const [id, obj] of this.units) {
@@ -161,7 +175,17 @@ export class BoardView {
       if (e.type === 'AttackResolved') {
         this.flashUnit(e.attackerId, 0.6);
         this.flashUnit(e.targetId, 1);
-      } else if (e.type === 'UnitKilled') {
+      } else if (e.type === 'ShotResolved') {
+        this.addTracer(e.attackerId, e.targetId, SHOT_COLOR);
+        this.flashUnit(e.targetId, 1);
+      } else if (e.type === 'GuardRiposte') {
+        // The guard strikes back along the line of the incoming attack.
+        this.addTracer(e.guardId, e.attackerId, RIPOSTE_COLOR);
+        this.flashUnit(e.guardId, 0.9);
+        this.flashUnit(e.attackerId, e.prevented ? 1 : 0.5);
+      } else if (e.type === 'ToughnessSaved') {
+        this.flashUnit(e.unitId, 0.7);
+      } else if (e.type === 'UnitKilled' || e.type === 'UnitRouted') {
         this.flashUnit(e.unitId, 1);
       } else if (e.type === 'UnitKnockedDown') {
         this.flashUnit(e.unitId, 0.8);
@@ -237,6 +261,20 @@ export class BoardView {
     if (obj) obj.flash = Math.max(obj.flash, amount);
   }
 
+  /** Draw a short-lived bolt between two units (a shot or a riposte). */
+  private addTracer(fromId: string, toId: string, color: number): void {
+    const from = this.units.get(fromId);
+    const to = this.units.get(toId);
+    if (!from || !to) return;
+    const a = from.group.position.clone().setY(0.7);
+    const b = to.group.position.clone().setY(0.7);
+    const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1 });
+    const line = new THREE.Line(geo, mat);
+    this.scene.add(line);
+    this.tracers.push({ line, life: 0.4, max: 0.4 });
+  }
+
   private render = (): void => {
     if (this.disposed) return;
     const dt = Math.min(this.clock.getDelta(), 0.05);
@@ -255,6 +293,20 @@ export class BoardView {
         obj.flash = Math.max(0, obj.flash - dt * 3);
         obj.body.material.emissive.setHex(0xffffff);
         obj.body.material.emissiveIntensity = obj.flash;
+      }
+    }
+
+    // Fade and retire tracers.
+    for (let i = this.tracers.length - 1; i >= 0; i--) {
+      const t = this.tracers[i]!;
+      t.life -= dt;
+      if (t.life <= 0) {
+        this.scene.remove(t.line);
+        t.line.geometry.dispose();
+        t.line.material.dispose();
+        this.tracers.splice(i, 1);
+      } else {
+        t.line.material.opacity = t.life / t.max;
       }
     }
 

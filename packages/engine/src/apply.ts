@@ -17,6 +17,10 @@ export function commandsEqual(a: Command, b: Command): boolean {
       return b.type === 'Move' && a.unitId === b.unitId && a.to.x === b.to.x && a.to.y === b.to.y;
     case 'Attack':
       return b.type === 'Attack' && a.attackerId === b.attackerId && a.targetId === b.targetId;
+    case 'Shoot':
+      return b.type === 'Shoot' && a.attackerId === b.attackerId && a.targetId === b.targetId;
+    case 'Guard':
+      return b.type === 'Guard' && a.unitId === b.unitId;
     case 'EndActivation':
       return b.type === 'EndActivation';
   }

@@ -8,6 +8,12 @@ export interface UnitSpec {
   combat: number;
   move?: number;
   pos: Vec;
+  /** Ranged attack range in cells (0/omitted = melee only). */
+  ranged?: number;
+  /** First would-be kill is downgraded to a knockdown. */
+  tough?: boolean;
+  /** May take a Guard action to riposte the first melee attacker. */
+  guard?: boolean;
 }
 
 export interface GameConfig {
@@ -31,6 +37,12 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
     dead: false,
     knockedDown: false,
     activatedThisRound: false,
+    traits: {
+      ranged: spec.ranged ?? 0,
+      tough: spec.tough ?? false,
+      guard: spec.guard ?? false,
+    },
+    guarding: false,
   };
 }
 
@@ -47,6 +59,10 @@ export function createGame(config: GameConfig): GameState {
   ];
 
   const leader = config.initiativeLeader ?? 0;
+  const startCount: [number, number] = [
+    units.filter((u) => u.owner === 0).length,
+    units.filter((u) => u.owner === 1).length,
+  ];
 
   return {
     board,
@@ -55,6 +71,8 @@ export function createGame(config: GameConfig): GameState {
     initiativeLeader: leader,
     active: leader,
     benched: [false, false],
+    broken: [false, false],
+    startCount,
     phase: 'awaitingActivation',
     activeUnitId: null,
     actionsRemaining: 0,

@@ -389,3 +389,58 @@ button.secondary {
   white-space: pre-wrap;
   color: var(--muted);
 }
+
+/* --- Replay viewer + game-over actions (M5) --- */
+.replay-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.replay-controls button {
+  flex: 1;
+  padding: 8px 0;
+  font-size: 15px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+.replay-controls button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.replay-scrub {
+  width: 100%;
+}
+
+.replay-load {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.gameover-actions {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+.gameover-actions span {
+  font-weight: 600;
+}
+
+.muted {
+  color: var(--muted);
+}

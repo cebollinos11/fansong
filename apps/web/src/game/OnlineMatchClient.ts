@@ -134,6 +134,12 @@ export class OnlineMatchClient implements MatchClient {
     return this.currentStatus;
   }
 
+  getReplay(): null {
+    // Online play is server-authoritative and driven by deltas; the client never
+    // holds the authoritative command list, so it doesn't produce replays.
+    return null;
+  }
+
   dispose(): void {
     this.disposed = true;
     this.ws?.close();

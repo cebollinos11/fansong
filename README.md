@@ -3,15 +3,18 @@
 A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: M0–M4 complete.** A full AI-vs-AI game is playable in the terminal —
-with original **preset warbands** and a **point-buy** cost model — there is a
+**Status: M0–M5 complete.** A full AI-vs-AI game is playable in the terminal —
+with original **preset warbands**, a **point-buy** cost model, **special-ability
+traits** (ranged, tough, guard) and **morale** (fear + rout) — there is a
 **3D web UI** (`apps/web`: Vite + React + three.js) for local hotseat and vs-AI
-play, and there is now **online multiplayer**: a Cloudflare Worker + Durable
-Objects backend (`apps/worker`) with matchmaking and WebSocket sync, spoken
-through a zod wire protocol (`packages/protocol`). Vitest covers the rules, the
-costing, full preset matchups, the UI's engine bridge, the wire schemas, and the
-server room (including full games played through the network seam). The engine
-remains a pure, deterministic state machine; every client is a thin view over it.
+play with a **replay viewer**, and there is **online multiplayer**: a Cloudflare
+Worker + Durable Objects backend (`apps/worker`) with matchmaking and WebSocket
+sync, spoken through a zod wire protocol (`packages/protocol`). Vitest covers the
+rules (including the new traits, morale, and replay determinism), the costing,
+full preset matchups, the UI's engine bridge and replay recording, the wire
+schemas, and the server room (including full games played through the network
+seam). The engine remains a pure, deterministic state machine; every client is a
+thin view over it.
 
 ## Layout
 
@@ -32,7 +35,8 @@ apps/
 
 ```bash
 pnpm install
-pnpm test                 # 106 tests: rng, board, combat, turnover, rounds,
+pnpm test                 # 151 tests: rng, board, combat, turnover, rounds,
+                          #            abilities, morale, replay/golden,
                           #            costing, validation, deploy, self-play,
                           #            wire schemas, matchmaking, server rooms
 pnpm play                 # watch two demo AIs fight (seed 42)
@@ -73,8 +77,9 @@ seed replays identically).
   is an honest measure of value with no unimplemented "paper" traits.
 - **Validation** (`validateWarband`) — checks stat ranges, roster size, and a
   point budget (default 200), reporting every problem at once for a builder UI.
-- **Presets** — three original warbands (`iron-wardens`, `ashfang-raiders`,
-  `free-company`), each proven legal by the test suite.
+- **Presets** — four original warbands (`iron-wardens`, `ashfang-raiders`,
+  `free-company`, `hollow-watch`), each proven legal by the test suite. The cost
+  model prices the M5 traits too (ranged reach, plus flat Tough/Guard surcharges).
 - **Deploy** (`buildMatch`) — lays two warbands out facing off and emits an
   engine `GameConfig`; the CLI and any future UI share it.
 
@@ -140,3 +145,37 @@ local `wrangler dev` address). In the setup screen, pick **Online vs a human** t
 host a room; the next player to queue drops into it. The `apps/web` client plays
 local *or* online through one `MatchClient` interface — the board, HUD, and
 interaction code never know which they're driving.
+
+## Polish: abilities, morale, replays (M5)
+
+Everything M5 adds lives inside the same `reduce(state, command)` seam, so it is
+seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
+
+- **Special abilities** — three original traits, each behind the command /
+  legal-move seams and priced in `packages/content`:
+  - **Ranged** (`Shoot`) — fire on a non-adjacent enemy within range and line of
+    sight, with no return damage; you can't shoot while locked in melee.
+  - **Tough** — the first would-be kill is downgraded to a knockdown.
+  - **Guard** (reaction) — a `Guard` action assumes a stance; a guarding unit
+    strikes the first melee attacker *first*, and a good riposte prevents the
+    attack outright (resolved synchronously — no turn interrupts).
+
+  The AI (`chooseCommand`) uses them: shooters seek a standoff and fire, and the
+  `hollow-watch` preset fields all three.
+
+- **Morale depth** — beyond the activation turnover:
+  - **Fear** — when a unit is killed in combat, living friends within two cells
+    take a nerve check (d6 ≥ Quality) or are knocked down.
+  - **Rout** — the first time a warband is ground to a third of its starting
+    strength it *breaks*: every survivor tests nerve, and each that fails flees
+    the field. It happens once per side and only ever removes units.
+
+- **Replays** — a `Replay` is just `GameConfig + command list`. `runReplay`
+  reproduces the whole game from it; `hashGameState` + a committed golden fixture
+  (`pnpm --filter @fansong/cli gen:golden` to re-bless) catch accidental rule
+  drift. In `apps/web`, a finished local game can be **watched back** (play /
+  step / scrub) and **exported/imported as JSON**, reusing the event-driven board
+  — with new FX for shots, ripostes, toughness saves, guard stances, and routs.
+
+The engine is still the whole game: remove three.js, React, and the worker and a
+seed + command list replays byte-for-byte in the terminal.

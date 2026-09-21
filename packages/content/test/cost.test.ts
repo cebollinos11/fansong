@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BASELINE_MOVE, STAT_BOUNDS, statErrors, unitCost, type Profile } from '../src/cost.js';
+import { BASELINE_MOVE, COST_WEIGHTS, STAT_BOUNDS, statErrors, unitCost, type Profile } from '../src/cost.js';
 
 const baseline: Profile = { quality: 3, combat: 3, move: BASELINE_MOVE };
 
@@ -33,6 +33,19 @@ describe('unitCost', () => {
     const worst: Profile = { quality: STAT_BOUNDS.quality[1], combat: STAT_BOUNDS.combat[0], move: 1 };
     expect(unitCost(worst)).toBeGreaterThanOrEqual(1);
   });
+
+  it('charges per cell of ranged reach', () => {
+    expect(unitCost({ ...baseline, ranged: 4 }) - unitCost(baseline)).toBe(4 * COST_WEIGHTS.perRanged);
+    expect(unitCost({ ...baseline, ranged: 0 })).toBe(unitCost(baseline));
+  });
+
+  it('charges a flat surcharge for Tough and Guard', () => {
+    expect(unitCost({ ...baseline, tough: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.tough);
+    expect(unitCost({ ...baseline, guard: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.guard);
+    expect(unitCost({ ...baseline, tough: true, guard: true }) - unitCost(baseline)).toBe(
+      COST_WEIGHTS.tough + COST_WEIGHTS.guard,
+    );
+  });
 });
 
 describe('statErrors', () => {
@@ -46,5 +59,11 @@ describe('statErrors', () => {
     expect(statErrors({ quality: 3, combat: 3, move: 0 })).toHaveLength(1);
     expect(statErrors({ quality: 3.5, combat: 3, move: 3 })).toHaveLength(1);
     expect(statErrors({ quality: 0, combat: 0, move: 0 })).toHaveLength(3);
+  });
+
+  it('rejects a ranged value out of range but accepts an omitted one', () => {
+    expect(statErrors({ ...baseline, ranged: 9 })).toHaveLength(1);
+    expect(statErrors({ ...baseline, ranged: 4 })).toEqual([]);
+    expect(statErrors(baseline)).toEqual([]); // ranged omitted == 0
   });
 });

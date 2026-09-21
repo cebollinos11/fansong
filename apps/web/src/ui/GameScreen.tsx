@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { GameEvent, GameState, Vec } from '@fansong/engine';
+import type { GameEvent, GameState, Replay, Vec } from '@fansong/engine';
 import type { ClientStatus, MatchClient } from '../game/client.js';
 import { deriveInteraction } from '../game/interaction.js';
+import { downloadReplay } from '../game/replay-io.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { Hud } from './Hud.js';
 import { appendEvents, type LogEntry } from './log.js';
@@ -9,9 +10,10 @@ import { appendEvents, type LogEntry } from './log.js';
 interface Props {
   client: MatchClient;
   onExit: () => void;
+  onWatchReplay: (replay: Replay) => void;
 }
 
-export function GameScreen({ client, onExit }: Props): JSX.Element {
+export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Element {
   const [state, setState] = useState<GameState>(client.getState());
   const [events, setEvents] = useState<GameEvent[]>([]);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -39,6 +41,9 @@ export function GameScreen({ client, onExit }: Props): JSX.Element {
   const myTurn =
     ready && state.phase !== 'gameOver' && client.controlledSeats.includes(state.active);
   const interaction = useMemo(() => deriveInteraction(client.legalCommands()), [state, client]);
+
+  // A finished local match can be replayed or exported (online play records no replay).
+  const replay = state.phase === 'gameOver' ? client.getReplay() : null;
 
   const handleUnitClick = (id: string): void => {
     if (!myTurn) return;
@@ -97,6 +102,17 @@ export function GameScreen({ client, onExit }: Props): JSX.Element {
         onEndActivation={handleEndActivation}
         onExit={onExit}
       />
+      {replay ? (
+        <div className="gameover-actions">
+          <span>Game over.</span>
+          <button className="primary" onClick={() => onWatchReplay(replay)}>
+            Watch replay
+          </button>
+          <button className="ghost" onClick={() => downloadReplay(replay)}>
+            Download replay
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
