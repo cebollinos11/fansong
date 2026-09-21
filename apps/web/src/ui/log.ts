@@ -11,6 +11,11 @@ function name(state: GameState, id: string): string {
   return unitById(state, id)?.name ?? id;
 }
 
+/** A combat score, noting any high-ground bonus already included in it. */
+function score(total: number, bonus: number | undefined): string {
+  return bonus ? `${total}, +${bonus} high ground` : `${total}`;
+}
+
 /** Render one engine event as a short human-readable line. Presentation only. */
 export function formatEvent(state: GameState, e: GameEvent): string | null {
   switch (e.type) {
@@ -25,13 +30,13 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves to (${e.to.x}, ${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} (${e.attackScore}) attacks ${name(state, e.targetId)} (${e.defenseScore}) → ${e.result}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus)}) attacks ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus)}) → ${e.result}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} (${e.attackScore}) shoots ${name(state, e.targetId)} (${e.defenseScore}) → ${e.result}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus)}) shoots ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus)}) → ${e.result}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
     case 'GuardRiposte':
-      return `  ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)} → ${e.result}${e.prevented ? ' (attack stopped)' : ''}`;
+      return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus)}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus)}) → ${e.result}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `  ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'NerveCheck':

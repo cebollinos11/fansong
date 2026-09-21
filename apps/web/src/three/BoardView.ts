@@ -137,6 +137,8 @@ interface UnitObj {
 export class BoardView {
   onUnitClick: ((id: string) => void) | null = null;
   onCellClick: ((cell: Vec) => void) | null = null;
+  /** Fires when the hex under the pointer changes (null when it leaves the board). */
+  onCellHover: ((cell: Vec | null) => void) | null = null;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -168,6 +170,7 @@ export class BoardView {
   private height = 0;
   private disposed = false;
   private downPos: { x: number; y: number } | null = null;
+  private hoverKey: string | null = null;
   private clock = new THREE.Clock();
 
   constructor(private readonly container: HTMLElement) {
@@ -199,6 +202,8 @@ export class BoardView {
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
+    this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
+    this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
@@ -406,6 +411,8 @@ export class BoardView {
     this.resizeObserver.disconnect();
     this.renderer.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
+    this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
+    this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -787,33 +794,63 @@ export class BoardView {
     this.downPos = null;
     if (moved > 6) return; // treat as a drag, not a click
 
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.aimRay(ev);
 
     // Units first (their meshes carry userData.unitId), then a board cell.
-    const meshes: THREE.Object3D[] = [];
-    for (const obj of this.units.values()) if (obj.group.visible) meshes.push(obj.group);
-    const unitHits = this.raycaster.intersectObjects(meshes, true);
-    const unitId = unitHits.find((h) => this.isSolidHit(h))?.object.userData.unitId as string | undefined;
+    const unitId = this.pickUnit();
     if (unitId) {
       this.onUnitClick?.(unitId);
       return;
     }
 
+    const cell = this.pickCell();
+    if (cell) this.onCellClick?.(cell);
+  };
+
+  private handlePointerMove = (ev: PointerEvent): void => {
+    if (!this.onCellHover) return;
+    if (ev.buttons !== 0) return this.setHover(null); // orbiting/panning: hide the tooltip
+    this.aimRay(ev);
+    // A figure stands over its own hex; report that rather than the tile behind it.
+    const unitId = this.pickUnit();
+    const target = unitId ? this.units.get(unitId)?.targetPos : undefined;
+    const unitCell = target ? this.worldToCell(target) : null;
+    this.setHover(unitCell ?? this.pickCell());
+  };
+
+  private handlePointerLeave = (): void => this.setHover(null);
+
+  private setHover(cell: Vec | null): void {
+    const key = cell ? `${cell.x},${cell.y}` : null;
+    if (key === this.hoverKey) return;
+    this.hoverKey = key;
+    this.onCellHover?.(cell);
+  }
+
+  private aimRay(ev: PointerEvent): void {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+  }
+
+  /** The visible unit whose opaque figure is under the current ray. */
+  private pickUnit(): string | undefined {
+    const meshes: THREE.Object3D[] = [];
+    for (const obj of this.units.values()) if (obj.group.visible) meshes.push(obj.group);
+    const unitHits = this.raycaster.intersectObjects(meshes, true);
+    return unitHits.find((h) => this.isSolidHit(h))?.object.userData.unitId as string | undefined;
+  }
+
+  /** The board cell under the current ray: nearest tile/feature hit, else the ground plane. */
+  private pickCell(): Vec | null {
     // The nearest tile or feature hit resolves raised hexes by their top or side faces.
     const tileCell = this.raycaster.intersectObjects(this.tiles, false)[0]?.object.userData.cell as Vec | undefined;
-    if (tileCell) {
-      this.onCellClick?.(tileCell);
-      return;
-    }
+    if (tileCell) return tileCell;
     const point = new THREE.Vector3();
-    if (this.raycaster.ray.intersectPlane(this.groundPlane, point)) {
-      const cell = this.worldToCell(point);
-      if (cell) this.onCellClick?.(cell);
-    }
-  };
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, point)) return this.worldToCell(point);
+    return null;
+  }
 
   /** A cutout's quad is larger than its figure: only count clicks on opaque pixels. */
   private isSolidHit(hit: THREE.Intersection): boolean {

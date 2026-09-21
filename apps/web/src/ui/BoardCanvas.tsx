@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GameEvent, GameState, Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel } from '../three/BoardView.js';
+import { describeHex } from './hexInfo.js';
 
 interface Props {
   state: GameState;
@@ -19,6 +20,7 @@ interface Props {
 export function BoardCanvas(props: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
+  const [hover, setHover] = useState<Vec | null>(null);
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
   const handlers = useRef({ onUnitClick: props.onUnitClick, onCellClick: props.onCellClick });
   handlers.current = { onUnitClick: props.onUnitClick, onCellClick: props.onCellClick };
@@ -30,6 +32,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     const view = new BoardView(container);
     view.onUnitClick = (id) => handlers.current.onUnitClick(id);
     view.onCellClick = (cell) => handlers.current.onCellClick(cell);
+    view.onCellHover = setHover;
     view.buildBoard(props.state);
     viewRef.current = view;
     return () => {
@@ -64,9 +67,19 @@ export function BoardCanvas(props: Props): JSX.Element {
     if (props.events.length > 0) viewRef.current?.animateEvents(props.events);
   }, [props.events]);
 
+  const hexInfo = hover ? describeHex(props.state, hover) : null;
+
   return (
     <div className="board-wrap">
       <div ref={containerRef} className="board-canvas" />
+      {hexInfo ? (
+        <div className="hex-tooltip">
+          <strong>{hexInfo.title}</strong>
+          {hexInfo.lines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      ) : null}
       <button
         type="button"
         className="board-reset-view"

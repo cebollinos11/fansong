@@ -23,7 +23,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 ## Rendering
 - [x] 7. Web: hexes extruded by elevation with shaded side faces; units and picking sit on top.
 - [x] 8. Web: low-poly feature meshes — rock clusters, boxy buildings (connected where adjacent), cone trees.
-- [ ] 9. Web: hex hover tooltip/HUD shows elevation + feature; combat log mentions high ground.
+- [x] 9. Web: hex hover tooltip/HUD shows elevation + feature; combat log mentions high ground.
 
 ## Map format
 - [ ] 10. Content: `MapDef` type + zod schema (id, name, width, height, hexes, deployZones, objectives).

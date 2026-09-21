@@ -55,3 +55,12 @@
   meshes with shared unit geometries + flat-shaded materials cached by colour; feature meshes
   carry `userData.cell` and are raycast with the tiles, so clicking a tree/rock picks its hex.
   Verified visually (Playwright screenshot of a throwaway terrain replay).
+- Task 9: new pure `apps/web/src/ui/hexInfo.ts` (`describeHex(state, cell)` → title + lines:
+  elevation, legacy blocked, feature with its sight/movement rule, living unit on the hex) and
+  `apps/web/test/hexInfo.test.ts`. BoardView gained `onCellHover` (pointermove/leave, emits only
+  when the hex changes, hidden while a mouse button is held for orbit/pan); picking was factored
+  into `aimRay`/`pickUnit`/`pickCell`, and hovering a figure reports the unit's own hex rather
+  than the tile behind it. BoardCanvas shows the info as a fixed bottom-left HUD panel (not a
+  cursor-following tooltip), so both game and replay screens get it. Battle log now prints
+  high-ground bonuses as `(7, +1 high ground)`; riposte lines also show both scores now (they
+  had none before). Verified in the built app with Playwright (tile + unit hover).

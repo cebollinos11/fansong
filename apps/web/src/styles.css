@@ -218,6 +218,20 @@ button.ghost {
   color: var(--text);
 }
 
+.hex-tooltip {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: rgba(22, 27, 34, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
 .board-canvas {
   position: relative;
   width: 100%;
