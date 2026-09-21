@@ -64,3 +64,13 @@
   cursor-following tooltip), so both game and replay screens get it. Battle log now prints
   high-ground bonuses as `(7, +1 high ground)`; riposte lines also show both scores now (they
   had none before). Verified in the built app with Playwright (tile + unit hover).
+- Task 10: new `packages/content/src/map.ts` — `MapDef`/`MapHex`/`MapObjectives` types, strict zod
+  schemas (`mapDefSchema`, `mapHexSchema`, `mapObjectivesSchema`), `parseMap` (throws with issue
+  paths) and `mapHexAt`, plus schema↔type drift guards; content now depends on zod. Decisions:
+  `hexes` is a dense row-major array (`hexes[y*width+x]`, elevation required, feature omitted for
+  open ground) as the spec lists `{elevation, feature}[]`; `deployZones` is a `[p0, p1]` tuple of
+  hex lists; `objectives` = optional `flags` ([p0 base, p1 base]), `hill` (hex list) and
+  `conquest` (exactly 3 hex lists). Map `id` must be a lowercase-hyphen slug. The schema is purely
+  structural — size limits, hex count and bounds checks are left to `validateMap` (task 11).
+  Legacy `blocked` cells are not part of the map format (features cover it). No `GameMode` type
+  yet; it arrives with the mode model (tasks 11/26).
