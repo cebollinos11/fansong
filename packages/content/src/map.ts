@@ -1,5 +1,14 @@
 import { z } from 'zod';
-import { MAX_ELEVATION, TERRAIN_FEATURES, type TerrainFeature, type Vec } from '@fansong/engine';
+import {
+  MAX_ELEVATION,
+  TERRAIN_FEATURES,
+  normalizeTerrain,
+  vecKey,
+  type GameConfig,
+  type HexTerrain,
+  type TerrainFeature,
+  type Vec,
+} from '@fansong/engine';
 
 /**
  * Map format. A {@link MapDef} is the authored, JSON-serialisable description of
@@ -94,6 +103,44 @@ export function parseMap(json: unknown): MapDef {
 export function mapHexAt(map: MapDef, v: Vec): MapHex | undefined {
   if (v.x < 0 || v.y < 0 || v.x >= map.width || v.y >= map.height) return undefined;
   return map.hexes[v.y * map.width + v.x];
+}
+
+/**
+ * The engine board a map plays on: its size plus sparse terrain (only hexes with
+ * elevation or a feature). A flat, featureless map yields just `{ width, height }`
+ * — exactly the board a legacy config carries, so its game state is unchanged.
+ */
+export function mapToBoard(map: MapDef): GameConfig['board'] {
+  const raw: Record<string, HexTerrain> = {};
+  for (let y = 0; y < map.height; y++) {
+    for (let x = 0; x < map.width; x++) {
+      const hex = mapHexAt(map, { x, y });
+      if (hex) raw[vecKey({ x, y })] = { elevation: hex.elevation, feature: hex.feature };
+    }
+  }
+  const terrain = normalizeTerrain(raw);
+  return terrain ? { width: map.width, height: map.height, terrain } : { width: map.width, height: map.height };
+}
+
+/**
+ * A flat, featureless map with each player deploying in the two columns on
+ * their home edge (player 0 left, player 1 right) and no objectives. Built on
+ * the default board size this reproduces the legacy (pre-map) deployment.
+ */
+export function flatMap(width: number, height: number, id = 'open-field', name = 'Open Field'): MapDef {
+  const column = (x: number): Vec[] => Array.from({ length: height }, (_, y) => ({ x, y }));
+  return {
+    id,
+    name,
+    width,
+    height,
+    hexes: Array.from({ length: width * height }, () => ({ elevation: 0 })),
+    deployZones: [
+      [...column(0), ...column(1)],
+      [...column(width - 1), ...column(width - 2)],
+    ],
+    objectives: {},
+  };
 }
 
 type Expect<T extends true> = T;

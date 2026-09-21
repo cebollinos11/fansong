@@ -85,3 +85,14 @@
   passable + distinct (may sit in/out of deploy zones); hill/conquest zones non-empty, passable,
   not overlapping deploy zones, conquest zones mutually disjoint. Annihilation and kill-the-king
   need no objectives; an invalid map supports no modes.
+- Task 12: `mapToBoard(map)` + `flatMap(w, h, id?, name?)` in `map.ts`; `DEFAULT_MAP`
+  (= `flatMap(12, 10)`, id `open-field`, deploy zones = the two edge columns per side) and
+  `layOutInZone(units, owner, map)` in `deploy.ts`. `MatchOptions.board` is now optional
+  (defaults to `DEFAULT_BOARD`) and `MatchOptions.map` wins over it; `buildMatch` with a map runs
+  `validateMap` and throws on an invalid map. Zone deployment rule: zone hexes are grouped into
+  ranks by hex distance to the nearest enemy deploy hex, farthest rank fills first, overflow
+  spills forward; each rank is ordered across the enemy direction (by row when the zones face
+  left/right, by column when up/down) and models take a centred run — on `DEFAULT_MAP` this is
+  byte-identical to the legacy `layOutWarband` (tested for every preset pair incl. 12-unit
+  overflow). Callers (CLI, `configFromSetup`) still use the legacy board path; switching them to
+  maps is task 17.

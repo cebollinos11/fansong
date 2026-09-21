@@ -1,4 +1,6 @@
-import type { GameConfig, Owner, UnitSpec, Vec } from '@fansong/engine';
+import { makeHexGrid, type GameConfig, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { flatMap, mapToBoard, type MapDef } from './map.js';
+import { validateMap } from './mapValidate.js';
 import type { Warband, WarbandUnit } from './warband.js';
 
 export interface BoardSize {
@@ -8,13 +10,36 @@ export interface BoardSize {
 
 export interface MatchOptions {
   seed: number;
-  board: BoardSize;
+  /** Legacy flat board (edge-column deployment). Ignored when `map` is given. */
+  board?: BoardSize;
+  /** Battlefield to play on: its terrain, and deploy zones units are laid out in. */
+  map?: MapDef;
   /** Player who leads round 1 (default 0). */
   initiativeLeader?: Owner;
 }
 
 /** Default battlefield for a two-warband skirmish. */
 export const DEFAULT_BOARD: BoardSize = { width: 12, height: 10 };
+
+/**
+ * The default map: flat, featureless, {@link DEFAULT_BOARD}-sized, deploying in
+ * the two edge columns. Its match config equals the legacy `board` one exactly.
+ */
+export const DEFAULT_MAP: MapDef = flatMap(DEFAULT_BOARD.width, DEFAULT_BOARD.height);
+
+function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
+  return {
+    name: unit.name,
+    quality: unit.quality,
+    combat: unit.combat,
+    move: unit.move,
+    pos,
+    // Carry the special-ability traits through to the engine profile.
+    ranged: unit.ranged,
+    tough: unit.tough,
+    guard: unit.guard,
+  };
+}
 
 /**
  * Deterministic deployment: line a warband up in its home column(s). Player 0
@@ -35,33 +60,81 @@ export function layOutWarband(units: WarbandUnit[], owner: Owner, board: BoardSi
 
     const x = owner === 0 ? column : board.width - 1 - column;
     const y = top + rowIndex;
-    const pos: Vec = { x, y };
-
-    specs.push({
-      name: unit.name,
-      quality: unit.quality,
-      combat: unit.combat,
-      move: unit.move,
-      pos,
-      // Carry the special-ability traits through to the engine profile.
-      ranged: unit.ranged,
-      tough: unit.tough,
-      guard: unit.guard,
-    });
+    specs.push(toSpec(unit, { x, y }));
   });
 
   return specs;
 }
 
 /**
+ * Deterministic deployment into a map's deploy zone for `owner`. The zone is cut
+ * into ranks by hex distance to the nearest enemy deploy hex; the rank farthest
+ * from the enemy fills first, overflow spills into the next rank forward. Each
+ * rank runs across the enemy direction (by row when the enemy lies left/right,
+ * by column when above/below) and its models take a centred run of its hexes.
+ *
+ * On {@link DEFAULT_MAP} this is exactly {@link layOutWarband}'s placement.
+ * Throws if the zone has fewer hexes than the warband has models.
+ */
+export function layOutInZone(units: WarbandUnit[], owner: Owner, map: MapDef): UnitSpec[] {
+  const zone = map.deployZones[owner];
+  const enemy = map.deployZones[owner === 0 ? 1 : 0];
+  if (units.length > zone.length)
+    throw new Error(`deploy zone ${owner} of map "${map.id}" has ${zone.length} hexes for ${units.length} models`);
+
+  const grid = makeHexGrid({ width: map.width, height: map.height, blocked: [] });
+  const depth = (v: Vec) =>
+    enemy.length === 0 ? 0 : Math.min(...enemy.map((e) => grid.distance(v, e)));
+  const mean = (vs: Vec[], k: 'x' | 'y') => (vs.length === 0 ? 0 : vs.reduce((s, v) => s + v[k], 0) / vs.length);
+  // Ranks run perpendicular to the line between the two zones.
+  const sideways =
+    Math.abs(mean(enemy, 'x') - mean(zone, 'x')) >= Math.abs(mean(enemy, 'y') - mean(zone, 'y'));
+  const across = (a: Vec, b: Vec) => (sideways ? a.y - b.y || a.x - b.x : a.x - b.x || a.y - b.y);
+
+  const ranks = new Map<number, Vec[]>();
+  for (const v of zone) {
+    const d = depth(v);
+    ranks.set(d, [...(ranks.get(d) ?? []), v]);
+  }
+  const ordered = [...ranks.entries()].sort((a, b) => b[0] - a[0]).map(([, hexes]) => hexes.sort(across));
+
+  const specs: UnitSpec[] = [];
+  let next = 0;
+  for (const rank of ordered) {
+    const count = Math.min(rank.length, units.length - next);
+    if (count <= 0) break;
+    const start = Math.floor((rank.length - count) / 2);
+    for (let i = 0; i < count; i++) specs.push(toSpec(units[next + i]!, { ...rank[start + i]! }));
+    next += count;
+  }
+  return specs;
+}
+
+/**
  * Build an engine {@link GameConfig} from two warbands. Feed the result to
  * `createGame`. The same helper backs the CLI harness today and any future UI.
+ *
+ * With `opts.map` the board takes the map's terrain and warbands deploy into its
+ * zones (the map must pass `validateMap`); otherwise the legacy flat `opts.board`
+ * (default {@link DEFAULT_BOARD}) with edge-column deployment is used.
  */
 export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameConfig {
+  if (opts.map) {
+    const map = opts.map;
+    const check = validateMap(map);
+    if (!check.ok) throw new Error(`map "${map.id}" is invalid: ${check.errors.join('; ')}`);
+    return {
+      seed: opts.seed,
+      board: mapToBoard(map),
+      warbands: [layOutInZone(p0.units, 0, map), layOutInZone(p1.units, 1, map)],
+      initiativeLeader: opts.initiativeLeader ?? 0,
+    };
+  }
+  const board = opts.board ?? DEFAULT_BOARD;
   return {
     seed: opts.seed,
-    board: { width: opts.board.width, height: opts.board.height },
-    warbands: [layOutWarband(p0.units, 0, opts.board), layOutWarband(p1.units, 1, opts.board)],
+    board: { width: board.width, height: board.height },
+    warbands: [layOutWarband(p0.units, 0, board), layOutWarband(p1.units, 1, board)],
     initiativeLeader: opts.initiativeLeader ?? 0,
   };
 }
