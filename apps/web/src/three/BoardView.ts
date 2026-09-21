@@ -101,7 +101,7 @@ interface UnitObj {
   facing: THREE.Group;
   /** Knockdown pivot at the cutout's feet. */
   tilt: THREE.Group;
-  /** Flips the cutout to face screen-right. */
+  /** Flips the cutout to face screen-left. */
   mirror: THREE.Group;
   sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   base: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -572,10 +572,11 @@ export class BoardView {
       obj.shownImage = image;
     }
 
-    // Wesnoth art faces screen-left; flip when the unit's heading points screen-right.
+    // Wesnoth art faces east (it hflips only for westward facings, see its units/frame.cpp);
+    // flip when the unit's heading points screen-left.
     const side = obj.heading.dot(camRight);
     if (Math.abs(side) > 0.05) obj.faceRight = side > 0;
-    obj.mirror.scale.x = obj.faceRight ? -1 : 1;
+    obj.mirror.scale.x = obj.faceRight ? 1 : -1;
 
     obj.facing.rotation.y = Math.atan2(
       this.camera.position.x - obj.group.position.x,
