@@ -64,5 +64,17 @@ export function BoardCanvas(props: Props): JSX.Element {
     if (props.events.length > 0) viewRef.current?.animateEvents(props.events);
   }, [props.events]);
 
-  return <div ref={containerRef} className="board-canvas" />;
+  return (
+    <div className="board-wrap">
+      <div ref={containerRef} className="board-canvas" />
+      <button
+        type="button"
+        className="board-reset-view"
+        title="Reset camera (drag to orbit, right-drag to pan, wheel to zoom)"
+        onClick={() => viewRef.current?.resetCamera()}
+      >
+        Reset view
+      </button>
+    </div>
+  );
 }

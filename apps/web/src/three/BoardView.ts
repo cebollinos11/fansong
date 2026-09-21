@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { vecKey, type GameEvent, type GameState, type Vec } from '@fansong/engine';
 import { loadSpriteTexture } from './spriteTextures.js';
 import { spriteFor } from './unitSprites.js';
@@ -43,6 +44,10 @@ const BASE_RADIUS = 0.36;
 const BASE_HEIGHT = 0.06;
 const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
 const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so the steep view doesn't squash it
+
+// Camera limits: stay above the table, and never tip over the top into a flip.
+const CAMERA_MIN_POLAR = 0.12; // radians from straight down
+const CAMERA_MAX_POLAR = 1.3; // ~75°, just above the tabletop
 
 /** Round fractional cube coords to the nearest hex (matches the engine's board). */
 function cubeRound(fq: number, fr: number, fs: number): { q: number; r: number } {
@@ -92,6 +97,7 @@ export class BoardView {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
+  private readonly controls: OrbitControls;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -122,6 +128,16 @@ export class BoardView {
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(6, 14, 8);
     this.scene.add(ambient, key, this.highlightGroup);
+
+    // Left-drag orbits, right-drag (or shift/ctrl + left) pans across the table,
+    // wheel zooms. A press that barely moves is still a click (see handlePointerUp).
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.12;
+    this.controls.screenSpacePanning = false; // pan along the ground, not the view plane
+    this.controls.minPolarAngle = CAMERA_MIN_POLAR;
+    this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
+    this.controls.zoomToCursor = true;
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
@@ -229,9 +245,15 @@ export class BoardView {
     }
   }
 
+  /** Return the camera to the framing it had when the board was built. */
+  resetCamera(): void {
+    this.controls.reset();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.renderer.setAnimationLoop(null);
+    this.controls.dispose();
     this.resizeObserver.disconnect();
     this.renderer.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
@@ -350,6 +372,9 @@ export class BoardView {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const lerp = 1 - Math.pow(0.001, dt); // frame-rate independent smoothing
 
+    this.clampCameraTarget();
+    this.controls.update();
+
     for (const obj of this.units.values()) {
       obj.group.position.lerp(obj.targetPos, lerp);
       obj.facing.rotation.y = Math.atan2(
@@ -434,7 +459,28 @@ export class BoardView {
     const spanZ = HEX_ROW_STEP * (this.height - 1 + 0.5) + 2 * HEX_SIZE;
     const span = Math.max(spanX, spanZ);
     this.camera.position.set(0, span * 0.95, spanZ * 0.62 + 3);
-    this.camera.lookAt(0, 0, 0);
+    this.controls.target.set(0, 0, 0);
+    const home = this.camera.position.length();
+    this.controls.minDistance = 3;
+    this.controls.maxDistance = home * 1.8;
+    this.controls.update();
+    this.controls.saveState();
+  }
+
+  /** Keep the orbit pivot on the board so panning can't lose the table. */
+  private clampCameraTarget(): void {
+    const t = this.controls.target;
+    const halfX = this.originX + HEX_SIZE;
+    const halfZ = this.originZ + HEX_SIZE;
+    const x = THREE.MathUtils.clamp(t.x, -halfX, halfX);
+    const z = THREE.MathUtils.clamp(t.z, -halfZ, halfZ);
+    if (x !== t.x || z !== t.z || t.y !== 0) {
+      // Shift the camera with the pivot so the clamp doesn't read as a rotation.
+      this.camera.position.x += x - t.x;
+      this.camera.position.y -= t.y;
+      this.camera.position.z += z - t.z;
+      t.set(x, 0, z);
+    }
   }
 
   /** World X of column 0 / Z of row 0, so the board is centred on the origin. */
