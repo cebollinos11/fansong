@@ -15,7 +15,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 3. Engine: movement pathing — a Move destination must be reachable in ≤ `move` steps over
       passable hexes (BFS around rocks/buildings/legacy blocked; units don't block paths so the
       golden is unchanged). Legal moves use the same reachability. Tests.
-- [ ] 4. Engine: high ground +1 (melee attack, guard riposte, shoot) for a standing combatant on a
+- [x] 4. Engine: high ground +1 (melee attack, guard riposte, shoot) for a standing combatant on a
       higher hex; optional bonus fields on combat events only when non-zero. Tests.
 - [ ] 5. Protocol: extend board/config zod schemas with terrain; round-trip tests.
 - [ ] 6. CLI: ASCII board shows features (`^` rock, `B` building, `T` forest) and elevation.

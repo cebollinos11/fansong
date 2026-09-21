@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { makeHexGrid, type BoardData, type Vec } from '../src/board.js';
+import { highGroundBonus } from '../src/combat.js';
 import { createDemoGame, createGame, normalizeTerrain, type GameConfig } from '../src/setup.js';
 import { getLegalCommands } from '../src/legal.js';
 import { reduce } from '../src/reduce.js';
@@ -201,5 +202,111 @@ describe('movement pathing around impassable terrain', () => {
     const acting = reduce(createGame(corridor), { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 1 }).state;
     const dests = getLegalCommands(acting).flatMap((c) => (c.type === 'Move' ? [`${c.to.x},${c.to.y}`] : []));
     expect(dests).toEqual(['2,0']);
+  });
+});
+
+describe('high ground', () => {
+  /** Mid-activation state for `unitId`, so only the combat roll consumes RNG. */
+  function acting(config: GameConfig, unitId: string) {
+    const s = createGame(config);
+    const u = s.units.find((x) => x.id === unitId)!;
+    s.active = u.owner;
+    s.activeUnitId = unitId;
+    s.phase = 'acting';
+    s.actionsRemaining = 1;
+    u.activatedThisRound = true;
+    return s;
+  }
+
+  const duel = (terrain: Record<string, { elevation: number }>): GameConfig => ({
+    seed: 7,
+    board: { width: 6, height: 3, terrain },
+    warbands: [
+      [{ name: 'A', quality: 3, combat: 3, ranged: 4, pos: { x: 1, y: 1 } }],
+      [{ name: 'B', quality: 3, combat: 3, guard: true, pos: { x: 2, y: 1 } }],
+    ],
+  });
+
+  it('highGroundBonus: +1 only when standing on a strictly higher hex', () => {
+    const g = makeHexGrid({ width: 3, height: 1, blocked: [], terrain: { '0,0': { elevation: 2 }, '1,0': { elevation: 1 } } });
+    const up = { pos: { x: 0, y: 0 }, knockedDown: false };
+    const mid = { pos: { x: 1, y: 0 }, knockedDown: false };
+    const low = { pos: { x: 2, y: 0 }, knockedDown: false };
+    expect(highGroundBonus(g, up, mid)).toBe(1);
+    expect(highGroundBonus(g, mid, low)).toBe(1);
+    expect(highGroundBonus(g, mid, up)).toBe(0);
+    expect(highGroundBonus(g, low, { pos: { x: 2, y: 0 } })).toBe(0); // equal height
+    expect(highGroundBonus(g, { ...up, knockedDown: true }, low)).toBe(0); // knocked down: no bonus
+  });
+
+  it('adds +1 to the higher melee attacker, recorded on the event', () => {
+    const flat = reduce(acting(duel({}), 'p0u0'), { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const high = reduce(acting(duel({ '1,1': { elevation: 1 } }), 'p0u0'), {
+      type: 'Attack',
+      attackerId: 'p0u0',
+      targetId: 'p1u0',
+    });
+    const f = flat.events.find((e) => e.type === 'AttackResolved')!;
+    const h = high.events.find((e) => e.type === 'AttackResolved')!;
+    if (f.type !== 'AttackResolved' || h.type !== 'AttackResolved') throw new Error('unreachable');
+    expect(h.attackDie).toBe(f.attackDie); // same seed, same dice
+    expect(h.attackScore).toBe(f.attackScore + 1);
+    expect(h.defenseScore).toBe(f.defenseScore);
+    expect(h.attackBonus).toBe(1);
+    expect('defenseBonus' in h).toBe(false);
+    // No bonus keys at all on flat ground.
+    expect('attackBonus' in f || 'defenseBonus' in f).toBe(false);
+  });
+
+  it('the higher defender gets the bonus too', () => {
+    const r = reduce(acting(duel({ '2,1': { elevation: 3 } }), 'p0u0'), {
+      type: 'Attack',
+      attackerId: 'p0u0',
+      targetId: 'p1u0',
+    });
+    const e = r.events.find((x) => x.type === 'AttackResolved')!;
+    if (e.type !== 'AttackResolved') throw new Error('unreachable');
+    expect(e.defenseBonus).toBe(1);
+    expect(e.defenseScore).toBe(3 + e.defenseDie + 1);
+    expect(e.attackScore).toBe(3 + e.attackDie);
+  });
+
+  it('a knocked-down combatant on high ground gets no bonus', () => {
+    const s = acting(duel({ '2,1': { elevation: 2 } }), 'p0u0');
+    s.units.find((u) => u.id === 'p1u0')!.knockedDown = true;
+    const r = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const e = r.events.find((x) => x.type === 'AttackResolved')!;
+    if (e.type !== 'AttackResolved') throw new Error('unreachable');
+    expect('defenseBonus' in e).toBe(false);
+    expect(e.defenseScore).toBe(3 + e.defenseDie);
+  });
+
+  it('applies to guard ripostes', () => {
+    const s = acting(duel({ '2,1': { elevation: 1 } }), 'p0u0');
+    s.units.find((u) => u.id === 'p1u0')!.guarding = true;
+    const r = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const e = r.events.find((x) => x.type === 'GuardRiposte')!;
+    if (e.type !== 'GuardRiposte') throw new Error('unreachable');
+    expect(e.guardBonus).toBe(1);
+    expect(e.guardScore).toBe(3 + e.guardDie + 1);
+    expect('attackerBonus' in e).toBe(false);
+  });
+
+  it('applies to shots, for shooter and target', () => {
+    const shoot = (terrain: Record<string, { elevation: number }>) => {
+      const cfg = duel(terrain);
+      cfg.warbands[1][0]!.pos = { x: 4, y: 1 };
+      const r = reduce(acting(cfg, 'p0u0'), { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' });
+      const e = r.events.find((x) => x.type === 'ShotResolved')!;
+      if (e.type !== 'ShotResolved') throw new Error('unreachable');
+      return e;
+    };
+    const up = shoot({ '1,1': { elevation: 2 } });
+    expect(up.attackBonus).toBe(1);
+    expect(up.attackScore).toBe(3 + up.attackDie + 1);
+    const down = shoot({ '4,1': { elevation: 1 } });
+    expect(down.defenseBonus).toBe(1);
+    expect(down.defenseScore).toBe(3 + down.defenseDie + 1);
+    expect('attackBonus' in down).toBe(false);
   });
 });

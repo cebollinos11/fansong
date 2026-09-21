@@ -147,6 +147,10 @@ export type GameEvent =
       defenseDie: number;
       attackScore: number;
       defenseScore: number;
+      /** High-ground bonus added to the attack score; present only when non-zero. */
+      attackBonus?: number;
+      /** High-ground bonus added to the defense score; present only when non-zero. */
+      defenseBonus?: number;
       result: CombatResult;
     }
   | {
@@ -157,6 +161,10 @@ export type GameEvent =
       defenseDie: number;
       attackScore: number;
       defenseScore: number;
+      /** High-ground bonus added to the attack score; present only when non-zero. */
+      attackBonus?: number;
+      /** High-ground bonus added to the defense score; present only when non-zero. */
+      defenseBonus?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
       result: CombatResult;
     }
@@ -169,6 +177,10 @@ export type GameEvent =
       attackerDie: number;
       guardScore: number;
       attackerScore: number;
+      /** High-ground bonus added to the guard's score; present only when non-zero. */
+      guardBonus?: number;
+      /** High-ground bonus added to the attacker's score; present only when non-zero. */
+      attackerBonus?: number;
       result: CombatResult;
       /** True if the riposte stopped the incoming attack (attacker killed/knocked down). */
       prevented: boolean;

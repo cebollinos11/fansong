@@ -1,5 +1,5 @@
 import { makeHexGrid, vecKey, type Board } from './board.js';
-import { computeCombatResult } from './combat.js';
+import { computeCombatResult, highGroundBonus } from './combat.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
@@ -165,8 +165,10 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   const atk = rollD6(s.rngState);
   const def = rollD6(atk.state);
   s.rngState = def.state;
-  const attackScore = attacker.combat + atk.die;
-  const defenseScore = target.combat + def.die;
+  const attackBonus = highGroundBonus(board, attacker, target);
+  const defenseBonus = highGroundBonus(board, target, attacker);
+  const attackScore = attacker.combat + atk.die + attackBonus;
+  const defenseScore = target.combat + def.die + defenseBonus;
   const result = computeCombatResult(attackScore, defenseScore, target.knockedDown, attacker.knockedDown);
 
   events.push({
@@ -177,6 +179,8 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
     defenseDie: def.die,
     attackScore,
     defenseScore,
+    ...(attackBonus ? { attackBonus } : {}),
+    ...(defenseBonus ? { defenseBonus } : {}),
     result,
   });
 
@@ -234,8 +238,10 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   const atk = rollD6(s.rngState);
   const def = rollD6(atk.state);
   s.rngState = def.state;
-  const attackScore = attacker.combat + atk.die;
-  const defenseScore = target.combat + def.die;
+  const attackBonus = highGroundBonus(board, attacker, target);
+  const defenseBonus = highGroundBonus(board, target, attacker);
+  const attackScore = attacker.combat + atk.die + attackBonus;
+  const defenseScore = target.combat + def.die + defenseBonus;
 
   // A shot only ever harms the target — the shooter takes no return damage.
   let result: CombatResult = 'clash';
@@ -250,6 +256,8 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
     defenseDie: def.die,
     attackScore,
     defenseScore,
+    ...(attackBonus ? { attackBonus } : {}),
+    ...(defenseBonus ? { defenseBonus } : {}),
     result,
   });
 
@@ -287,8 +295,10 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   const gd = rollD6(s.rngState);
   const ad = rollD6(gd.state);
   s.rngState = ad.state;
-  const guardScore = guard.combat + gd.die;
-  const attackerScore = attacker.combat + ad.die;
+  const guardBonus = highGroundBonus(board, guard, attacker);
+  const attackerBonus = highGroundBonus(board, attacker, guard);
+  const guardScore = guard.combat + gd.die + guardBonus;
+  const attackerScore = attacker.combat + ad.die + attackerBonus;
   const result = computeCombatResult(guardScore, attackerScore, attacker.knockedDown, guard.knockedDown);
   const prevented = result === 'defenderKilled' || result === 'defenderKnockedDown';
 
@@ -300,6 +310,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackerDie: ad.die,
     guardScore,
     attackerScore,
+    ...(guardBonus ? { guardBonus } : {}),
+    ...(attackerBonus ? { attackerBonus } : {}),
     result,
     prevented,
   });

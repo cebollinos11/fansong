@@ -66,6 +66,42 @@ describe('server messages', () => {
     expect(parseServerMessage(encode(delta))).toEqual(delta);
   });
 
+  it('keeps optional high-ground bonus fields on combat events', () => {
+    const state = createDemoGame(5);
+    const delta: ServerMessage = {
+      t: 'delta',
+      by: 0,
+      command: { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' },
+      events: [
+        {
+          type: 'GuardRiposte',
+          guardId: 'p1u0',
+          attackerId: 'p0u0',
+          guardDie: 2,
+          attackerDie: 3,
+          guardScore: 6,
+          attackerScore: 7,
+          attackerBonus: 1,
+          result: 'attackerKnockedDown',
+          prevented: false,
+        },
+        {
+          type: 'AttackResolved',
+          attackerId: 'p0u0',
+          targetId: 'p1u0',
+          attackDie: 4,
+          defenseDie: 2,
+          attackScore: 8,
+          defenseScore: 5,
+          attackBonus: 1,
+          result: 'defenderKnockedDown',
+        },
+      ],
+      state,
+    };
+    expect(parseServerMessage(encode(delta))).toEqual(delta);
+  });
+
   it('round-trips an error message with a stable code', () => {
     const err: ServerMessage = { t: 'error', code: ErrorCode.NotYourTurn, message: 'not your turn' };
     expect(parseServerMessage(encode(err))).toEqual(err);

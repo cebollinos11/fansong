@@ -1,4 +1,5 @@
-import type { CombatResult } from './types.js';
+import type { Vec } from './board.js';
+import type { CombatResult, Unit } from './types.js';
 
 /**
  * Resolve an opposed melee once scores are known. Pure and rng-free so the
@@ -21,4 +22,18 @@ export function computeCombatResult(
   if (defenseScore >= attackScore * 2) return 'attackerKilled';
   if (defenseScore > attackScore) return attackerKnockedDown ? 'attackerKilled' : 'attackerKnockedDown';
   return 'clash';
+}
+
+/**
+ * High-ground bonus for one side of a combat: +1 when the combatant is standing
+ * (not knocked down) on a strictly higher hex than its opponent, else 0.
+ * Applies to melee attacks, guard ripostes and shots alike.
+ */
+export function highGroundBonus(
+  board: { elevation(v: Vec): number },
+  unit: Pick<Unit, 'pos' | 'knockedDown'>,
+  opponent: Pick<Unit, 'pos'>,
+): number {
+  if (unit.knockedDown) return 0;
+  return board.elevation(unit.pos) > board.elevation(opponent.pos) ? 1 : 0;
 }

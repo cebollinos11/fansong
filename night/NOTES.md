@@ -20,3 +20,9 @@
   AI choices and the golden replay are unchanged; `handleMove` rejects unreachable
   destinations ("destination unreachable within move range"). Units never block paths.
   Web/AI/CLI derive move targets from legal commands, so no other callers needed changes.
+- Task 4: `highGroundBonus(board, unit, opponent)` in combat.ts (+1 if standing and strictly
+  higher). Applied to both sides of melee attacks, guard ripostes and shots (shot target gets it
+  too — spec says "attacker and defender alike"). Events gain optional `attackBonus`/`defenseBonus`
+  (Attack/Shot) and `guardBonus`/`attackerBonus` (riposte), spread in only when non-zero so flat
+  games' events are unchanged. Also added these optional fields to the protocol event schema now
+  (non-strict zod objects would otherwise silently strip them over the wire).
