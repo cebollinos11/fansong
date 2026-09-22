@@ -325,3 +325,12 @@
   sight line to an enemy in range (+50 with the King in range), 110k otherwise. Tests: ai/test/kings.test.ts
   + KtK self-play on all 7 built-in maps (3 seeds each; every game observed ended by a King falling, test
   requires ≥ 2/3).
+- Task 36: map × mode self-play matrix (content/test/mapSelfPlay.test.ts, "every built-in map × every supported
+  mode"): for each built-in map and every mode in `supportedModes(map)`, 2 fresh seeds (11–12, different preset
+  pairs from the per-mode suites) play to game over while `checkObjectives` asserts per step: annihilation
+  carries no mode state; scores never decrease; no play continues at/over the target score or past round 12;
+  Kings are fixed, owned by the right side and alive while play continues; CTF flags sit on passable hexes,
+  carriers are standing enemies with the flag on their hex, no unit carries both. At the end: exactly one
+  GameOver, winner matches state, reason is one the mode allows, score/roundLimit/flag/king reasons agree with
+  scores, FlagCaptured and the dead King. The earlier per-mode suites (tasks 33–35) keep their "AI actually
+  scores" thresholds. No engine or AI changes needed — everything passed first time.

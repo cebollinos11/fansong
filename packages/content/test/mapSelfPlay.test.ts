@@ -5,6 +5,8 @@ import {
   getLegalCommands,
   makeHexGrid,
   reduce,
+  gameMode,
+  MODE_RULES,
   type GameEvent,
   type GameMode,
   type GameState,
@@ -222,4 +224,107 @@ describe('premade map character', () => {
     expect(count(map, (h) => h.feature === 'building')).toBeGreaterThanOrEqual(10);
     expect(supportedModes(map)).toEqual(expect.arrayContaining(['conquest', 'king-of-the-hill']));
   });
+});
+
+/** Invariants of a live objective-mode state, checked after every step of a self-play game. */
+function checkObjectives(state: GameState, prev: GameState, mode: GameMode): void {
+  const rules = MODE_RULES[mode];
+  if (mode === 'annihilation') {
+    expect(state.mode).toBeUndefined();
+    return;
+  }
+  const m = state.mode!;
+  expect(m.mode).toBe(mode);
+  // Scores only ever go up, and nobody plays on past the target or the round cap.
+  for (const p of [0, 1] as const) expect(m.scores[p]).toBeGreaterThanOrEqual(prev.mode!.scores[p]);
+  if (state.phase !== 'gameOver') {
+    if (rules.targetScore !== undefined) for (const s of m.scores) expect(s).toBeLessThan(rules.targetScore);
+    if (rules.roundLimit !== undefined) expect(state.round).toBeLessThanOrEqual(rules.roundLimit);
+  }
+  if (mode === 'kill-the-king') {
+    // The Kings never change hands, and play goes on only while both stand.
+    expect(m.kings).toEqual(prev.mode!.kings);
+    m.kings!.forEach((id, p) => expect(state.units.find((u) => u.id === id)?.owner).toBe(p));
+    if (state.phase !== 'gameOver') for (const id of m.kings!) expect(state.units.find((u) => u.id === id)!.dead).toBe(false);
+  }
+  if (mode === 'capture-the-flag') {
+    const board = makeHexGrid(state.board);
+    m.flags!.forEach((flag, p) => {
+      expect(board.isBlocked(flag.at)).toBe(false);
+      if (flag.carrier === null) return;
+      // Carried by a standing enemy, with the flag on the carrier's hex.
+      const carrier = state.units.find((u) => u.id === flag.carrier)!;
+      expect(carrier.owner).toBe(1 - p);
+      if (state.phase !== 'gameOver') {
+        expect(carrier.dead || carrier.knockedDown).toBe(false);
+        expect(flag.at).toEqual(carrier.pos);
+      }
+    });
+    // One unit carries at most one flag.
+    const [a, b] = m.flags!.map((f) => f.carrier);
+    if (a !== null) expect(a).not.toBe(b);
+  }
+}
+
+describe('every built-in map × every supported mode', () => {
+  const EXPECTED_REASONS: Record<GameMode, string[]> = {
+    annihilation: [],
+    'kill-the-king': ['king', 'annihilation'],
+    'king-of-the-hill': ['score', 'roundLimit', 'annihilation'],
+    conquest: ['score', 'roundLimit', 'annihilation'],
+    'capture-the-flag': ['flag', 'annihilation'],
+  };
+
+  it('every built-in map hosts at least one objective mode', () => {
+    for (const map of listMaps()) expect(supportedModes(map).length).toBeGreaterThan(1);
+  });
+
+  for (const map of listMaps()) {
+    for (const mode of supportedModes(map)) {
+      it(`${map.id}: ${mode} completes with a consistent result`, () => {
+        for (let seed = 11; seed <= 12; seed++) {
+          const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 2) % PRESET_IDS.length]!];
+          let state = createGame(buildMatch(getPreset(presets[0])!, getPreset(presets[1])!, { seed, map, mode }));
+          expect(gameMode(state)).toBe(mode);
+          const events: GameEvent[] = [];
+          let steps = 0;
+          while (state.phase !== 'gameOver' && steps < STEP_CAP) {
+            const result = reduce(state, chooseCommand(state));
+            checkObjectives(result.state, state, mode);
+            events.push(...result.events);
+            state = result.state;
+            steps++;
+          }
+          expect(state.phase).toBe('gameOver');
+
+          const overs = events.filter((e): e is Extract<GameEvent, { type: 'GameOver' }> => e.type === 'GameOver');
+          expect(overs).toHaveLength(1);
+          const over = overs[0]!;
+          expect(over.winner).toBe(state.winner);
+          if (mode === 'annihilation') {
+            expect(over.reason).toBeUndefined();
+            continue;
+          }
+          expect(EXPECTED_REASONS[mode]).toContain(over.reason);
+
+          // The last ScoreChanged event reports the final scores.
+          const scores = state.mode!.scores;
+          const lastScore = events.filter((e) => e.type === 'ScoreChanged').at(-1);
+          if (lastScore?.type === 'ScoreChanged') expect(lastScore.scores).toEqual(scores);
+          const w = over.winner;
+          const target = MODE_RULES[mode].targetScore;
+          if (over.reason === 'score') expect(scores[w]).toBeGreaterThanOrEqual(target!);
+          if (over.reason === 'roundLimit') expect(scores[w]).toBeGreaterThanOrEqual(scores[1 - w]!);
+          if (over.reason === 'flag') {
+            const capture = events.find((e) => e.type === 'FlagCaptured');
+            expect(capture?.type === 'FlagCaptured' && capture.player).toBe(w);
+          }
+          if (over.reason === 'king') {
+            const [k0, k1] = state.mode!.kings!;
+            expect(state.units.find((u) => u.id === (w === 0 ? k1 : k0))!.dead).toBe(true);
+          }
+        }
+      });
+    }
+  }
 });
