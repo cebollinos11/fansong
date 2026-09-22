@@ -325,6 +325,48 @@ button.ghost {
   color: var(--muted);
 }
 
+.score-points {
+  font-weight: 700;
+}
+
+.mode-panel {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mode-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.mode-score {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.mode-score .p0 {
+  color: var(--p0);
+}
+
+.mode-score .p1 {
+  color: var(--p1);
+}
+
+.mode-goal {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mode-line {
+  font-size: 13px;
+}
+
 .benched {
   color: var(--p1);
   font-size: 12px;

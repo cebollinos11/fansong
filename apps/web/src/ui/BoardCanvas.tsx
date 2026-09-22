@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameEvent, GameState, Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type HexOverlay } from '../three/BoardView.js';
 import { describeHex } from './hexInfo.js';
+import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
 
 interface Props {
   state: GameState;
@@ -19,7 +20,7 @@ interface Props {
    * play, where the board never changes but is cloned with every command.
    */
   liveTerrain?: boolean;
-  /** Tinted hex sets (editor deploy zones and objectives). */
+  /** Tinted hex sets (editor deploy zones and objectives); defaults to the game mode's objective zones. */
   overlays?: HexOverlay[];
   /**
    * Editor drag painting: when set, left-drag reports the press cell and the
@@ -69,6 +70,15 @@ export function BoardCanvas(props: Props): JSX.Element {
     viewRef.current?.setCellDrag(dragging ? (from, to, done) => handlers.current.onCellDrag?.(from, to, done) : null);
   }, [dragging]);
 
+  // Game-mode markings, recomputed only when they change (the state is cloned per command).
+  const markingsKey = modeMarkingsKey(props.state);
+  const markings = useMemo(
+    () => ({ overlays: modeOverlays(props.state), markers: modeMarkers(props.state), badges: unitBadges(props.state) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [markingsKey],
+  );
+  const overlays = props.overlays ?? markings.overlays;
+
   // Reconcile visuals on every relevant change.
   useEffect(() => {
     const vm: BoardViewModel = {
@@ -78,7 +88,10 @@ export function BoardCanvas(props: Props): JSX.Element {
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
       interactive: props.interactive,
-      overlays: props.overlays,
+      overlays,
+      markers: markings.markers,
+      badges: markings.badges,
+      markingsKey,
     };
     viewRef.current?.update(vm);
   }, [
@@ -88,7 +101,9 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.selectableUnitIds,
     props.selectedUnitId,
     props.interactive,
-    props.overlays,
+    overlays,
+    markings,
+    markingsKey,
   ]);
 
   // Fire transient FX when a new event batch arrives.

@@ -23,6 +23,22 @@ export interface BoardViewModel {
   interactive: boolean;
   /** Tinted hex sets under the move highlights (editor zones and objectives). */
   overlays?: HexOverlay[];
+  /** Game-mode markers standing on hexes (flags at base or dropped). */
+  markers?: BoardMarker[];
+  /** Game-mode badges floating over units (a King's crown, a carried flag). */
+  badges?: Record<string, UnitBadge>;
+  /** Changes whenever `markers`/`badges` do; they are only redrawn then. */
+  markingsKey?: string;
+}
+
+/** A badge over a unit: a crown (King), or player 0's / player 1's carried flag. */
+export type UnitBadge = 'crown' | 'flag-0' | 'flag-1';
+
+/** A marker standing on a hex. */
+export interface BoardMarker {
+  kind: 'flag';
+  owner: 0 | 1;
+  cell: Vec;
 }
 
 /** A tinted hex set drawn flat on the board surface. */
@@ -49,6 +65,9 @@ const MOVE_COLOR = 0x3ddc84;
 const ATTACK_COLOR = 0xff5252;
 const SELECT_COLOR = 0xffd54a;
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
+const CROWN_COLOR = '#ffd54a';
+const BADGE_SIZE = 0.42; // world size of a badge sprite
+const BADGE_HEIGHT = 1.55; // badge centre above the unit's base
 const SHOT_COLOR = 0x9fd0ff; // ranged tracer, for a shooter without a missile image
 
 // Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
@@ -117,6 +136,8 @@ interface UnitObj {
   sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   base: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  /** Mode badge sprite (shares a texture per badge kind); hidden when none. */
+  badge: THREE.Sprite;
   anims: SpriteAnimations;
   animator: UnitAnimator;
   atlas: SpriteAtlas | null;
@@ -183,6 +204,9 @@ export class BoardView {
   private readonly highlightGroup = new THREE.Group();
   private readonly overlayGroup = new THREE.Group();
   private overlays: HexOverlay[] | undefined;
+  private readonly markerGroup = new THREE.Group();
+  private markingsKey: string | undefined;
+  private readonly badgeTextures = new Map<string, THREE.Texture>();
   /** Board tiles and feature meshes, raycast for cell picking (each carries `userData.cell`). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
@@ -208,7 +232,7 @@ export class BoardView {
     const ambient = new THREE.AmbientLight(0xffffff, 0.7);
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(6, 14, 8);
-    this.scene.add(ambient, key, this.overlayGroup, this.highlightGroup);
+    this.scene.add(ambient, key, this.overlayGroup, this.highlightGroup, this.markerGroup);
 
     // Left-drag orbits, right-drag (or shift/ctrl + left) pans across the table,
     // wheel zooms. A press that barely moves is still a click (see handlePointerUp).
@@ -384,6 +408,7 @@ export class BoardView {
 
     this.drawHighlights(vm.moveTargets);
     if (vm.overlays !== this.overlays) this.drawOverlays(vm.overlays ?? []);
+    if (vm.markingsKey !== this.markingsKey) this.drawMarkings(vm);
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
   }
 
@@ -454,6 +479,7 @@ export class BoardView {
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
+    for (const t of this.badgeTextures.values()) t.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -501,6 +527,11 @@ export class BoardView {
     facing.position.y = TILE_TOP + BASE_HEIGHT;
     facing.add(tilt);
 
+    const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+    badge.scale.set(BADGE_SIZE, BADGE_SIZE, 1);
+    badge.position.y = TILE_TOP + BADGE_HEIGHT;
+    badge.visible = false;
+
     const spriteName = spriteFor(name);
     const anims = animationsFor(spriteName);
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
@@ -513,6 +544,7 @@ export class BoardView {
       sprite,
       base,
       ring,
+      badge,
       anims,
       animator: new UnitAnimator(spriteName, anims),
       atlas: null,
@@ -548,7 +580,7 @@ export class BoardView {
       (err) => console.error(err),
     );
 
-    group.add(ring, base, facing);
+    group.add(ring, base, facing, badge);
     group.name = name;
     this.scene.add(group);
     return obj;
@@ -790,6 +822,73 @@ export class BoardView {
         this.overlayGroup.add(tile);
       }
     });
+  }
+
+  /** Mode markings: flag markers on hexes and badges over units. */
+  private drawMarkings(vm: BoardViewModel): void {
+    this.markingsKey = vm.markingsKey;
+    for (const child of this.markerGroup.children) ((child as THREE.Sprite).material as THREE.Material).dispose();
+    this.markerGroup.clear();
+    for (const m of vm.markers ?? []) {
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: this.badgeTexture(m.owner === 0 ? 'flag-0' : 'flag-1'), transparent: true }),
+      );
+      sprite.scale.set(BADGE_SIZE * 1.4, BADGE_SIZE * 1.4, 1);
+      const w = this.cellToWorld(m.cell);
+      sprite.position.set(w.x + HEX_SIZE * 0.3, this.surfaceAt(m.cell) + BADGE_SIZE * 0.7, w.z - HEX_SIZE * 0.2);
+      this.markerGroup.add(sprite);
+    }
+    for (const [id, obj] of this.units) {
+      const kind = vm.badges?.[id];
+      obj.badge.visible = kind !== undefined;
+      if (kind && obj.badge.material.map !== this.badgeTexture(kind)) {
+        obj.badge.material.map = this.badgeTexture(kind);
+        obj.badge.material.needsUpdate = true;
+      }
+    }
+  }
+
+  /** A small canvas-drawn badge image, cached per kind. */
+  private badgeTexture(kind: UnitBadge): THREE.Texture {
+    let t = this.badgeTextures.get(kind);
+    if (t) return t;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d')!;
+    g.lineJoin = 'round';
+    g.lineWidth = 4;
+    g.strokeStyle = '#1b1f27';
+    if (kind === 'crown') {
+      g.beginPath();
+      g.moveTo(8, 50);
+      g.lineTo(6, 18);
+      g.lineTo(20, 32);
+      g.lineTo(32, 10);
+      g.lineTo(44, 32);
+      g.lineTo(58, 18);
+      g.lineTo(56, 50);
+      g.closePath();
+      g.fillStyle = CROWN_COLOR;
+      g.fill();
+      g.stroke();
+    } else {
+      const color = `#${OWNER_COLORS[kind === 'flag-0' ? 0 : 1].toString(16).padStart(6, '0')}`;
+      g.fillStyle = '#e8e2d4';
+      g.fillRect(12, 6, 6, 54);
+      g.strokeRect(12, 6, 6, 54);
+      g.beginPath();
+      g.moveTo(18, 8);
+      g.lineTo(58, 20);
+      g.lineTo(18, 34);
+      g.closePath();
+      g.fillStyle = color;
+      g.fill();
+      g.stroke();
+    }
+    t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    this.badgeTextures.set(kind, t);
+    return t;
   }
 
   private flashUnit(id: string, amount: number): void {

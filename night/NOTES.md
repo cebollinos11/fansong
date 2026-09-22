@@ -345,3 +345,16 @@
   now enabled online with built-ins only (`effectiveMapId` maps a custom pick to the default board), so
   mode filtering matches what the worker will play. Tests in apps/web/test/setup.test.ts; checked with
   Playwright on a built preview (mode filtering, King radio, KtK match starts, no page errors).
+- Task 38: mode HUD + board markers. New pure `apps/web/src/ui/modeView.ts` (tested in apps/web/test/modeView.test.ts):
+  `modeHud` (label, goal, scores for the points modes, status lines — Kings incl. fallen/knocked down, hill/zone
+  holders "A: P0 · B: — · C: P1", each flag at base / carried by X (Pn) / dropped at (x, y)), `modeOverlays`
+  (hill or conquest zones in the editor's zone colours, faint small owner-coloured flag bases), `modeMarkers`
+  (flags lying on a hex), `unitBadges` (crown over living Kings, owner-coloured flag over a carrier) and
+  `modeMarkingsKey` so the board redraws markings only when they change. `BoardViewModel` gained optional
+  `markers`/`badges`/`markingsKey`; BoardView draws canvas-textured sprites (crown, pennant) — a per-unit badge
+  sprite in the unit group, flag markers standing on their hex. `BoardCanvas` defaults `overlays` to the mode's
+  objective zones when none are passed, so the game *and* replay screens get markings (the editor passes its
+  own). HUD: a mode panel under the score cards (hidden in annihilation) plus "N pts" in each score card for
+  KotH/conquest. Decision: CTF shows no score (a capture wins outright). Board zones are coloured but not
+  lettered (the HUD names them A/B/C). Checked with Playwright on a built preview (CTF twin-towers flags,
+  conquest crossroads zones + 0–0, KtK crowns; no page errors); the carried-flag badge was only unit-tested.
