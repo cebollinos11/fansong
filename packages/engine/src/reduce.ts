@@ -1,5 +1,5 @@
 import { makeHexGrid, vecKey, type Board } from './board.js';
-import { computeCombatResult, highGroundBonus } from './combat.js';
+import { canStrikeBack, computeCombatResult, highGroundBonus } from './combat.js';
 import { checkRoundLimit, dropFallenCarriers, fallenKingOwner, finishGame, flagsAfterMove, scoreZones } from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
@@ -171,7 +171,7 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   const defenseBonus = highGroundBonus(board, target, attacker);
   const attackScore = attacker.combat + atk.die + attackBonus;
   const defenseScore = target.combat + def.die + defenseBonus;
-  const result = computeCombatResult(attackScore, defenseScore, target.knockedDown, attacker.knockedDown);
+  const result = computeCombatResult(attackScore, defenseScore, target.knockedDown, attacker.knockedDown, def.die);
 
   events.push({
     type: 'AttackResolved',
@@ -301,7 +301,10 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   const attackerBonus = highGroundBonus(board, attacker, guard);
   const guardScore = guard.combat + gd.die + guardBonus;
   const attackerScore = attacker.combat + ad.die + attackerBonus;
-  const result = computeCombatResult(guardScore, attackerScore, attacker.knockedDown, guard.knockedDown);
+  // A knocked-down guard's riposte only lands on a natural 6.
+  const result = canStrikeBack(guard.knockedDown, gd.die)
+    ? computeCombatResult(guardScore, attackerScore, attacker.knockedDown, guard.knockedDown, ad.die)
+    : 'clash';
   const prevented = result === 'defenderKilled' || result === 'defenderKnockedDown';
 
   events.push({

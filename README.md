@@ -67,7 +67,9 @@ action; the AI, the tests, and any future UI all pick from that list.
 - **2+ failures = turnover:** the activation ends and that player is **benched
   for the rest of the round**. With a single die you can never turn over.
 - The other player then continues **solo** until they turn over or run out.
-- Combat is an opposed roll; margins yield knockdown or kill.
+- Combat is an opposed roll; margins yield knockdown or kill. A knocked-down
+  defender only hurts its attacker on a natural 6 that also wins the roll;
+  otherwise its best result is a clash.
 
 All of this lives behind `reduce` / the turn controller and is covered by
 `packages/engine/test` (mechanics) and `packages/ai/test` (AI-vs-AI invariants:

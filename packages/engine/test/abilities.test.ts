@@ -202,6 +202,53 @@ describe('Guard trait and riposte', () => {
     expect(events.some((e) => e.type === 'GuardRiposte')).toBe(true);
   });
 
+  it("a knocked-down guard's riposte only lands on a natural 6", () => {
+    let sawSix = false;
+    let sawMiss = false;
+    for (let seed = 1; seed <= 300; seed++) {
+      const s = acting({ ...base, seed }, 'p1u0');
+      const sentry = s.units.find((u) => u.id === 'p0u0')!;
+      sentry.guarding = true;
+      sentry.knockedDown = true;
+      const { events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+      const rip = events.find((e) => e.type === 'GuardRiposte') as Extract<GameEvent, { type: 'GuardRiposte' }>;
+      if (rip.guardDie === 6 && rip.guardScore > rip.attackerScore) {
+        sawSix = true;
+        expect(rip.prevented).toBe(true);
+      } else {
+        if (rip.guardScore > rip.attackerScore) sawMiss = true;
+        expect(rip.prevented).toBe(false);
+        expect(events.some((e) => e.type === 'AttackResolved')).toBe(true);
+      }
+    }
+    expect(sawSix).toBe(true);
+    expect(sawMiss).toBe(true); // a winning non-6 riposte was seen, and it did nothing
+  });
+
+  it('a knocked-down defender hurts the attacker only with a winning natural 6', () => {
+    const plain: GameConfig = { ...base, warbands: [[{ ...base.warbands[0]![0]!, guard: false }], base.warbands[1]!] };
+    let sawSix = false;
+    let sawMiss = false;
+    for (let seed = 1; seed <= 300; seed++) {
+      const s = acting({ ...plain, seed }, 'p1u0');
+      s.units.find((u) => u.id === 'p0u0')!.knockedDown = true;
+      const { state, events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+      const atk = events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+      if (atk.defenseScore <= atk.attackScore) continue;
+      const raider = state.units.find((u) => u.id === 'p1u0')!;
+      if (atk.defenseDie === 6) {
+        sawSix = true;
+        expect(raider.dead || raider.knockedDown).toBe(true);
+      } else {
+        sawMiss = true;
+        expect(atk.result).toBe('clash');
+        expect(raider.dead || raider.knockedDown).toBe(false);
+      }
+    }
+    expect(sawSix).toBe(true);
+    expect(sawMiss).toBe(true);
+  });
+
   it('a successful riposte prevents the incoming attack entirely', () => {
     // Sweep seeds until the riposte lands (attacker killed/knocked down): the
     // normal AttackResolved must NOT follow, and the guard takes no damage.

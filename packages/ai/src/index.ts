@@ -277,7 +277,10 @@ function kingPlan(state: GameState, board: Board, player: Owner): KingPlan | und
     const u = id === undefined ? undefined : unitById(state, id);
     return u && !u.dead ? u : undefined;
   };
-  const ourKing = living(kingOf(state, player));
+  // A King left on its own has no one to hide behind: it hunts like anyone else
+  // (otherwise two lone Kings would shy away from each other forever).
+  const alone = aliveUnits(state, player).length <= 1;
+  const ourKing = alone ? undefined : living(kingOf(state, player));
   const theirKing = living(kingOf(state, enemy));
   const threats = ourKing ? enemiesOf(state, player).filter((e) => board.distance(e.pos, ourKing.pos) <= THREAT_RANGE) : [];
   const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));

@@ -10,18 +10,28 @@ import type { CombatResult, Unit } from './types.js';
  * - defender doubles the attacker  -> attacker killed
  * - defender beats the attacker    -> attacker knocked down (killed if already down)
  * - tie                            -> clash (no effect)
+ *
+ * A knocked-down defender only hurts the attacker on a natural 6 (see
+ * {@link canStrikeBack}); any other defender win is a clash.
  */
 export function computeCombatResult(
   attackScore: number,
   defenseScore: number,
   defenderKnockedDown: boolean,
   attackerKnockedDown: boolean,
+  defenseDie: number,
 ): CombatResult {
   if (attackScore >= defenseScore * 2) return 'defenderKilled';
   if (attackScore > defenseScore) return defenderKnockedDown ? 'defenderKilled' : 'defenderKnockedDown';
+  if (!canStrikeBack(defenderKnockedDown, defenseDie)) return 'clash';
   if (defenseScore >= attackScore * 2) return 'attackerKilled';
   if (defenseScore > attackScore) return attackerKnockedDown ? 'attackerKilled' : 'attackerKnockedDown';
   return 'clash';
+}
+
+/** Whether a unit can hurt its opponent: always when standing, only on a natural 6 when knocked down. */
+export function canStrikeBack(knockedDown: boolean, die: number): boolean {
+  return !knockedDown || die === 6;
 }
 
 /**
