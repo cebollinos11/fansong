@@ -63,6 +63,16 @@ describe('deriveInteraction', () => {
     expect(interaction.attackTargetIds).toHaveLength(0);
   });
 
+  it('keeps melee and ranged targets apart', () => {
+    const interaction = deriveInteraction([
+      { type: 'EndActivation' },
+      { type: 'Attack', attackerId: 'a', targetId: 'near' },
+      { type: 'Shoot', attackerId: 'a', targetId: 'far' },
+    ]);
+    expect(interaction.attackTargetIds).toEqual(['near']);
+    expect(interaction.shootTargetIds).toEqual(['far']);
+  });
+
   it('projects moves and end-activation once a unit is acting', () => {
     const controller = new MatchController(createMatchFromPresets(SETUP));
     // Activate the first unit until we land in the 'acting' phase.

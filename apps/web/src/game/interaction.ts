@@ -14,6 +14,8 @@ export interface Interaction {
   moveTargets: Vec[];
   /** Enemy unit ids the active unit may attack (acting). */
   attackTargetIds: string[];
+  /** Enemy unit ids the active unit may shoot at range (acting). */
+  shootTargetIds: string[];
   /** Whether EndActivation is currently legal. */
   canEndActivation: boolean;
 }
@@ -23,6 +25,7 @@ export function deriveInteraction(legal: Command[]): Interaction {
   const diceChoices = new Set<number>();
   const moveTargets: Vec[] = [];
   const attackTargetIds: string[] = [];
+  const shootTargetIds: string[] = [];
   let canEndActivation = false;
 
   for (const c of legal) {
@@ -37,6 +40,9 @@ export function deriveInteraction(legal: Command[]): Interaction {
       case 'Attack':
         attackTargetIds.push(c.targetId);
         break;
+      case 'Shoot':
+        shootTargetIds.push(c.targetId);
+        break;
       case 'EndActivation':
         canEndActivation = true;
         break;
@@ -48,6 +54,7 @@ export function deriveInteraction(legal: Command[]): Interaction {
     diceChoices: [...diceChoices].sort((a, b) => a - b),
     moveTargets,
     attackTargetIds,
+    shootTargetIds,
     canEndActivation,
   };
 }

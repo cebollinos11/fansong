@@ -73,8 +73,11 @@ export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Elemen
       if (interaction.selectableUnitIds.includes(id)) setSelectedUnitId(id);
       return;
     }
-    if (state.phase === 'acting' && interaction.attackTargetIds.includes(id) && state.activeUnitId) {
+    if (state.phase !== 'acting' || !state.activeUnitId) return;
+    if (interaction.attackTargetIds.includes(id)) {
       client.send({ type: 'Attack', attackerId: state.activeUnitId, targetId: id });
+    } else if (interaction.shootTargetIds.includes(id)) {
+      client.send({ type: 'Shoot', attackerId: state.activeUnitId, targetId: id });
     }
   };
 
@@ -119,7 +122,9 @@ export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Elemen
       <BoardCanvas
         state={shown.state}
         moveTargets={myTurn && state.phase === 'acting' ? interaction.moveTargets : []}
-        attackTargetIds={myTurn && state.phase === 'acting' ? interaction.attackTargetIds : []}
+        attackTargetIds={
+          myTurn && state.phase === 'acting' ? [...interaction.attackTargetIds, ...interaction.shootTargetIds] : []
+        }
         selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
         selectedUnitId={selectedUnitId}
         interactive={myTurn}
