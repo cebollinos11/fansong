@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { vecKey, type BoardData, type GameEvent, type GameState, type Vec } from '@fansong/engine';
+import { makeHexGrid, vecKey, type BoardData, type GameEvent, type GameState, type Vec } from '@fansong/engine';
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
@@ -88,7 +88,7 @@ const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so th
 
 // Animation timing (ms). Clip timings come from Wesnoth; these fill the gaps.
 const LUNGE = 0.3; // how far (world units) a melee strike leans into its target
-const MOVE_ANIM_MS = 600; // the slide between hexes, roughly (see the position lerp)
+const WALK_MS_PER_HEX = 300; // a move walks its path hex by hex at this steady pace
 const DEFEND_LEAD_MS = 126; // Wesnoth's defend reaction starts this long before impact
 const DEATH_FADE_MS = 600; // fade after a death clip (or instead of one)
 const ROUT_MS = 700; // a routed unit flees toward its own board edge while fading
@@ -168,6 +168,8 @@ interface UnitObj {
   /** Board times the fade-out starts / ends, while dying or fleeing. */
   fade: { start: number; end: number; flee: THREE.Vector3 | null } | null;
   lunge: { dir: THREE.Vector3; start: number; hit: number; end: number } | null;
+  /** A move in progress: hex centres from origin to destination, walked from board time `start`. */
+  walk: { path: THREE.Vector3[]; start: number } | null;
   /** 0..1 transient hit flash, decays each frame. */
   flash: number;
 }
@@ -440,7 +442,6 @@ export class BoardView {
     let lastHit = t; // when the most recent blow lands, for its consequences
     let settle = t; // when state changes caused by the latest roll or blow are shown
     let nerveAt: number | null = null; // start of the current run of nerve checks
-    let moved = false;
     const hold = (id: string, until: number) => {
       const obj = this.units.get(id);
       if (obj) obj.holdUntil = Math.max(obj.holdUntil, this.now + until);
@@ -452,9 +453,16 @@ export class BoardView {
       if (e.type === 'UnitMoved') {
         const obj = this.units.get(e.unitId);
         if (obj) {
-          this.setHeading(obj, this.unitWorld(e.to).sub(this.unitWorld(e.from)));
-          obj.animator.moveFor(MOVE_ANIM_MS);
-          moved = true;
+          // Walk hex by hex at a steady pace, so a longer move takes proportionally longer.
+          const path = this.walkPath(e.from, e.to);
+          const dur = (path.length - 1) * WALK_MS_PER_HEX;
+          obj.walk = { path, start: this.now + t };
+          this.at(t, () => {
+            obj.animator.stop(); // an idle flourish mustn't play over the walk
+            obj.animator.moveFor(dur);
+          });
+          t += dur;
+          lastHit = settle = t;
         }
       } else if (e.type === 'ActivationChosen') {
         const obj = this.units.get(e.unitId);
@@ -521,7 +529,7 @@ export class BoardView {
       }
     });
     this.busyUntil = Math.max(this.busyUntil, this.now + t);
-    return Math.max(t, moved ? MOVE_ANIM_MS / 2 : 0);
+    return t;
   }
 
   /** Cut short every pending animation step and dice card (a replay jump). */
@@ -529,7 +537,11 @@ export class BoardView {
     this.timeline.length = 0;
     this.busyUntil = this.now;
     this.rolls.clear();
-    for (const obj of this.units.values()) obj.holdUntil = 0;
+    for (const obj of this.units.values()) {
+      obj.holdUntil = 0;
+      obj.walk = null;
+      obj.animator.moveFor(0, { reset: true });
+    }
   }
 
   /** Return the camera to the framing it had when the board was built. */
@@ -628,6 +640,7 @@ export class BoardView {
       routed: false,
       fade: null,
       lunge: null,
+      walk: null,
       flash: 0,
     };
 
@@ -770,13 +783,14 @@ export class BoardView {
 
   /** Per-frame unit animation: frame, facing, lunge, tilt, fade and flash. */
   private animateUnit(obj: UnitObj, dtMs: number, lerp: number, camRight: THREE.Vector3): void {
-    obj.group.position.lerp(obj.targetPos, lerp);
+    if (obj.walk) this.walkUnit(obj, obj.walk);
+    else obj.group.position.lerp(obj.targetPos, lerp);
     if (this.now >= obj.holdUntil) this.syncShown(obj);
 
     // On Guard, hold the braced defence pose.
     const guardPose = obj.anims.defendMelee?.frames[1]?.[0] ?? null;
     obj.animator.pose = obj.shown.guarding && !obj.shown.knocked ? guardPose : null;
-    obj.animator.restless = !obj.shown.knocked && !obj.fade;
+    obj.animator.restless = !obj.shown.knocked && !obj.fade && !obj.walk;
     const image = obj.animator.update(dtMs);
     if (obj.atlas && image !== obj.shownImage) {
       const rect = obj.atlas.frames.get(image) ?? obj.atlas.frames.get(obj.animator.base);
@@ -821,6 +835,28 @@ export class BoardView {
       // A basic material's colour multiplies the texture; > 1 washes it toward white.
       obj.sprite.material.color.setScalar(1 + obj.flash * 2.5);
     }
+  }
+
+  /** Place a walking unit along its path (waiting at the origin until the walk starts), facing its current step. */
+  private walkUnit(obj: UnitObj, walk: NonNullable<UnitObj['walk']>): void {
+    const { path, start } = walk;
+    const f = (this.now - start) / WALK_MS_PER_HEX;
+    if (f >= path.length - 1) {
+      obj.group.position.copy(path[path.length - 1]!);
+      obj.walk = null;
+      return;
+    }
+    const i = Math.max(0, Math.floor(f));
+    const from = path[i]!;
+    const to = path[i + 1]!;
+    obj.group.position.lerpVectors(from, to, THREE.MathUtils.clamp(f - i, 0, 1));
+    if (f >= 0) this.setHeading(obj, to.clone().sub(from));
+  }
+
+  /** World points of the hexes a move walks through, origin and destination included. */
+  private walkPath(from: Vec, to: Vec): THREE.Vector3[] {
+    const cells = this.board ? makeHexGrid(this.board).pathWithin(from, to, this.width * this.height) : null;
+    return (cells ?? [from, to]).map((c) => this.unitWorld(c));
   }
 
   private animateMissiles(): void {

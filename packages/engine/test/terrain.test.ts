@@ -163,6 +163,23 @@ describe('movement pathing around impassable terrain', () => {
     expect(g.reachableWithin(from, 0).size).toBe(0);
   });
 
+  it('pathWithin walks step by step around blocked hexes', () => {
+    const g = makeHexGrid({ width: 6, height: 5, blocked: ['2,3'], terrain: wall.board.terrain });
+    const from = { x: 1, y: 1 };
+    const to = { x: 3, y: 1 };
+    const path = g.pathWithin(from, to, 6)!;
+    expect(path[0]).toEqual(from);
+    expect(path[path.length - 1]).toEqual(to);
+    expect(path).toContainEqual({ x: 2, y: 4 }); // the only gap in the wall
+    for (let i = 1; i < path.length; i++) {
+      expect(g.distance(path[i - 1]!, path[i]!)).toBe(1);
+      expect(g.isBlocked(path[i]!)).toBe(false);
+    }
+    expect(path.length - 1).toBe(6); // shortest: exactly the 6 steps reach needs
+    expect(g.pathWithin(from, to, 5)).toBeNull();
+    expect(g.pathWithin(from, from, 0)).toEqual([from]);
+  });
+
   it('forest is passable for pathing', () => {
     const g = makeHexGrid({ width: 3, height: 1, blocked: [], terrain: { '1,0': { feature: 'forest' } } });
     expect(g.reachableWithin({ x: 0, y: 0 }, 2)).toEqual(new Set(['1,0', '2,0']));

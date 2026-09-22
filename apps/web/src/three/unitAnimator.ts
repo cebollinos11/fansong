@@ -47,9 +47,9 @@ export class UnitAnimator {
     this.moveLeftMs = 0;
   }
 
-  /** Loop the move clip (if any) for the next `ms`. */
-  moveFor(ms: number): void {
-    this.moveLeftMs = Math.max(this.moveLeftMs, ms);
+  /** Loop the move clip (if any) for the next `ms`; `reset` replaces (rather than extends) what's left. */
+  moveFor(ms: number, opts: { reset?: boolean } = {}): void {
+    this.moveLeftMs = opts.reset ? ms : Math.max(this.moveLeftMs, ms);
   }
 
   get busy(): boolean {

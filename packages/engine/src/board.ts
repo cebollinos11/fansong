@@ -99,6 +99,11 @@ export interface Board {
    */
   reachableWithin(v: Vec, steps: number): Set<string>;
   /**
+   * A shortest walk from `a` to `b` (both included) through the same hexes
+   * {@link reachableWithin} walks, or null when `b` isn't reachable in `steps`.
+   */
+  pathWithin(a: Vec, b: Vec, steps: number): Vec[] | null;
+  /**
    * Line of sight between hex centres (symmetric). Any intervening blocked cell,
    * rock/building/forest hex, or (optionally) occupied cell breaks it; the
    * endpoints themselves never do.
@@ -241,6 +246,30 @@ export function makeHexGrid(data: BoardData): Board {
       }
       seen.delete(start);
       return seen;
+    },
+    pathWithin(a, b, steps) {
+      const goal = vecKey(b);
+      const parent = new Map<string, Vec | null>([[vecKey(a), null]]);
+      let frontier: Vec[] = [a];
+      for (let step = 0; step <= steps && frontier.length > 0; step++) {
+        const next: Vec[] = [];
+        for (const cell of frontier) {
+          if (vecKey(cell) === goal) {
+            const path: Vec[] = [];
+            for (let c: Vec | null | undefined = cell; c; c = parent.get(vecKey(c))) path.push(c);
+            return path.reverse();
+          }
+          if (step === steps) continue;
+          for (const n of neighbors(cell)) {
+            const k = vecKey(n);
+            if (parent.has(k)) continue;
+            parent.set(k, cell);
+            next.push(n);
+          }
+        }
+        frontier = next;
+      }
+      return null;
     },
     lineOfSight(a, b, occupied) {
       // Always draw the line in a canonical direction (lower column, then lower
