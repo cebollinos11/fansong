@@ -11,8 +11,10 @@ interface Props {
   selectableUnitIds: string[];
   selectedUnitId: string | null;
   interactive: boolean;
-  /** The most recent batch of engine events, for transient FX. */
+  /** The most recent batch of engine events, for transient FX. A new empty batch cuts pending FX short. */
   events: GameEvent[];
+  /** Called once per new `events` batch with how long (ms) its animations take to play out. */
+  onEventsPlayed?: (ms: number) => void;
   onUnitClick: (id: string) => void;
   onCellClick: (cell: Vec) => void;
   /**
@@ -35,8 +37,18 @@ export function BoardCanvas(props: Props): JSX.Element {
   const viewRef = useRef<BoardView | null>(null);
   const [hover, setHover] = useState<Vec | null>(null);
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
-  const handlers = useRef({ onUnitClick: props.onUnitClick, onCellClick: props.onCellClick, onCellDrag: props.onCellDrag });
-  handlers.current = { onUnitClick: props.onUnitClick, onCellClick: props.onCellClick, onCellDrag: props.onCellDrag };
+  const handlers = useRef({
+    onUnitClick: props.onUnitClick,
+    onCellClick: props.onCellClick,
+    onCellDrag: props.onCellDrag,
+    onEventsPlayed: props.onEventsPlayed,
+  });
+  handlers.current = {
+    onUnitClick: props.onUnitClick,
+    onCellClick: props.onCellClick,
+    onCellDrag: props.onCellDrag,
+    onEventsPlayed: props.onEventsPlayed,
+  };
 
   // Mount once.
   useEffect(() => {
@@ -106,9 +118,15 @@ export function BoardCanvas(props: Props): JSX.Element {
     markingsKey,
   ]);
 
-  // Fire transient FX when a new event batch arrives.
+  // Fire transient FX when a new event batch arrives; an empty batch (a replay
+  // jump, a resync) drops whatever was still playing.
   useEffect(() => {
-    if (props.events.length > 0) viewRef.current?.animateEvents(props.events);
+    const view = viewRef.current;
+    if (!view) return;
+    let ms = 0;
+    if (props.events.length > 0) ms = view.animateEvents(props.events);
+    else view.clearAnimations();
+    handlers.current.onEventsPlayed?.(ms);
   }, [props.events]);
 
   const hexInfo = hover ? describeHex(props.state, hover) : null;

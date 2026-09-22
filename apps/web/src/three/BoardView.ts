@@ -5,6 +5,16 @@ import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTe
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
 import { featureLayout, type FeaturePiece } from './features.js';
+import {
+  activationResolveMs,
+  activationRollMs,
+  NERVE_RESOLVE_MS,
+  NERVE_ROLL_MS,
+  OPPOSED_ROLL_MS,
+  ROLL_LINGER_MS,
+  RollOverlay,
+} from './rollOverlay.js';
+import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
 import { hexElevation, surfaceY, TILE_TOP, tileHeight, tileSideColor, tileTopColor } from './terrain.js';
 import { spriteFor } from './unitSprites.js';
 
@@ -82,7 +92,8 @@ const MOVE_ANIM_MS = 600; // the slide between hexes, roughly (see the position 
 const DEFEND_LEAD_MS = 126; // Wesnoth's defend reaction starts this long before impact
 const DEATH_FADE_MS = 600; // fade after a death clip (or instead of one)
 const ROUT_MS = 700; // a routed unit flees toward its own board edge while fading
-const MAX_QUEUE_MS = 1500; // most a new batch waits behind the previous one's animations
+const MAX_QUEUE_MS = 4000; // most a new batch waits behind the previous one's animations
+const NERVE_LEAD_MS = 900; // pause between a killing blow (its verdict) and the nerve checks it causes
 
 // Camera limits: stay above the table, and never tip over the top into a flip.
 const CAMERA_MIN_POLAR = 0.12; // radians from straight down
@@ -189,6 +200,8 @@ export class BoardView {
   private readonly resizeObserver: ResizeObserver;
 
   private readonly units = new Map<string, UnitObj>();
+  /** Dice cards and verdicts over the units. */
+  private readonly rolls: RollOverlay;
   private readonly tracers: Tracer[] = [];
   private readonly missiles: Missile[] = [];
   /** Deferred animation steps, run once board time reaches `at` (ms). */
@@ -248,6 +261,8 @@ export class BoardView {
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
+
+    this.rolls = new RollOverlay(this.container, (id) => this.units.get(id)?.owner);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
@@ -414,44 +429,87 @@ export class BoardView {
 
   /**
    * Play a batch of engine events as Wesnoth-style animations. Steps are laid
-   * out on a timeline: each strike plays its attack clip, the target reacts on
-   * the clip's hit frame, and knockdowns/deaths wait for that same moment
-   * (the GameState that already contains them is held back until then).
+   * out on a timeline: every roll first plays out on a dice card over the units
+   * (dice, modifiers, total), then the strike plays its attack clip, the target
+   * reacts on the clip's hit frame, and knockdowns/deaths wait for that same
+   * moment (the GameState that already contains them is held back until then).
+   * Returns how long (ms from now) until the batch has played out.
    */
-  animateEvents(events: GameEvent[]): void {
+  animateEvents(events: GameEvent[]): number {
     let t = Math.min(MAX_QUEUE_MS, Math.max(0, this.busyUntil - this.now));
     let lastHit = t; // when the most recent blow lands, for its consequences
+    let settle = t; // when state changes caused by the latest roll or blow are shown
+    let nerveAt: number | null = null; // start of the current run of nerve checks
+    let moved = false;
     const hold = (id: string, until: number) => {
       const obj = this.units.get(id);
       if (obj) obj.holdUntil = Math.max(obj.holdUntil, this.now + until);
     };
 
-    for (const e of events) {
+    events.forEach((e, i) => {
+      const after = events.slice(i + 1);
+      if (e.type !== 'NerveCheck') nerveAt = null;
       if (e.type === 'UnitMoved') {
         const obj = this.units.get(e.unitId);
         if (obj) {
           this.setHeading(obj, this.unitWorld(e.to).sub(this.unitWorld(e.from)));
           obj.animator.moveFor(MOVE_ANIM_MS);
+          moved = true;
         }
       } else if (e.type === 'ActivationChosen') {
         const obj = this.units.get(e.unitId);
         if (obj?.anims.leading) this.at(t, () => obj.animator.play(obj.anims.leading));
-      } else if (e.type === 'AttackResolved' || e.type === 'ShotResolved') {
-        const s = this.strike(e.attackerId, e.targetId, e.type === 'AttackResolved' ? 'melee' : 'ranged', t);
+      } else if (e.type === 'DiceRolled') {
+        const roll = describeActivation(e, after);
+        const start = t;
+        const resolve = start + activationResolveMs(roll.dice.length);
+        const end = start + activationRollMs(roll.dice.length);
+        this.at(start, () => this.rolls.addActivation(roll, this.now, end - start + ROLL_LINGER_MS));
+        if (roll.verdict) {
+          const verdict = roll.verdict;
+          this.at(resolve, () => this.rolls.addVerdict(verdict, this.now));
+        }
+        settle = resolve;
+        t = end;
+      } else if (e.type === 'UnitStoodUp') {
+        hold(e.unitId, settle);
+      } else if (e.type === 'AttackResolved' || e.type === 'ShotResolved' || e.type === 'GuardRiposte') {
+        const roll = describeCombat(e, after);
+        const start = t;
+        const s =
+          e.type === 'GuardRiposte'
+            ? this.strike(e.guardId, e.attackerId, 'melee', start + OPPOSED_ROLL_MS)
+            : this.strike(e.attackerId, e.targetId, e.type === 'AttackResolved' ? 'melee' : 'ranged', start + OPPOSED_ROLL_MS);
+        this.at(start, () => this.rolls.addOpposed(roll, this.now, s.end - start + ROLL_LINGER_MS));
+        this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now));
         lastHit = s.hit;
+        settle = s.hit;
         t = s.end;
-      } else if (e.type === 'GuardRiposte') {
-        const s = this.strike(e.guardId, e.attackerId, 'melee', t);
-        lastHit = s.hit;
-        t = s.end;
+      } else if (e.type === 'NerveCheck') {
+        // A run of checks (every nearby friend, or a whole routing warband) rolls at once.
+        if (nerveAt === null) {
+          nerveAt = Math.max(lastHit, settle) + NERVE_LEAD_MS;
+          this.at(nerveAt, () => this.rolls.retireAll());
+        }
+        const roll = describeNerve(e, after);
+        const start = nerveAt;
+        this.at(start, () => this.rolls.addNerve(roll, this.now, NERVE_ROLL_MS + ROLL_LINGER_MS));
+        settle = start + NERVE_RESOLVE_MS;
+        t = Math.max(t, start + NERVE_ROLL_MS);
+      } else if (e.type === 'WarbandBroken') {
+        const at = Math.max(lastHit, settle) + NERVE_LEAD_MS;
+        this.at(at, () =>
+          this.rolls.addVerdict({ text: `P${e.player}'s warband breaks!`, on: [], tone: 'kill' }, this.now),
+        );
+        settle = at;
       } else if (e.type === 'ToughnessSaved') {
         this.at(lastHit, () => this.flashUnit(e.unitId, 0.7));
       } else if (e.type === 'UnitKnockedDown' || e.type === 'UnitKilled') {
-        hold(e.unitId, lastHit);
+        hold(e.unitId, settle);
       } else if (e.type === 'UnitRouted') {
         const obj = this.units.get(e.unitId);
         if (obj) obj.routed = true;
-        hold(e.unitId, lastHit + 300);
+        hold(e.unitId, settle + 300);
       } else if (e.type === 'GameOver') {
         this.at(t + 400, () => {
           for (const obj of this.units.values()) {
@@ -461,8 +519,17 @@ export class BoardView {
           }
         });
       }
-    }
+    });
     this.busyUntil = Math.max(this.busyUntil, this.now + t);
+    return Math.max(t, moved ? MOVE_ANIM_MS / 2 : 0);
+  }
+
+  /** Cut short every pending animation step and dice card (a replay jump). */
+  clearAnimations(): void {
+    this.timeline.length = 0;
+    this.busyUntil = this.now;
+    this.rolls.clear();
+    for (const obj of this.units.values()) obj.holdUntil = 0;
   }
 
   /** Return the camera to the framing it had when the board was built. */
@@ -480,6 +547,7 @@ export class BoardView {
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
     for (const t of this.badgeTextures.values()) t.dispose();
+    this.rolls.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -934,6 +1002,7 @@ export class BoardView {
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
     this.animateMissiles();
+    this.rolls.update(this.now, this.projectUnit);
 
     // Fade and retire tracers.
     for (let i = this.tracers.length - 1; i >= 0; i--) {
@@ -1089,6 +1158,20 @@ export class BoardView {
     this.controls.update();
     this.controls.saveState();
   }
+
+  /** A unit's point `height` above its base, in container pixels (null when behind the camera). */
+  private projectUnit = (id: string, height: number): { x: number; y: number } | null => {
+    const obj = this.units.get(id);
+    if (!obj) return null;
+    const p = obj.group.position.clone();
+    p.y += TILE_TOP + height;
+    p.project(this.camera);
+    if (p.z > 1) return null;
+    return {
+      x: ((p.x + 1) / 2) * this.container.clientWidth,
+      y: ((1 - p.y) / 2) * this.container.clientHeight,
+    };
+  };
 
   /** Keep the orbit pivot on the board so panning can't lose the table. */
   private clampCameraTarget(): void {

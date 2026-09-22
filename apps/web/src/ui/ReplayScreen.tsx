@@ -9,7 +9,9 @@ interface Props {
   onExit: () => void;
 }
 
+/** Auto-play: the least time per step, and the pause after a step's animations. */
 const PLAY_INTERVAL_MS = 900;
+const PLAY_GAP_MS = 300;
 
 /**
  * A step-through viewer over a {@link Replay}. It re-derives every frame purely
@@ -26,6 +28,8 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
   const [playing, setPlaying] = useState(false);
   // Events handed to the board for FX — only when stepping forward by one.
   const [fx, setFx] = useState<GameEvent[]>([]);
+  // How long the latest step's animations (dice, blows) take, so auto-play waits for them.
+  const stepMs = useRef(0);
 
   const state = index === 0 ? run.initial : run.frames[index - 1]!;
   const stepEvents = index === 0 ? [] : run.events[index - 1]!;
@@ -53,7 +57,8 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
       setPlaying(false);
       return;
     }
-    const id = setTimeout(() => stepForward.current(), PLAY_INTERVAL_MS);
+    // The board reports the step's duration from its own (child) effect, which runs before this one.
+    const id = setTimeout(() => stepForward.current(), Math.max(PLAY_INTERVAL_MS, stepMs.current + PLAY_GAP_MS));
     return () => clearTimeout(id);
   }, [playing, index, total]);
 
@@ -71,6 +76,7 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
         selectedUnitId={null}
         interactive={false}
         events={fx}
+        onEventsPlayed={(ms) => (stepMs.current = ms)}
         onUnitClick={() => {}}
         onCellClick={() => {}}
       />

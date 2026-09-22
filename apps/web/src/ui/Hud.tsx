@@ -15,6 +15,8 @@ interface Props {
   selectedUnitId: string | null;
   /** True when the local human may act right now. */
   humanTurn: boolean;
+  /** True while the board is still playing out the latest dice and blows. */
+  resolving: boolean;
   log: LogEntry[];
   onActivate: (diceCount: number) => void;
   onEndActivation: () => void;
@@ -112,7 +114,11 @@ export function Hud(props: Props): JSX.Element {
         <div className="turn-panel">
           {!humanTurn ? (
             <p className="thinking">
-              {isAiSeat(setup, state.active) ? 'AI is thinking…' : "Opponent's turn…"}
+              {props.resolving && controlledSeats.includes(state.active)
+                ? 'Resolving…'
+                : isAiSeat(setup, state.active)
+                  ? 'AI is thinking…'
+                  : "Opponent's turn…"}
             </p>
           ) : state.phase === 'awaitingActivation' ? (
             <div>

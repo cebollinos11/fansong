@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameEvent, GameState, Replay, Vec } from '@fansong/engine';
 import type { ClientStatus, MatchClient } from '../game/client.js';
+import type { Transition } from '../game/controller.js';
 import { deriveInteraction } from '../game/interaction.js';
+import { PresentationQueue } from '../game/presentation.js';
 import { downloadReplay } from '../game/replay-io.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { Hud } from './Hud.js';
@@ -14,36 +16,56 @@ interface Props {
 }
 
 export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Element {
+  // What the board is showing (it may still be rolling dice for it)...
+  const [shown, setShown] = useState<{ state: GameState; events: GameEvent[] }>(() => ({
+    state: client.getState(),
+    events: [],
+  }));
+  // ...and the state whose animations have played out, which the HUD and log show.
   const [state, setState] = useState<GameState>(client.getState());
-  const [events, setEvents] = useState<GameEvent[]>([]);
+  const [idle, setIdle] = useState(true);
   const [log, setLog] = useState<LogEntry[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [status, setStatus] = useState<ClientStatus>(client.status());
+  const queueRef = useRef<PresentationQueue<Transition> | null>(null);
 
   // Subscribe to transitions (local reduce or server delta — same seam) and to
-  // connection status. The client owns the state; the screen only renders it.
+  // connection status. The client owns the state; the screen only renders it,
+  // one transition at a time, so each roll plays out before its result shows.
   useEffect(() => {
-    const unsub = client.subscribe(({ state: next, events: evs }) => {
-      setState(next);
-      setEvents(evs);
-      setLog((prev) => appendEvents(prev, next, evs));
-      setSelectedUnitId(null);
-    });
+    const queue = new PresentationQueue<Transition>(
+      (t) => {
+        setIdle(false);
+        setShown({ state: t.state, events: t.events });
+        setSelectedUnitId(null);
+      },
+      (t, nowIdle) => {
+        setState(t.state);
+        setLog((prev) => appendEvents(prev, t.state, t.events));
+        setIdle(nowIdle);
+      },
+    );
+    queueRef.current = queue;
+    const unsub = client.subscribe((t) => queue.push(t));
     const unsubStatus = client.onStatus(setStatus);
     setStatus(client.status());
     return () => {
       unsub();
       unsubStatus();
+      queue.dispose();
+      queueRef.current = null;
     };
   }, [client]);
 
   const ready = status.phase === 'ready';
+  // Input waits for the board to catch up, so a human never acts on a result
+  // the dice haven't shown yet (once idle, `state` is the client's state).
   const myTurn =
-    ready && state.phase !== 'gameOver' && client.controlledSeats.includes(state.active);
+    ready && idle && state.phase !== 'gameOver' && client.controlledSeats.includes(state.active);
   const interaction = useMemo(() => deriveInteraction(client.legalCommands()), [state, client]);
 
   // A finished local match can be replayed or exported (online play records no replay).
-  const replay = state.phase === 'gameOver' ? client.getReplay() : null;
+  const replay = idle && state.phase === 'gameOver' ? client.getReplay() : null;
 
   const handleUnitClick = (id: string): void => {
     if (!myTurn) return;
@@ -95,13 +117,14 @@ export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Elemen
   return (
     <div className="game">
       <BoardCanvas
-        state={state}
+        state={shown.state}
         moveTargets={myTurn && state.phase === 'acting' ? interaction.moveTargets : []}
         attackTargetIds={myTurn && state.phase === 'acting' ? interaction.attackTargetIds : []}
         selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
         selectedUnitId={selectedUnitId}
         interactive={myTurn}
-        events={events}
+        events={shown.events}
+        onEventsPlayed={(ms) => queueRef.current?.played(ms)}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
       />
@@ -113,6 +136,7 @@ export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Elemen
         interaction={interaction}
         selectedUnitId={selectedUnitId}
         humanTurn={myTurn}
+        resolving={!idle}
         log={log}
         onActivate={handleActivate}
         onEndActivation={handleEndActivation}

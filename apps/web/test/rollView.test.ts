@@ -1,0 +1,133 @@
+import type { GameEvent } from '@fansong/engine';
+import { describe, expect, it } from 'vitest';
+import { describeActivation, describeCombat, describeNerve, signed } from '../src/ui/rollView.js';
+
+type Attack = Extract<GameEvent, { type: 'AttackResolved' }>;
+
+function attack(over: Partial<Attack>): Attack {
+  return {
+    type: 'AttackResolved',
+    attackerId: 'a',
+    targetId: 'd',
+    attackDie: 4,
+    defenseDie: 2,
+    attackScore: 7,
+    defenseScore: 5,
+    result: 'defenderKnockedDown',
+    ...over,
+  };
+}
+
+describe('opposed roll cards', () => {
+  it('splits each total into die, Combat and high ground', () => {
+    const r = describeCombat(attack({ attackScore: 8, attackBonus: 1 }));
+    expect(r.a).toMatchObject({ unitId: 'a', role: 'Attack', die: 4, total: 8, outcome: 'win' });
+    expect(r.a.mods).toEqual([
+      { label: 'Combat', value: 3 },
+      { label: 'High ground', value: 1 },
+    ]);
+    expect(r.b).toMatchObject({ unitId: 'd', role: 'Defend', die: 2, total: 5, outcome: 'lose' });
+    expect(r.b.mods).toEqual([{ label: 'Combat', value: 3 }]);
+    expect(r.verdict).toEqual({ text: 'Knocked down', detail: '8 beats 5', on: ['d'], tone: 'down' });
+  });
+
+  it('calls a doubled score a kill, and a Tough save a knockdown', () => {
+    const kill = attack({ attackScore: 10, defenseScore: 5, result: 'defenderKilled' });
+    expect(describeCombat(kill).verdict).toMatchObject({ text: 'Slain!', detail: '10 doubles 5', tone: 'kill' });
+    const saved = describeCombat(kill, [{ type: 'ToughnessSaved', unitId: 'd' }]).verdict;
+    expect(saved).toMatchObject({ text: 'Tough!', on: ['d'], tone: 'save' });
+  });
+
+  it('notes an already-down defender dying to a mere win', () => {
+    const r = describeCombat(attack({ result: 'defenderKilled' }));
+    expect(r.verdict.detail).toBe('7 beats 5 — already down');
+  });
+
+  it('puts a defender win on the attacker', () => {
+    const r = describeCombat(attack({ attackScore: 4, defenseScore: 6, result: 'attackerKnockedDown' }));
+    expect(r.a.outcome).toBe('lose');
+    expect(r.b.outcome).toBe('win');
+    expect(r.verdict).toMatchObject({ text: 'Knocked down', on: ['a'] });
+  });
+
+  it('explains a knocked-down defender whose higher total did nothing', () => {
+    const r = describeCombat(attack({ attackScore: 4, defenseScore: 6, result: 'clash' }));
+    expect(r.b).toMatchObject({ outcome: 'tie', note: 'Down: only a 6 strikes back' });
+    expect(r.verdict).toMatchObject({ text: 'Clash', on: ['a', 'd'], tone: 'neutral' });
+  });
+
+  it('never has a shot hurt the shooter', () => {
+    const shot: GameEvent = {
+      type: 'ShotResolved',
+      attackerId: 'a',
+      targetId: 'd',
+      attackDie: 1,
+      defenseDie: 6,
+      attackScore: 3,
+      defenseScore: 9,
+      result: 'clash',
+    };
+    const r = describeCombat(shot);
+    expect(r.a.role).toBe('Shoot');
+    expect(r.b.note).toBe('No return fire');
+    expect(r.verdict.text).toBe('Missed');
+  });
+
+  it('shows a riposte from the guard, and a failed one as the attack going through', () => {
+    const riposte: GameEvent = {
+      type: 'GuardRiposte',
+      guardId: 'g',
+      attackerId: 'a',
+      guardDie: 1,
+      attackerDie: 5,
+      guardScore: 4,
+      attackerScore: 8,
+      result: 'attackerKilled',
+      prevented: false,
+    };
+    const r = describeCombat(riposte);
+    expect(r.a).toMatchObject({ unitId: 'g', role: 'Riposte' });
+    expect(r.b).toMatchObject({ unitId: 'a', outcome: 'win', note: 'Guard is unhurt' });
+    expect(r.verdict).toMatchObject({ text: 'Attack goes through', tone: 'neutral' });
+  });
+});
+
+describe('activation roll cards', () => {
+  const rolled = (dice: number[], quality = 4): Extract<GameEvent, { type: 'DiceRolled' }> => {
+    const successes = dice.filter((d) => d >= quality).length;
+    return { type: 'DiceRolled', unitId: 'u', quality, dice, successes, failures: dice.length - successes };
+  };
+
+  it('marks each die against Quality and counts actions', () => {
+    const r = describeActivation(rolled([5, 2, 4]));
+    expect(r.dice.map((d) => d.success)).toEqual([true, false, true]);
+    expect(r.summary).toBe('2 actions');
+    expect(r.verdict).toBeNull();
+  });
+
+  it('charges an action to stand up', () => {
+    expect(describeActivation(rolled([6, 4]), [{ type: 'UnitStoodUp', unitId: 'u' }]).summary).toBe(
+      'Stands up (−1) · 1 action',
+    );
+  });
+
+  it('announces a turnover', () => {
+    const r = describeActivation(rolled([1, 2, 6]), [{ type: 'Turnover', player: 0, unitId: 'u' }]);
+    expect(r.turnover).toBe(true);
+    expect(r.summary).toBe('2 fails — turnover');
+    expect(r.verdict).toMatchObject({ text: 'Turnover!', on: ['u'] });
+  });
+});
+
+describe('nerve roll cards', () => {
+  it('tells fear from a rout', () => {
+    const e = { type: 'NerveCheck', unitId: 'u', quality: 4, die: 2, passed: false } as const;
+    expect(describeNerve(e).summary).toBe('Shaken — knocked down');
+    expect(describeNerve(e, [{ type: 'UnitRouted', unitId: 'u' }]).summary).toBe('Flees!');
+    expect(describeNerve({ ...e, die: 5, passed: true }).summary).toBe('Holds firm');
+  });
+});
+
+it('signs modifiers', () => {
+  expect([signed(3), signed(0), signed(-1)]).toEqual(['+3', '+0', '−1']);
+});
