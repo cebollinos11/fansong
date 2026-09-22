@@ -11,6 +11,8 @@ import type { Warband } from './warband.js';
  *  - free-company : a balanced generalist baseline with a ranged skirmisher.
  *  - hollow-watch : a defensive garrison showcasing all three M5 traits
  *    (Ranged bows, a Tough shield-warden, and a Guard captain).
+ *  - thorn-patrol : a minimum-size (3-unit) band — one bow, two foot — for
+ *    quick games and small boards.
  */
 export const PRESETS: Record<string, Warband> = {
   'iron-wardens': {
@@ -54,6 +56,14 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Longbow', quality: 3, combat: 2, move: 3, ranged: 4 },
       { name: 'Crossbow', quality: 4, combat: 3, move: 3, ranged: 3 },
       { name: 'Sentry', quality: 3, combat: 3, move: 3 },
+    ],
+  },
+  'thorn-patrol': {
+    name: 'Thorn Patrol',
+    units: [
+      { name: 'Thorn-Bow', quality: 3, combat: 2, move: 3, ranged: 4 },
+      { name: 'Thorn-Blade', quality: 3, combat: 4, move: 3 },
+      { name: 'Thorn-Spear', quality: 3, combat: 3, move: 3 },
     ],
   },
 };

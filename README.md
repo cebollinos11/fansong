@@ -85,8 +85,8 @@ seed replays identically).
   is an honest measure of value with no unimplemented "paper" traits.
 - **Validation** (`validateWarband`) — checks stat ranges, roster size, and a
   point budget (default 200), reporting every problem at once for a builder UI.
-- **Presets** — four original warbands (`iron-wardens`, `ashfang-raiders`,
-  `free-company`, `hollow-watch`), each proven legal by the test suite. The cost
+- **Presets** — five original warbands (`iron-wardens`, `ashfang-raiders`,
+  `free-company`, `hollow-watch`, `thorn-patrol`), each proven legal by the test suite. The cost
   model prices the M5 traits too (ranged reach, plus flat Tough/Guard surcharges).
 - **Deploy** (`buildMatch`) — lays two warbands out facing off and emits an
   engine `GameConfig`; the CLI and any future UI share it.

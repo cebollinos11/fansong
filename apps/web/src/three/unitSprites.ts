@@ -37,6 +37,11 @@ export const UNIT_SPRITES: Record<string, string> = {
   Longbow: 'human-loyalists/longbowman.png',
   Crossbow: 'human-loyalists/lieutenant-crossbow.png',
   Sentry: 'human-loyalists/spearman.png',
+
+  // Thorn Patrol — a three-man border patrol: one bow, two foot.
+  'Thorn-Bow': 'human-loyalists/longbowman.png',
+  'Thorn-Blade': 'human-loyalists/swordsman.png',
+  'Thorn-Spear': 'human-loyalists/spearman.png',
 };
 
 /** Used for any unit name without an entry above. */
