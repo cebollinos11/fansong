@@ -188,3 +188,9 @@
   still a click. Off-board pointer keeps the last in-board corner. Pure helpers (`applyDrag`,
   `dragCells`, `footprintCells`) in editorView.ts, tested; task 22 extends `toolDrags`/`dragCells`
   for forest/rock fills. Checked with Playwright on a built preview.
+- Task 22: editor Features → Forest / Rock tools (`EditorTool` `{ kind: 'area', feature }`). Click paints
+  the brush (radius 0–2) — or, when the centre hex already has that feature, clears it from the brush
+  hexes that have it (other features untouched), so radius 0 is single-hex place/remove. Drag fills the
+  full offset rectangle (`regionCells`, uncapped, radius ignored) as one undo step; a drag started on
+  that feature clears it from the region instead. Painting over a building replaces it (same as
+  `paintFeature`). Tested in editorView.test.ts; checked with Playwright on a built preview.

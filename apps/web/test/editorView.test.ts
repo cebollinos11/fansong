@@ -134,3 +134,55 @@ describe('building tool', () => {
     expect(footprintCells(map, { x: 10, y: 8 }, { x: 13, y: 9 })).toHaveLength(2 * 2);
   });
 });
+
+describe('forest & rock tools', () => {
+  const forest = { kind: 'area', feature: 'forest' } as const;
+  const rock = { kind: 'area', feature: 'rock' } as const;
+  const count = (map: ReturnType<typeof newEditorMap>, f: string) => map.hexes.filter((h) => h.feature === f).length;
+  const at = (map: ReturnType<typeof newEditorMap>, x: number, y: number) => map.hexes[y * map.width + x];
+
+  it('a radius-0 click places and removes a single hex', () => {
+    let map = applyTool(newEditorMap(8, 6), rock, { x: 2, y: 2 }, 0);
+    expect(at(map, 2, 2)).toEqual({ elevation: 0, feature: 'rock' });
+    expect(count(map, 'rock')).toBe(1);
+    map = applyTool(map, rock, { x: 2, y: 2 }, 0);
+    expect(count(map, 'rock')).toBe(0);
+  });
+
+  it('paints the whole brush and clears it again from a forest centre', () => {
+    let map = applyTool(newEditorMap(8, 6), { kind: 'building' }, { x: 4, y: 3 }, 0);
+    map = applyTool(map, forest, { x: 3, y: 3 }, 1);
+    expect(count(map, 'forest')).toBe(7);
+    expect(count(map, 'building')).toBe(0);
+    map = applyTool(map, forest, { x: 3, y: 3 }, 2);
+    expect(count(map, 'forest')).toBe(0);
+    expect(mapPreviewState(map).board.terrain).toEqual(mapToBoard(map).terrain);
+  });
+
+  it('clearing leaves other features in the brush alone and keeps elevation', () => {
+    let map = applyTool(newEditorMap(8, 6), { kind: 'elevation', brush: { kind: 'set', value: 2 } }, { x: 3, y: 3 }, 0);
+    map = applyTool(map, forest, { x: 3, y: 3 }, 0);
+    map = applyTool(map, rock, { x: 4, y: 3 }, 0);
+    map = applyTool(map, forest, { x: 3, y: 3 }, 1);
+    expect(at(map, 3, 3)).toEqual({ elevation: 2 });
+    expect(at(map, 4, 3)?.feature).toBe('rock');
+  });
+
+  it('a drag fills the whole (uncapped) region as one undo step', () => {
+    const map = newEditorMap(12, 10);
+    expect(toolDrags(forest)).toBe(true);
+    expect(dragCells(map, forest, { x: 0, y: 0 }, { x: 9, y: 1 })).toHaveLength(20);
+    const filled = applyDrag(map, forest, { x: 0, y: 0 }, { x: 9, y: 1 });
+    expect(count(filled, 'forest')).toBe(20);
+    expect(commitEdit(createHistory(map), filled).past).toHaveLength(1);
+  });
+
+  it('a drag started on the feature clears it from the region', () => {
+    let map = applyDrag(newEditorMap(12, 10), rock, { x: 1, y: 1 }, { x: 5, y: 4 });
+    map = applyTool(map, forest, { x: 3, y: 2 }, 0);
+    map = applyDrag(map, rock, { x: 1, y: 1 }, { x: 3, y: 4 });
+    expect(count(map, 'rock')).toBe(2 * 4);
+    expect(at(map, 3, 2)?.feature).toBe('forest');
+    expect(at(map, 4, 1)?.feature).toBe('rock');
+  });
+});

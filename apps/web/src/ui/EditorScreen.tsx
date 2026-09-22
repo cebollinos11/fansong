@@ -28,7 +28,7 @@ interface Props {
 const DEFAULT_WIDTH = 14;
 const DEFAULT_HEIGHT = 12;
 
-type ToolId = 'select' | 'raise' | 'lower' | 'set' | 'erase' | 'building';
+type ToolId = 'select' | 'raise' | 'lower' | 'set' | 'erase' | 'building' | 'forest' | 'rock';
 
 const TOOLS: { id: ToolId; label: string; title: string }[] = [
   { id: 'select', label: 'Select', title: 'Inspect a hex' },
@@ -43,6 +43,16 @@ const FEATURE_TOOLS: { id: ToolId; label: string; title: string }[] = [
     id: 'building',
     label: 'Building',
     title: `Click to place/remove a building; drag to stamp a footprint (up to ${MAX_FOOTPRINT_SIDE}×${MAX_FOOTPRINT_SIDE})`,
+  },
+  {
+    id: 'forest',
+    label: 'Forest',
+    title: 'Click to paint forest with the brush (click forest to clear it); drag to fill a region',
+  },
+  {
+    id: 'rock',
+    label: 'Rock',
+    title: 'Click to paint rocks with the brush (click a rock to clear them); drag to fill a region',
   },
 ];
 
@@ -80,6 +90,9 @@ function toolFor(id: ToolId, level: number): EditorTool {
       return { kind: 'erase' };
     case 'building':
       return { kind: 'building' };
+    case 'forest':
+    case 'rock':
+      return { kind: 'area', feature: id };
     case 'set':
       return { kind: 'elevation', brush: { kind: 'set', value: level } };
     default:
@@ -92,7 +105,7 @@ function toolFor(id: ToolId, level: number): EditorTool {
  * `@fansong/content`); the board is rendered through the same {@link BoardCanvas}
  * as play, rebuilt after each edit. Clicking a hex selects it and, with a
  * painting tool active, applies that tool's brush there as one undo step.
- * Drag tools (buildings) stamp the dragged footprint on release instead.
+ * Drag tools (buildings, forest, rocks) stamp/fill the dragged region on release instead.
  */
 export function EditorScreen({ onExit }: Props): JSX.Element {
   const [history, setHistory] = useState<EditorHistory>(() =>
@@ -219,8 +232,13 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
         <fieldset className="editor-tools">
           <legend>Features</legend>
           <Toolbar label="Feature tool" tools={FEATURE_TOOLS} active={toolId} onPick={setToolId} />
-          {toolDrags(tool) ? (
+          {tool.kind === 'building' ? (
             <p className="hint">Click: single hex · drag: footprint · middle-drag orbits.</p>
+          ) : tool.kind === 'area' ? (
+            <p className="hint">
+              Click: brush (on a {tool.feature}: clears) · drag: fill region (from a {tool.feature}: clears) ·
+              middle-drag orbits.
+            </p>
           ) : null}
         </fieldset>
 
