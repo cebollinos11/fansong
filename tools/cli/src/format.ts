@@ -37,6 +37,8 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `    ⚑ ${name(state, e.unitId)} routs and flees the field`;
     case 'UnitKnockedDown':
       return `    ${name(state, e.unitId)} is knocked down`;
+    case 'UnitRecoiled':
+      return `    ${name(state, e.unitId)} is pushed back to (${e.to.x},${e.to.y})`;
     case 'UnitKilled':
       return `    ☠ ${name(state, e.unitId)} is killed`;
     case 'ActivationEnded':

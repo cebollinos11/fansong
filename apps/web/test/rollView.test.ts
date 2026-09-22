@@ -50,6 +50,15 @@ describe('opposed roll cards', () => {
     expect(r.verdict).toMatchObject({ text: 'Knocked down', on: ['a'] });
   });
 
+  it("calls a push back on the winner's odd die, and says why an odd die still knocked down", () => {
+    const pushed = describeCombat(attack({ attackDie: 3, result: 'defenderRecoiled' }));
+    expect(pushed.verdict).toEqual({ text: 'Pushed back', detail: '7 beats 5 on an odd 3', on: ['d'], tone: 'down' });
+    const cornered = describeCombat(attack({ attackDie: 3, result: 'defenderKnockedDown' }));
+    expect(cornered.verdict.detail).toBe('7 beats 5 — no room to fall back');
+    const back = describeCombat(attack({ attackScore: 4, defenseScore: 6, defenseDie: 5, result: 'attackerRecoiled' }));
+    expect(back.verdict).toMatchObject({ text: 'Pushed back', on: ['a'] });
+  });
+
   it('explains a knocked-down defender whose higher total did nothing', () => {
     const r = describeCombat(attack({ attackScore: 4, defenseScore: 6, result: 'clash' }));
     expect(r.b).toMatchObject({ outcome: 'tie', note: 'Down: only a 6 strikes back' });

@@ -1,6 +1,6 @@
 import type { Vec } from './board.js';
 import { livingCount } from './query.js';
-import type { GameEvent, GameOverReason, GameState, Owner } from './types.js';
+import type { GameEvent, GameOverReason, GameState, Owner, Unit } from './types.js';
 
 /**
  * Game modes. The mode decides how a match is won; the map's objectives decide
@@ -307,6 +307,14 @@ export function flagAtBase(state: GameState, player: Owner): boolean {
 }
 
 /**
+ * Capture-the-flag (mutates `s`): a flag `unit` carries follows it. Being pushed
+ * (a recoil) only does this — it never picks up, returns or captures a flag.
+ */
+export function carryFlags(s: GameState, unit: Unit): void {
+  for (const f of s.mode?.flags ?? []) if (f.carrier === unit.id) f.at = { x: unit.pos.x, y: unit.pos.y };
+}
+
+/**
  * Capture-the-flag, after `unitId` ends a move (mutates `s`): a carried flag
  * follows its carrier; moving onto your own dropped flag returns it to base;
  * moving onto the enemy flag (at its base or dropped) picks it up; and a carrier
@@ -320,7 +328,7 @@ export function flagsAfterMove(s: GameState, events: GameEvent[], unitId: string
   const bases = m.objectives.flags;
   const own = unit.owner;
   const enemy: Owner = own === 0 ? 1 : 0;
-  for (const f of m.flags) if (f.carrier === unit.id) f.at = { x: unit.pos.x, y: unit.pos.y };
+  carryFlags(s, unit);
 
   const mine = m.flags[own];
   if (mine.carrier === null && sameHex(mine.at, unit.pos) && !sameHex(mine.at, bases[own])) {

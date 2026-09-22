@@ -170,8 +170,8 @@ interface UnitObj {
   /** Board times the fade-out starts / ends, while dying or fleeing. */
   fade: { start: number; end: number; flee: THREE.Vector3 | null } | null;
   lunge: { dir: THREE.Vector3; start: number; hit: number; end: number } | null;
-  /** A move in progress: hex centres from origin to destination, walked from board time `start`. */
-  walk: { path: THREE.Vector3[]; start: number } | null;
+  /** A move in progress: hex centres from origin to destination, walked from board time `start`. `backward` keeps the facing (a recoil). */
+  walk: { path: THREE.Vector3[]; start: number; backward?: boolean } | null;
   /** 0..1 transient hit flash, decays each frame. */
   flash: number;
 }
@@ -514,6 +514,13 @@ export class BoardView {
         settle = at;
       } else if (e.type === 'ToughnessSaved') {
         this.at(lastHit, () => this.flashUnit(e.unitId, 0.7));
+      } else if (e.type === 'UnitRecoiled') {
+        const obj = this.units.get(e.unitId);
+        if (obj) {
+          // Shoved back one hex on the blow's hit frame, still facing its opponent.
+          obj.walk = { path: [this.unitWorld(e.from), this.unitWorld(e.to)], start: this.now + lastHit, backward: true };
+          t = Math.max(t, lastHit + WALK_MS_PER_HEX);
+        }
       } else if (e.type === 'UnitKnockedDown' || e.type === 'UnitKilled') {
         hold(e.unitId, settle);
       } else if (e.type === 'UnitRouted') {
@@ -859,7 +866,7 @@ export class BoardView {
     const arc = Math.sin(Math.PI * k);
     obj.group.position.y += WALK_HOP * arc;
     obj.mirror.rotation.z = WALK_SWAY * arc * (i % 2 === 0 ? 1 : -1);
-    if (f >= 0) this.setHeading(obj, to.clone().sub(from));
+    if (f >= 0 && !walk.backward) this.setHeading(obj, to.clone().sub(from));
   }
 
   /** World points of the hexes a move walks through, origin and destination included. */

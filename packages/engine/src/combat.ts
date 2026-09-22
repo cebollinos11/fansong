@@ -1,32 +1,41 @@
 import type { Vec } from './board.js';
 import type { CombatResult, Unit } from './types.js';
 
+/** One combatant's side of an opposed roll. */
+export interface CombatSide {
+  score: number;
+  /** The natural (unmodified) d6. */
+  die: number;
+  knockedDown: boolean;
+  /** Whether the hex directly behind it (away from the opponent) is free to recoil into. */
+  canRecoil: boolean;
+}
+
 /**
  * Resolve an opposed melee once scores are known. Pure and rng-free so the
  * outcome table can be unit-tested directly.
  *
- * - attacker doubles the defender -> defender killed
- * - attacker beats the defender    -> defender knocked down (killed if already down)
- * - defender doubles the attacker  -> attacker killed
- * - defender beats the attacker    -> attacker knocked down (killed if already down)
- * - tie                            -> clash (no effect)
+ * - winner doubles the loser -> loser killed
+ * - winner beats the loser   -> loser already down: killed; else the winner's
+ *                               natural die decides: odd = recoil one hex, even =
+ *                               knocked down (a loser with no room to recoil falls)
+ * - tie                      -> clash (no effect)
  *
  * A knocked-down defender only hurts the attacker on a natural 6 (see
  * {@link canStrikeBack}); any other defender win is a clash.
  */
-export function computeCombatResult(
-  attackScore: number,
-  defenseScore: number,
-  defenderKnockedDown: boolean,
-  attackerKnockedDown: boolean,
-  defenseDie: number,
-): CombatResult {
-  if (attackScore >= defenseScore * 2) return 'defenderKilled';
-  if (attackScore > defenseScore) return defenderKnockedDown ? 'defenderKilled' : 'defenderKnockedDown';
-  if (!canStrikeBack(defenderKnockedDown, defenseDie)) return 'clash';
-  if (defenseScore >= attackScore * 2) return 'attackerKilled';
-  if (defenseScore > attackScore) return attackerKnockedDown ? 'attackerKilled' : 'attackerKnockedDown';
+export function computeCombatResult(attack: CombatSide, defense: CombatSide): CombatResult {
+  if (attack.score >= defense.score * 2) return 'defenderKilled';
+  if (attack.score > defense.score) return `defender${beaten(defense, attack.die)}`;
+  if (!canStrikeBack(defense.knockedDown, defense.die)) return 'clash';
+  if (defense.score >= attack.score * 2) return 'attackerKilled';
+  if (defense.score > attack.score) return `attacker${beaten(attack, defense.die)}`;
   return 'clash';
+}
+
+function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {
+  if (loser.knockedDown) return 'Killed';
+  return winnerDie % 2 === 1 && loser.canRecoil ? 'Recoiled' : 'KnockedDown';
 }
 
 /** Whether a unit can hurt its opponent: always when standing, only on a natural 6 when knocked down. */

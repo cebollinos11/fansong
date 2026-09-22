@@ -99,7 +99,7 @@ describe('ranged attack (Shoot)', () => {
       const shot = events.find((e) => e.type === 'ShotResolved');
       expect(shot).toBeDefined();
       // A shot only ever yields a defender-side (or clash) result.
-      expect(['defenderKilled', 'defenderKnockedDown', 'clash']).toContain(
+      expect(['defenderKilled', 'defenderKnockedDown', 'defenderRecoiled', 'clash']).toContain(
         (shot as Extract<GameEvent, { type: 'ShotResolved' }>).result,
       );
       expect(state.units.find((u) => u.id === 'p0u0')!.dead).toBe(false);

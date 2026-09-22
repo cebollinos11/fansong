@@ -67,7 +67,9 @@ action; the AI, the tests, and any future UI all pick from that list.
 - **2+ failures = turnover:** the activation ends and that player is **benched
   for the rest of the round**. With a single die you can never turn over.
 - The other player then continues **solo** until they turn over or run out.
-- Combat is an opposed roll; margins yield knockdown or kill. A knocked-down
+- Combat is an opposed roll. Doubling the loser kills; a plain win pushes the
+  loser back a hex on the winner's odd die or knocks it down on an even one
+  (a loser with nowhere to go falls instead). A knocked-down
   defender only hurts its attacker on a natural 6 that also wins the roll;
   otherwise its best result is a clash.
 

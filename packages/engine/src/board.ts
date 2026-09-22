@@ -85,6 +85,11 @@ export interface Board {
   /** In-bounds, unblocked adjacent cells (every cell at distance 1). */
   neighbors(v: Vec): Vec[];
   /**
+   * The hex adjacent to `v` directly away from `from` (continuing the line from
+   * `from` through `v` one step). Not bounds- or terrain-checked.
+   */
+  stepAway(from: Vec, v: Vec): Vec;
+  /**
    * Every in-bounds cell (excluding the centre) at distance `1..r`, in a
    * deterministic order. Not filtered by blocked/occupied — the caller decides
    * what a given rule treats as passable — so a rule never loops a coordinate
@@ -212,6 +217,16 @@ export function makeHexGrid(data: BoardData): Board {
     feature,
     distance,
     neighbors,
+    stepAway(from, v) {
+      const a = offsetToCube(from);
+      const b = offsetToCube(v);
+      const n = cubeDistance(a, b);
+      if (n === 0) return { x: v.x, y: v.y };
+      const eq = 1e-6; // same edge nudge as cubeLine, so a graze rounds deterministically
+      return cubeToOffset(
+        cubeRound(b.q + (b.q - a.q) / n + eq, b.r + (b.r - a.r) / n + eq, b.s + (b.s - a.s) / n - 2 * eq),
+      );
+    },
     cellsWithin(v, r) {
       const c = offsetToCube(v);
       const cells: Vec[] = [];

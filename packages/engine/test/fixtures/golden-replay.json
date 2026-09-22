@@ -421,21 +421,6 @@
       },
       {
         "type": "ChooseActivation",
-        "unitId": "p0u0",
-        "diceCount": 2
-      },
-      {
-        "type": "Attack",
-        "attackerId": "p0u0",
-        "targetId": "p1u2"
-      },
-      {
-        "type": "ChooseActivation",
-        "unitId": "p1u1",
-        "diceCount": 2
-      },
-      {
-        "type": "ChooseActivation",
         "unitId": "p0u1",
         "diceCount": 2
       },
@@ -447,78 +432,38 @@
       {
         "type": "Shoot",
         "attackerId": "p0u1",
-        "targetId": "p1u2"
-      },
-      {
-        "type": "ChooseActivation",
-        "unitId": "p0u2",
-        "diceCount": 1
-      },
-      {
-        "type": "ChooseActivation",
-        "unitId": "p1u1",
-        "diceCount": 2
-      },
-      {
-        "type": "Move",
-        "unitId": "p1u1",
-        "to": {
-          "x": 5,
-          "y": 0
-        }
-      },
-      {
-        "type": "ChooseActivation",
-        "unitId": "p0u0",
-        "diceCount": 2
-      },
-      {
-        "type": "Attack",
-        "attackerId": "p0u0",
         "targetId": "p1u2"
       },
       {
         "type": "ChooseActivation",
         "unitId": "p1u2",
-        "diceCount": 1
-      },
-      {
-        "type": "ChooseActivation",
-        "unitId": "p0u1",
         "diceCount": 2
       },
       {
-        "type": "Shoot",
-        "attackerId": "p0u1",
-        "targetId": "p1u2"
-      },
-      {
         "type": "Move",
-        "unitId": "p0u1",
+        "unitId": "p1u2",
         "to": {
-          "x": 1,
-          "y": 1
+          "x": 0,
+          "y": 2
         }
       },
       {
         "type": "ChooseActivation",
-        "unitId": "p0u2",
-        "diceCount": 1
-      },
-      {
-        "type": "ChooseActivation",
-        "unitId": "p0u1",
+        "unitId": "p0u0",
         "diceCount": 2
       },
       {
-        "type": "Shoot",
-        "attackerId": "p0u1",
-        "targetId": "p1u1"
+        "type": "Attack",
+        "attackerId": "p0u0",
+        "targetId": "p1u2"
       },
       {
-        "type": "Shoot",
-        "attackerId": "p0u1",
-        "targetId": "p1u1"
+        "type": "Move",
+        "unitId": "p0u0",
+        "to": {
+          "x": 0,
+          "y": 1
+        }
       },
       {
         "type": "ChooseActivation",
@@ -526,13 +471,8 @@
         "diceCount": 1
       },
       {
-        "type": "ChooseActivation",
-        "unitId": "p0u0",
-        "diceCount": 2
-      },
-      {
         "type": "Move",
-        "unitId": "p0u0",
+        "unitId": "p1u1",
         "to": {
           "x": 4,
           "y": 1
@@ -554,6 +494,21 @@
       {
         "type": "ChooseActivation",
         "unitId": "p1u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Shoot",
+        "attackerId": "p1u1",
+        "targetId": "p0u2"
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u0",
+        "diceCount": 2
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u2",
         "diceCount": 1
       },
       {
@@ -564,9 +519,140 @@
       {
         "type": "Attack",
         "attackerId": "p0u0",
-        "targetId": "p1u1"
+        "targetId": "p1u2"
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Shoot",
+        "attackerId": "p1u1",
+        "targetId": "p0u0"
+      },
+      {
+        "type": "Shoot",
+        "attackerId": "p1u1",
+        "targetId": "p0u0"
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Move",
+        "unitId": "p0u1",
+        "to": {
+          "x": 0,
+          "y": 6
+        }
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u2",
+        "diceCount": 1
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u2",
+        "diceCount": 1
+      },
+      {
+        "type": "Attack",
+        "attackerId": "p0u2",
+        "targetId": "p1u2"
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Shoot",
+        "attackerId": "p1u1",
+        "targetId": "p0u0"
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u0",
+        "diceCount": 2
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u2",
+        "diceCount": 1
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Move",
+        "unitId": "p0u1",
+        "to": {
+          "x": 1,
+          "y": 5
+        }
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u2",
+        "diceCount": 1
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u0",
+        "diceCount": 2
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Shoot",
+        "attackerId": "p1u1",
+        "targetId": "p0u2"
+      },
+      {
+        "type": "Shoot",
+        "attackerId": "p1u1",
+        "targetId": "p0u2"
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u2",
+        "diceCount": 1
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Shoot",
+        "attackerId": "p1u1",
+        "targetId": "p0u2"
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u0",
+        "diceCount": 2
+      },
+      {
+        "type": "Attack",
+        "attackerId": "p0u0",
+        "targetId": "p1u2"
+      },
+      {
+        "type": "Attack",
+        "attackerId": "p0u0",
+        "targetId": "p1u2"
       }
     ]
   },
-  "finalHash": "55ee7409"
+  "finalHash": "94f9fec8"
 }

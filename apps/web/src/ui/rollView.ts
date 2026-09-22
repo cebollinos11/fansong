@@ -123,8 +123,8 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
 }
 
 function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly GameEvent[]): RollVerdict {
-  const hitsB = e.result === 'defenderKilled' || e.result === 'defenderKnockedDown';
-  const hitsA = e.type !== 'GuardRiposte' && (e.result === 'attackerKilled' || e.result === 'attackerKnockedDown');
+  const hitsB = e.result.startsWith('defender');
+  const hitsA = e.type !== 'GuardRiposte' && e.result.startsWith('attacker');
   if (!hitsA && !hitsB) {
     const detail = a.total === b.total ? `${a.total} ties ${b.total}` : undefined;
     const text = e.type === 'GuardRiposte' ? 'Attack goes through' : e.type === 'ShotResolved' ? 'Missed' : 'Clash';
@@ -140,7 +140,11 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
     const already = !doubled ? ' — already down' : '';
     return { text: 'Slain!', detail: `${detail}${already}`, on: [loser.unitId], tone: 'kill' };
   }
-  return { text: 'Knocked down', detail, on: [loser.unitId], tone: 'down' };
+  if (e.result === 'defenderRecoiled' || e.result === 'attackerRecoiled') {
+    return { text: 'Pushed back', detail: `${detail} on an odd ${winner.die}`, on: [loser.unitId], tone: 'down' };
+  }
+  const cornered = winner.die % 2 === 1 ? ' — no room to fall back' : '';
+  return { text: 'Knocked down', detail: `${detail}${cornered}`, on: [loser.unitId], tone: 'down' };
 }
 
 /**

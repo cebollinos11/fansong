@@ -1,10 +1,18 @@
-import { makeHexGrid, vecKey, type Board } from './board.js';
+import { makeHexGrid, vecKey, type Board, type Vec } from './board.js';
 import { canStrikeBack, computeCombatResult, highGroundBonus } from './combat.js';
-import { checkRoundLimit, dropFallenCarriers, fallenKingOwner, finishGame, flagsAfterMove, scoreZones } from './mode.js';
+import {
+  carryFlags,
+  checkRoundLimit,
+  dropFallenCarriers,
+  fallenKingOwner,
+  finishGame,
+  flagsAfterMove,
+  scoreZones,
+} from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
-import type { CombatResult, Command, GameEvent, GameState, Owner, ReduceResult, Unit } from './types.js';
+import type { Command, GameEvent, GameState, Owner, ReduceResult, Unit } from './types.js';
 
 /** Turnover happens at 2 or more failed activation dice. */
 export const TURNOVER_FAILURES = 2;
@@ -171,7 +179,12 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   const defenseBonus = highGroundBonus(board, target, attacker);
   const attackScore = attacker.combat + atk.die + attackBonus;
   const defenseScore = target.combat + def.die + defenseBonus;
-  const result = computeCombatResult(attackScore, defenseScore, target.knockedDown, attacker.knockedDown, def.die);
+  const attackerRecoil = recoilHex(s, board, attacker, target);
+  const targetRecoil = recoilHex(s, board, target, attacker);
+  const result = computeCombatResult(
+    { score: attackScore, die: atk.die, knockedDown: attacker.knockedDown, canRecoil: attackerRecoil !== null },
+    { score: defenseScore, die: def.die, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
+  );
 
   events.push({
     type: 'AttackResolved',
@@ -195,6 +208,9 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
       target.knockedDown = true;
       events.push({ type: 'UnitKnockedDown', unitId: target.id });
       break;
+    case 'defenderRecoiled':
+      recoil(s, events, target, targetRecoil!);
+      break;
     case 'attackerKilled':
       strike(s, attacker, target.id, events, board);
       attackerEnded = true;
@@ -203,6 +219,9 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
       attacker.knockedDown = true;
       events.push({ type: 'UnitKnockedDown', unitId: attacker.id });
       attackerEnded = true; // a knocked-down attacker's activation ends
+      break;
+    case 'attackerRecoiled':
+      recoil(s, events, attacker, attackerRecoil!); // still standing, so it may act again
       break;
     case 'clash':
       break;
@@ -245,10 +264,13 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   const attackScore = attacker.combat + atk.die + attackBonus;
   const defenseScore = target.combat + def.die + defenseBonus;
 
+  const targetRecoil = recoilHex(s, board, target, attacker);
+  let result = computeCombatResult(
+    { score: attackScore, die: atk.die, knockedDown: attacker.knockedDown, canRecoil: false },
+    { score: defenseScore, die: def.die, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
+  );
   // A shot only ever harms the target — the shooter takes no return damage.
-  let result: CombatResult = 'clash';
-  if (attackScore >= defenseScore * 2) result = 'defenderKilled';
-  else if (attackScore > defenseScore) result = target.knockedDown ? 'defenderKilled' : 'defenderKnockedDown';
+  if (!result.startsWith('defender')) result = 'clash';
 
   events.push({
     type: 'ShotResolved',
@@ -267,7 +289,7 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   else if (result === 'defenderKnockedDown') {
     target.knockedDown = true;
     events.push({ type: 'UnitKnockedDown', unitId: target.id });
-  }
+  } else if (result === 'defenderRecoiled') recoil(s, events, target, targetRecoil!);
 
   s.actionsRemaining -= 1;
   if (checkGameOver(s, events)) return;
@@ -301,11 +323,15 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   const attackerBonus = highGroundBonus(board, attacker, guard);
   const guardScore = guard.combat + gd.die + guardBonus;
   const attackerScore = attacker.combat + ad.die + attackerBonus;
+  const attackerRecoil = recoilHex(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6.
   const result = canStrikeBack(guard.knockedDown, gd.die)
-    ? computeCombatResult(guardScore, attackerScore, attacker.knockedDown, guard.knockedDown, ad.die)
+    ? computeCombatResult(
+        { score: guardScore, die: gd.die, knockedDown: guard.knockedDown, canRecoil: false },
+        { score: attackerScore, die: ad.die, knockedDown: attacker.knockedDown, canRecoil: attackerRecoil !== null },
+      )
     : 'clash';
-  const prevented = result === 'defenderKilled' || result === 'defenderKnockedDown';
+  const prevented = result.startsWith('defender');
 
   events.push({
     type: 'GuardRiposte',
@@ -326,8 +352,21 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   } else if (result === 'defenderKnockedDown' && !attacker.knockedDown) {
     attacker.knockedDown = true;
     events.push({ type: 'UnitKnockedDown', unitId: attacker.id });
-  }
+  } else if (result === 'defenderRecoiled') recoil(s, events, attacker, attackerRecoil!);
   return prevented;
+}
+
+/** Where `unit` recoils when beaten by `by`: the hex directly away, or null if off-board, impassable or occupied. */
+function recoilHex(s: GameState, board: Board, unit: Unit, by: Unit): Vec | null {
+  const to = board.stepAway(by.pos, unit.pos);
+  return board.inBounds(to) && !board.isBlocked(to) && !isOccupied(s, to, unit.id) ? to : null;
+}
+
+function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {
+  const from = { ...unit.pos };
+  unit.pos = { x: to.x, y: to.y };
+  carryFlags(s, unit);
+  events.push({ type: 'UnitRecoiled', unitId: unit.id, from, to: { x: to.x, y: to.y } });
 }
 
 /**

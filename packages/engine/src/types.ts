@@ -135,8 +135,10 @@ export type Command =
 export type CombatResult =
   | 'defenderKilled'
   | 'defenderKnockedDown'
+  | 'defenderRecoiled'
   | 'attackerKilled'
   | 'attackerKnockedDown'
+  | 'attackerRecoiled'
   | 'clash';
 
 export type GameEvent =
@@ -188,7 +190,7 @@ export type GameEvent =
       /** High-ground bonus added to the attacker's score; present only when non-zero. */
       attackerBonus?: number;
       result: CombatResult;
-      /** True if the riposte stopped the incoming attack (attacker killed/knocked down). */
+      /** True if the riposte stopped the incoming attack (attacker killed, knocked down or pushed back). */
       prevented: boolean;
     }
   | { type: 'ToughnessSaved'; unitId: string }
@@ -196,6 +198,8 @@ export type GameEvent =
   | { type: 'WarbandBroken'; player: Owner }
   | { type: 'UnitRouted'; unitId: string }
   | { type: 'UnitKnockedDown'; unitId: string }
+  /** Pushed one hex directly away from the opponent that beat it. */
+  | { type: 'UnitRecoiled'; unitId: string; from: Vec; to: Vec }
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }
