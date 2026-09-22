@@ -15,6 +15,11 @@ export interface UnitSpec {
   tough?: boolean;
   /** May take a Guard action to riposte the first melee attacker. */
   guard?: boolean;
+  /**
+   * Kill-the-king: this unit is its side's King (exactly one per warband in that
+   * mode). Ignored in every other mode.
+   */
+  king?: boolean;
 }
 
 export interface GameConfig {
@@ -55,6 +60,13 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
     },
     guarding: false,
   };
+}
+
+/** The id of the one unit flagged `king` in a warband; throws unless exactly one is. */
+function kingId(specs: UnitSpec[], owner: Owner): string {
+  const idx = specs.flatMap((s, i) => (s.king ? [i] : []));
+  if (idx.length !== 1) throw new Error(`kill-the-king: player ${owner} must designate exactly one King (got ${idx.length})`);
+  return `p${owner}u${idx[0]}`;
 }
 
 /**
@@ -117,6 +129,7 @@ export function createGame(config: GameConfig): GameState {
   };
   // Like terrain, mode state is attached only when there is some.
   const mode = createModeState(config.mode, config.objectives);
+  if (mode?.mode === 'kill-the-king') mode.kings = [kingId(config.warbands[0], 0), kingId(config.warbands[1], 1)];
   if (mode) state.mode = mode;
   return state;
 }

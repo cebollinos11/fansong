@@ -50,8 +50,12 @@ describe('mode model', () => {
     });
     expect(g.mode).toEqual({ mode: 'king-of-the-hill', objectives: { hill: [{ x: 2, y: 2 }] }, scores: [0, 0] });
     expect(gameMode(g)).toBe('king-of-the-hill');
-    const k = createGame({ ...base, mode: 'kill-the-king' });
-    expect(k.mode).toEqual({ mode: 'kill-the-king', objectives: {}, scores: [0, 0] });
+    const k = createGame({
+      ...base,
+      mode: 'kill-the-king',
+      warbands: [[base.warbands[0][0]!, { ...base.warbands[0][1]!, king: true }], [{ ...base.warbands[1][0]!, king: true }, base.warbands[1][1]!]],
+    });
+    expect(k.mode).toEqual({ mode: 'kill-the-king', objectives: {}, scores: [0, 0], kings: ['p0u1', 'p1u0'] });
   });
 
   it('rejects a mode whose objectives are missing', () => {
@@ -190,6 +194,10 @@ describe('round limit', () => {
       return undefined;
     };
     expect(duel({})).toEqual({ type: 'GameOver', winner: 0 });
-    expect(duel({ mode: 'kill-the-king' })).toEqual({ type: 'GameOver', winner: 0, reason: 'annihilation' });
+    expect(duel({ mode: 'king-of-the-hill', objectives: { hill: [{ x: 0, y: 0 }] } })).toEqual({
+      type: 'GameOver',
+      winner: 0,
+      reason: 'annihilation',
+    });
   });
 });

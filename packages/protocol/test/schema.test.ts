@@ -130,6 +130,21 @@ describe('mode state', () => {
     expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
   });
 
+  it('round-trips kill-the-king state with its Kings', () => {
+    const state = createGame({
+      seed: 5,
+      board: { width: 6, height: 5 },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 }, king: true }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 }, king: true }],
+      ],
+      mode: 'kill-the-king',
+    });
+    expect(state.mode?.kings).toEqual(['p0u0', 'p1u0']);
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    expect(gameStateSchema.safeParse({ ...state, mode: { ...state.mode, kings: ['p0u0'] } }).success).toBe(false);
+  });
+
   it('rejects annihilation or malformed scores as mode state', () => {
     const state = modeGame();
     const bad = [

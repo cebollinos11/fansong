@@ -155,6 +155,7 @@ export const modeStateSchema = z
     mode: z.enum(['capture-the-flag', 'king-of-the-hill', 'conquest', 'kill-the-king']),
     objectives: modeObjectivesSchema,
     scores: z.tuple([z.number().int(), z.number().int()]),
+    kings: z.tuple([z.string(), z.string()]).optional(),
   })
   .strict();
 

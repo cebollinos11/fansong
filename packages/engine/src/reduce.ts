@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Board } from './board.js';
 import { computeCombatResult, highGroundBonus } from './combat.js';
-import { checkRoundLimit, finishGame } from './mode.js';
+import { checkRoundLimit, fallenKingOwner, finishGame } from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
@@ -413,6 +413,12 @@ function endRound(s: GameState, events: GameEvent[]): void {
 
 function checkGameOver(s: GameState, events: GameEvent[]): boolean {
   if (s.phase === 'gameOver') return true;
+  // Kill-the-king: a fallen King loses at once, even with the warband intact.
+  const kingless = fallenKingOwner(s);
+  if (kingless !== undefined) {
+    finishGame(s, events, other(kingless), 'king');
+    return true;
+  }
   const p0 = livingCount(s, 0);
   const p1 = livingCount(s, 1);
   if (p0 > 0 && p1 > 0) return false;

@@ -236,3 +236,12 @@
   `reason` ('annihilation' | 'score' | 'roundLimit' | 'king' | 'flag') emitted **only** in objective modes,
   so annihilation events are unchanged. Protocol state/event schemas + drift guards extended; CLI/web log
   got a basic `ScoreChanged` line (polished in task 39).
+- Task 27: kill-the-king. `UnitSpec.king?: boolean`; in kill-the-king mode `createGame` requires **exactly one**
+  King per warband (throws otherwise — content/setup picks the default in task 31) and records them as
+  `ModeState.kings: [p0 id, p1 id]` rather than a `Unit` field, so the unit shape/schema is untouched and the
+  flag is simply ignored in every other mode. `checkGameOver` checks `fallenKingOwner` before annihilation: a
+  King that is dead — killed in combat *or routed* (rout removes the unit, which counts as falling) — loses at
+  once with `GameOver.reason: 'king'`. One combat only ever costs one side units, so both Kings can't fall
+  together; the scan is in unit order anyway. Helpers `kingOf`, `isKing`, `fallenKingOwner`. Protocol
+  `modeStateSchema` gains optional `kings`. The task-26 test that used kill-the-king for the "annihilation
+  reason" case now uses king-of-the-hill (kill-the-king needs Kings now).

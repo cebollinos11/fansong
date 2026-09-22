@@ -48,6 +48,8 @@ export interface ModeState {
   objectives: ModeObjectives;
   /** Points scored by player 0 and player 1 (zone modes; flag captures). */
   scores: [number, number];
+  /** Kill-the-king: the unit id of player 0's and player 1's King. */
+  kings?: [string, string];
 }
 
 /** Static rules per mode: the score that wins outright and the round cap. */
@@ -165,6 +167,31 @@ export function awardPoints(s: GameState, events: GameEvent[], player: Owner, po
     return true;
   }
   return false;
+}
+
+/** The King's unit id for `player`, or `undefined` outside kill-the-king. */
+export function kingOf(state: GameState, player: Owner): string | undefined {
+  return state.mode?.kings?.[player];
+}
+
+/** Whether `unitId` is a King (only ever true in kill-the-king). */
+export function isKing(state: GameState, unitId: string): boolean {
+  const k = state.mode?.kings;
+  return !!k && (k[0] === unitId || k[1] === unitId);
+}
+
+/**
+ * Kill-the-king: the player whose King has fallen (killed or routed), if any.
+ * Units are scanned in order, so the answer is deterministic — though one
+ * combat only ever costs one side units, so both Kings never fall at once.
+ */
+export function fallenKingOwner(state: GameState): Owner | undefined {
+  const kings = state.mode?.kings;
+  if (!kings) return undefined;
+  for (const u of state.units) {
+    if (u.dead && (u.id === kings[0] || u.id === kings[1])) return u.owner;
+  }
+  return undefined;
 }
 
 /**
