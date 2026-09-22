@@ -312,3 +312,16 @@
   don't keep their standoff in CTF (simple; the flag is the point). Dice policy pulled into `diceScore`.
   Tests: ai/test/flags.test.ts + CTF self-play on each built-in flag map (3 seeds; observed pickups/captures
   old-forest 4/1, ruined-village 6/2, twin-towers 8/3).
+- Task 35: AI kill-the-king. `chooseCommand` builds a `KingPlan` only when `state.mode.kings` is set
+  (both Kings if alive, *threats* = enemies within 3 of our King, occupied hexes for LOS), so every
+  other mode and the golden replay score exactly as before. Attacks/shots on the enemy King +300k (beats
+  finishing a downed foe), on a threat +20k. Our King: moves only to a hex that is *safer* (enemy distance
+  capped at 4, then elevation), else stays — Guard (10) if it can, else ends; it melee-attacks only the
+  enemy King or a downed foe at full score (otherwise 50k, i.e. only when it can't step away); it
+  activates last unless enemies are within 2 (then early, to retreat) or it can shoot. Everyone else
+  closes on the nearest threat to our King, else the enemy King. High ground/LOS awareness is **kill-the-king
+  only** (decision: keeps annihilation/golden untouched; could be generalised later): moves +30 per
+  elevation level (less than one step's 100), and a shooter's standoff hex scores 120k only with a clear
+  sight line to an enemy in range (+50 with the King in range), 110k otherwise. Tests: ai/test/kings.test.ts
+  + KtK self-play on all 7 built-in maps (3 seeds each; every game observed ended by a King falling, test
+  requires ≥ 2/3).

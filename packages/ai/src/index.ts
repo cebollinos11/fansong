@@ -3,6 +3,7 @@ import {
   enemiesOf,
   flagAtBase,
   getLegalCommands,
+  kingOf,
   makeHexGrid,
   scoringZones,
   standingInZone,
@@ -32,11 +33,12 @@ export function chooseCommand(state: GameState): Command {
   const board = makeHexGrid(state.board);
   const zones = zonePlan(state, state.active);
   const flags = flagPlan(state, board, state.active);
+  const kings = kingPlan(state, board, state.active);
 
   let best = commands[0]!;
   let bestScore = -Infinity;
   for (const command of commands) {
-    const score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, command);
+    const score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
     if (score > bestScore) {
       bestScore = score;
       best = command;
@@ -135,13 +137,20 @@ function diceScore(state: GameState, player: Owner, diceCount: number): number {
   return diceCount === 2 ? 3 : diceCount === 3 ? 2 : 1;
 }
 
-function scoreCommand(state: GameState, board: Board, zones: ZoneView[], command: Command): number {
+function scoreCommand(
+  state: GameState,
+  board: Board,
+  zones: ZoneView[],
+  kings: KingPlan | undefined,
+  command: Command,
+): number {
   const player = state.active;
   const enemies = enemiesOf(state, player);
 
   switch (command.type) {
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
+      if (kings) return kingActivationScore(state, board, kings, unit) + diceScore(state, player, command.diceCount);
       let dist = nearestEnemyDistance(board, unit.pos, enemies);
       // Zone modes: a unit already holding a zone has nowhere better to be, so
       // it activates late; one with a zone to reach counts its distance to it.
@@ -169,6 +178,12 @@ function scoreCommand(state: GameState, board: Board, zones: ZoneView[], command
       if (target.knockedDown) score += 5_000; // likely a kill — finish it
       score += (6 - target.combat) * 100; // focus-fire the weakest reachable foe
       score += (attacker.combat - target.combat) * 50; // favour favourable match-ups
+      if (kings) {
+        // Our King only trades blows to end the game or finish a downed foe;
+        // stuck in melee with nowhere safer, it still hits back rather than idle.
+        if (attacker.id === kings.ourKing?.id && target.id !== kings.theirKing?.id && !target.knockedDown) return 50_000;
+        score += kingTargetBonus(kings, target);
+      }
       return score;
     }
 
@@ -179,6 +194,7 @@ function scoreCommand(state: GameState, board: Board, zones: ZoneView[], command
       let score = 900_000;
       if (target.knockedDown) score += 5_000;
       score += (6 - target.combat) * 100; // pick off the weakest reachable foe
+      if (kings) score += kingTargetBonus(kings, target);
       return score;
     }
 
@@ -188,6 +204,7 @@ function scoreCommand(state: GameState, board: Board, zones: ZoneView[], command
         const zoneScore = zoneMoveScore(board, zones, mover, command.to);
         if (zoneScore !== undefined) return zoneScore;
       }
+      if (kings) return kingMoveScore(state, board, kings, mover, command.to);
       const dist = nearestEnemyDistance(board, command.to, enemies);
       // A ranged unit seeks a standoff: inside its range but out of melee, so it
       // can shoot next turn instead of being dragged into a fight. (When a shot
@@ -207,6 +224,8 @@ function scoreCommand(state: GameState, board: Board, zones: ZoneView[], command
       // (no attack, no useful move). Kept just above ending the activation —
       // and a zone holder's preferred way to sit tight.
       if (zones.length > 0 && isHolding(zones, unitById(state, command.unitId)!)) return 10;
+      // Our King with nowhere safer to go waits on guard, ready to riposte.
+      if (kings && command.unitId === kings.ourKing?.id) return 10;
       return 1;
     }
 
@@ -230,6 +249,115 @@ function zoneMoveScore(board: Board, zones: ZoneView[], mover: Unit, to: Vec): n
   if (!target) return undefined;
   if (target.keys.has(vecKey(to))) return 130_000;
   return 100_000 - zoneDistance(board, to, target) * 100;
+}
+
+/**
+ * Kill-the-king as the AI sees it, from `player`'s side: both Kings (while
+ * alive) and the enemies close enough to threaten ours.
+ */
+interface KingPlan {
+  ourKing: Unit | undefined;
+  theirKing: Unit | undefined;
+  /** Enemies within {@link THREAT_RANGE} of our King. */
+  threats: Unit[];
+  /** Living units' hexes, for line-of-sight checks (units block sight lanes). */
+  occupied: Set<string>;
+}
+
+/** An enemy this close to our King is a threat the rest of the warband turns on. */
+const THREAT_RANGE = 3;
+
+/** The King plan in kill-the-king, `undefined` in every other mode. */
+function kingPlan(state: GameState, board: Board, player: Owner): KingPlan | undefined {
+  if (!state.mode?.kings) return undefined;
+  const enemy: Owner = player === 0 ? 1 : 0;
+  const living = (id: string | undefined) => {
+    const u = id === undefined ? undefined : unitById(state, id);
+    return u && !u.dead ? u : undefined;
+  };
+  const ourKing = living(kingOf(state, player));
+  const theirKing = living(kingOf(state, enemy));
+  const threats = ourKing ? enemiesOf(state, player).filter((e) => board.distance(e.pos, ourKing.pos) <= THREAT_RANGE) : [];
+  const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
+  return { ourKing, theirKing, threats, occupied };
+}
+
+/** Extra attack/shot score: the enemy King above all (it ends the game), then threats to ours. */
+function kingTargetBonus(plan: KingPlan, target: Unit): number {
+  if (target.id === plan.theirKing?.id) return 300_000;
+  if (plan.threats.some((t) => t.id === target.id)) return 20_000;
+  return 0;
+}
+
+/**
+ * How far a non-King unit at `from` is from its quarry: the nearest threat to
+ * our King if there is one (protect first), else the enemy King, else simply
+ * the nearest enemy.
+ */
+function kingHuntDistance(board: Board, plan: KingPlan, from: Vec, enemies: Unit[]): number {
+  if (plan.threats.length > 0) return nearestEnemyDistance(board, from, plan.threats);
+  if (plan.theirKing) return board.distance(from, plan.theirKing.pos);
+  return nearestEnemyDistance(board, from, enemies);
+}
+
+/** How safe a hex is for our King: out of reach of enemies (capped), then higher ground. */
+function kingSafety(board: Board, v: Vec, enemies: Unit[]): number {
+  return Math.min(nearestEnemyDistance(board, v, enemies), 4) * 100 + board.elevation(v) * 10;
+}
+
+/** Whether `mover`, standing at `from`, would have a clear shot at some enemy within `range`. */
+function hasShotFrom(board: Board, plan: KingPlan, mover: Unit, from: Vec, range: number, enemies: Unit[]): boolean {
+  // The mover's current hex is vacated by the move, so it doesn't block.
+  const blocks = (v: Vec) => plan.occupied.has(vecKey(v)) && !sameVec(mover.pos, v);
+  return enemies.some((e) => {
+    const d = board.distance(from, e.pos);
+    return d >= 2 && d <= range && board.lineOfSight(from, e.pos, blocks);
+  });
+}
+
+/**
+ * Kill-the-king activation order. Anyone who can fight goes first, except
+ * that our King only volunteers to shoot; otherwise it goes early when enemies
+ * are closing on it (to step away) and last when they aren't. The rest go by
+ * closeness to their quarry.
+ */
+function kingActivationScore(state: GameState, board: Board, plan: KingPlan, unit: Unit): number {
+  const enemies = enemiesOf(state, state.active);
+  const nearest = nearestEnemyDistance(board, unit.pos, enemies);
+  const canShoot = unit.traits.ranged >= 2 && nearest >= 2 && nearest <= unit.traits.ranged;
+  if (unit.id === plan.ourKing?.id) {
+    if (canShoot) return 100_000;
+    return nearest <= 2 ? 50_000 : 1_000;
+  }
+  if (nearest === 1 || canShoot) return 100_000;
+  return 10_000 - Math.min(kingHuntDistance(board, plan, unit.pos, enemies), 99) * 100;
+}
+
+/**
+ * Kill-the-king moves. Our King only moves to a safer hex (further from the
+ * enemy, then higher) and otherwise stays put. Everyone else closes on its
+ * quarry — threats to our King, then the enemy King — preferring high ground
+ * (worth less than a step closer); a shooter's standoff hex only counts in
+ * full with a clear line of sight to a target, a bit more with the King in range.
+ */
+function kingMoveScore(state: GameState, board: Board, plan: KingPlan, mover: Unit, to: Vec): number {
+  const enemies = enemiesOf(state, state.active);
+  if (mover.id === plan.ourKing?.id) {
+    const gain = kingSafety(board, to, enemies) - kingSafety(board, mover.pos, enemies);
+    return gain > 0 ? 100_000 + gain : -1;
+  }
+  const height = board.elevation(to) * 30;
+  if (mover.traits.ranged >= 2) {
+    const r = mover.traits.ranged;
+    const dist = nearestEnemyDistance(board, to, enemies);
+    if (dist >= 2 && dist <= r) {
+      if (!hasShotFrom(board, plan, mover, to, r, enemies)) return 110_000 + height;
+      const kingInRange = !!plan.theirKing && board.distance(to, plan.theirKing.pos) <= r;
+      return 120_000 + (kingInRange ? 50 : 0) + height;
+    }
+    if (dist < 2) return 40_000;
+  }
+  return 100_000 - kingHuntDistance(board, plan, to, enemies) * 100 + height;
 }
 
 /** Walking distance (steps over passable hexes) from every reachable hex to `target`. */

@@ -62,7 +62,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 ## AI
 - [x] 33. AI: king-of-the-hill & conquest — move to/hold zones.
 - [x] 34. AI: capture-the-flag — fetch flag, carry home, return dropped flag, hunt carrier.
-- [ ] 35. AI: kill-the-king — protect own king, focus enemy king; high ground/LOS awareness.
+- [x] 35. AI: kill-the-king — protect own king, focus enemy king; high ground/LOS awareness.
 - [ ] 36. Self-play: every built-in map × each supported mode completes; objective sanity checks.
 
 ## Mode UI
