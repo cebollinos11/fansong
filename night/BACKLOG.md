@@ -42,7 +42,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 ## Terrain editor
 - [x] 18. Editor: pure editor model (new map, brushes, stamps, undo/redo stacks) with tests.
 - [x] 19. Editor screen reachable from Setup: new map (size), render via BoardView, hex picking.
-- [ ] 20. Editor: elevation brushes (raise/lower/set) + erase.
+- [x] 20. Editor: elevation brushes (raise/lower/set) + erase.
 - [ ] 21. Editor: buildings — click single hex, drag to stamp a multi-hex footprint.
 - [ ] 22. Editor: forest & rocks — brush radius 0–2, drag-fill region, single place/remove.
 - [ ] 23. Editor: deploy zones per player; objectives (flag bases, hill zone, conquest points).

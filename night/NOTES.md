@@ -173,3 +173,9 @@
   `createGame` with empty warbands (`mapPreviewState`, tested). Clicking a hex selects it (green
   highlight via `moveTargets`, details in the side panel). Deploy zones/objectives aren't drawn yet
   (task 23). Checked with Playwright on a built preview: select, resize 8×40→8×24, back to Setup.
+- Task 20: editor Terrain tools — Select / Raise / Lower / Set (level 0–3) / Erase, brush radius
+  0–2 (`MAX_BRUSH_RADIUS`). Pure `applyTool(map, tool, cell, radius)` + `EditorTool` type live in
+  `apps/web/src/ui/editorView.ts` (tested); every click is one `commitEdit` (no-op/off-board clicks
+  add no undo step). Painting is click-per-hex for now: left-drag orbits the camera, so drag gestures
+  are left to tasks 21/22 (which need drag for footprints/fills). Default tool is Raise so the editor
+  is immediately useful; clicking also selects the hex for the details panel. Checked with Playwright.
