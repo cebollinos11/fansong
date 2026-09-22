@@ -12,9 +12,10 @@ name = "MATCHMAKER"
 class_name = "MatchmakerDO"
 
 # Durable Objects must be declared in a migration before first deploy.
+# SQLite-backed classes are required on the Workers free plan.
 [[migrations]]
 tag = "v1"
-new_classes = ["GameRoomDO", "MatchmakerDO"]
+new_sqlite_classes =["GameRoomDO", "MatchmakerDO"]
 
 [observability]
 enabled = true
