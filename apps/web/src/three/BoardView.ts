@@ -105,6 +105,13 @@ const WALK_MS_PER_HEX = 300; // a move walks its path hex by hex at this steady 
 const WALK_HOP = 0.12; // world units a walking mini hops up on each hex step
 const WALK_SWAY = 0.12; // radians it rocks side to side, alternating each step (Wesnoth foot units have no walk frames)
 const DEFEND_LEAD_MS = 126; // Wesnoth's defend reaction starts this long before impact
+// A sprite with no defend art reacts by moving instead: it gives ground as the
+// blow arrives, further when it turns the blow aside than when it takes it.
+const DODGE = 0.26; // how far (world units) it slips back from a blow it turns aside
+const FLINCH = 0.12; // how far it rocks back from one that lands
+const DODGE_MS = 110; // time to give ground, ending on the hit frame
+const DODGE_RECOVER_MS = 190; // time to come back to its feet afterwards
+const RIPOSTE_GAP_MS = 180; // beat between a parried swing and the counter-blow
 const DEATH_FADE_MS = 600; // fade after a death clip (or instead of one)
 const ROUT_MS = 700; // a routed unit flees toward its own board edge while fading
 const MAX_QUEUE_MS = 4000; // most a new batch waits behind the previous one's animations
@@ -215,6 +222,7 @@ interface UnitObj {
   routed: boolean;
   /** Board times the fade-out starts / ends, while dying or fleeing. */
   fade: { start: number; end: number; flee: THREE.Vector3 | null } | null;
+  /** A shove the cutout rides out and recovers from: a strike's lunge in, or a dodge back. */
   lunge: { dir: THREE.Vector3; start: number; hit: number; end: number } | null;
   /** A move in progress: hex centres from origin to destination, walked from board time `start`. `backward` keeps the facing (a recoil). */
   walk: { path: THREE.Vector3[]; start: number; backward?: boolean } | null;
@@ -609,7 +617,12 @@ export class BoardView {
         t += this.pause(this.frameCombat(pair, t));
         const start = t;
         const cards = OPPOSED_ROLL_MS + COMBAT_CARD_HOLD_MS; // shows the outcome, holds, fades
-        const s = this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards);
+        // A melee attacker who loses the roll is hurt by the blow he provoked,
+        // so the swing has to go in and be turned aside before the answer lands.
+        const s =
+          e.type === 'AttackResolved' && e.result.startsWith('attacker')
+            ? this.exchange(pair[0], pair[1], start + cards)
+            : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards);
         this.at(start, () => this.rolls.addOpposed(roll, this.now, cards));
         this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now));
         lastHit = s.hit;
@@ -1086,13 +1099,15 @@ export class BoardView {
   /**
    * Lay out one strike starting `at` ms from now: the attacker's clip, its
    * lunge or missile, and the target's reaction timed to the clip's hit frame.
-   * Returns the hit and end times, relative to now.
+   * `land` is false for a blow the target turns aside — it still defends, but
+   * nothing connects. Returns the hit and end times, relative to now.
    */
   private strike(
     attackerId: string,
     targetId: string,
     range: 'melee' | 'ranged',
     at: number,
+    opts: { land?: boolean } = {},
   ): { hit: number; end: number } {
     const a = this.units.get(attackerId);
     const d = this.units.get(targetId);
@@ -1116,14 +1131,21 @@ export class BoardView {
         this.at(hit, () => this.addTracer(attackerId, targetId, SHOT_COLOR));
       }
     });
+    const land = opts.land ?? true;
     const defend: Clip | undefined =
       range === 'melee'
         ? (d.anims.defendMelee ?? d.anims.defendRanged)
         : (d.anims.defendRanged ?? d.anims.defendMelee);
-    this.at(at + hit - (defend?.hitMs ?? DEFEND_LEAD_MS), () => {
-      if (!d.animator.busy) d.animator.play(defend);
-    });
-    this.at(at + hit, () => this.flashUnit(targetId, 0.8));
+    if (defend) {
+      this.at(at + hit - (defend.hitMs ?? DEFEND_LEAD_MS), () => {
+        if (!d.animator.busy) d.animator.play(defend);
+      });
+    } else {
+      // No defend art: move the cutout itself, so the blow still meets someone
+      // reacting to it rather than a unit standing perfectly still.
+      this.at(at + hit - DODGE_MS, () => this.giveGround(d, a, land ? FLINCH : DODGE));
+    }
+    if (land) this.at(at + hit, () => this.flashUnit(targetId, 0.8));
     if (range === 'ranged' && this.cameraMode === 'cinematic' && !this.downPos) {
       // Swing to the shooter as it draws, then ride the shot in to its target —
       // but only for a shot short and slow enough to follow. A long one would
@@ -1140,6 +1162,29 @@ export class BoardView {
       }
     }
     return { hit: at + hit, end: at + dur };
+  }
+
+  /**
+   * A melee blow its attacker loses: the swing goes in, the defender turns it
+   * aside, and after a beat the counter-blow lands on the attacker. Returns the
+   * counter's hit (the moment that decides the fight, which its consequences —
+   * recoil, knockdown, death — are timed to) and end.
+   */
+  private exchange(attackerId: string, targetId: string, at: number): { hit: number; end: number } {
+    const swing = this.strike(attackerId, targetId, 'melee', at, { land: false });
+    return this.strike(targetId, attackerId, 'melee', swing.end + RIPOSTE_GAP_MS);
+  }
+
+  /** Shove a cutout `dist` back from whoever it is facing down, then let it recover. */
+  private giveGround(obj: UnitObj, from: UnitObj, dist: number): void {
+    const away = obj.group.position.clone().sub(from.group.position).setY(0);
+    if (away.lengthSq() < 1e-6) return;
+    obj.lunge = {
+      dir: away.normalize().multiplyScalar(dist),
+      start: this.now,
+      hit: this.now + DODGE_MS,
+      end: this.now + DODGE_MS + DODGE_RECOVER_MS,
+    };
   }
 
   private launchMissile(from: UnitObj, to: UnitObj, image: string, startIn: number, hitIn: number): void {
