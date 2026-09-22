@@ -50,7 +50,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 25. Editor: save/load localStorage, export/import .json; custom maps in Setup picker.
 
 ## Game modes
-- [ ] 26. Engine: mode model — `GameConfig.mode`/objectives, optional state (omitted for
+- [x] 26. Engine: mode model — `GameConfig.mode`/objectives, optional state (omitted for
       annihilation), scores, round-12 limit + annihilation-style tiebreak helper. Tests.
 - [ ] 27. Engine: kill-the-king — `UnitSpec.king`, king death = immediate loss. Tests.
 - [ ] 28. Engine: king-of-the-hill scoring at round start, first to 5, round-12 end. Tests.

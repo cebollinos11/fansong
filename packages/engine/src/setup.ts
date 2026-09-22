@@ -1,4 +1,5 @@
 import type { BoardData, HexTerrain, Vec } from './board.js';
+import { createModeState, type GameMode, type ModeObjectives } from './mode.js';
 import { seedRng } from './rng.js';
 import type { GameState, Owner, Unit } from './types.js';
 
@@ -29,6 +30,10 @@ export interface GameConfig {
   warbands: [UnitSpec[], UnitSpec[]];
   /** Player who leads round 1 (default 0). */
   initiativeLeader?: Owner;
+  /** Game mode (default `annihilation`, which carries no mode state). */
+  mode?: GameMode;
+  /** Objective placements the mode needs (flags / hill / conquest zones). */
+  objectives?: ModeObjectives;
 }
 
 function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
@@ -94,7 +99,7 @@ export function createGame(config: GameConfig): GameState {
     units.filter((u) => u.owner === 1).length,
   ];
 
-  return {
+  const state: GameState = {
     board,
     units,
     round: 1,
@@ -110,6 +115,10 @@ export function createGame(config: GameConfig): GameState {
     rngState: seedRng(config.seed),
     winner: null,
   };
+  // Like terrain, mode state is attached only when there is some.
+  const mode = createModeState(config.mode, config.objectives);
+  if (mode) state.mode = mode;
+  return state;
 }
 
 /**

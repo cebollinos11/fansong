@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MAX_ELEVATION, TERRAIN_FEATURES } from '@fansong/engine';
+import { GAME_MODES, MAX_ELEVATION, TERRAIN_FEATURES } from '@fansong/engine';
 import type {
   AttackCommand,
   BoardData,
@@ -7,9 +7,12 @@ import type {
   Command,
   EndActivation,
   GameEvent,
+  GameMode,
   GameState,
   GuardCommand,
   HexTerrain,
+  ModeObjectives,
+  ModeState,
   MoveCommand,
   Owner,
   ShootCommand,
@@ -137,6 +140,24 @@ export const unitSchema = z
 
 export const phaseSchema = z.enum(['awaitingActivation', 'acting', 'gameOver']);
 
+export const gameModeSchema = z.enum(GAME_MODES as [GameMode, ...GameMode[]]);
+
+export const modeObjectivesSchema = z
+  .object({
+    flags: z.tuple([vecSchema, vecSchema]).optional(),
+    hill: z.array(vecSchema).optional(),
+    conquest: z.tuple([z.array(vecSchema), z.array(vecSchema), z.array(vecSchema)]).optional(),
+  })
+  .strict();
+
+export const modeStateSchema = z
+  .object({
+    mode: z.enum(['capture-the-flag', 'king-of-the-hill', 'conquest', 'kill-the-king']),
+    objectives: modeObjectivesSchema,
+    scores: z.tuple([z.number().int(), z.number().int()]),
+  })
+  .strict();
+
 export const gameStateSchema = z
   .object({
     board: boardDataSchema,
@@ -153,6 +174,7 @@ export const gameStateSchema = z
     activationCount: z.number().int(),
     rngState: z.number(),
     winner: ownerSchema.nullable(),
+    mode: modeStateSchema.optional(),
   })
   .strict();
 
@@ -231,7 +253,17 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('UnitKilled'), unitId: z.string(), byId: z.string().nullable() }),
   z.object({ type: z.literal('ActivationEnded'), unitId: z.string() }),
   z.object({ type: z.literal('RoundEnded'), round: z.number(), nextLeader: ownerSchema }),
-  z.object({ type: z.literal('GameOver'), winner: ownerSchema }),
+  z.object({
+    type: z.literal('ScoreChanged'),
+    player: ownerSchema,
+    points: z.number().int(),
+    scores: z.tuple([z.number().int(), z.number().int()]),
+  }),
+  z.object({
+    type: z.literal('GameOver'),
+    winner: ownerSchema,
+    reason: z.enum(['annihilation', 'score', 'roundLimit', 'king', 'flag']).optional(),
+  }),
 ]);
 
 // --- Match setup ----------------------------------------------------------
@@ -277,4 +309,7 @@ export type SchemaDriftChecks = [
   Expect<Eq<z.infer<typeof boardDataSchema>, BoardData>>,
   Expect<Eq<z.infer<typeof hexTerrainSchema>, HexTerrain>>,
   Expect<Eq<z.infer<typeof ownerSchema>, Owner>>,
+  Expect<Eq<z.infer<typeof gameModeSchema>, GameMode>>,
+  Expect<Eq<z.infer<typeof modeObjectivesSchema>, ModeObjectives>>,
+  Expect<Eq<z.infer<typeof modeStateSchema>, ModeState>>,
 ];

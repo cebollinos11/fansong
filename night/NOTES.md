@@ -224,3 +224,15 @@
   confirm before discarding edits (only when there is undo history), delete always confirms. Online
   still plays the default map (task 32). Checked with Playwright on a built preview: save/export/import
   (good + bad file)/load, custom maps in the Setup picker, and a match started on one.
+- Task 26: engine mode model in `mode.ts`. `GameConfig.mode`/`objectives` (`ModeObjectives` mirrors content
+  `MapObjectives`); `createGame` attaches `GameState.mode = { mode, objectives, scores }` only for
+  non-annihilation modes (explicit `mode: 'annihilation'` serialises identically to none), keeping just the
+  objectives the mode uses and throwing when they're missing. `MODE_RULES`: KotH target 5, conquest 8, both
+  capped at `ROUND_LIMIT` = 12; CTF and kill-the-king have **no** round cap (spec only caps the zone modes).
+  The cap fires in `endRound` before the round counter increments, so a capped game ends with `round` = 12.
+  Tiebreak (`tiebreakWinner`): more living units → more standing units → higher summed combat of the living
+  → player 1 (player 0 had first initiative). No draws, `winner` stays `Owner`. New helpers `awardPoints`
+  (emits `ScoreChanged`, ends at target), `checkRoundLimit`, `finishGame`. `GameOver` gains an optional
+  `reason` ('annihilation' | 'score' | 'roundLimit' | 'king' | 'flag') emitted **only** in objective modes,
+  so annihilation events are unchanged. Protocol state/event schemas + drift guards extended; CLI/web log
+  got a basic `ScoreChanged` line (polished in task 39).

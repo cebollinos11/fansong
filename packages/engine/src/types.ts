@@ -1,4 +1,5 @@
 import type { BoardData, Vec } from './board.js';
+import type { ModeState } from './mode.js';
 
 /** Two players: 0 and 1. */
 export type Owner = 0 | 1;
@@ -78,6 +79,11 @@ export interface GameState {
   activationCount: number;
   rngState: number;
   winner: Owner | null;
+  /**
+   * Objective-mode state (mode, objectives, scores). Omitted for annihilation,
+   * so a default game's state shape — and every replay hash — is unchanged.
+   */
+  mode?: ModeState;
 }
 
 // --- Commands -------------------------------------------------------------
@@ -193,7 +199,12 @@ export type GameEvent =
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }
-  | { type: 'GameOver'; winner: Owner };
+  | { type: 'ScoreChanged'; player: Owner; points: number; scores: [number, number] }
+  /** `reason` is present only in an objective mode (see {@link ModeState}). */
+  | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
+
+/** Why a game ended: last side standing, target score, round cap, king slain, or flag captured. */
+export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag';
 
 export interface ReduceResult {
   state: GameState;

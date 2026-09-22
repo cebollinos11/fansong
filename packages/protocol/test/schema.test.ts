@@ -111,6 +111,42 @@ describe('boardDataSchema terrain', () => {
   });
 });
 
+describe('mode state', () => {
+  const modeGame = () =>
+    createGame({
+      seed: 5,
+      board: { width: 6, height: 5 },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 } }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 } }],
+      ],
+      mode: 'conquest',
+      objectives: { conquest: [[{ x: 1, y: 1 }], [{ x: 2, y: 2 }, { x: 3, y: 2 }], [{ x: 4, y: 3 }]] },
+    });
+
+  it('round-trips a state carrying mode state', () => {
+    const state = modeGame();
+    expect(state.mode).toBeDefined();
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+  });
+
+  it('rejects annihilation or malformed scores as mode state', () => {
+    const state = modeGame();
+    const bad = [
+      { ...state.mode, mode: 'annihilation' },
+      { ...state.mode, scores: [0] },
+      { ...state.mode, objectives: { hill: [{ x: 0.5, y: 0 }] } },
+    ];
+    for (const mode of bad) expect(gameStateSchema.safeParse({ ...state, mode }).success).toBe(false);
+  });
+
+  it('accepts the score and reasoned game-over events', () => {
+    expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 1, points: 2, scores: [0, 2] }).success).toBe(true);
+    expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'roundLimit' }).success).toBe(true);
+    expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'bored' }).success).toBe(false);
+  });
+});
+
 describe('gameEventSchema', () => {
   it('accepts every event the engine actually produces over a game', () => {
     let state = createDemoGame(11);

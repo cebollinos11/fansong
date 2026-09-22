@@ -1,5 +1,6 @@
 import { makeHexGrid, vecKey, type Board } from './board.js';
 import { computeCombatResult, highGroundBonus } from './combat.js';
+import { checkRoundLimit, finishGame } from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
@@ -400,6 +401,7 @@ function advanceTurn(s: GameState, events: GameEvent[]): void {
 }
 
 function endRound(s: GameState, events: GameEvent[]): void {
+  if (checkRoundLimit(s, events)) return;
   s.round += 1;
   for (const u of s.units) u.activatedThisRound = false;
   s.benched = [false, false];
@@ -414,11 +416,6 @@ function checkGameOver(s: GameState, events: GameEvent[]): boolean {
   const p0 = livingCount(s, 0);
   const p1 = livingCount(s, 1);
   if (p0 > 0 && p1 > 0) return false;
-  const winner: Owner = p0 > 0 ? 0 : 1;
-  s.winner = winner;
-  s.phase = 'gameOver';
-  s.activeUnitId = null;
-  s.actionsRemaining = 0;
-  events.push({ type: 'GameOver', winner });
+  finishGame(s, events, p0 > 0 ? 0 : 1, 'annihilation');
   return true;
 }

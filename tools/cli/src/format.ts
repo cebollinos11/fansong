@@ -43,8 +43,10 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `  — activation ends (${name(state, e.unitId)})`;
     case 'RoundEnded':
       return `=== Round ${e.round} begins — P${e.nextLeader} leads ===`;
+    case 'ScoreChanged':
+      return `  ★ P${e.player} scores ${e.points} (${e.scores[0]}–${e.scores[1]})`;
     case 'GameOver':
-      return `### GAME OVER — P${e.winner} wins ###`;
+      return `### GAME OVER — P${e.winner} wins${e.reason ? ` (${e.reason})` : ''} ###`;
   }
 }
 
