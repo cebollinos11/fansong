@@ -6,3 +6,4 @@ export * from './match.js';
 export * from './map.js';
 export * from './mapValidate.js';
 export * from './mapRegistry.js';
+export * from './editor.js';

@@ -149,3 +149,17 @@
   Online launches deliberately don't carry a map yet (picker disabled with a hint) — that's task 32.
   Replays already carry the map because `LocalMatchClient.getReplay` records `configFromSetup`.
   Visually checked Rocky Pass in a built preview.
+- Task 18: pure editor model in `packages/content/src/editor.ts` (exported from content). Every op
+  is `MapDef -> MapDef`, never mutates; the UI previews a stroke on `present` and commits it once
+  via `commitEdit` (one undo step; no-op edits skipped; stack capped at `MAX_UNDO` = 100 snapshots —
+  maps are ≤ 24×24 so whole-map snapshots are cheap). Undo/redo named `undoEdit`/`redoEdit` to avoid
+  generic names in the content barrel. Brushes: `brushCells` (radius clamped 0–2, centre first),
+  `regionCells` (offset-coord rectangle between drag corners — used for drag-fill and building
+  footprints; the UI decides any footprint cap). Terrain: `paintElevation` raise/lower/set clamped
+  0–3, `paintFeature` (undefined removes, elevation kept), `eraseTerrain` flattens + clears feature
+  but leaves deploy/objectives alone. Deploy painting steals hexes from the other player so zones
+  stay disjoint; conquest painting likewise keeps its 3 zones disjoint. First `setFlag` on a
+  flagless map puts the other base at the point-mirror hex (flags are a required pair); an emptied
+  hill / all-empty conquest drops the key so JSON stays sparse. Ops never refuse invalid states
+  (rock on a deploy hex, empty zone) — `validateMap` errors are shown inline (task 24). Map id
+  follows the name via `slugify` (fallback `custom-map`).

@@ -40,7 +40,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 17. Setup: `MatchSetup.mapId`; map picker in Setup screen; replays/config carry the map.
 
 ## Terrain editor
-- [ ] 18. Editor: pure editor model (new map, brushes, stamps, undo/redo stacks) with tests.
+- [x] 18. Editor: pure editor model (new map, brushes, stamps, undo/redo stacks) with tests.
 - [ ] 19. Editor screen reachable from Setup: new map (size), render via BoardView, hex picking.
 - [ ] 20. Editor: elevation brushes (raise/lower/set) + erase.
 - [ ] 21. Editor: buildings — click single hex, drag to stamp a multi-hex footprint.
