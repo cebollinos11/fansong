@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { runReplay, type GameEvent, type Replay } from '@fansong/engine';
 import { BoardCanvas } from './BoardCanvas.js';
 import { downloadReplay } from '../game/replay-io.js';
-import { formatEvent } from './log.js';
+import { eventTone, formatEvent } from './log.js';
 
 interface Props {
   replay: Replay;
@@ -122,7 +122,12 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
             ) : (
               stepEvents.map((e, i) => {
                 const text = formatEvent(state, e);
-                return text ? <li key={i}>{text}</li> : null;
+                const tone = eventTone(e);
+                return text ? (
+                  <li key={i} className={tone ? `log-line ${tone}` : undefined}>
+                    {text}
+                  </li>
+                ) : null;
               })
             )}
           </ul>

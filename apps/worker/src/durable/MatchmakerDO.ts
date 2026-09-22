@@ -1,4 +1,6 @@
-import { Matchmaker, type MatchmakeRequest, type PendingRoom, type Ticket } from '../matchmaker.js';
+import { matchmakeRequestSchema } from '@fansong/protocol';
+import { Matchmaker, setupFor, type MatchmakeRequest, type PendingRoom, type Ticket } from '../matchmaker.js';
+import { setupError } from '../room.js';
 import type { Env } from '../env.js';
 
 /**
@@ -25,10 +27,15 @@ export class MatchmakerDO implements DurableObject {
   }
 
   private async handleMatchmake(req: Request): Promise<Response> {
-    const body = (await req.json().catch(() => null)) as MatchmakeRequest | null;
-    if (!body || (body.mode !== 'pve' && body.mode !== 'pvp')) {
+    const parsed = matchmakeRequestSchema.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) {
       return new Response('invalid matchmake request', { status: 400 });
     }
+    const body: MatchmakeRequest = parsed.data;
+    // Reject a match that could never start (unknown preset/map, a mode the map
+    // can't host) before it is queued or seeded.
+    const problem = setupError(setupFor(body, ['human', body.mode === 'pve' ? 'ai' : 'human']));
+    if (problem) return new Response(`invalid match: ${problem}`, { status: 400 });
 
     // Serialise all matchmaking through the DO's single-threaded event loop with
     // a storage transaction, so two simultaneous requests cannot both take the

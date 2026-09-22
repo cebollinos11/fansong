@@ -1,4 +1,4 @@
-import { unitById, type GameEvent, type GameState } from '@fansong/engine';
+import { unitById, type GameEvent, type GameState, type TerrainFeature } from '@fansong/engine';
 
 function name(state: GameState, id: string | null): string {
   if (!id) return '(none)';
@@ -43,20 +43,38 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `  — activation ends (${name(state, e.unitId)})`;
     case 'RoundEnded':
       return `=== Round ${e.round} begins — P${e.nextLeader} leads ===`;
+    case 'ScoreChanged':
+      return `  ★ P${e.player} scores ${e.points} (${e.scores[0]}–${e.scores[1]})`;
+    case 'FlagPickedUp':
+      return `  ⚐ ${name(state, e.unitId)} seizes P${e.player}'s flag`;
+    case 'FlagDropped':
+      return `  ⚐ ${name(state, e.unitId)} drops P${e.player}'s flag at (${e.at.x},${e.at.y})`;
+    case 'FlagReturned':
+      return `  ⚐ ${name(state, e.unitId)} returns P${e.player}'s flag to base`;
+    case 'FlagCaptured':
+      return `  ★ ${name(state, e.unitId)} carries the flag home — P${e.player} captures!`;
     case 'GameOver':
-      return `### GAME OVER — P${e.winner} wins ###`;
+      return `### GAME OVER — P${e.winner} wins${e.reason ? ` (${e.reason})` : ''} ###`;
   }
 }
+
+const FEATURE_GLYPH: Record<TerrainFeature, string> = {
+  rock: '^',
+  building: 'B',
+  forest: 'T',
+};
 
 /**
  * ASCII render of the flat-top hex board (offset "odd-q" coordinates: odd columns
  * sit half a cell lower, so vertical neighbours interlock). A cell's glyph is its
- * unit's initial (P0 upper-case, P1 lower-case); '#' is blocked terrain, '·' an
- * empty cell.
+ * unit's initial (P0 upper-case, P1 lower-case); otherwise '#' is legacy blocked
+ * terrain, '^' rock, 'B' building, 'T' forest and '·' an empty cell. A raised hex
+ * shows its elevation (1–3) as a digit right after the glyph.
  */
 export function renderBoard(state: GameState): string {
   const { width, height } = state.board;
   const blocked = new Set(state.board.blocked);
+  const terrain = state.board.terrain ?? {};
 
   const glyphAt = (x: number, y: number): string => {
     const unit = state.units.find((u) => !u.dead && u.pos.x === x && u.pos.y === y);
@@ -64,10 +82,14 @@ export function renderBoard(state: GameState): string {
       const g = unit.name[0] ?? '?';
       return unit.owner === 0 ? g.toUpperCase() : g.toLowerCase();
     }
-    return blocked.has(`${x},${y}`) ? '#' : '·';
+    if (blocked.has(`${x},${y}`)) return '#';
+    const feature = terrain[`${x},${y}`]?.feature;
+    return feature ? FEATURE_GLYPH[feature] : '·';
   };
 
   // One text line per half-row; odd columns are dropped a half-row (one line).
+  // Neighbouring columns never share a line, so the spacer after a glyph is
+  // free to carry that hex's elevation.
   const lineCount = height * 2 + 1;
   const canvas: string[][] = Array.from({ length: lineCount }, () =>
     Array.from({ length: width * 2 }, () => ' '),
@@ -76,6 +98,8 @@ export function renderBoard(state: GameState): string {
     for (let y = 0; y < height; y++) {
       const li = y * 2 + (x % 2);
       canvas[li]![x * 2] = glyphAt(x, y);
+      const elevation = terrain[`${x},${y}`]?.elevation ?? 0;
+      if (elevation > 0) canvas[li]![x * 2 + 1] = String(elevation);
     }
   }
 
@@ -83,12 +107,13 @@ export function renderBoard(state: GameState): string {
   return header + '\n' + canvas.map((line) => line.join('').replace(/\s+$/, '')).join('\n');
 }
 
-/** Roster summary: which units are alive, on which side. */
+/** Roster summary: which units are alive, on which side (kill-the-king Kings marked ♛). */
 export function renderRoster(state: GameState): string {
+  const kings = new Set(state.mode?.kings ?? []);
   const side = (owner: 0 | 1) =>
     state.units
       .filter((u) => u.owner === owner)
-      .map((u) => `${u.name}${u.dead ? '†' : u.knockedDown ? '↓' : ''}`)
+      .map((u) => `${kings.has(u.id) ? '♛' : ''}${u.name}${u.dead ? '†' : u.knockedDown ? '↓' : ''}`)
       .join(', ');
   return `P0: ${side(0)}\nP1: ${side(1)}`;
 }

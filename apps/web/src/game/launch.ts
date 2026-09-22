@@ -1,4 +1,5 @@
 import type { MatchSetup } from '@fansong/content';
+import type { GameMode } from '@fansong/engine';
 
 /**
  * What the setup screen hands to the app: either a fully-specified local match
@@ -7,4 +8,12 @@ import type { MatchSetup } from '@fansong/content';
  */
 export type Launch =
   | { kind: 'local'; setup: MatchSetup }
-  | { kind: 'online'; presets: [string, string]; seed: number };
+  | {
+      kind: 'online';
+      presets: [string, string];
+      seed: number;
+      /** Built-in map id (the worker can't see custom maps); omitted = default board. */
+      mapId?: string;
+      gameMode?: GameMode;
+      kings?: [number, number];
+    };

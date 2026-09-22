@@ -1,5 +1,6 @@
 import { makeHexGrid, vecKey, type Board } from './board.js';
-import { computeCombatResult } from './combat.js';
+import { computeCombatResult, highGroundBonus } from './combat.js';
+import { checkRoundLimit, dropFallenCarriers, fallenKingOwner, finishGame, flagsAfterMove, scoreZones } from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
@@ -121,12 +122,16 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   if (!board.inBounds(to)) throw new Error('destination out of bounds');
   if (board.isBlocked(to)) throw new Error('destination blocked');
   if (board.distance(unit.pos, to) > unit.move) throw new Error('destination beyond move range');
+  if (!board.reachableWithin(unit.pos, unit.move).has(vecKey(to))) {
+    throw new Error('destination unreachable within move range');
+  }
   if (isOccupied(s, to, unit.id)) throw new Error('destination occupied');
 
   const from = { ...unit.pos };
   unit.pos = { x: to.x, y: to.y };
   s.actionsRemaining -= 1;
   events.push({ type: 'UnitMoved', unitId, from, to: { x: to.x, y: to.y } });
+  if (flagsAfterMove(s, events, unitId)) return;
 
   if (s.actionsRemaining <= 0) endActivation(s, events);
 }
@@ -162,8 +167,10 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   const atk = rollD6(s.rngState);
   const def = rollD6(atk.state);
   s.rngState = def.state;
-  const attackScore = attacker.combat + atk.die;
-  const defenseScore = target.combat + def.die;
+  const attackBonus = highGroundBonus(board, attacker, target);
+  const defenseBonus = highGroundBonus(board, target, attacker);
+  const attackScore = attacker.combat + atk.die + attackBonus;
+  const defenseScore = target.combat + def.die + defenseBonus;
   const result = computeCombatResult(attackScore, defenseScore, target.knockedDown, attacker.knockedDown);
 
   events.push({
@@ -174,6 +181,8 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
     defenseDie: def.die,
     attackScore,
     defenseScore,
+    ...(attackBonus ? { attackBonus } : {}),
+    ...(defenseBonus ? { defenseBonus } : {}),
     result,
   });
 
@@ -231,8 +240,10 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   const atk = rollD6(s.rngState);
   const def = rollD6(atk.state);
   s.rngState = def.state;
-  const attackScore = attacker.combat + atk.die;
-  const defenseScore = target.combat + def.die;
+  const attackBonus = highGroundBonus(board, attacker, target);
+  const defenseBonus = highGroundBonus(board, target, attacker);
+  const attackScore = attacker.combat + atk.die + attackBonus;
+  const defenseScore = target.combat + def.die + defenseBonus;
 
   // A shot only ever harms the target — the shooter takes no return damage.
   let result: CombatResult = 'clash';
@@ -247,6 +258,8 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
     defenseDie: def.die,
     attackScore,
     defenseScore,
+    ...(attackBonus ? { attackBonus } : {}),
+    ...(defenseBonus ? { defenseBonus } : {}),
     result,
   });
 
@@ -284,8 +297,10 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   const gd = rollD6(s.rngState);
   const ad = rollD6(gd.state);
   s.rngState = ad.state;
-  const guardScore = guard.combat + gd.die;
-  const attackerScore = attacker.combat + ad.die;
+  const guardBonus = highGroundBonus(board, guard, attacker);
+  const attackerBonus = highGroundBonus(board, attacker, guard);
+  const guardScore = guard.combat + gd.die + guardBonus;
+  const attackerScore = attacker.combat + ad.die + attackerBonus;
   const result = computeCombatResult(guardScore, attackerScore, attacker.knockedDown, guard.knockedDown);
   const prevented = result === 'defenderKilled' || result === 'defenderKnockedDown';
 
@@ -297,6 +312,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackerDie: ad.die,
     guardScore,
     attackerScore,
+    ...(guardBonus ? { guardBonus } : {}),
+    ...(attackerBonus ? { attackerBonus } : {}),
     result,
     prevented,
   });
@@ -385,6 +402,7 @@ function advanceTurn(s: GameState, events: GameEvent[]): void {
 }
 
 function endRound(s: GameState, events: GameEvent[]): void {
+  if (scoreZones(s, events) || checkRoundLimit(s, events)) return;
   s.round += 1;
   for (const u of s.units) u.activatedThisRound = false;
   s.benched = [false, false];
@@ -396,14 +414,17 @@ function endRound(s: GameState, events: GameEvent[]): void {
 
 function checkGameOver(s: GameState, events: GameEvent[]): boolean {
   if (s.phase === 'gameOver') return true;
+  // Capture-the-flag: knocked-down and fallen carriers drop what they carry.
+  dropFallenCarriers(s, events);
+  // Kill-the-king: a fallen King loses at once, even with the warband intact.
+  const kingless = fallenKingOwner(s);
+  if (kingless !== undefined) {
+    finishGame(s, events, other(kingless), 'king');
+    return true;
+  }
   const p0 = livingCount(s, 0);
   const p1 = livingCount(s, 1);
   if (p0 > 0 && p1 > 0) return false;
-  const winner: Owner = p0 > 0 ? 0 : 1;
-  s.winner = winner;
-  s.phase = 'gameOver';
-  s.activeUnitId = null;
-  s.actionsRemaining = 0;
-  events.push({ type: 'GameOver', winner });
+  finishGame(s, events, p0 > 0 ? 0 : 1, 'annihilation');
   return true;
 }

@@ -1,8 +1,15 @@
-import { unitById, type GameEvent, type GameState } from '@fansong/engine';
+import { unitById, type GameEvent, type GameOverReason, type GameState } from '@fansong/engine';
+
+/**
+ * How a log line is emphasised: `objective` for scoring and flag events, `end` for the game-over line.
+ * Absent for ordinary play.
+ */
+export type LogTone = 'objective' | 'end';
 
 export interface LogEntry {
   id: number;
   text: string;
+  tone?: LogTone;
 }
 
 let counter = 0;
@@ -10,6 +17,30 @@ let counter = 0;
 function name(state: GameState, id: string): string {
   return unitById(state, id)?.name ?? id;
 }
+
+/** A combat score, noting any high-ground bonus already included in it. */
+function score(total: number, bonus: number | undefined): string {
+  return bonus ? `${total}, +${bonus} high ground` : `${total}`;
+}
+
+/** Conquest zones are lettered A, B, C — matching the mode HUD. */
+function zoneLetter(zone: number): string {
+  return String.fromCharCode(65 + zone);
+}
+
+/** A unit's name tagged with its owner, e.g. "Knight (P1)". */
+function tagged(state: GameState, id: string): string {
+  const u = unitById(state, id);
+  return u ? `${u.name} (P${u.owner})` : id;
+}
+
+const GAME_OVER_REASONS: Record<GameOverReason, string> = {
+  annihilation: 'last side standing',
+  score: 'target score reached',
+  roundLimit: 'most points after the final round',
+  king: 'the King has fallen',
+  flag: 'flag captured',
+};
 
 /** Render one engine event as a short human-readable line. Presentation only. */
 export function formatEvent(state: GameState, e: GameEvent): string | null {
@@ -25,13 +56,13 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves to (${e.to.x}, ${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} (${e.attackScore}) attacks ${name(state, e.targetId)} (${e.defenseScore}) → ${e.result}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus)}) attacks ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus)}) → ${e.result}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} (${e.attackScore}) shoots ${name(state, e.targetId)} (${e.defenseScore}) → ${e.result}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus)}) shoots ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus)}) → ${e.result}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
     case 'GuardRiposte':
-      return `  ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)} → ${e.result}${e.prevented ? ' (attack stopped)' : ''}`;
+      return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus)}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus)}) → ${e.result}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `  ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'NerveCheck':
@@ -46,18 +77,54 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `  ${name(state, e.unitId)} is killed`;
     case 'RoundEnded':
       return `=== Round ${e.round} — P${e.nextLeader} leads ===`;
+    case 'ScoreChanged': {
+      const what = e.zone !== undefined ? `zone ${zoneLetter(e.zone)}` : state.mode?.mode === 'king-of-the-hill' ? 'the hill' : null;
+      return `  ★ Player ${e.player} scores ${e.points}${what ? ` for holding ${what}` : ''} (${e.scores[0]}–${e.scores[1]})`;
+    }
+    case 'FlagPickedUp':
+      return `  ⚑ ${tagged(state, e.unitId)} seizes Player ${e.player}'s flag`;
+    case 'FlagDropped':
+      return `  ⚑ ${tagged(state, e.unitId)} drops Player ${e.player}'s flag at (${e.at.x}, ${e.at.y})`;
+    case 'FlagReturned':
+      return `  ⚑ ${tagged(state, e.unitId)} returns Player ${e.player}'s flag to base`;
+    case 'FlagCaptured':
+      return `  ⚑ ${tagged(state, e.unitId)} carries the flag home — Player ${e.player} captures it!`;
     case 'GameOver':
-      return `GAME OVER — Player ${e.winner} wins`;
+      return `GAME OVER — Player ${e.winner} wins${e.reason ? ` (${GAME_OVER_REASONS[e.reason]})` : ''}`;
     case 'ActivationEnded':
       return null; // implied by the next activation; keep the log terse
   }
+}
+
+/** Emphasis for an event's log line; undefined for ordinary play. */
+export function eventTone(e: GameEvent): LogTone | undefined {
+  switch (e.type) {
+    case 'ScoreChanged':
+    case 'FlagPickedUp':
+    case 'FlagDropped':
+    case 'FlagReturned':
+    case 'FlagCaptured':
+      return 'objective';
+    case 'GameOver':
+      return 'end';
+    default:
+      return undefined;
+  }
+}
+
+/** The newest emphasised entry — what the HUD's transient callout shows. */
+export function latestCallout(log: readonly LogEntry[]): LogEntry | null {
+  for (let i = log.length - 1; i >= 0; i--) if (log[i]!.tone) return log[i]!;
+  return null;
 }
 
 export function appendEvents(prev: LogEntry[], state: GameState, events: GameEvent[]): LogEntry[] {
   const added: LogEntry[] = [];
   for (const e of events) {
     const text = formatEvent(state, e);
-    if (text !== null) added.push({ id: counter++, text });
+    if (text === null) continue;
+    const tone = eventTone(e);
+    added.push(tone ? { id: counter++, text, tone } : { id: counter++, text });
   }
   // Keep the log bounded.
   return [...prev, ...added].slice(-200);

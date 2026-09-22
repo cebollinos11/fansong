@@ -20,6 +20,22 @@ export interface RoomConnection {
   send(frame: string): void;
 }
 
+/**
+ * Why `setup` cannot start a room, or `null` if it can. It is the exact build
+ * the room runs (`createMatchFromPresets` against the built-in maps — the worker
+ * never sees a browser's custom maps), so this rejects unknown presets or maps,
+ * a mode the map has no objectives for, and out-of-range King picks up front,
+ * instead of a room that throws when its first socket connects.
+ */
+export function setupError(setup: MatchSetup): string | null {
+  try {
+    createMatchFromPresets(setup);
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+}
+
 interface Member {
   conn: RoomConnection;
   seat: Owner | null;

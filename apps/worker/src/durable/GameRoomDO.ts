@@ -1,7 +1,7 @@
 import type { GameState } from '@fansong/engine';
 import { gameStateSchema, matchSetupSchema } from '@fansong/protocol';
 import type { MatchSetup } from '@fansong/content';
-import { RoomEngine, type RoomConnection } from '../room.js';
+import { RoomEngine, setupError, type RoomConnection } from '../room.js';
 import type { Env } from '../env.js';
 
 /**
@@ -44,6 +44,8 @@ export class GameRoomDO implements DurableObject {
     if (!parsed.success) {
       return new Response('invalid setup', { status: 400 });
     }
+    const problem = setupError(parsed.data);
+    if (problem) return new Response(`invalid setup: ${problem}`, { status: 400 });
     // Idempotent: only the first init seeds the room.
     const existing = await this.state.storage.get<MatchSetup>('setup');
     if (!existing) {

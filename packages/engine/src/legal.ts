@@ -57,11 +57,12 @@ export function getLegalCommands(state: GameState): Command[] {
     commands.push({ type: 'Guard', unitId: unit.id });
   }
 
-  // Moves: every empty, unblocked cell within move range. The board enumerates
-  // the cells-in-range (whatever the grid geometry); the rule only decides which
-  // are passable (unblocked, unoccupied).
+  // Moves: every empty cell reachable within move range by walking around
+  // impassable hexes (other units don't block the path, only the destination).
+  // Enumerated in `cellsWithin` order so the command list stays deterministic.
+  const reach = board.reachableWithin(unit.pos, unit.move);
   for (const to of board.cellsWithin(unit.pos, unit.move)) {
-    if (board.isBlocked(to)) continue;
+    if (!reach.has(vecKey(to))) continue;
     if (isOccupied(state, to)) continue;
     commands.push({ type: 'Move', unitId: unit.id, to });
   }

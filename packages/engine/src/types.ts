@@ -1,4 +1,5 @@
 import type { BoardData, Vec } from './board.js';
+import type { ModeState } from './mode.js';
 
 /** Two players: 0 and 1. */
 export type Owner = 0 | 1;
@@ -78,6 +79,11 @@ export interface GameState {
   activationCount: number;
   rngState: number;
   winner: Owner | null;
+  /**
+   * Objective-mode state (mode, objectives, scores). Omitted for annihilation,
+   * so a default game's state shape — and every replay hash — is unchanged.
+   */
+  mode?: ModeState;
 }
 
 // --- Commands -------------------------------------------------------------
@@ -147,6 +153,10 @@ export type GameEvent =
       defenseDie: number;
       attackScore: number;
       defenseScore: number;
+      /** High-ground bonus added to the attack score; present only when non-zero. */
+      attackBonus?: number;
+      /** High-ground bonus added to the defense score; present only when non-zero. */
+      defenseBonus?: number;
       result: CombatResult;
     }
   | {
@@ -157,6 +167,10 @@ export type GameEvent =
       defenseDie: number;
       attackScore: number;
       defenseScore: number;
+      /** High-ground bonus added to the attack score; present only when non-zero. */
+      attackBonus?: number;
+      /** High-ground bonus added to the defense score; present only when non-zero. */
+      defenseBonus?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
       result: CombatResult;
     }
@@ -169,6 +183,10 @@ export type GameEvent =
       attackerDie: number;
       guardScore: number;
       attackerScore: number;
+      /** High-ground bonus added to the guard's score; present only when non-zero. */
+      guardBonus?: number;
+      /** High-ground bonus added to the attacker's score; present only when non-zero. */
+      attackerBonus?: number;
       result: CombatResult;
       /** True if the riposte stopped the incoming attack (attacker killed/knocked down). */
       prevented: boolean;
@@ -181,7 +199,21 @@ export type GameEvent =
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }
-  | { type: 'GameOver'; winner: Owner };
+  /** `zone` (index into the conquest zones) is present only for conquest zone scoring. */
+  | { type: 'ScoreChanged'; player: Owner; points: number; scores: [number, number]; zone?: number }
+  /** Capture-the-flag: `player` is the flag's owner; `unitId` the enemy that took it. */
+  | { type: 'FlagPickedUp'; player: Owner; unitId: string }
+  /** Capture-the-flag: `player`'s flag falls from its knocked-down or slain carrier onto `at`. */
+  | { type: 'FlagDropped'; player: Owner; unitId: string; at: Vec }
+  /** Capture-the-flag: `unitId` returned its own side's (`player`'s) dropped flag to base. */
+  | { type: 'FlagReturned'; player: Owner; unitId: string }
+  /** Capture-the-flag: `player` carried the enemy flag home with `unitId` (and wins). */
+  | { type: 'FlagCaptured'; player: Owner; unitId: string }
+  /** `reason` is present only in an objective mode (see {@link ModeState}). */
+  | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
+
+/** Why a game ended: last side standing, target score, round cap, king slain, or flag captured. */
+export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag';
 
 export interface ReduceResult {
   state: GameState;

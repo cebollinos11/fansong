@@ -1,0 +1,27 @@
+{
+  "id": "rolling-hills",
+  "name": "Rolling Hills",
+  "width": 14,
+  "height": 12,
+  "hexes": [
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0,"feature":"rock"}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":1}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0,"feature":"rock"}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":2}, {"elevation":1}, {"elevation":0}, {"elevation":1,"feature":"forest"}, {"elevation":0}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":1}, {"elevation":1}, {"elevation":2}, {"elevation":1}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":1}, {"elevation":2}, {"elevation":2}, {"elevation":3}, {"elevation":2}, {"elevation":2}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1,"feature":"forest"}, {"elevation":2}, {"elevation":3}, {"elevation":3}, {"elevation":3}, {"elevation":3}, {"elevation":2}, {"elevation":1,"feature":"forest"}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1,"feature":"forest"}, {"elevation":2}, {"elevation":3}, {"elevation":3}, {"elevation":3}, {"elevation":3}, {"elevation":2}, {"elevation":1,"feature":"forest"}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":2}, {"elevation":2}, {"elevation":3}, {"elevation":2}, {"elevation":2}, {"elevation":1}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":1}, {"elevation":2}, {"elevation":1}, {"elevation":1}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":0}, {"elevation":1,"feature":"forest"}, {"elevation":0}, {"elevation":1}, {"elevation":2}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0,"feature":"rock"}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":1}, {"elevation":1}, {"elevation":1}, {"elevation":0}, {"elevation":0}, {"elevation":0},
+    {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0,"feature":"rock"}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}, {"elevation":0}
+  ],
+  "deployZones": [
+    [{"x":0,"y":0},{"x":0,"y":1},{"x":0,"y":2},{"x":0,"y":3},{"x":0,"y":4},{"x":0,"y":5},{"x":0,"y":6},{"x":0,"y":7},{"x":0,"y":8},{"x":0,"y":9},{"x":0,"y":10},{"x":0,"y":11},{"x":1,"y":0},{"x":1,"y":1},{"x":1,"y":2},{"x":1,"y":3},{"x":1,"y":4},{"x":1,"y":5},{"x":1,"y":6},{"x":1,"y":7},{"x":1,"y":8},{"x":1,"y":9},{"x":1,"y":10},{"x":1,"y":11}],
+    [{"x":13,"y":0},{"x":13,"y":1},{"x":13,"y":2},{"x":13,"y":3},{"x":13,"y":4},{"x":13,"y":5},{"x":13,"y":6},{"x":13,"y":7},{"x":13,"y":8},{"x":13,"y":9},{"x":13,"y":10},{"x":13,"y":11},{"x":12,"y":0},{"x":12,"y":1},{"x":12,"y":2},{"x":12,"y":3},{"x":12,"y":4},{"x":12,"y":5},{"x":12,"y":6},{"x":12,"y":7},{"x":12,"y":8},{"x":12,"y":9},{"x":12,"y":10},{"x":12,"y":11}]
+  ],
+  "objectives": {
+    "hill": [{"x":7,"y":4},{"x":5,"y":5},{"x":6,"y":5},{"x":7,"y":5},{"x":8,"y":5},{"x":5,"y":6},{"x":6,"y":6},{"x":7,"y":6},{"x":8,"y":6},{"x":6,"y":7}]
+  }
+}

@@ -26,19 +26,60 @@ export function vecKey(v: Vec): string {
   return `${v.x},${v.y}`;
 }
 
+/**
+ * A terrain feature occupying a whole hex (at most one per hex).
+ * - `rock`, `building`: impassable and block line of sight.
+ * - `forest`: passable; blocks sight *through* it, but a unit inside can see and
+ *   be seen from outside.
+ */
+export type TerrainFeature = 'rock' | 'building' | 'forest';
+
+export const TERRAIN_FEATURES: ReadonlyArray<TerrainFeature> = ['rock', 'building', 'forest'];
+
+/** Highest hex elevation (elevations are integers `0..MAX_ELEVATION`). */
+export const MAX_ELEVATION = 3;
+
+/** Non-default terrain of one hex. Omitted keys mean elevation 0 / no feature. */
+export interface HexTerrain {
+  elevation?: number;
+  feature?: TerrainFeature;
+}
+
 /** Serialisable board description held in GameState. */
 export interface BoardData {
   width: number;
   height: number;
   /** Impassable / LoS-blocking cell keys ("x,y"). */
   blocked: string[];
+  /**
+   * Sparse per-hex terrain keyed by "x,y" — only hexes with a non-zero elevation
+   * or a feature appear. The key itself is omitted entirely on a flat,
+   * featureless board, so such a board serialises exactly as it did before
+   * terrain existed (and old replays/golden hashes are unaffected).
+   */
+  terrain?: Record<string, HexTerrain>;
+}
+
+/** Does this feature stop movement into its hex? */
+export function isImpassableFeature(f: TerrainFeature | undefined): boolean {
+  return f === 'rock' || f === 'building';
+}
+
+/** Does this feature stop line of sight passing *through* its hex? */
+export function blocksSight(f: TerrainFeature | undefined): boolean {
+  return f !== undefined;
 }
 
 export interface Board {
   readonly width: number;
   readonly height: number;
   inBounds(v: Vec): boolean;
+  /** Impassable: a legacy blocked cell or a rock/building hex. */
   isBlocked(v: Vec): boolean;
+  /** Integer elevation of a hex (0 when flat or out of bounds). */
+  elevation(v: Vec): number;
+  /** The hex's terrain feature, if any. */
+  feature(v: Vec): TerrainFeature | undefined;
   /** Hex (cube) distance between two cells. */
   distance(a: Vec, b: Vec): number;
   /** In-bounds, unblocked adjacent cells (every cell at distance 1). */
@@ -50,7 +91,18 @@ export interface Board {
    * window itself.
    */
   cellsWithin(v: Vec, r: number): Vec[];
-  /** Line of sight; blocked terrain (and optionally occupied cells) break it. */
+  /**
+   * Movement reach: every passable cell reachable from `v` in `1..steps` steps,
+   * walking only through in-bounds, unblocked hexes (BFS around rocks, buildings
+   * and legacy blocked cells). Occupancy is ignored — the caller decides whether
+   * a destination may hold another unit. Returned as a set of `"x,y"` keys.
+   */
+  reachableWithin(v: Vec, steps: number): Set<string>;
+  /**
+   * Line of sight between hex centres (symmetric). Any intervening blocked cell,
+   * rock/building/forest hex, or (optionally) occupied cell breaks it; the
+   * endpoints themselves never do.
+   */
   lineOfSight(a: Vec, b: Vec, occupied?: (v: Vec) => boolean): boolean;
 }
 
@@ -126,28 +178,35 @@ function cubeLine(a: Cube, b: Cube): Cube[] {
 
 export function makeHexGrid(data: BoardData): Board {
   const blocked = new Set(data.blocked);
+  const terrain = data.terrain ?? {};
   const { width, height } = data;
 
   const inBounds = (v: Vec) => v.x >= 0 && v.y >= 0 && v.x < width && v.y < height;
-  const isBlocked = (v: Vec) => blocked.has(vecKey(v));
+  const feature = (v: Vec): TerrainFeature | undefined => terrain[vecKey(v)]?.feature;
+  const elevation = (v: Vec): number => terrain[vecKey(v)]?.elevation ?? 0;
+  const isBlocked = (v: Vec) => blocked.has(vecKey(v)) || isImpassableFeature(feature(v));
 
   const distance = (a: Vec, b: Vec) => cubeDistance(offsetToCube(a), offsetToCube(b));
+
+  const neighbors = (v: Vec): Vec[] => {
+    const c = offsetToCube(v);
+    const result: Vec[] = [];
+    for (const d of CUBE_DIRS) {
+      const n = cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s });
+      if (inBounds(n) && !isBlocked(n)) result.push(n);
+    }
+    return result;
+  };
 
   return {
     width,
     height,
     inBounds,
     isBlocked,
+    elevation,
+    feature,
     distance,
-    neighbors(v) {
-      const c = offsetToCube(v);
-      const result: Vec[] = [];
-      for (const d of CUBE_DIRS) {
-        const n = cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s });
-        if (inBounds(n) && !isBlocked(n)) result.push(n);
-      }
-      return result;
-    },
+    neighbors,
     cellsWithin(v, r) {
       const c = offsetToCube(v);
       const cells: Vec[] = [];
@@ -164,13 +223,36 @@ export function makeHexGrid(data: BoardData): Board {
       }
       return cells;
     },
+    reachableWithin(v, steps) {
+      const start = vecKey(v);
+      const seen = new Set<string>([start]);
+      let frontier: Vec[] = [v];
+      for (let step = 0; step < steps && frontier.length > 0; step++) {
+        const next: Vec[] = [];
+        for (const cell of frontier) {
+          for (const n of neighbors(cell)) {
+            const k = vecKey(n);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            next.push(n);
+          }
+        }
+        frontier = next;
+      }
+      seen.delete(start);
+      return seen;
+    },
     lineOfSight(a, b, occupied) {
-      const line = cubeLine(offsetToCube(a), offsetToCube(b));
-      // Endpoints never count as blockers; an intermediate blocked/occupied cell
-      // breaks sight.
+      // Always draw the line in a canonical direction (lower column, then lower
+      // row, first) so an edge-grazing tie rounds the same way whichever end is
+      // looking: sight is symmetric.
+      const [from, to] = a.x < b.x || (a.x === b.x && a.y <= b.y) ? [a, b] : [b, a];
+      const line = cubeLine(offsetToCube(from), offsetToCube(to));
+      // Endpoints never count as blockers, so a unit standing in a forest sees
+      // out and is seen; an intermediate blocked/forest/occupied cell breaks sight.
       for (let i = 1; i < line.length - 1; i++) {
         const cell = cubeToOffset(line[i]!);
-        if (isBlocked(cell) || (occupied?.(cell) ?? false)) return false;
+        if (isBlocked(cell) || blocksSight(feature(cell)) || (occupied?.(cell) ?? false)) return false;
       }
       return true;
     },

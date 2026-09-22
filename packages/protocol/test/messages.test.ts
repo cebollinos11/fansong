@@ -3,6 +3,7 @@ import { createDemoGame } from '@fansong/engine';
 import {
   ErrorCode,
   encode,
+  matchmakeRequestSchema,
   parseClientMessage,
   parseServerMessage,
   safeParseClientMessage,
@@ -66,8 +67,81 @@ describe('server messages', () => {
     expect(parseServerMessage(encode(delta))).toEqual(delta);
   });
 
+  it('keeps optional high-ground bonus fields on combat events', () => {
+    const state = createDemoGame(5);
+    const delta: ServerMessage = {
+      t: 'delta',
+      by: 0,
+      command: { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' },
+      events: [
+        {
+          type: 'GuardRiposte',
+          guardId: 'p1u0',
+          attackerId: 'p0u0',
+          guardDie: 2,
+          attackerDie: 3,
+          guardScore: 6,
+          attackerScore: 7,
+          attackerBonus: 1,
+          result: 'attackerKnockedDown',
+          prevented: false,
+        },
+        {
+          type: 'AttackResolved',
+          attackerId: 'p0u0',
+          targetId: 'p1u0',
+          attackDie: 4,
+          defenseDie: 2,
+          attackScore: 8,
+          defenseScore: 5,
+          attackBonus: 1,
+          result: 'defenderKnockedDown',
+        },
+      ],
+      state,
+    };
+    expect(parseServerMessage(encode(delta))).toEqual(delta);
+  });
+
   it('round-trips an error message with a stable code', () => {
     const err: ServerMessage = { t: 'error', code: ErrorCode.NotYourTurn, message: 'not your turn' };
     expect(parseServerMessage(encode(err))).toEqual(err);
+  });
+});
+
+describe('matchmake request', () => {
+  it('accepts a plain request and one with map, mode and Kings', () => {
+    const plain = { mode: 'pve', presets: ['iron-wardens', 'ashfang-raiders'], seed: 1 };
+    expect(matchmakeRequestSchema.parse(plain)).toEqual(plain);
+    const full = { ...plain, mode: 'pvp', mapId: 'rolling-hills', gameMode: 'king-of-the-hill', kings: [0, 2] };
+    expect(matchmakeRequestSchema.parse(full)).toEqual(full);
+  });
+
+  it('rejects unknown queues, game modes, bad Kings and extra keys', () => {
+    const base = { mode: 'pve', presets: ['a', 'b'], seed: 1 };
+    expect(matchmakeRequestSchema.safeParse({ ...base, mode: 'ranked' }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, gameMode: 'tag' }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, kings: [-1, 0] }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, seed: 1.5 }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, seats: ['ai', 'ai'] }).success).toBe(false);
+  });
+
+  it('a welcome carries a setup with map, mode and Kings', () => {
+    const state = createDemoGame(5);
+    const welcome: ServerMessage = {
+      t: 'welcome',
+      seat: 1,
+      setup: {
+        presets: ['iron-wardens', 'ashfang-raiders'],
+        seats: ['human', 'human'],
+        seed: 5,
+        mapId: 'rolling-hills',
+        mode: 'kill-the-king',
+        kings: [1, 0],
+      },
+      state,
+      presence: [true, true],
+    };
+    expect(parseServerMessage(encode(welcome))).toEqual(welcome);
   });
 });

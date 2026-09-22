@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createDemoGame, getLegalCommands, reduce, type Command } from '@fansong/engine';
+import { createDemoGame, createGame, getLegalCommands, reduce, type Command } from '@fansong/engine';
 import {
+  boardDataSchema,
   commandSchema,
   gameEventSchema,
   gameStateSchema,
@@ -63,6 +64,136 @@ describe('gameStateSchema', () => {
   });
 });
 
+describe('boardDataSchema terrain', () => {
+  const terrainGame = () =>
+    createGame({
+      seed: 5,
+      board: {
+        width: 6,
+        height: 5,
+        terrain: {
+          '1,1': { elevation: 2 },
+          '2,2': { elevation: 1, feature: 'forest' },
+          '3,3': { feature: 'rock' },
+          '4,1': { feature: 'building', elevation: 3 },
+        },
+      },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 } }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 } }],
+      ],
+    });
+
+  it('round-trips a state whose board has terrain', () => {
+    const state = terrainGame();
+    expect(state.board.terrain).toBeDefined();
+    const wire = JSON.parse(JSON.stringify(state)) as unknown;
+    expect(gameStateSchema.parse(wire)).toEqual(state);
+  });
+
+  it('keeps a flat board free of a terrain key', () => {
+    const parsed = gameStateSchema.parse(JSON.parse(JSON.stringify(createDemoGame(1))));
+    expect('terrain' in parsed.board).toBe(false);
+  });
+
+  it('rejects malformed terrain', () => {
+    const board = { width: 4, height: 4, blocked: [] as string[] };
+    const bad = [
+      { '1,1': { elevation: 4 } },
+      { '1,1': { elevation: -1 } },
+      { '1,1': { elevation: 1.5 } },
+      { '1,1': { feature: 'lava' } },
+      { '1,1': { elevation: 1, extra: true } },
+      { 'a,b': { elevation: 1 } },
+    ];
+    for (const terrain of bad) expect(boardDataSchema.safeParse({ ...board, terrain }).success).toBe(false);
+    expect(boardDataSchema.safeParse({ ...board, terrain: { '0,3': { feature: 'forest' } } }).success).toBe(true);
+  });
+});
+
+describe('mode state', () => {
+  const modeGame = () =>
+    createGame({
+      seed: 5,
+      board: { width: 6, height: 5 },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 } }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 } }],
+      ],
+      mode: 'conquest',
+      objectives: { conquest: [[{ x: 1, y: 1 }], [{ x: 2, y: 2 }, { x: 3, y: 2 }], [{ x: 4, y: 3 }]] },
+    });
+
+  it('round-trips a state carrying mode state', () => {
+    const state = modeGame();
+    expect(state.mode).toBeDefined();
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+  });
+
+  it('round-trips kill-the-king state with its Kings', () => {
+    const state = createGame({
+      seed: 5,
+      board: { width: 6, height: 5 },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 }, king: true }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 }, king: true }],
+      ],
+      mode: 'kill-the-king',
+    });
+    expect(state.mode?.kings).toEqual(['p0u0', 'p1u0']);
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    expect(gameStateSchema.safeParse({ ...state, mode: { ...state.mode, kings: ['p0u0'] } }).success).toBe(false);
+  });
+
+  it('round-trips capture-the-flag state with its flags', () => {
+    const state = createGame({
+      seed: 5,
+      board: { width: 6, height: 5 },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 } }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 } }],
+      ],
+      mode: 'capture-the-flag',
+      objectives: { flags: [{ x: 0, y: 2 }, { x: 5, y: 2 }] },
+    });
+    state.mode!.flags![1] = { at: { x: 0, y: 0 }, carrier: 'p0u0' };
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    const bad = { ...state.mode, flags: [{ at: { x: 0, y: 2 } }, state.mode!.flags![1]] };
+    expect(gameStateSchema.safeParse({ ...state, mode: bad }).success).toBe(false);
+  });
+
+  it('rejects annihilation or malformed scores as mode state', () => {
+    const state = modeGame();
+    const bad = [
+      { ...state.mode, mode: 'annihilation' },
+      { ...state.mode, scores: [0] },
+      { ...state.mode, objectives: { hill: [{ x: 0.5, y: 0 }] } },
+    ];
+    for (const mode of bad) expect(gameStateSchema.safeParse({ ...state, mode }).success).toBe(false);
+  });
+
+  it('accepts the score and reasoned game-over events', () => {
+    expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 1, points: 2, scores: [0, 2] }).success).toBe(true);
+    expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 0, points: 1, scores: [1, 0], zone: 2 }).success).toBe(true);
+    expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 0, points: 1, scores: [1, 0], zone: -1 }).success).toBe(false);
+    expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'roundLimit' }).success).toBe(true);
+    expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'bored' }).success).toBe(false);
+  });
+
+  it('accepts the capture-the-flag events', () => {
+    for (const e of [
+      { type: 'FlagPickedUp', player: 1, unitId: 'p0u0' },
+      { type: 'FlagDropped', player: 1, unitId: 'p0u0', at: { x: 3, y: 2 } },
+      { type: 'FlagReturned', player: 1, unitId: 'p1u2' },
+      { type: 'FlagCaptured', player: 0, unitId: 'p0u0' },
+      { type: 'GameOver', winner: 0, reason: 'flag' },
+    ]) {
+      expect(gameEventSchema.safeParse(e).success).toBe(true);
+    }
+    expect(gameEventSchema.safeParse({ type: 'FlagDropped', player: 1, unitId: 'p0u0' }).success).toBe(false);
+  });
+});
+
 describe('gameEventSchema', () => {
   it('accepts every event the engine actually produces over a game', () => {
     let state = createDemoGame(11);
@@ -82,5 +213,22 @@ describe('matchSetupSchema', () => {
     expect(
       matchSetupSchema.safeParse({ presets: ['a', 'b'], seats: ['human', 'wizard'], seed: 1 }).success,
     ).toBe(false);
+  });
+
+  it('accepts an optional map id and rejects an empty or non-string one', () => {
+    const base = { presets: ['a', 'b'], seats: ['human', 'ai'], seed: 1 };
+    const ok = matchSetupSchema.safeParse({ ...base, mapId: 'rocky-pass' });
+    expect(ok.success && ok.data.mapId).toBe('rocky-pass');
+    expect(matchSetupSchema.safeParse({ ...base, mapId: '' }).success).toBe(false);
+    expect(matchSetupSchema.safeParse({ ...base, mapId: 3 }).success).toBe(false);
+  });
+
+  it('accepts an optional mode and King indices, rejecting bad ones', () => {
+    const base = { presets: ['a', 'b'], seats: ['human', 'ai'], seed: 1 };
+    const ok = matchSetupSchema.safeParse({ ...base, mapId: 'crossroads', mode: 'kill-the-king', kings: [2, 0] });
+    expect(ok.success && ok.data).toEqual({ ...base, mapId: 'crossroads', mode: 'kill-the-king', kings: [2, 0] });
+    expect(matchSetupSchema.safeParse({ ...base, mode: 'deathmatch' }).success).toBe(false);
+    expect(matchSetupSchema.safeParse({ ...base, kings: [0, -1] }).success).toBe(false);
+    expect(matchSetupSchema.safeParse({ ...base, kings: [0.5, 1] }).success).toBe(false);
   });
 });

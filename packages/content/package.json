@@ -12,6 +12,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@fansong/engine": "workspace:*"
+    "@fansong/engine": "workspace:*",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@fansong/ai": "workspace:*"
   }
 }

@@ -97,7 +97,16 @@ fieldset label {
   margin: 0 0 8px;
 }
 
-.warband-picker select {
+.map-picker {
+  margin-top: 16px;
+}
+
+.map-picker h3 {
+  margin: 0 0 8px;
+}
+
+.warband-picker select,
+.map-picker select {
   width: 100%;
   padding: 8px;
   background: var(--bg);
@@ -122,6 +131,26 @@ fieldset label {
   justify-content: space-between;
   padding: 3px 0;
   border-top: 1px solid var(--line);
+}
+
+.roster li label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.roster li.king {
+  color: #f2c14e;
+}
+
+.mode-picker label {
+  margin-bottom: 4px;
+}
+
+.mode-picker label.unsupported {
+  color: var(--muted);
+  opacity: 0.6;
 }
 
 .roster .stats {
@@ -218,6 +247,20 @@ button.ghost {
   color: var(--text);
 }
 
+.hex-tooltip {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  background: rgba(22, 27, 34, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  pointer-events: none;
+}
+
 .board-canvas {
   position: relative;
   width: 100%;
@@ -280,6 +323,48 @@ button.ghost {
 
 .score-count {
   color: var(--muted);
+}
+
+.score-points {
+  font-weight: 700;
+}
+
+.mode-panel {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mode-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.mode-score {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.mode-score .p0 {
+  color: var(--p0);
+}
+
+.mode-score .p1 {
+  color: var(--p1);
+}
+
+.mode-goal {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mode-line {
+  font-size: 13px;
 }
 
 .benched {
@@ -425,6 +510,85 @@ button.secondary {
   color: var(--muted);
 }
 
+/* Scoring / flag events and the game-over line stand out and flash in once. */
+.log-line.objective {
+  color: var(--gold, #e0b84c);
+  animation: log-flash 1.2s ease-out;
+}
+
+.log-line.end {
+  color: var(--text, #fff);
+  font-weight: 700;
+}
+
+@keyframes log-flash {
+  from {
+    background: rgba(224, 184, 76, 0.35);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+/* Transient HUD callout for the latest objective event: pops in, lingers, fades away. */
+.callout {
+  background: var(--panel-2);
+  border: 1px solid var(--gold, #e0b84c);
+  color: var(--gold, #e0b84c);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 13px;
+  animation: callout 3.2s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes callout {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  8% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  14% {
+    transform: scale(1);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+
+.score-points.pulse {
+  display: inline-block;
+  animation: score-pulse 0.7s ease-out;
+}
+
+@keyframes score-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.35);
+    color: var(--gold, #e0b84c);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .log-line.objective,
+  .callout,
+  .score-points.pulse {
+    animation: none;
+  }
+}
+
 /* --- Replay viewer + game-over actions (M5) --- */
 .replay-controls {
   display: flex;
@@ -478,4 +642,150 @@ button.secondary {
 
 .muted {
   color: var(--muted);
+}
+
+/* --- Map editor -------------------------------------------------------- */
+.editor-new {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-new label {
+  margin-right: 0;
+}
+
+.editor-new input {
+  width: 56px;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.editor-files {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.editor-row button {
+  padding: 5px 10px;
+}
+
+.editor-row select {
+  flex: 1;
+  min-width: 140px;
+}
+
+.editor-files p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.editor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.editor-meta label {
+  margin-right: 0;
+}
+
+.editor-meta input {
+  width: 170px;
+  margin-left: 6px;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.editor-history {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.editor-history button {
+  padding: 5px 10px;
+}
+
+.editor-validation {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  border-radius: 8px;
+}
+
+.editor-validation.ok {
+  border-color: rgba(120, 220, 140, 0.45);
+  color: #9be3a9;
+}
+
+.editor-validation p {
+  margin: 0;
+}
+
+.editor-validation ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
+.editor-tools {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: 100%;
+}
+
+button.tool {
+  padding: 5px 10px;
+}
+
+button.tool .swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+
+button.tool.active {
+  background: var(--accent);
+  color: #06210f;
+  border-color: var(--accent);
+}
+
+.editor-selection {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.editor-selection h3 {
+  margin: 0 0 4px;
 }

@@ -1,9 +1,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { vecKey, type GameEvent, type GameState, type Vec } from '@fansong/engine';
+import { vecKey, type BoardData, type GameEvent, type GameState, type Vec } from '@fansong/engine';
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
+import { featureLayout, type FeaturePiece } from './features.js';
+import { hexElevation, surfaceY, TILE_TOP, tileHeight, tileSideColor, tileTopColor } from './terrain.js';
 import { spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
@@ -19,11 +21,37 @@ export interface BoardViewModel {
   selectedUnitId: string | null;
   /** Whether the local human may currently interact. */
   interactive: boolean;
+  /** Tinted hex sets under the move highlights (editor zones and objectives). */
+  overlays?: HexOverlay[];
+  /** Game-mode markers standing on hexes (flags at base or dropped). */
+  markers?: BoardMarker[];
+  /** Game-mode badges floating over units (a King's crown, a carried flag). */
+  badges?: Record<string, UnitBadge>;
+  /** Changes whenever `markers`/`badges` do; they are only redrawn then. */
+  markingsKey?: string;
+}
+
+/** A badge over a unit: a crown (King), or player 0's / player 1's carried flag. */
+export type UnitBadge = 'crown' | 'flag-0' | 'flag-1';
+
+/** A marker standing on a hex. */
+export interface BoardMarker {
+  kind: 'flag';
+  owner: 0 | 1;
+  cell: Vec;
+}
+
+/** A tinted hex set drawn flat on the board surface. */
+export interface HexOverlay {
+  cells: Vec[];
+  color: number;
+  /** Fill opacity (default 0.3). */
+  opacity?: number;
+  /** Hexagon size relative to a tile (default 0.9). */
+  scale?: number;
 }
 
 const OWNER_COLORS = [0x4f9dff, 0xff6b5b] as const; // P0 blue, P1 red
-const TILE_LIGHT = 0x2a3140;
-const TILE_DARK = 0x232936;
 const BLOCKED_COLOR = 0x4a4038;
 
 // Flat-top hex layout. Cells are offset "odd-q" coords (x = column, y = row);
@@ -37,10 +65,12 @@ const MOVE_COLOR = 0x3ddc84;
 const ATTACK_COLOR = 0xff5252;
 const SELECT_COLOR = 0xffd54a;
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
+const CROWN_COLOR = '#ffd54a';
+const BADGE_SIZE = 0.42; // world size of a badge sprite
+const BADGE_HEIGHT = 1.55; // badge centre above the unit's base
 const SHOT_COLOR = 0x9fd0ff; // ranged tracer, for a shooter without a missile image
 
 // Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
-const TILE_TOP = 0.1; // tiles are 0.2 tall, centred on y = 0
 const BASE_RADIUS = 0.36;
 const BASE_HEIGHT = 0.06;
 const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
@@ -106,6 +136,8 @@ interface UnitObj {
   sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   base: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+  /** Mode badge sprite (shares a texture per badge kind); hidden when none. */
+  badge: THREE.Sprite;
   anims: SpriteAnimations;
   animator: UnitAnimator;
   atlas: SpriteAtlas | null;
@@ -138,6 +170,14 @@ interface UnitObj {
 export class BoardView {
   onUnitClick: ((id: string) => void) | null = null;
   onCellClick: ((cell: Vec) => void) | null = null;
+  /** Fires when the hex under the pointer changes (null when it leaves the board). */
+  onCellHover: ((cell: Vec | null) => void) | null = null;
+  /**
+   * Editor drag painting (see {@link setCellDrag}): reports the press cell and
+   * the cell under the pointer while dragging, then once more with `done`.
+   */
+  private onCellDrag: ((from: Vec, to: Vec, done: boolean) => void) | null = null;
+  private drag: { from: Vec; to: Vec; key: string; moved: boolean } | null = null;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -162,10 +202,19 @@ export class BoardView {
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
     : 1;
   private readonly highlightGroup = new THREE.Group();
+  private readonly overlayGroup = new THREE.Group();
+  private overlays: HexOverlay[] | undefined;
+  private readonly markerGroup = new THREE.Group();
+  private markingsKey: string | undefined;
+  private readonly badgeTextures = new Map<string, THREE.Texture>();
+  /** Board tiles and feature meshes, raycast for cell picking (each carries `userData.cell`). */
+  private readonly tiles: THREE.Mesh[] = [];
+  private board: BoardData | null = null;
   private width = 0;
   private height = 0;
   private disposed = false;
   private downPos: { x: number; y: number } | null = null;
+  private hoverKey: string | null = null;
   private clock = new THREE.Clock();
 
   constructor(private readonly container: HTMLElement) {
@@ -183,7 +232,7 @@ export class BoardView {
     const ambient = new THREE.AmbientLight(0xffffff, 0.7);
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(6, 14, 8);
-    this.scene.add(ambient, key, this.highlightGroup);
+    this.scene.add(ambient, key, this.overlayGroup, this.highlightGroup, this.markerGroup);
 
     // Left-drag orbits, right-drag (or shift/ctrl + left) pans across the table,
     // wheel zooms. A press that barely moves is still a click (see handlePointerUp).
@@ -197,6 +246,8 @@ export class BoardView {
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
+    this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
+    this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
@@ -204,30 +255,112 @@ export class BoardView {
     this.renderer.setAnimationLoop(this.render);
   }
 
-  /** Build the static board (grid + terrain). Call once per match. */
+  /**
+   * Build the static board (grid + terrain). Called once per match; the editor
+   * calls it again after every edit, which replaces the old tiles and keeps the
+   * camera unless the board size changed.
+   */
   buildBoard(state: GameState): void {
+    const resized = state.board.width !== this.width || state.board.height !== this.height;
+    this.clearBoard();
+    this.board = state.board;
     this.width = state.board.width;
     this.height = state.board.height;
     const blocked = new Set(state.board.blocked);
 
     // A flat-top hex prism: a 6-sided cylinder, whose default orientation already
     // points its vertices along ±X (columns) and its flat edges along ±Z (rows).
-    const tileGeo = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, 0.2, 6);
+    // Every prism stands on the same floor and rises to its hex's elevation; its
+    // side faces (the cylinder's first material group) are shaded darker than the top.
+    const geos = new Map<number, THREE.CylinderGeometry>();
+    const tileGeo = (height: number) => {
+      let geo = geos.get(height);
+      if (!geo) {
+        geo = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, height, 6);
+        geos.set(height, geo);
+      }
+      return geo;
+    };
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
-        const key = vecKey({ x, y });
-        const isBlocked = blocked.has(key);
-        const color = isBlocked ? BLOCKED_COLOR : (x + y) % 2 === 0 ? TILE_LIGHT : TILE_DARK;
-        const mat = new THREE.MeshStandardMaterial({ color });
-        const tile = new THREE.Mesh(tileGeo, mat);
-        const w = this.cellToWorld({ x, y });
-        tile.position.set(w.x, isBlocked ? 0.25 : 0, w.z);
-        if (isBlocked) tile.scale.y = 3;
+        const cell = { x, y };
+        const isBlocked = blocked.has(vecKey(cell));
+        const elev = hexElevation(state.board, cell);
+        const top = new THREE.MeshStandardMaterial({ color: isBlocked ? BLOCKED_COLOR : tileTopColor(cell, elev) });
+        const side = isBlocked ? top : new THREE.MeshStandardMaterial({ color: tileSideColor(cell, elev) });
+        // Legacy blocked cells stay a tall pillar above whatever their elevation is.
+        const height = tileHeight(elev) + (isBlocked ? 0.4 : 0);
+        const tile = new THREE.Mesh(tileGeo(height), [side, top, top]);
+        const w = this.cellToWorld(cell);
+        tile.position.set(w.x, surfaceY(elev) + (isBlocked ? 0.4 : 0) - height / 2, w.z);
+        tile.userData.cell = cell;
+        this.tiles.push(tile);
         this.scene.add(tile);
       }
     }
 
-    this.positionCamera();
+    this.buildFeatures(state.board);
+    if (resized) this.positionCamera();
+  }
+
+  /** Remove the tiles and feature meshes of a previously built board. */
+  private clearBoard(): void {
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    for (const mesh of this.tiles) {
+      this.scene.remove(mesh);
+      geometries.add(mesh.geometry);
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) materials.add(m);
+    }
+    for (const g of geometries) g.dispose();
+    for (const m of materials) m.dispose();
+    this.tiles.length = 0;
+  }
+
+  /** Low-poly rocks, buildings and trees; pickable as the hex they stand on. */
+  private buildFeatures(board: BoardData): void {
+    const materials = new Map<number, THREE.MeshStandardMaterial>();
+    const material = (color: number) => {
+      let m = materials.get(color);
+      if (!m) {
+        m = new THREE.MeshStandardMaterial({ color, flatShading: true });
+        materials.set(color, m);
+      }
+      return m;
+    };
+    const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    const coneGeo = new THREE.ConeGeometry(1, 1, 7);
+    const trunkGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
+    const meshFor = (p: FeaturePiece): THREE.Mesh => {
+      switch (p.kind) {
+        case 'rock': {
+          const m = new THREE.Mesh(rockGeo, material(p.color));
+          m.scale.set(p.radius, p.radius * p.squash, p.radius);
+          m.rotation.y = p.rotY;
+          return m;
+        }
+        case 'box': {
+          const m = new THREE.Mesh(boxGeo, material(p.color));
+          m.scale.set(p.w, p.h, p.d);
+          m.rotation.y = p.rotY;
+          return m;
+        }
+        case 'cone':
+        case 'trunk': {
+          const m = new THREE.Mesh(p.kind === 'cone' ? coneGeo : trunkGeo, material(p.color));
+          m.scale.set(p.radius, p.h, p.radius);
+          return m;
+        }
+      }
+    };
+    for (const p of featureLayout(board, (v) => this.cellToWorld(v), HEX_SIZE)) {
+      const mesh = meshFor(p);
+      mesh.position.set(p.x, p.y, p.z);
+      mesh.userData.cell = p.cell;
+      this.tiles.push(mesh);
+      this.scene.add(mesh);
+    }
   }
 
   /** Reconcile unit meshes and highlights with the given view model. */
@@ -274,6 +407,8 @@ export class BoardView {
     }
 
     this.drawHighlights(vm.moveTargets);
+    if (vm.overlays !== this.overlays) this.drawOverlays(vm.overlays ?? []);
+    if (vm.markingsKey !== this.markingsKey) this.drawMarkings(vm);
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
   }
 
@@ -342,6 +477,9 @@ export class BoardView {
     this.resizeObserver.disconnect();
     this.renderer.domElement.removeEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
+    this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
+    this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
+    for (const t of this.badgeTextures.values()) t.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -389,6 +527,11 @@ export class BoardView {
     facing.position.y = TILE_TOP + BASE_HEIGHT;
     facing.add(tilt);
 
+    const badge = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+    badge.scale.set(BADGE_SIZE, BADGE_SIZE, 1);
+    badge.position.y = TILE_TOP + BADGE_HEIGHT;
+    badge.visible = false;
+
     const spriteName = spriteFor(name);
     const anims = animationsFor(spriteName);
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
@@ -401,6 +544,7 @@ export class BoardView {
       sprite,
       base,
       ring,
+      badge,
       anims,
       animator: new UnitAnimator(spriteName, anims),
       atlas: null,
@@ -436,7 +580,7 @@ export class BoardView {
       (err) => console.error(err),
     );
 
-    group.add(ring, base, facing);
+    group.add(ring, base, facing, badge);
     group.name = name;
     this.scene.add(group);
     return obj;
@@ -504,8 +648,8 @@ export class BoardView {
     const lift = TILE_TOP + BASE_HEIGHT + 0.55;
     this.missiles.push({
       sprite,
-      from: from.group.position.clone().setY(lift),
-      to: to.group.position.clone().setY(lift),
+      from: from.group.position.clone().setY(from.targetPos.y + lift),
+      to: to.group.position.clone().setY(to.targetPos.y + lift),
       start: this.now + Math.max(0, startIn),
       end: this.now + Math.max(1, hitIn),
       arc: /stone|spear|pitchfork/.test(image) ? 0.35 : 0.08,
@@ -647,9 +791,104 @@ export class BoardView {
       const tile = new THREE.Mesh(geo, mat);
       tile.rotation.x = -Math.PI / 2;
       const w = this.cellToWorld(t);
-      tile.position.set(w.x, 0.13, w.z);
+      tile.position.set(w.x, this.surfaceAt(t) + 0.03, w.z);
       this.highlightGroup.add(tile);
     }
+  }
+
+  private drawOverlays(overlays: HexOverlay[]): void {
+    this.overlays = overlays;
+    for (const child of this.overlayGroup.children) {
+      const mesh = child as THREE.Mesh;
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    this.overlayGroup.clear();
+    // Later overlays sit a hair higher so small markers (flags) stay on top.
+    overlays.forEach((o, i) => {
+      const geo = new THREE.CircleGeometry(HEX_SIZE * (o.scale ?? 0.9), 6);
+      const mat = new THREE.MeshBasicMaterial({
+        color: o.color,
+        transparent: true,
+        opacity: o.opacity ?? 0.3,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      for (const c of o.cells) {
+        const tile = new THREE.Mesh(geo, mat);
+        tile.rotation.x = -Math.PI / 2;
+        const w = this.cellToWorld(c);
+        tile.position.set(w.x, this.surfaceAt(c) + 0.012 + i * 0.002, w.z);
+        this.overlayGroup.add(tile);
+      }
+    });
+  }
+
+  /** Mode markings: flag markers on hexes and badges over units. */
+  private drawMarkings(vm: BoardViewModel): void {
+    this.markingsKey = vm.markingsKey;
+    for (const child of this.markerGroup.children) ((child as THREE.Sprite).material as THREE.Material).dispose();
+    this.markerGroup.clear();
+    for (const m of vm.markers ?? []) {
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: this.badgeTexture(m.owner === 0 ? 'flag-0' : 'flag-1'), transparent: true }),
+      );
+      sprite.scale.set(BADGE_SIZE * 1.4, BADGE_SIZE * 1.4, 1);
+      const w = this.cellToWorld(m.cell);
+      sprite.position.set(w.x + HEX_SIZE * 0.3, this.surfaceAt(m.cell) + BADGE_SIZE * 0.7, w.z - HEX_SIZE * 0.2);
+      this.markerGroup.add(sprite);
+    }
+    for (const [id, obj] of this.units) {
+      const kind = vm.badges?.[id];
+      obj.badge.visible = kind !== undefined;
+      if (kind && obj.badge.material.map !== this.badgeTexture(kind)) {
+        obj.badge.material.map = this.badgeTexture(kind);
+        obj.badge.material.needsUpdate = true;
+      }
+    }
+  }
+
+  /** A small canvas-drawn badge image, cached per kind. */
+  private badgeTexture(kind: UnitBadge): THREE.Texture {
+    let t = this.badgeTextures.get(kind);
+    if (t) return t;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d')!;
+    g.lineJoin = 'round';
+    g.lineWidth = 4;
+    g.strokeStyle = '#1b1f27';
+    if (kind === 'crown') {
+      g.beginPath();
+      g.moveTo(8, 50);
+      g.lineTo(6, 18);
+      g.lineTo(20, 32);
+      g.lineTo(32, 10);
+      g.lineTo(44, 32);
+      g.lineTo(58, 18);
+      g.lineTo(56, 50);
+      g.closePath();
+      g.fillStyle = CROWN_COLOR;
+      g.fill();
+      g.stroke();
+    } else {
+      const color = `#${OWNER_COLORS[kind === 'flag-0' ? 0 : 1].toString(16).padStart(6, '0')}`;
+      g.fillStyle = '#e8e2d4';
+      g.fillRect(12, 6, 6, 54);
+      g.strokeRect(12, 6, 6, 54);
+      g.beginPath();
+      g.moveTo(18, 8);
+      g.lineTo(58, 20);
+      g.lineTo(18, 34);
+      g.closePath();
+      g.fillStyle = color;
+      g.fill();
+      g.stroke();
+    }
+    t = new THREE.CanvasTexture(canvas);
+    t.colorSpace = THREE.SRGBColorSpace;
+    this.badgeTextures.set(kind, t);
+    return t;
   }
 
   private flashUnit(id: string, amount: number): void {
@@ -662,8 +901,8 @@ export class BoardView {
     const from = this.units.get(fromId);
     const to = this.units.get(toId);
     if (!from || !to) return;
-    const a = from.group.position.clone().setY(0.7);
-    const b = to.group.position.clone().setY(0.7);
+    const a = from.group.position.clone().setY(from.targetPos.y + 0.7);
+    const b = to.group.position.clone().setY(to.targetPos.y + 0.7);
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1 });
     const line = new THREE.Line(geo, mat);
@@ -713,37 +952,112 @@ export class BoardView {
     this.renderer.render(this.scene, this.camera);
   };
 
+  /**
+   * Turn editor drag painting on (a handler) or off (`null`). While on, a
+   * left-drag reports a cell rectangle instead of orbiting — middle-drag orbits
+   * and right-drag still pans. A press that barely moves is still a click.
+   */
+  setCellDrag(handler: ((from: Vec, to: Vec, done: boolean) => void) | null): void {
+    this.onCellDrag = handler;
+    this.drag = null;
+    this.controls.mouseButtons = handler
+      ? { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN }
+      : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+  }
+
   private handlePointerDown = (ev: PointerEvent): void => {
     this.downPos = { x: ev.clientX, y: ev.clientY };
+    this.drag = null;
+    if (this.onCellDrag && ev.button === 0) {
+      this.aimRay(ev);
+      const cell = this.pickCell();
+      if (cell && this.inBoard(cell)) this.drag = { from: cell, to: cell, key: `${cell.x},${cell.y}`, moved: false };
+    }
   };
 
   private handlePointerUp = (ev: PointerEvent): void => {
     if (!this.downPos) return;
     const moved = Math.hypot(ev.clientX - this.downPos.x, ev.clientY - this.downPos.y);
     this.downPos = null;
+    const drag = this.drag;
+    this.drag = null;
+    if (drag?.moved) return this.onCellDrag?.(drag.from, drag.to, true);
     if (moved > 6) return; // treat as a drag, not a click
 
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
-    this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.aimRay(ev);
 
     // Units first (their meshes carry userData.unitId), then a board cell.
-    const meshes: THREE.Object3D[] = [];
-    for (const obj of this.units.values()) if (obj.group.visible) meshes.push(obj.group);
-    const unitHits = this.raycaster.intersectObjects(meshes, true);
-    const unitId = unitHits.find((h) => this.isSolidHit(h))?.object.userData.unitId as string | undefined;
+    const unitId = this.pickUnit();
     if (unitId) {
       this.onUnitClick?.(unitId);
       return;
     }
 
-    const point = new THREE.Vector3();
-    if (this.raycaster.ray.intersectPlane(this.groundPlane, point)) {
-      const cell = this.worldToCell(point);
-      if (cell) this.onCellClick?.(cell);
-    }
+    const cell = this.pickCell();
+    if (cell) this.onCellClick?.(cell);
   };
+
+  private handlePointerMove = (ev: PointerEvent): void => {
+    if (this.drag && (ev.buttons & 1) !== 0 && this.downPos) {
+      const moved = Math.hypot(ev.clientX - this.downPos.x, ev.clientY - this.downPos.y);
+      this.aimRay(ev);
+      const cell = this.pickCell();
+      // Off the board the rectangle keeps its last in-board corner.
+      if (cell && this.inBoard(cell)) {
+        const key = `${cell.x},${cell.y}`;
+        if (moved > 6 && (key !== this.drag.key || !this.drag.moved)) {
+          this.drag = { ...this.drag, to: cell, key, moved: true };
+          this.onCellDrag?.(this.drag.from, cell, false);
+        }
+      }
+    }
+    if (!this.onCellHover) return;
+    if (ev.buttons !== 0) return this.setHover(null); // orbiting/panning: hide the tooltip
+    this.aimRay(ev);
+    // A figure stands over its own hex; report that rather than the tile behind it.
+    const unitId = this.pickUnit();
+    const target = unitId ? this.units.get(unitId)?.targetPos : undefined;
+    const unitCell = target ? this.worldToCell(target) : null;
+    this.setHover(unitCell ?? this.pickCell());
+  };
+
+  private handlePointerLeave = (): void => this.setHover(null);
+
+  private inBoard(cell: Vec): boolean {
+    return cell.x >= 0 && cell.y >= 0 && cell.x < this.width && cell.y < this.height;
+  }
+
+  private setHover(cell: Vec | null): void {
+    const key = cell ? `${cell.x},${cell.y}` : null;
+    if (key === this.hoverKey) return;
+    this.hoverKey = key;
+    this.onCellHover?.(cell);
+  }
+
+  private aimRay(ev: PointerEvent): void {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointer.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+  }
+
+  /** The visible unit whose opaque figure is under the current ray. */
+  private pickUnit(): string | undefined {
+    const meshes: THREE.Object3D[] = [];
+    for (const obj of this.units.values()) if (obj.group.visible) meshes.push(obj.group);
+    const unitHits = this.raycaster.intersectObjects(meshes, true);
+    return unitHits.find((h) => this.isSolidHit(h))?.object.userData.unitId as string | undefined;
+  }
+
+  /** The board cell under the current ray: nearest tile/feature hit, else the ground plane. */
+  private pickCell(): Vec | null {
+    // The nearest tile or feature hit resolves raised hexes by their top or side faces.
+    const tileCell = this.raycaster.intersectObjects(this.tiles, false)[0]?.object.userData.cell as Vec | undefined;
+    if (tileCell) return tileCell;
+    const point = new THREE.Vector3();
+    if (this.raycaster.ray.intersectPlane(this.groundPlane, point)) return this.worldToCell(point);
+    return null;
+  }
 
   /** A cutout's quad is larger than its figure: only count clicks on opaque pixels. */
   private isSolidHit(hit: THREE.Intersection): boolean {
@@ -807,9 +1121,15 @@ export class BoardView {
     return { x, z };
   }
 
+  /** Where a unit's group sits: the hex centre, raised by the hex's elevation. */
   private unitWorld(v: Vec): THREE.Vector3 {
     const w = this.cellToWorld(v);
-    return new THREE.Vector3(w.x, 0, w.z);
+    return new THREE.Vector3(w.x, this.surfaceAt(v) - TILE_TOP, w.z);
+  }
+
+  /** World Y of a cell's top surface. */
+  private surfaceAt(v: Vec): number {
+    return surfaceY(this.board ? hexElevation(this.board, v) : 0);
   }
 
   /** Pixel-to-hex: invert the flat-top mapping, then cube-round to the nearest cell. */

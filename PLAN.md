@@ -22,6 +22,7 @@ round.
 | AI opponent | **Heuristic only** (pure, deterministic; doubles as the test bot) |
 | Content | **Point-buy builder + a few original preset warbands** |
 | Initiative | **Alternate each round** — whoever went second last round leads next |
+| Terrain & modes | **Sparse, optional** per-hex elevation/features and objective modes (M7) — the default flat annihilation game is unchanged |
 
 ---
 
@@ -55,7 +56,7 @@ fansong/
 ├─ packages/
 │  ├─ engine/     # pure TS: state, commands, rules, RNG, legal-move gen. No three/react/cloudflare deps
 │  ├─ ai/         # heuristic opponent; imports engine only
-│  ├─ content/    # warband builder, point costs, preset warbands (data + validation)
+│  ├─ content/    # warband builder, point costs, preset warbands, maps + map validation (M7)
 │  └─ protocol/   # shared wire types (zod) for client <-> Durable Object messages
 ├─ apps/
 │  ├─ web/        # Vite + React shell + three.js board (thin view over engine)
@@ -217,6 +218,44 @@ no rules — remove three.js and the game still runs in the CLI.
    degenerate warband. The CLI ASCII board and the three.js view (hex-prism
    tiles, flat-top `cellToWorld`, pixel-to-hex picking, camera framing) were
    updated — UI only, no rules in the client.
+8. **M7 — Terrain, maps & game modes:** ✅ the battlefield stopped being flat
+   and "kill everything" stopped being the only way to win. Every addition is
+   **optional, sparse state** omitted when default, so the flat annihilation game
+   serialises byte-for-byte as before and the golden replay is untouched.
+   - **Terrain** — `BoardData.terrain` holds per-hex `elevation` (0–3) and one
+     `feature` (`rock` / `building`: impassable, block sight; `forest`: passable,
+     blocks sight *through* it but not into/out of it). Moves must be reachable
+     by a BFS path over passable hexes; line of sight is drawn from a canonical
+     endpoint so it is symmetric. **High ground:** a standing combatant on a
+     strictly higher hex gets +1 in melee, guard ripostes and shooting (attacker
+     and defender alike), reported by optional bonus fields on combat events.
+   - **Maps** (`packages/content`) — a JSON `MapDef` (size, hexes, deploy zones,
+     objectives) with a strict zod schema, `validateMap` (size limits, passable
+     deploy zones with room for a warband, objectives per mode) and
+     `supportedModes`. `mapToBoard` + zone deployment feed `buildMatch`; the
+     default `open-field` map reproduces the legacy layout exactly. Seven
+     built-in maps live in `packages/content/maps/*.json` (Open Field, Rolling
+     Hills, Old Forest, Ruined Village, Rocky Pass, Twin Towers, Crossroads).
+   - **Game modes** (`GameConfig.mode`, engine `mode.ts`) — annihilation
+     (default), **kill-the-king** (a designated King falling loses at once),
+     **king-of-the-hill** (hold the hill at each round boundary, first to 5),
+     **conquest** (three zones scored separately, first to 8) — both capped at
+     round 12 with an annihilation-style tiebreak — and **capture-the-flag**
+     (pick up / drop / return / capture, a capture wins). New events:
+     `ScoreChanged`, `FlagPickedUp/Dropped/Returned/Captured`, `GameOver.reason`.
+   - **AI** — `chooseCommand` pursues each objective (take and hold zones, fetch
+     and carry flags, hunt carriers, guard its own King, focus the enemy's) and
+     values high ground and cover. A self-play matrix plays every built-in map ×
+     every mode it supports to completion with per-step objective invariants.
+   - **Clients** — the three.js board extrudes hexes by elevation and draws
+     low-poly rocks, connected buildings and cone trees, plus zone overlays,
+     flags and crown/carrier badges; the HUD shows mode, scores and flag state
+     and the log highlights objective events. A **terrain editor** (from Setup)
+     paints elevation/features/zones with undo/redo and inline validation, and
+     saves to localStorage or `.json`; custom maps appear in the Setup map
+     picker (local play). Setup picks map → supported mode → King. The wire
+     protocol and worker carry `mapId`/`gameMode`/`kings` (built-in maps only
+     online), and the CLI gained `--map` / `--mode`.
 
 ---
 

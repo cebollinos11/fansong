@@ -2,7 +2,8 @@ import { aliveUnits, unitById, type GameState, type Owner } from '@fansong/engin
 import type { Interaction } from '../game/interaction.js';
 import { isAiSeat, type MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import type { LogEntry } from './log.js';
+import { latestCallout, type LogEntry } from './log.js';
+import { modeHud } from './modeView.js';
 
 interface Props {
   state: GameState;
@@ -46,6 +47,8 @@ export function Hud(props: Props): JSX.Element {
   const selected = selectedUnitId ? unitById(state, selectedUnitId) : null;
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
   const banner = statusBanner(status);
+  const mode = modeHud(state);
+  const callout = latestCallout(props.log);
 
   return (
     <aside className="hud">
@@ -64,11 +67,42 @@ export function Hud(props: Props): JSX.Element {
             <span className="score-name">
               P{owner} · {seatLabel(setup, controlledSeats, owner)}
             </span>
+            {mode?.scores ? (
+              <span key={mode.scores[owner]} className={`score-points${mode.scores[owner] > 0 ? ' pulse' : ''}`}>
+                {mode.scores[owner]} pts
+              </span>
+            ) : null}
             <span className="score-count">{aliveUnits(state, owner).length} alive</span>
             {state.benched[owner] && !gameOver ? <span className="benched">benched</span> : null}
           </div>
         ))}
       </div>
+
+      {callout?.tone === 'objective' ? (
+        // Keyed by entry id so each new scoring/flag event replays the fade-in/out animation.
+        <div key={callout.id} className="callout">
+          {callout.text.trim()}
+        </div>
+      ) : null}
+
+      {mode ? (
+        <div className="mode-panel">
+          <div className="mode-title">
+            <strong>{mode.label}</strong>
+            {mode.scores ? (
+              <span className="mode-score">
+                <span className="p0">{mode.scores[0]}</span> – <span className="p1">{mode.scores[1]}</span>
+              </span>
+            ) : null}
+          </div>
+          <div className="mode-goal">{mode.goal}</div>
+          {mode.lines.map((line) => (
+            <div key={line} className="mode-line">
+              {line}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {gameOver ? (
         <div className="banner win">
@@ -125,7 +159,7 @@ export function Hud(props: Props): JSX.Element {
         <h3>Battle log</h3>
         <div className="log-lines">
           {[...props.log].reverse().map((entry) => (
-            <div key={entry.id} className="log-line">
+            <div key={entry.id} className={`log-line${entry.tone ? ` ${entry.tone}` : ''}`}>
               {entry.text}
             </div>
           ))}

@@ -1,5 +1,5 @@
 import { chooseCommand } from '@fansong/ai';
-import type { MatchSetup } from '@fansong/content';
+import { getMap, mapToBoard, type MatchSetup } from '@fansong/content';
 import { hashGameState, runReplay } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { LocalMatchClient } from '../src/game/client.js';
@@ -32,6 +32,18 @@ describe('LocalMatchClient replay recording', () => {
     expect(live.phase).toBe('gameOver');
     expect(replay.commands.length).toBeGreaterThan(0);
     const run = runReplay(replay);
+    expect(hashGameState(run.final)).toBe(hashGameState(live));
+  });
+
+  it('carries the chosen map in the replay config', () => {
+    const client = new LocalMatchClient({ ...SETUP, mapId: 'rocky-pass' });
+    playOut(client);
+    const replay = client.getReplay();
+    const live = client.getState();
+    client.dispose();
+
+    expect(replay.config.board).toEqual(mapToBoard(getMap('rocky-pass')!));
+    const run = runReplay(parseReplay(replayToJson(replay)));
     expect(hashGameState(run.final)).toBe(hashGameState(live));
   });
 });

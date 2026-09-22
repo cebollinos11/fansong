@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   commandSchema,
   gameEventSchema,
+  gameModeSchema,
   gameStateSchema,
   matchSetupSchema,
   ownerSchema,
@@ -42,6 +43,32 @@ export type JoinMessage = z.infer<typeof joinMessageSchema>;
 export type CommandMessage = z.infer<typeof commandMessageSchema>;
 export type ResyncMessage = z.infer<typeof resyncMessageSchema>;
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
+
+// --- Matchmaking (HTTP, client -> worker) -----------------------------------
+
+/**
+ * Body of `POST /api/matchmake`. `mode` is the *queue* (pve = vs the in-room AI,
+ * pvp = host or join a human); the match itself is described by `presets`,
+ * `seed` and the optional map / game mode / King picks, which the worker copies
+ * into the room's `MatchSetup` (only when present, so default setups stay
+ * byte-identical). `mapId` must name a built-in map — the worker cannot see a
+ * browser's custom maps. A pvp request only pairs with a host queued for the
+ * same map and game mode; the joiner then plays the host's setup (its own
+ * presets, seed and Kings are ignored). A pvp host picks only its own King —
+ * seat 1 always fields its preset's default King.
+ */
+export const matchmakeRequestSchema = z
+  .object({
+    mode: z.enum(['pve', 'pvp']),
+    presets: z.tuple([z.string().min(1).max(64), z.string().min(1).max(64)]),
+    seed: z.number().int(),
+    mapId: z.string().min(1).max(64).optional(),
+    gameMode: gameModeSchema.optional(),
+    kings: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
+  })
+  .strict();
+
+export type MatchmakeRequestBody = z.infer<typeof matchmakeRequestSchema>;
 
 // --- Server -> Client -----------------------------------------------------
 

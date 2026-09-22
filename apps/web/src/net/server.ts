@@ -1,5 +1,6 @@
 import type { Owner } from '@fansong/engine';
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
+import type { MatchmakeRequestBody } from '@fansong/protocol';
 import { OnlineMatchClient } from '../game/OnlineMatchClient.js';
 
 /** Where the worker lives. Override with `VITE_SERVER_URL` for a deployed worker. */
@@ -11,11 +12,8 @@ function serverWsBase(): string {
   return serverHttpBase().replace(/^http/, 'ws');
 }
 
-export interface MatchmakeBody {
-  mode: 'pve' | 'pvp';
-  presets: [string, string];
-  seed: number;
-}
+/** `POST /api/matchmake` body, validated by the worker against the protocol schema. */
+export type MatchmakeBody = MatchmakeRequestBody;
 
 export interface Ticket {
   roomId: string;
