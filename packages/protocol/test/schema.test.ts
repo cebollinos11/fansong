@@ -157,6 +157,8 @@ describe('mode state', () => {
 
   it('accepts the score and reasoned game-over events', () => {
     expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 1, points: 2, scores: [0, 2] }).success).toBe(true);
+    expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 0, points: 1, scores: [1, 0], zone: 2 }).success).toBe(true);
+    expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 0, points: 1, scores: [1, 0], zone: -1 }).success).toBe(false);
     expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'roundLimit' }).success).toBe(true);
     expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'bored' }).success).toBe(false);
   });

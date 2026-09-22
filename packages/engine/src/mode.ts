@@ -225,20 +225,43 @@ export function zoneController(state: GameState, zone: ReadonlyArray<Vec>): Owne
 
 /** The zones scored at each round boundary in the current mode (empty outside the zone modes). */
 export function scoringZones(state: GameState): Vec[][] {
-  if (state.mode?.mode === 'king-of-the-hill') return state.mode.objectives.hill ? [state.mode.objectives.hill] : [];
+  const m = state.mode;
+  if (m?.mode === 'king-of-the-hill') return m.objectives.hill ? [m.objectives.hill] : [];
+  if (m?.mode === 'conquest') return m.objectives.conquest ? [...m.objectives.conquest] : [];
   return [];
 }
 
 /**
  * Score the zones at a round boundary (mutates `s`): each zone's controller
- * gains 1 point. Called as a round ends — including the final capped round —
- * i.e. at the start of the next round; round 1's start, straight after deploy,
- * is not scored. Returns whether a target score ended the game.
+ * gains 1 point, zone by zone (conquest's events name the zone index). Called
+ * as a round ends — including the final capped round — i.e. at the start of
+ * the next round; round 1's start, straight after deploy, is not scored.
+ *
+ * All zones are tallied before the target is checked, so zone order never
+ * decides a game: if both players reach the target on the same boundary the
+ * higher score wins, and an equal score goes to {@link tiebreakWinner}.
+ * Returns whether a target score ended the game.
  */
 export function scoreZones(s: GameState, events: GameEvent[]): boolean {
-  for (const zone of scoringZones(s)) {
+  const mode = s.mode;
+  if (!mode) return false;
+  const zones = scoringZones(s);
+  const multi = mode.mode === 'conquest';
+  zones.forEach((zone, i) => {
     const holder = zoneController(s, zone);
-    if (holder !== undefined && awardPoints(s, events, holder, 1)) return true;
-  }
-  return false;
+    if (holder === undefined) return;
+    mode.scores[holder] += 1;
+    const scores: [number, number] = [mode.scores[0], mode.scores[1]];
+    events.push(
+      multi
+        ? { type: 'ScoreChanged', player: holder, points: 1, scores, zone: i }
+        : { type: 'ScoreChanged', player: holder, points: 1, scores },
+    );
+  });
+  const target = MODE_RULES[mode.mode].targetScore;
+  if (target === undefined) return false;
+  const [s0, s1] = mode.scores;
+  if (s0 < target && s1 < target) return false;
+  finishGame(s, events, s0 === s1 ? tiebreakWinner(s) : s0 > s1 ? 0 : 1, 'score');
+  return true;
 }

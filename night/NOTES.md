@@ -253,3 +253,9 @@
   or empty zone scores nothing and emits no event. Reaching 5 ends the game at once (`reason: 'score'`) and
   no `RoundEnded` follows. New helpers `standingInZone`, `zoneController`, `scoringZones` (hill only for now;
   conquest's three zones plug in there in task 29), `scoreZones`. No schema change (reuses `ScoreChanged`).
+- Task 29: conquest. `scoringZones` returns the three conquest zones; each is scored separately (+1 to its
+  controller, same strict-majority-of-standing-units rule as the hill) at every round boundary. `ScoreChanged`
+  gains an optional `zone` index, emitted **only** for conquest (KotH events unchanged); protocol schema + web
+  log updated. Decision: `scoreZones` now tallies every zone before checking the target, so zone order never
+  decides a game — if both players reach the target on the same boundary the higher score wins, and an equal
+  score goes to `tiebreakWinner` (reason still `'score'`). KotH behaviour is identical (one zone).

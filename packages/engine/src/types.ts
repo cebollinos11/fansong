@@ -199,7 +199,8 @@ export type GameEvent =
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }
-  | { type: 'ScoreChanged'; player: Owner; points: number; scores: [number, number] }
+  /** `zone` (index into the conquest zones) is present only for conquest zone scoring. */
+  | { type: 'ScoreChanged'; player: Owner; points: number; scores: [number, number]; zone?: number }
   /** `reason` is present only in an objective mode (see {@link ModeState}). */
   | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
 

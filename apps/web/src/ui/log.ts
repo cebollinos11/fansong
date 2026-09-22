@@ -52,7 +52,7 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'RoundEnded':
       return `=== Round ${e.round} — P${e.nextLeader} leads ===`;
     case 'ScoreChanged':
-      return `  Player ${e.player} scores ${e.points} (${e.scores[0]}–${e.scores[1]})`;
+      return `  Player ${e.player} scores ${e.points}${e.zone !== undefined ? ` for zone ${e.zone + 1}` : ''} (${e.scores[0]}–${e.scores[1]})`;
     case 'GameOver':
       return `GAME OVER — Player ${e.winner} wins`;
     case 'ActivationEnded':

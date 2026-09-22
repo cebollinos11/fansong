@@ -259,6 +259,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     player: ownerSchema,
     points: z.number().int(),
     scores: z.tuple([z.number().int(), z.number().int()]),
+    zone: z.number().int().min(0).optional(),
   }),
   z.object({
     type: z.literal('GameOver'),
