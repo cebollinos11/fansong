@@ -1,4 +1,4 @@
-import { createGame, type GameConfig, type GameState, type Owner } from '@fansong/engine';
+import { createGame, type GameConfig, type GameMode, type GameState, type Owner } from '@fansong/engine';
 import { DEFAULT_BOARD, buildMatch, type BoardSize } from './deploy.js';
 import type { MapDef } from './map.js';
 import { getMap } from './mapRegistry.js';
@@ -27,6 +27,17 @@ export interface MatchSetup {
    * identical to the `open-field` map.
    */
   mapId?: string;
+  /**
+   * Game mode. Omitted = annihilation (the state then carries no mode data).
+   * Every mode but annihilation and kill-the-king needs a `mapId` whose map
+   * provides that mode's objectives.
+   */
+  mode?: GameMode;
+  /**
+   * Kill-the-king: index into each preset's units of the player's King.
+   * Omitted = each side's `defaultKing`. Ignored in other modes.
+   */
+  kings?: [number, number];
 }
 
 /** Resolves a map id to its definition (built-ins by default). */
@@ -75,8 +86,10 @@ export function configFromSetup(
 ): GameConfig {
   const p0 = resolveWarband(setup.presets[0]);
   const p1 = resolveWarband(setup.presets[1]);
-  if (setup.mapId !== undefined) return buildMatch(p0, p1, { seed: setup.seed, map: resolveMap(setup.mapId, lookup) });
-  return buildMatch(p0, p1, { seed: setup.seed, board });
+  const mode = { mode: setup.mode, kings: setup.kings };
+  if (setup.mapId !== undefined)
+    return buildMatch(p0, p1, { seed: setup.seed, map: resolveMap(setup.mapId, lookup), ...mode });
+  return buildMatch(p0, p1, { seed: setup.seed, board, ...mode });
 }
 
 /**

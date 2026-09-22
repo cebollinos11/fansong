@@ -222,4 +222,13 @@ describe('matchSetupSchema', () => {
     expect(matchSetupSchema.safeParse({ ...base, mapId: '' }).success).toBe(false);
     expect(matchSetupSchema.safeParse({ ...base, mapId: 3 }).success).toBe(false);
   });
+
+  it('accepts an optional mode and King indices, rejecting bad ones', () => {
+    const base = { presets: ['a', 'b'], seats: ['human', 'ai'], seed: 1 };
+    const ok = matchSetupSchema.safeParse({ ...base, mapId: 'crossroads', mode: 'kill-the-king', kings: [2, 0] });
+    expect(ok.success && ok.data).toEqual({ ...base, mapId: 'crossroads', mode: 'kill-the-king', kings: [2, 0] });
+    expect(matchSetupSchema.safeParse({ ...base, mode: 'deathmatch' }).success).toBe(false);
+    expect(matchSetupSchema.safeParse({ ...base, kings: [0, -1] }).success).toBe(false);
+    expect(matchSetupSchema.safeParse({ ...base, kings: [0.5, 1] }).success).toBe(false);
+  });
 });

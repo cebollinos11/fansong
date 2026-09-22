@@ -271,3 +271,11 @@
   hex before the turn passes (`FlagDropped` carries `at`). A knocked-down carrier that stands up does not
   re-take a flag lying under it — it must move off and back (pickup is by moving onto). No round cap for CTF.
   Protocol: `flagStateSchema` + four flag event schemas + drift guard; CLI/web logs got basic flag lines.
+- Task 31: mode wiring. `MatchSetup` gains optional `mode` and `kings: [number, number]` (index into each
+  preset's units); `MatchOptions` the same, handled in `buildMatch`. Annihilation (explicit or omitted) adds
+  no config keys, so legacy configs/replays are unchanged. Objective modes (KotH/conquest/CTF) require a map
+  and run `validateMap(map, mode)`; only the objective key that mode uses is copied into `config.objectives`.
+  Kill-the-king works on the legacy board or any map; its King defaults to `defaultKing(units)` = the most
+  expensive unit by `unitCost` (first on a tie) — decision, the spec only says "designated during deploy";
+  the Setup UI (task 37) will let players pick. Out-of-range King indices throw. Protocol `matchSetupSchema`
+  got `mode`/`kings` already here because the drift guard ties it to `MatchSetup` (task 32 does messages/room).

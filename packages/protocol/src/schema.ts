@@ -286,6 +286,8 @@ export const matchSetupSchema = z
     seats: z.tuple([seatSchema, seatSchema]),
     seed: z.number().int(),
     mapId: z.string().min(1).max(64).optional(),
+    mode: gameModeSchema.optional(),
+    kings: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
   })
   .strict();
 

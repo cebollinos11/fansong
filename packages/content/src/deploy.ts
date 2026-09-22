@@ -1,4 +1,5 @@
-import { makeHexGrid, type GameConfig, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { makeHexGrid, type GameConfig, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { unitCost } from './cost.js';
 import { flatMap, mapToBoard, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
 import type { Warband, WarbandUnit } from './warband.js';
@@ -16,6 +17,28 @@ export interface MatchOptions {
   map?: MapDef;
   /** Player who leads round 1 (default 0). */
   initiativeLeader?: Owner;
+  /**
+   * Game mode (default `annihilation`). Objective modes other than kill-the-king
+   * need a `map` providing that mode's objectives.
+   */
+  mode?: GameMode;
+  /**
+   * Kill-the-king: index into each warband's `units` of its King. Defaults to
+   * {@link defaultKing}. Ignored in every other mode.
+   */
+  kings?: [number, number];
+}
+
+/**
+ * The unit a warband fields as King when none is chosen: its most expensive
+ * model (the first such on a tie) — the natural leader, and one that can fight.
+ */
+export function defaultKing(units: WarbandUnit[]): number {
+  let best = 0;
+  units.forEach((u, i) => {
+    if (unitCost(u) > unitCost(units[best]!)) best = i;
+  });
+  return best;
 }
 
 /** Default battlefield for a two-warband skirmish. */
@@ -117,24 +140,55 @@ export function layOutInZone(units: WarbandUnit[], owner: Owner, map: MapDef): U
  * With `opts.map` the board takes the map's terrain and warbands deploy into its
  * zones (the map must pass `validateMap`); otherwise the legacy flat `opts.board`
  * (default {@link DEFAULT_BOARD}) with edge-column deployment is used.
+ *
+ * `opts.mode` adds `mode` to the config: objective modes take the map's
+ * objectives (the map must provide them), kill-the-king flags each side's King.
  */
 export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameConfig {
+  const mode = opts.mode ?? 'annihilation';
+  let config: GameConfig;
   if (opts.map) {
     const map = opts.map;
-    const check = validateMap(map);
+    const check = validateMap(map, mode === 'annihilation' ? undefined : mode);
     if (!check.ok) throw new Error(`map "${map.id}" is invalid: ${check.errors.join('; ')}`);
-    return {
+    config = {
       seed: opts.seed,
       board: mapToBoard(map),
       warbands: [layOutInZone(p0.units, 0, map), layOutInZone(p1.units, 1, map)],
       initiativeLeader: opts.initiativeLeader ?? 0,
     };
+    if (mode !== 'annihilation' && mode !== 'kill-the-king') config.objectives = objectivesFor(map, mode);
+  } else {
+    if (mode !== 'annihilation' && mode !== 'kill-the-king')
+      throw new Error(`mode '${mode}' needs a map with its objectives`);
+    const board = opts.board ?? DEFAULT_BOARD;
+    config = {
+      seed: opts.seed,
+      board: { width: board.width, height: board.height },
+      warbands: [layOutWarband(p0.units, 0, board), layOutWarband(p1.units, 1, board)],
+      initiativeLeader: opts.initiativeLeader ?? 0,
+    };
   }
-  const board = opts.board ?? DEFAULT_BOARD;
-  return {
-    seed: opts.seed,
-    board: { width: board.width, height: board.height },
-    warbands: [layOutWarband(p0.units, 0, board), layOutWarband(p1.units, 1, board)],
-    initiativeLeader: opts.initiativeLeader ?? 0,
-  };
+  // Annihilation adds no keys, so its config (and every replay hash) is unchanged.
+  if (mode === 'annihilation') return config;
+  config.mode = mode;
+  if (mode === 'kill-the-king') {
+    const kings = opts.kings ?? [defaultKing(p0.units), defaultKing(p1.units)];
+    config.warbands.forEach((specs, owner) => {
+      const k = kings[owner]!;
+      if (!Number.isInteger(k) || k < 0 || k >= specs.length)
+        throw new Error(`player ${owner}'s King index ${k} is not one of its ${specs.length} units`);
+      specs[k]!.king = true;
+    });
+  }
+  return config;
+}
+
+/** Just the map objectives `mode` plays with (deep-copied), for the engine config. */
+function objectivesFor(map: MapDef, mode: 'capture-the-flag' | 'king-of-the-hill' | 'conquest'): GameConfig['objectives'] {
+  const copy = (vs: Vec[]) => vs.map((v) => ({ x: v.x, y: v.y }));
+  const { flags, hill, conquest } = map.objectives;
+  if (mode === 'capture-the-flag') return { flags: [{ ...flags![0] }, { ...flags![1] }] };
+  if (mode === 'king-of-the-hill') return { hill: copy(hill!) };
+  return { conquest: [copy(conquest![0]), copy(conquest![1]), copy(conquest![2])] };
 }
