@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Board } from './board.js';
 import { computeCombatResult, highGroundBonus } from './combat.js';
-import { checkRoundLimit, fallenKingOwner, finishGame } from './mode.js';
+import { checkRoundLimit, fallenKingOwner, finishGame, scoreZones } from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
@@ -401,7 +401,7 @@ function advanceTurn(s: GameState, events: GameEvent[]): void {
 }
 
 function endRound(s: GameState, events: GameEvent[]): void {
-  if (checkRoundLimit(s, events)) return;
+  if (scoreZones(s, events) || checkRoundLimit(s, events)) return;
   s.round += 1;
   for (const u of s.units) u.activatedThisRound = false;
   s.benched = [false, false];

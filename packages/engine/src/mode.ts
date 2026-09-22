@@ -205,3 +205,40 @@ export function checkRoundLimit(s: GameState, events: GameEvent[]): boolean {
   finishGame(s, events, roundLimitWinner(s), 'roundLimit');
   return true;
 }
+
+/** Standing (living, not knocked down) units of player 0 and player 1 on the hexes of `zone`. */
+export function standingInZone(state: GameState, zone: ReadonlyArray<Vec>): [number, number] {
+  const counts: [number, number] = [0, 0];
+  for (const u of state.units) {
+    if (u.dead || u.knockedDown) continue;
+    if (zone.some((h) => h.x === u.pos.x && h.y === u.pos.y)) counts[u.owner]++;
+  }
+  return counts;
+}
+
+/** The player holding `zone` — strictly more standing units in it — or `undefined` when contested/empty. */
+export function zoneController(state: GameState, zone: ReadonlyArray<Vec>): Owner | undefined {
+  const [a, b] = standingInZone(state, zone);
+  if (a === b) return undefined;
+  return a > b ? 0 : 1;
+}
+
+/** The zones scored at each round boundary in the current mode (empty outside the zone modes). */
+export function scoringZones(state: GameState): Vec[][] {
+  if (state.mode?.mode === 'king-of-the-hill') return state.mode.objectives.hill ? [state.mode.objectives.hill] : [];
+  return [];
+}
+
+/**
+ * Score the zones at a round boundary (mutates `s`): each zone's controller
+ * gains 1 point. Called as a round ends — including the final capped round —
+ * i.e. at the start of the next round; round 1's start, straight after deploy,
+ * is not scored. Returns whether a target score ended the game.
+ */
+export function scoreZones(s: GameState, events: GameEvent[]): boolean {
+  for (const zone of scoringZones(s)) {
+    const holder = zoneController(s, zone);
+    if (holder !== undefined && awardPoints(s, events, holder, 1)) return true;
+  }
+  return false;
+}

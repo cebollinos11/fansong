@@ -245,3 +245,11 @@
   together; the scan is in unit order anyway. Helpers `kingOf`, `isKing`, `fallenKingOwner`. Protocol
   `modeStateSchema` gains optional `kings`. The task-26 test that used kill-the-king for the "annihilation
   reason" case now uses king-of-the-hill (kill-the-king needs Kings now).
+- Task 28: king-of-the-hill scoring. "Start of each round" is implemented as every round boundary: `endRound`
+  calls `scoreZones` first (before the round-cap check and before `RoundEnded`), so points land at the start
+  of rounds 2…12 **and** once more as round 12 ends, before the game is called on points — otherwise
+  holding the hill during the last round would count for nothing. Round 1's start (straight after deploy) is
+  not scored. Controller = strictly more standing (living, not knocked down) units on the zone's hexes; a tie
+  or empty zone scores nothing and emits no event. Reaching 5 ends the game at once (`reason: 'score'`) and
+  no `RoundEnded` follows. New helpers `standingInZone`, `zoneController`, `scoringZones` (hill only for now;
+  conquest's three zones plug in there in task 29), `scoreZones`. No schema change (reuses `ScoreChanged`).
