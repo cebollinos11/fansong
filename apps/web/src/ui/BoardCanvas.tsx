@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameEvent, GameState, Vec } from '@fansong/engine';
-import { BoardView, type BoardViewModel, type HexOverlay } from '../three/BoardView.js';
+import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
 import { describeHex } from './hexInfo.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
 
@@ -29,26 +29,44 @@ interface Props {
    * current cell (then once more with `done`) instead of orbiting the camera.
    */
   onCellDrag?: (from: Vec, to: Vec, done: boolean) => void;
-  /** Show the "Follow action" toggle (play and replays; the camera pans to off-screen action). */
-  followToggle?: boolean;
+  /**
+   * This board is playing out a match (not the editor): it shows the camera
+   * controls and whose turn it is, and the spacebar skips an animation.
+   */
+  playing?: boolean;
+  /** Watching a recording: there is no "your turn", so the turn edge stays quiet. */
+  spectating?: boolean;
 }
 
-const FOLLOW_KEY = 'fansong.followAction';
+const CAMERA_KEY = 'fansong.cameraMode';
+/** Cycled by the camera button, in this order. */
+const CAMERA_MODES: CameraMode[] = ['cinematic', 'follow', 'off'];
+const CAMERA_LABEL: Record<CameraMode, string> = {
+  cinematic: 'Camera: cinematic',
+  follow: 'Camera: follow',
+  off: 'Camera: manual',
+};
+const CAMERA_HINT: Record<CameraMode, string> = {
+  cinematic: 'Frames every blow up close; click to follow off-screen action only',
+  follow: 'Pans to action happening off-screen; click to leave the camera alone',
+  off: 'The camera stays where you put it; click for the full cinematic camera',
+};
 
-/** The remembered "Follow action" choice (on unless turned off; storage may be unavailable). */
-function loadFollow(): boolean {
+/** The remembered camera choice (cinematic unless changed; storage may be unavailable). */
+function loadCameraMode(): CameraMode {
   try {
-    return localStorage.getItem(FOLLOW_KEY) !== 'off';
+    const saved = localStorage.getItem(CAMERA_KEY);
+    return CAMERA_MODES.find((m) => m === saved) ?? 'cinematic';
   } catch {
-    return true;
+    return 'cinematic';
   }
 }
 
-function saveFollow(on: boolean): void {
+function saveCameraMode(mode: CameraMode): void {
   try {
-    localStorage.setItem(FOLLOW_KEY, on ? 'on' : 'off');
+    localStorage.setItem(CAMERA_KEY, mode);
   } catch {
-    // Not remembered; the toggle still works for this session.
+    // Not remembered; the button still works for this session.
   }
 }
 
@@ -57,7 +75,7 @@ export function BoardCanvas(props: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
   const [hover, setHover] = useState<Vec | null>(null);
-  const [follow, setFollow] = useState(loadFollow);
+  const [cameraMode, setCameraMode] = useState(loadCameraMode);
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
   const handlers = useRef({
     onUnitClick: props.onUnitClick,
@@ -104,11 +122,26 @@ export function BoardCanvas(props: Props): JSX.Element {
     viewRef.current?.setCellDrag(dragging ? (from, to, done) => handlers.current.onCellDrag?.(from, to, done) : null);
   }, [dragging]);
 
-  // Only a board that plays out a game follows the action (the editor has none to follow).
-  const following = !!props.followToggle && follow;
+  // Only a board that plays out a game moves its camera (the editor has nothing to follow).
+  const mode: CameraMode = props.playing ? cameraMode : 'off';
   useEffect(() => {
-    if (viewRef.current) viewRef.current.followAction = following;
-  }, [following]);
+    if (viewRef.current) viewRef.current.cameraMode = mode;
+  }, [mode]);
+
+  // Space skips to the end of whatever is playing out.
+  useEffect(() => {
+    if (!props.playing) return;
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.code !== 'Space' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target.tagName))) return;
+      e.preventDefault();
+      // Tell the queue the batch is done, so the next one starts at once.
+      if (viewRef.current?.skipAnimations()) handlers.current.onEventsPlayed?.(0);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [props.playing]);
 
   // Game-mode markings, recomputed only when they change (the state is cloned per command).
   const markingsKey = modeMarkingsKey(props.state);
@@ -162,6 +195,13 @@ export function BoardCanvas(props: Props): JSX.Element {
   return (
     <div className="board-wrap">
       <div ref={containerRef} className="board-canvas" />
+      {props.playing && props.state.phase !== 'gameOver' ? (
+        // Whose turn it is, around the board itself: a camera move that arrives
+        // with the other side's colour reads as "they are doing something".
+        <div
+          className={`board-edge p${props.state.active}${props.interactive || props.spectating ? '' : ' waiting'}`}
+        />
+      ) : null}
       {hexInfo ? (
         <div className="hex-tooltip">
           <strong>{hexInfo.title}</strong>
@@ -179,18 +219,18 @@ export function BoardCanvas(props: Props): JSX.Element {
         >
           Reset view
         </button>
-        {props.followToggle ? (
+        {props.playing ? (
           <button
             type="button"
-            className={`board-follow${follow ? ' on' : ''}`}
-            aria-pressed={follow}
-            title="Pan the camera to action happening off-screen"
+            className={`board-follow${cameraMode === 'off' ? '' : ' on'}`}
+            title={CAMERA_HINT[cameraMode]}
             onClick={() => {
-              setFollow(!follow);
-              saveFollow(!follow);
+              const next = CAMERA_MODES[(CAMERA_MODES.indexOf(cameraMode) + 1) % CAMERA_MODES.length]!;
+              setCameraMode(next);
+              saveCameraMode(next);
             }}
           >
-            Follow action: {follow ? 'on' : 'off'}
+            {CAMERA_LABEL[cameraMode]}
           </button>
         ) : null}
       </div>

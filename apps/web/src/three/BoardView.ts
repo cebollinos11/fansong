@@ -119,6 +119,13 @@ const FOLLOW_HEAD = 1.3; // world height above a base that must stay in view (th
 const PAN_MIN_MS = 400;
 const PAN_MAX_MS = 850;
 const PAN_MS_PER_UNIT = 70; // extra pan time per world unit travelled
+const CAMERA_SETTLE_MS = 150; // beat between the camera arriving and the dice starting
+const CAMERA_STILL = 0.25; // a move shorter than this (world units of travel + zoom) isn't worth making
+const AFTERMATH_HOLD_MS = 450; // how long a blow's result is held in close-up before pulling back out
+const RIDE_MAX_SPAN = 4; // longest shot (world units) the camera rides along with; beyond it, it holds the wide framing
+const RIDE_MIN_MS = 150; // shots that reach their target faster than this are too quick to ride
+const FOCUS_LEAD_MS = 220; // how long before a camera move its units start pulsing
+const FOCUS_PULSE_MS = 700;
 const COMBAT_CARD_HOLD_MS = 600; // how long a blow's dice cards stay up after their outcome, before the strike
 const COMBAT_SPAN_MARGIN = 2.2; // how much of the close-up the two combatants take up
 const COMBAT_MIN_SPAN = 5; // world units kept in view (~5 hexes), however close the pair stand
@@ -156,6 +163,11 @@ interface Missile {
   end: number;
   /** Lobbed projectiles (stones, spears) arc; arrows and bolts fly flat. */
   arc: number;
+}
+
+/** The middle of a set of points. */
+function middle(points: THREE.Vector3[]): THREE.Vector3 {
+  return points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
 }
 
 /** The status flags that change how a unit is drawn. */
@@ -208,7 +220,14 @@ interface UnitObj {
   walk: { path: THREE.Vector3[]; start: number; backward?: boolean } | null;
   /** 0..1 transient hit flash, decays each frame. */
   flash: number;
+  /** Ring pulse drawing the eye to a unit the camera is about to move to. */
+  pulse: { start: number; end: number } | null;
+  /** The ring as the view model wants it, which a finished pulse goes back to. */
+  ringRest: { visible: boolean; opacity: number };
 }
+
+/** How much the camera helps: not at all, panning to off-screen action, or framing every blow. */
+export type CameraMode = 'off' | 'follow' | 'cinematic';
 
 /**
  * Thin three.js view of a FanSong board. It renders the grid, terrain and units
@@ -250,10 +269,11 @@ export class BoardView {
   private busyUntil = 0;
   /**
    * Move the camera to the action before playing it: off-screen activations and
-   * moves are panned to (see {@link planPan}), and every blow is framed on its
-   * two combatants (see {@link frameCombat}). The animations wait for the camera.
+   * moves are panned to (see {@link planPan}), and — in `cinematic` — every blow
+   * is framed on its two combatants (see {@link frameCombat}). The animations
+   * wait for the camera.
    */
-  followAction = true;
+  cameraMode: CameraMode = 'cinematic';
   /** A camera move in progress: the orbit pivot glides while the view distance eases. */
   private cam: {
     fromTarget: THREE.Vector3;
@@ -265,8 +285,17 @@ export class BoardView {
     /** Constant speed (a tracked projectile) rather than eased ends. */
     linear?: boolean;
   } | null = null;
+  /**
+   * Where the camera will stand once every move scheduled in this batch has run.
+   * Each move is planned from here, not from where the camera happens to be now.
+   */
+  private planned: { target: THREE.Vector3; dist: number } | null = null;
   /** View distance to glide back out to once the fighting stops (null: nothing to restore). */
   private restoreDist: number | null = null;
+  /** The framing the player last set by hand; given back whenever they can act again. */
+  private playerView: { target: THREE.Vector3; dist: number } | null = null;
+  /** Whether the player could act at the last update, to spot the moment they can again. */
+  private wasInteractive = false;
   /** The distance the board was first framed at; combat never pulls further out than this. */
   private homeDist = 0;
   /** Dev aid: `?animSpeed=0.25` plays animations at quarter speed. */
@@ -317,8 +346,14 @@ export class BoardView {
     this.controls.minPolarAngle = CAMERA_MIN_POLAR;
     this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
     this.controls.zoomToCursor = true;
-    // Grabbing the camera takes it back from a follow pan.
-    this.controls.addEventListener('start', () => ((this.cam = null), (this.restoreDist = null)));
+    // A hand on the camera takes it back: drop the scripted move, and adopt the
+    // framing the player leaves it in as theirs.
+    this.controls.addEventListener('start', () => {
+      this.cam = null;
+      this.planned = null;
+      this.restoreDist = null;
+    });
+    this.controls.addEventListener('end', () => this.rememberPlayerView());
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
@@ -482,6 +517,7 @@ export class BoardView {
       obj.ring.material.color.setHex(ringColor);
       obj.ring.material.opacity =
         isActive || isSelected || isAttackTarget ? 0.95 : isGuarding ? 0.7 : 0.4;
+      obj.ringRest = { visible: obj.ring.visible, opacity: obj.ring.material.opacity };
     }
     // Remove meshes for units no longer present (shouldn't happen, but be safe).
     for (const [id, obj] of this.units) {
@@ -495,6 +531,10 @@ export class BoardView {
     if (vm.overlays !== this.overlays) this.drawOverlays(vm.overlays ?? []);
     if (vm.markingsKey !== this.markingsKey) this.drawMarkings(vm);
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
+
+    // The moment the player can act again, give them back the view they set.
+    if (vm.interactive && !this.wasInteractive) this.returnToPlayerView();
+    this.wasInteractive = vm.interactive;
   }
 
   /**
@@ -507,8 +547,12 @@ export class BoardView {
    */
   animateEvents(events: GameEvent[]): number {
     let t = Math.min(MAX_QUEUE_MS, Math.max(0, this.busyUntil - this.now));
+    // Every camera move in this batch is planned from where the last one leaves
+    // off, starting from where the camera actually is (or is already heading).
+    this.planned = null;
+    this.planned = this.plannedCamera();
     // Off-screen action: pan there first, and start everything once the camera arrives.
-    t += this.planPan(events, t);
+    t += this.pause(this.planPan(events, t));
     let lastHit = t; // when the most recent blow lands, for its consequences
     let settle = t; // when state changes caused by the latest roll or blow are shown
     let nerveAt: number | null = null; // start of the current run of nerve checks
@@ -562,7 +606,7 @@ export class BoardView {
           e.type === 'GuardRiposte' ? [e.guardId, e.attackerId] : [e.attackerId, e.targetId];
         // A blow plays in three beats: frame the pair, roll their dice, then —
         // once the cards have gone — strike.
-        t += this.frameCombat(pair, t);
+        t += this.pause(this.frameCombat(pair, t));
         const start = t;
         const cards = OPPOSED_ROLL_MS + COMBAT_CARD_HOLD_MS; // shows the outcome, holds, fades
         const s = this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards);
@@ -574,8 +618,13 @@ export class BoardView {
       } else if (e.type === 'NerveCheck') {
         // A run of checks (every nearby friend, or a whole routing warband) rolls at once.
         if (nerveAt === null) {
-          nerveAt = Math.max(lastHit, settle) + NERVE_LEAD_MS;
-          this.at(nerveAt, () => this.rolls.retireAll());
+          const base = Math.max(lastHit, settle) + NERVE_LEAD_MS;
+          this.at(base, () => this.rolls.retireAll());
+          // Widen out to hold every unit about to roll: their dice must not fall
+          // outside a close-up on the two who just fought.
+          const rolling = [e.unitId, ...after.filter((x) => x.type === 'NerveCheck').map((x) => x.unitId)];
+          nerveAt = base + this.pause(this.frameUnits(rolling, base));
+          t = Math.max(t, nerveAt);
         }
         const roll = describeNerve(e, after);
         const start = nerveAt;
@@ -603,6 +652,14 @@ export class BoardView {
         const obj = this.units.get(e.unitId);
         if (obj) obj.routed = true;
         hold(e.unitId, settle + 300);
+      } else if (
+        e.type === 'FlagPickedUp' ||
+        e.type === 'FlagCaptured' ||
+        e.type === 'FlagReturned' ||
+        e.type === 'FlagDropped'
+      ) {
+        // An objective decides games; show where it happened (free when already framed).
+        t += this.pause(this.frameUnits([e.unitId], t));
       } else if (e.type === 'GameOver') {
         this.at(t + 400, () => {
           for (const obj of this.units.values()) {
@@ -613,8 +670,22 @@ export class BoardView {
         });
       }
     });
+    // After the fighting, hold the result, then pull back out to the framing the
+    // player had — a kill means nothing without the ground around it.
+    if (this.restoreDist !== null) {
+      const at = t + AFTERMATH_HOLD_MS;
+      const back = this.scheduleMove(at, this.plannedCamera().target, this.restoreDist);
+      if (back > 0) t = at + back;
+      this.restoreDist = null;
+    }
+
     this.busyUntil = Math.max(this.busyUntil, this.now + t);
     return t;
+  }
+
+  /** A camera move's length plus a beat to settle, or 0 when it made no move. */
+  private pause(moveMs: number): number {
+    return moveMs > 0 ? moveMs + CAMERA_SETTLE_MS : 0;
   }
 
   /**
@@ -624,7 +695,7 @@ export class BoardView {
    * caller delays the batch by (0 when no pan is needed).
    */
   private planPan(events: GameEvent[], at: number): number {
-    if (!this.followAction || this.downPos) return 0; // never fight a hand on the camera
+    if (this.cameraMode === 'off' || this.downPos) return 0; // never fight a hand on the camera
     // Blows frame themselves (see frameCombat); this is about what leads up to them.
     const points: THREE.Vector3[] = [];
     for (const e of events) {
@@ -645,7 +716,31 @@ export class BoardView {
     const target = this.inView(points, end) ? (dist === null ? null : end.target) : centre;
     if (target === null) return 0;
     this.restoreDist = null;
-    return this.scheduleMove(at, target, dist, end);
+    const ids = events.flatMap((e) =>
+      e.type === 'ActivationChosen' || e.type === 'DiceRolled' || e.type === 'UnitMoved' ? [e.unitId] : [],
+    );
+    const dur = this.scheduleMove(at, target, dist);
+    if (dur > 0) this.focusUnits(ids, at);
+    return dur;
+  }
+
+  /**
+   * Keep every one of `unitIds` in view: pan to their middle and, if they don't
+   * fit the current framing, pull back far enough that they do. Used where
+   * several units matter at once — a run of nerve checks, an objective taken.
+   */
+  private frameUnits(unitIds: string[], at: number): number {
+    if (this.cameraMode === 'off' || this.downPos) return 0;
+    const points = this.unitPoints(unitIds);
+    if (points.length === 0) return 0;
+    const end = this.plannedCamera();
+    if (this.inView(points, end)) return 0;
+    const centre = middle(points);
+    const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
+    const dist = Math.max(end.dist, this.closeUp(span * COMBAT_SPAN_MARGIN));
+    const dur = this.scheduleMove(at, centre, dist);
+    if (dur > 0) this.focusUnits(unitIds, at);
+    return dur;
   }
 
   /**
@@ -654,20 +749,37 @@ export class BoardView {
    * Returns how long the move takes, which the caller plays the blow after.
    */
   private frameCombat(unitIds: string[], at: number): number {
-    if (!this.followAction || this.downPos) return 0;
-    const points = unitIds
-      .map((id) => this.units.get(id))
-      .filter((obj): obj is UnitObj => !!obj)
-      .map((obj) => obj.group.position.clone());
+    if (this.cameraMode !== 'cinematic' || this.downPos) return 0;
+    const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
 
-    const end = this.plannedCamera();
     // Remember where the player was looking from, to restore once the fighting stops.
-    if (this.restoreDist === null) this.restoreDist = end.dist;
-    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
+    if (this.restoreDist === null) this.restoreDist = this.plannedCamera().dist;
+    const centre = middle(points);
     // Close enough to fill the view with the pair, but never further out than the opening shot.
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
-    return this.scheduleMove(at, centre, this.closeUp(span * COMBAT_SPAN_MARGIN), end);
+    const dur = this.scheduleMove(at, centre, this.closeUp(span * COMBAT_SPAN_MARGIN));
+    if (dur > 0) this.focusUnits(unitIds, at);
+    return dur;
+  }
+
+  /** Where the given units currently stand (the dying and the missing left out). */
+  private unitPoints(unitIds: string[]): THREE.Vector3[] {
+    return unitIds
+      .map((id) => this.units.get(id))
+      .filter((obj): obj is UnitObj => !!obj && !obj.fade)
+      .map((obj) => obj.group.position.clone());
+  }
+
+  /** Pulse a unit's ring just before the camera moves to it, so the eye has somewhere to land. */
+  private focusUnits(unitIds: string[], at: number): void {
+    for (const id of new Set(unitIds)) {
+      const obj = this.units.get(id);
+      if (!obj) continue;
+      this.at(Math.max(0, at - FOCUS_LEAD_MS), () => {
+        obj.pulse = { start: this.now, end: this.now + FOCUS_PULSE_MS };
+      });
+    }
   }
 
   /**
@@ -685,6 +797,7 @@ export class BoardView {
 
   /** Where the camera will be once everything already scheduled has played out. */
   private plannedCamera(): { target: THREE.Vector3; dist: number } {
+    if (this.planned) return { target: this.planned.target.clone(), dist: this.planned.dist };
     return this.cam
       ? { target: this.cam.toTarget.clone(), dist: this.cam.toDist }
       : { target: this.controls.target.clone(), dist: this.camera.position.distanceTo(this.controls.target) };
@@ -709,22 +822,43 @@ export class BoardView {
    * Schedule a camera move `at` ms from now, to `target` (the pivot, on the
    * ground) and `dist` (view distance; null keeps the current one). Returns its length.
    */
-  private scheduleMove(
-    at: number,
-    target: THREE.Vector3,
-    dist: number | null,
-    from: { target: THREE.Vector3; dist: number },
-  ): number {
+  private scheduleMove(at: number, target: THREE.Vector3, dist: number | null): number {
+    const from = this.plannedCamera();
     const travel = new THREE.Vector3(target.x - from.target.x, 0, target.z - from.target.z).length();
     const zoom = dist === null ? 0 : Math.abs(dist - from.dist);
+    // Already looking at it: no nudge, and no wait for one.
+    if (travel + zoom < CAMERA_STILL) return 0;
     const dur = THREE.MathUtils.clamp(PAN_MIN_MS + (travel + zoom) * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
+    this.planned = { target: new THREE.Vector3(target.x, 0, target.z), dist: dist ?? from.dist };
     this.at(at, () => this.moveCamera(target, dist, dur));
     return dur;
   }
 
+  /** Glide back to the framing the player set for themselves, if they've been moved off it. */
+  private returnToPlayerView(): void {
+    const view = this.playerView;
+    if (this.cameraMode === 'off' || !view || this.downPos) return;
+    this.restoreDist = null;
+    this.planned = null;
+    const from = this.plannedCamera();
+    const travel = new THREE.Vector3(view.target.x - from.target.x, 0, view.target.z - from.target.z).length();
+    const zoom = Math.abs(view.dist - from.dist);
+    if (travel + zoom < CAMERA_STILL) return;
+    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + (travel + zoom) * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
+    this.moveCamera(view.target, view.dist, dur);
+  }
+
+  /** Take the camera as the player has just left it; that framing is theirs to get back. */
+  private rememberPlayerView(): void {
+    this.playerView = {
+      target: this.controls.target.clone(),
+      dist: this.camera.position.distanceTo(this.controls.target),
+    };
+  }
+
   /** Start a camera move now, from wherever the camera currently is. */
   private moveCamera(target: THREE.Vector3, dist: number | null, dur: number, linear = false): void {
-    if (!this.followAction || this.downPos) return;
+    if (this.cameraMode === 'off' || this.downPos) return;
     const fromTarget = this.controls.target.clone();
     const fromDist = this.camera.position.distanceTo(fromTarget);
     this.cam = {
@@ -756,15 +890,43 @@ export class BoardView {
     if (k >= 1) this.cam = null;
   }
 
+  /**
+   * Jump to the end of whatever is playing: run every pending step at once, land
+   * the camera where it was heading and drop the dice cards. Returns false when
+   * there was nothing left to play.
+   */
+  skipAnimations(): boolean {
+    if (this.timeline.length === 0 && this.busyUntil <= this.now) return false;
+    this.now = Math.max(this.now, this.busyUntil);
+    // Steps run in order, and may schedule more (a strike's hit, its reaction).
+    for (let guard = 0; guard < 64 && this.timeline.length > 0; guard++) {
+      const steps = this.timeline.splice(0, this.timeline.length).sort((a, b) => a.at - b.at);
+      for (const step of steps) step.fn();
+    }
+    if (this.cam) {
+      this.cam.start = this.now - this.cam.dur;
+      this.stepCamera();
+    }
+    this.rolls.clear();
+    for (const obj of this.units.values()) {
+      obj.holdUntil = 0;
+      obj.pulse = null;
+    }
+    this.busyUntil = this.now;
+    return true;
+  }
+
   /** Cut short every pending animation step and dice card (a replay jump). */
   clearAnimations(): void {
     this.timeline.length = 0;
     this.cam = null;
+    this.planned = null;
     this.restoreDist = null;
     this.busyUntil = this.now;
     this.rolls.clear();
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
+      obj.pulse = null;
       obj.walk = null;
       obj.mirror.rotation.z = 0;
       obj.animator.moveFor(0, { reset: true });
@@ -883,6 +1045,8 @@ export class BoardView {
       lunge: null,
       walk: null,
       flash: 0,
+      pulse: null,
+      ringRest: { visible: false, opacity: 0 },
     };
 
     loadSpriteAtlas(spriteName, framesOf(spriteName), owner).then(
@@ -960,11 +1124,20 @@ export class BoardView {
       if (!d.animator.busy) d.animator.play(defend);
     });
     this.at(at + hit, () => this.flashUnit(targetId, 0.8));
-    if (range === 'ranged') {
-      // Swing to the shooter as it draws, then ride the shot in to its target.
+    if (range === 'ranged' && this.cameraMode === 'cinematic' && !this.downPos) {
+      // Swing to the shooter as it draws, then ride the shot in to its target —
+      // but only for a shot short and slow enough to follow. A long one would
+      // whip the camera across the board in a few frames, so it keeps the wide
+      // framing that already holds both ends of it.
       const launch = Math.max(0, hit - (clip?.missileMs ?? 150));
-      this.at(at, () => this.moveCamera(a.group.position, this.closeUp(0), Math.min(launch, SHOT_LEAD_MS)));
-      this.at(at + launch, () => this.moveCamera(d.group.position, null, hit - launch, true));
+      const flight = hit - launch;
+      const span = a.group.position.distanceTo(d.group.position);
+      if (span <= RIDE_MAX_SPAN && flight >= RIDE_MIN_MS) {
+        const close = this.closeUp(0);
+        this.at(at, () => this.moveCamera(a.group.position, close, Math.min(launch, SHOT_LEAD_MS)));
+        this.at(at + launch, () => this.moveCamera(d.group.position, null, flight, true));
+        this.planned = { target: d.group.position.clone().setY(0), dist: close };
+      }
     }
     return { hit: at + hit, end: at + dur };
   }
@@ -1075,6 +1248,20 @@ export class BoardView {
       this.camera.position.x - obj.group.position.x,
       this.camera.position.z - obj.group.position.z,
     );
+    // A ring pulse marks what the camera is about to move to.
+    if (obj.pulse && this.now >= obj.pulse.end) obj.pulse = null;
+    if (obj.pulse && this.now >= obj.pulse.start && !obj.fade) {
+      const wave = Math.sin(Math.PI * ((this.now - obj.pulse.start) / (obj.pulse.end - obj.pulse.start)));
+      obj.ring.visible = true;
+      obj.ring.material.opacity = Math.max(obj.ringRest.opacity, 0.3 + 0.7 * wave);
+      obj.ring.scale.setScalar(1 + 0.4 * wave);
+    } else if (obj.ring.scale.x !== 1) {
+      // Back to the ring the view model asked for.
+      obj.ring.scale.setScalar(1);
+      obj.ring.visible = obj.ringRest.visible;
+      obj.ring.material.opacity = obj.ringRest.opacity;
+    }
+
     obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
     const crouch = obj.shown.knocked && !obj.downPose && !obj.fade;
     obj.tilt.scale.x += ((crouch ? DOWN_WIDEN : 1) - obj.tilt.scale.x) * lerp;
@@ -1510,6 +1697,7 @@ export class BoardView {
     this.controls.target.set(0, 0, 0);
     const home = this.camera.position.length();
     this.homeDist = home;
+    this.playerView = { target: new THREE.Vector3(), dist: home };
     this.controls.minDistance = 3;
     this.controls.maxDistance = home * 1.8;
     this.controls.update();
