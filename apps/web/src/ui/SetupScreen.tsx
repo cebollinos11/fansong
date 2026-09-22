@@ -102,9 +102,11 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor }: Pr
     setKings((k) => (owner === 0 ? [defaultKing(PRESETS[id]!.units), k[1]] : [k[0], defaultKing(PRESETS[id]!.units)]));
   };
   const pickKing = (owner: 0 | 1, i: number) => setKings((k) => (owner === 0 ? [i, k[1]] : [k[0], i]));
+  // Online, the host only picks its own King: the worker gives Player 1 its default one.
+  const playedKings: [number, number] = mode === 'online' ? [kings[0], defaultKing(PRESETS[p1]!.units)] : kings;
 
   const start = () =>
-    onStart(launchFor(mode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMapId, { mode: gameMode, kings }));
+    onStart(launchFor(mode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMapId, { mode: gameMode, kings: playedKings }));
 
   const loadReplayFile = async (file: File): Promise<void> => {
     setReplayError(null);
@@ -143,7 +145,8 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor }: Pr
         {mode === 'online' ? (
           <p className="hint">
             You'll host a room and wait for the next player to queue. The first player to join
-            takes Player 1; the host picks both warbands and the seed.
+            with the same map and game mode takes Player 1; the host picks both warbands and the seed.
+            In kill-the-king, Player 1 fields its default King.
           </p>
         ) : null}
 
@@ -159,8 +162,9 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor }: Pr
             label={label1}
             value={p1}
             onChange={(id) => pickPreset(1, id)}
-            king={gameMode === 'kill-the-king' ? kings[1] : undefined}
+            king={gameMode === 'kill-the-king' ? playedKings[1] : undefined}
             onKing={(i) => pickKing(1, i)}
+            kingLocked={mode === 'online'}
           />
         </div>
 
@@ -212,6 +216,7 @@ function WarbandPicker({
   onChange,
   king,
   onKing,
+  kingLocked = false,
 }: {
   label: string;
   value: string;
@@ -219,6 +224,8 @@ function WarbandPicker({
   /** Kill-the-king: index of the chosen King (omitted in other modes). */
   king?: number;
   onKing: (index: number) => void;
+  /** Show the King but don't let it be changed (online Player 1, the opponent). */
+  kingLocked?: boolean;
 }): JSX.Element {
   const wb = PRESETS[value]!;
   const check = validateWarband(wb);
@@ -242,7 +249,7 @@ function WarbandPicker({
               <span>{u.name}</span>
             ) : (
               <label title="Choose this unit as King">
-                <input type="radio" checked={king === i} onChange={() => onKing(i)} />
+                <input type="radio" checked={king === i} disabled={kingLocked} onChange={() => onKing(i)} />
                 {king === i ? '♛ ' : ''}
                 {u.name}
               </label>

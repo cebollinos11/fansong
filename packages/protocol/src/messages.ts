@@ -52,8 +52,10 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
  * `seed` and the optional map / game mode / King picks, which the worker copies
  * into the room's `MatchSetup` (only when present, so default setups stay
  * byte-identical). `mapId` must name a built-in map — the worker cannot see a
- * browser's custom maps. A pvp joiner's match fields are ignored: it plays the
- * host's setup.
+ * browser's custom maps. A pvp request only pairs with a host queued for the
+ * same map and game mode; the joiner then plays the host's setup (its own
+ * presets, seed and Kings are ignored). A pvp host picks only its own King —
+ * seat 1 always fields its preset's default King.
  */
 export const matchmakeRequestSchema = z
   .object({

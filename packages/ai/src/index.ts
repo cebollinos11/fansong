@@ -151,9 +151,10 @@ function scoreCommand(
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
       if (kings) return kingActivationScore(state, board, kings, unit) + diceScore(state, player, command.diceCount);
-      let dist = nearestEnemyDistance(board, unit.pos, enemies);
+      const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       // Zone modes: a unit already holding a zone has nowhere better to be, so
       // it activates late; one with a zone to reach counts its distance to it.
+      let dist = enemyDist;
       let holding = false;
       if (zones.length > 0) {
         holding = isHolding(zones, unit);
@@ -161,9 +162,10 @@ function scoreCommand(
         if (target) dist = zoneDistance(board, unit.pos, target);
       }
       // A unit that can already fight this turn — in melee, or a shooter with a
-      // foe in range — is the one worth activating first.
-      const canMelee = dist === 1;
-      const canShoot = unit.traits.ranged >= 2 && dist >= 2 && dist <= unit.traits.ranged;
+      // foe in range — is the one worth activating first. That is about enemies,
+      // never about how close the unit is to a zone.
+      const canMelee = enemyDist === 1;
+      const canShoot = unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged;
       const canAttack = canMelee || canShoot;
       // Prefer the unit that can already fight, else the one closest to a foe.
       const unitScore = canAttack ? 100_000 : holding ? 1_000 : 10_000 - dist * 100;

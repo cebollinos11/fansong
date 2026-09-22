@@ -102,4 +102,20 @@ describe('AI in the zone modes', () => {
     const cmd = chooseCommand(s);
     expect(cmd).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
   });
+
+  it('a unit one step from a zone is not mistaken for one that can attack', () => {
+    // p0u0 is next to the hill with no enemy near; p0u1 is locked in melee.
+    const s = hillGame([U('near-hill', 4, 1), U('in-melee', 1, 6)], [U('foe', 2, 6)]);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
+  it('a shooter near a zone but with no foe in range is not treated as able to shoot', () => {
+    // The archer is 2 hexes from the hill (inside its shooting band) but no
+    // enemy is in range; the swordsman is locked in melee and should go first.
+    const s = hillGame(
+      [U('archer', 3, 1, { ranged: 4 }), U('sword', 1, 6)],
+      [U('foe', 2, 6), U('far', 11, 7)],
+    );
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
 });

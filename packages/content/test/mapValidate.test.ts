@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GAME_MODES, type Vec } from '@fansong/engine';
+import { GAME_MODES, makeHexGrid, type Vec } from '@fansong/engine';
 import type { MapDef } from '../src/map.js';
 import { MAP_LIMITS, supportedModes, validateMap } from '../src/mapValidate.js';
 
@@ -143,6 +143,37 @@ describe('validateMap', () => {
     const map = baseMap();
     map.objectives.conquest = [[{ x: 5, y: 1 }], [{ x: 5, y: 6 }], [{ x: 5, y: 1 }]];
     expect(validateMap(map).errors).toEqual(['conquest zones 1 and 3 overlap at 5,1']);
+  });
+
+  /** Ring hex `v` with rocks so nothing can walk onto it. */
+  const wallOff = (map: MapDef, v: Vec) => {
+    for (const n of makeHexGrid({ width: map.width, height: map.height, blocked: [] }).neighbors(v))
+      setHex(map, n, { elevation: 0, feature: 'rock' });
+  };
+
+  it('rejects a flag base no unit can walk to', () => {
+    const map = withAllObjectives();
+    map.objectives.flags = [{ x: 4, y: 3 }, { x: 7, y: 8 }];
+    wallOff(map, { x: 4, y: 3 });
+    expect(validateMap(map).errors).toEqual(['player 0 flag base: (4,3) unreachable from the deploy zones']);
+    expect(supportedModes(map)).toEqual([]);
+  });
+
+  it('rejects hill and conquest hexes no unit can walk to, naming just those hexes', () => {
+    const map = withAllObjectives();
+    map.objectives.hill = [{ x: 5, y: 5 }, { x: 8, y: 3 }];
+    wallOff(map, { x: 8, y: 3 });
+    wallOff(map, { x: 6, y: 10 });
+    expect(validateMap(map).errors).toEqual([
+      'hill zone: (8,3) unreachable from the deploy zones',
+      'conquest zone 3: (6,10) unreachable from the deploy zones',
+    ]);
+  });
+
+  it('an impassable objective hex is reported as impassable, not also as unreachable', () => {
+    const map = withAllObjectives();
+    setHex(map, { x: 5, y: 1 }, { elevation: 0, feature: 'rock' });
+    expect(validateMap(map).errors).toEqual(['conquest zone 1: hex (5,1) is impassable']);
   });
 
   it('reports missing objectives for the requested mode', () => {
