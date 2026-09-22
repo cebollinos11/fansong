@@ -107,12 +107,13 @@ export function renderBoard(state: GameState): string {
   return header + '\n' + canvas.map((line) => line.join('').replace(/\s+$/, '')).join('\n');
 }
 
-/** Roster summary: which units are alive, on which side. */
+/** Roster summary: which units are alive, on which side (kill-the-king Kings marked ♛). */
 export function renderRoster(state: GameState): string {
+  const kings = new Set(state.mode?.kings ?? []);
   const side = (owner: 0 | 1) =>
     state.units
       .filter((u) => u.owner === owner)
-      .map((u) => `${u.name}${u.dead ? '†' : u.knockedDown ? '↓' : ''}`)
+      .map((u) => `${kings.has(u.id) ? '♛' : ''}${u.name}${u.dead ? '†' : u.knockedDown ? '↓' : ''}`)
       .join(', ');
   return `P0: ${side(0)}\nP1: ${side(1)}`;
 }

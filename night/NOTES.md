@@ -368,3 +368,12 @@
   tones. All animation is CSS, disabled under prefers-reduced-motion. Tests: apps/web/test/log.test.ts. Checked
   with Playwright on a built preview by importing AI-vs-AI KotH/CTF replays (highlighted lines render, no page
   errors); the in-game callout/pulse was not screenshotted (no AI-vs-AI seat in the UI).
+- Task 40: CLI `--map` / `--mode` / `--list`. Arg parsing + match setup moved out of `tools/cli/src/play.ts` into a
+  testable `tools/cli/src/options.ts` (`parseArgs`, `setupMatch`, `listText`, `helpText`, `resultLine`; errors are
+  `CliError` → message + exit 2). `--list` now shows presets, built-in maps (size + `supportedModes`) and modes.
+  Decisions: `--map`/`--mode` without presets make a warband match with the existing `free-company` fallback (no
+  flags at all still runs the demo); an unsupported mode errors and names the maps that host it; annihilation
+  passes no `mode` so the flat preset config is identical to before; unknown options/missing values now error
+  instead of being silently ignored; the result line shows the score only for hill/conquest (matches the web HUD —
+  a CTF capture wins outright); the roster marks kill-the-king Kings with ♛. Tests: tools/cli/test/options.test.ts.
+  Ran `pnpm play --list`, a CTF match on twin-towers, and the conquest-without-map error by hand.
