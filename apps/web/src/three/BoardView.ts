@@ -119,6 +119,11 @@ const FOLLOW_HEAD = 1.3; // world height above a base that must stay in view (th
 const PAN_MIN_MS = 400;
 const PAN_MAX_MS = 850;
 const PAN_MS_PER_UNIT = 70; // extra pan time per world unit travelled
+const COMBAT_CARD_HOLD_MS = 600; // how long a blow's dice cards stay up after their outcome, before the strike
+const COMBAT_SPAN_MARGIN = 2.2; // how much of the close-up the two combatants take up
+const COMBAT_MIN_SPAN = 5; // world units kept in view (~5 hexes), however close the pair stand
+const COMBAT_MAX_ZOOM = 0.45; // never closer than this fraction of the opening framing
+const SHOT_LEAD_MS = 260; // swing to the shooter before it looses its missile
 
 // Camera limits: stay above the table, and never tip over the top into a flip.
 const CAMERA_MIN_POLAR = 0.12; // radians from straight down
@@ -244,12 +249,26 @@ export class BoardView {
   /** When the current batch of combat animations finishes. */
   private busyUntil = 0;
   /**
-   * Pan the camera to off-screen action before playing it (see {@link planPan}).
-   * The batch's animations wait for the pan to finish.
+   * Move the camera to the action before playing it: off-screen activations and
+   * moves are panned to (see {@link planPan}), and every blow is framed on its
+   * two combatants (see {@link frameCombat}). The animations wait for the camera.
    */
   followAction = true;
-  /** A camera pan in progress: the orbit pivot glides from `from` by `delta`. */
-  private pan: { from: THREE.Vector3; delta: THREE.Vector3; start: number; dur: number } | null = null;
+  /** A camera move in progress: the orbit pivot glides while the view distance eases. */
+  private cam: {
+    fromTarget: THREE.Vector3;
+    toTarget: THREE.Vector3;
+    fromDist: number;
+    toDist: number;
+    start: number;
+    dur: number;
+    /** Constant speed (a tracked projectile) rather than eased ends. */
+    linear?: boolean;
+  } | null = null;
+  /** View distance to glide back out to once the fighting stops (null: nothing to restore). */
+  private restoreDist: number | null = null;
+  /** The distance the board was first framed at; combat never pulls further out than this. */
+  private homeDist = 0;
   /** Dev aid: `?animSpeed=0.25` plays animations at quarter speed. */
   private readonly animSpeed = import.meta.env.DEV
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
@@ -299,7 +318,7 @@ export class BoardView {
     this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
     this.controls.zoomToCursor = true;
     // Grabbing the camera takes it back from a follow pan.
-    this.controls.addEventListener('start', () => (this.pan = null));
+    this.controls.addEventListener('start', () => ((this.cam = null), (this.restoreDist = null)));
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
@@ -539,12 +558,15 @@ export class BoardView {
         e.type === 'FreeHackResolved'
       ) {
         const roll = describeCombat(e, after);
+        const pair: [string, string] =
+          e.type === 'GuardRiposte' ? [e.guardId, e.attackerId] : [e.attackerId, e.targetId];
+        // A blow plays in three beats: frame the pair, roll their dice, then —
+        // once the cards have gone — strike.
+        t += this.frameCombat(pair, t);
         const start = t;
-        const s =
-          e.type === 'GuardRiposte'
-            ? this.strike(e.guardId, e.attackerId, 'melee', start + OPPOSED_ROLL_MS)
-            : this.strike(e.attackerId, e.targetId, e.type === 'ShotResolved' ? 'ranged' : 'melee', start + OPPOSED_ROLL_MS);
-        this.at(start, () => this.rolls.addOpposed(roll, this.now, s.end - start + ROLL_LINGER_MS));
+        const cards = OPPOSED_ROLL_MS + COMBAT_CARD_HOLD_MS; // shows the outcome, holds, fades
+        const s = this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards);
+        this.at(start, () => this.rolls.addOpposed(roll, this.now, cards));
         this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now));
         lastHit = s.hit;
         settle = s.hit;
@@ -603,69 +625,142 @@ export class BoardView {
    */
   private planPan(events: GameEvent[], at: number): number {
     if (!this.followAction || this.downPos) return 0; // never fight a hand on the camera
+    // Blows frame themselves (see frameCombat); this is about what leads up to them.
     const points: THREE.Vector3[] = [];
-    const unitAt = (id: string) => {
-      const obj = this.units.get(id);
-      if (obj && !obj.fade) points.push(obj.group.position.clone());
-    };
     for (const e of events) {
-      if (e.type === 'ActivationChosen' || e.type === 'DiceRolled') unitAt(e.unitId);
-      else if (e.type === 'UnitMoved') {
+      if (e.type === 'ActivationChosen' || e.type === 'DiceRolled') {
+        const obj = this.units.get(e.unitId);
+        if (obj && !obj.fade) points.push(obj.group.position.clone());
+      } else if (e.type === 'UnitMoved') {
         if (e.path) points.push(...e.path.map((c) => this.unitWorld(c)));
         else points.push(this.unitWorld(e.from), this.unitWorld(e.to));
-      } else if (e.type === 'AttackResolved' || e.type === 'ShotResolved' || e.type === 'FreeHackResolved') {
-        unitAt(e.attackerId);
-        unitAt(e.targetId);
-      } else if (e.type === 'GuardRiposte') {
-        unitAt(e.guardId);
-        unitAt(e.attackerId);
       }
     }
     if (points.length === 0) return 0;
 
-    // Judge from where the camera will be once any pan already under way ends.
-    const pivot = this.pan ? this.pan.from.clone().add(this.pan.delta) : this.controls.target.clone();
+    const end = this.plannedCamera();
+    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
+    // Pull back out of a combat close-up, whether or not the action is off screen.
+    const dist = this.restoreDist;
+    const target = this.inView(points, end) ? (dist === null ? null : end.target) : centre;
+    if (target === null) return 0;
+    this.restoreDist = null;
+    return this.scheduleMove(at, target, dist, end);
+  }
+
+  /**
+   * Frame a blow on its two combatants: centre them and move in close enough to
+   * read the fight, so the dice cards and then the strike play out in a close-up.
+   * Returns how long the move takes, which the caller plays the blow after.
+   */
+  private frameCombat(unitIds: string[], at: number): number {
+    if (!this.followAction || this.downPos) return 0;
+    const points = unitIds
+      .map((id) => this.units.get(id))
+      .filter((obj): obj is UnitObj => !!obj)
+      .map((obj) => obj.group.position.clone());
+    if (points.length === 0) return 0;
+
+    const end = this.plannedCamera();
+    // Remember where the player was looking from, to restore once the fighting stops.
+    if (this.restoreDist === null) this.restoreDist = end.dist;
+    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
+    // Close enough to fill the view with the pair, but never further out than the opening shot.
+    const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
+    return this.scheduleMove(at, centre, this.closeUp(span * COMBAT_SPAN_MARGIN), end);
+  }
+
+  /**
+   * View distance that keeps `span` world units across the view: the close-up a
+   * fight plays in. Never nearer than {@link COMBAT_MAX_ZOOM} of the opening
+   * framing, and never further out than that framing (a distant pair just gets
+   * less of a move in).
+   */
+  private closeUp(span: number): number {
+    const fov = (this.camera.fov * Math.PI) / 180;
+    const fit = Math.max(span, COMBAT_MIN_SPAN) / 2 / (Math.tan(fov / 2) * Math.min(1, this.camera.aspect));
+    const nearest = Math.max(this.controls.minDistance, this.homeDist * COMBAT_MAX_ZOOM);
+    return THREE.MathUtils.clamp(fit, nearest, this.homeDist);
+  }
+
+  /** Where the camera will be once everything already scheduled has played out. */
+  private plannedCamera(): { target: THREE.Vector3; dist: number } {
+    return this.cam
+      ? { target: this.cam.toTarget.clone(), dist: this.cam.toDist }
+      : { target: this.controls.target.clone(), dist: this.camera.position.distanceTo(this.controls.target) };
+  }
+
+  /** Whether every point (and the dice card over its head) sits comfortably inside the view. */
+  private inView(points: THREE.Vector3[], from: { target: THREE.Vector3; dist: number }): boolean {
+    const offset = this.camera.position.clone().sub(this.controls.target).normalize().multiplyScalar(from.dist);
     const cam = this.camera.clone();
-    cam.position.add(pivot.clone().sub(this.controls.target));
+    cam.position.copy(from.target).add(offset);
+    cam.lookAt(from.target);
     cam.updateMatrixWorld();
-    const inView = points.every((p) =>
+    return points.every((p) =>
       [0, FOLLOW_HEAD].every((h) => {
         const n = p.clone().setY(p.y + TILE_TOP + h).project(cam);
-        return (
-          n.z < 1 && Math.abs(n.x) <= FOLLOW_MARGIN_X && n.y <= FOLLOW_MARGIN_TOP && n.y >= -FOLLOW_MARGIN_BOTTOM
-        );
+        return n.z < 1 && Math.abs(n.x) <= FOLLOW_MARGIN_X && n.y <= FOLLOW_MARGIN_TOP && n.y >= -FOLLOW_MARGIN_BOTTOM;
       }),
     );
-    if (inView) return 0;
+  }
 
-    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
-    const delta = new THREE.Vector3(centre.x - pivot.x, 0, centre.z - pivot.z);
-    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + delta.length() * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
-    this.at(at, () => {
-      if (!this.followAction || this.downPos) return;
-      const from = this.controls.target.clone();
-      this.pan = { from, delta: new THREE.Vector3(centre.x - from.x, 0, centre.z - from.z), start: this.now, dur };
-    });
+  /**
+   * Schedule a camera move `at` ms from now, to `target` (the pivot, on the
+   * ground) and `dist` (view distance; null keeps the current one). Returns its length.
+   */
+  private scheduleMove(
+    at: number,
+    target: THREE.Vector3,
+    dist: number | null,
+    from: { target: THREE.Vector3; dist: number },
+  ): number {
+    const travel = new THREE.Vector3(target.x - from.target.x, 0, target.z - from.target.z).length();
+    const zoom = dist === null ? 0 : Math.abs(dist - from.dist);
+    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + (travel + zoom) * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
+    this.at(at, () => this.moveCamera(target, dist, dur));
     return dur;
   }
 
-  /** Glide the orbit pivot (and the camera with it, so the view angle holds) along the current pan. */
-  private stepPan(): void {
-    const pan = this.pan;
-    if (!pan) return;
-    const k = THREE.MathUtils.clamp((this.now - pan.start) / pan.dur, 0, 1);
-    const eased = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
-    const goal = pan.from.clone().addScaledVector(pan.delta, eased);
-    const step = goal.sub(this.controls.target);
-    this.controls.target.add(step);
-    this.camera.position.add(step);
-    if (k >= 1) this.pan = null;
+  /** Start a camera move now, from wherever the camera currently is. */
+  private moveCamera(target: THREE.Vector3, dist: number | null, dur: number, linear = false): void {
+    if (!this.followAction || this.downPos) return;
+    const fromTarget = this.controls.target.clone();
+    const fromDist = this.camera.position.distanceTo(fromTarget);
+    this.cam = {
+      fromTarget,
+      toTarget: new THREE.Vector3(target.x, 0, target.z),
+      fromDist,
+      toDist: dist ?? fromDist,
+      start: this.now,
+      dur: Math.max(1, dur),
+      ...(linear ? { linear: true } : {}),
+    };
+  }
+
+  /** Glide the orbit pivot (and the camera with it, so the view angle holds) along the current move. */
+  private stepCamera(): void {
+    const move = this.cam;
+    if (!move) return;
+    const k = THREE.MathUtils.clamp((this.now - move.start) / move.dur, 0, 1);
+    const eased = move.linear ? k : k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    const target = move.fromTarget.clone().lerp(move.toTarget, eased);
+    const dist = THREE.MathUtils.clamp(
+      THREE.MathUtils.lerp(move.fromDist, move.toDist, eased),
+      this.controls.minDistance,
+      this.controls.maxDistance,
+    );
+    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(target);
+    this.camera.position.copy(target).addScaledVector(dir, dist);
+    if (k >= 1) this.cam = null;
   }
 
   /** Cut short every pending animation step and dice card (a replay jump). */
   clearAnimations(): void {
     this.timeline.length = 0;
-    this.pan = null;
+    this.cam = null;
+    this.restoreDist = null;
     this.busyUntil = this.now;
     this.rolls.clear();
     for (const obj of this.units.values()) {
@@ -865,6 +960,12 @@ export class BoardView {
       if (!d.animator.busy) d.animator.play(defend);
     });
     this.at(at + hit, () => this.flashUnit(targetId, 0.8));
+    if (range === 'ranged') {
+      // Swing to the shooter as it draws, then ride the shot in to its target.
+      const launch = Math.max(0, hit - (clip?.missileMs ?? 150));
+      this.at(at, () => this.moveCamera(a.group.position, this.closeUp(0), Math.min(launch, SHOT_LEAD_MS)));
+      this.at(at + launch, () => this.moveCamera(d.group.position, null, hit - launch, true));
+    }
     return { hit: at + hit, end: at + dur };
   }
 
@@ -1250,7 +1351,7 @@ export class BoardView {
       } else i++;
     }
 
-    this.stepPan();
+    this.stepCamera();
     this.clampCameraTarget();
     this.controls.update();
 
@@ -1408,6 +1509,7 @@ export class BoardView {
     this.camera.position.set(0, span * 0.95, spanZ * 0.62 + 3);
     this.controls.target.set(0, 0, 0);
     const home = this.camera.position.length();
+    this.homeDist = home;
     this.controls.minDistance = 3;
     this.controls.maxDistance = home * 1.8;
     this.controls.update();
