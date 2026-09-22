@@ -617,11 +617,12 @@ export class BoardView {
         t += this.pause(this.frameCombat(pair, t));
         const start = t;
         const cards = OPPOSED_ROLL_MS + COMBAT_CARD_HOLD_MS; // shows the outcome, holds, fades
-        // A melee attacker who loses the roll is hurt by the blow he provoked,
-        // so the swing has to go in and be turned aside before the answer lands.
+        // Melee the defender answers plays as an exchange, so the swing goes in
+        // and is turned aside before the answer comes back — landing when the
+        // attacker lost the roll, turned aside in its turn when they clashed.
         const s =
-          e.type === 'AttackResolved' && e.result.startsWith('attacker')
-            ? this.exchange(pair[0], pair[1], start + cards)
+          e.type === 'AttackResolved' && this.answered(e)
+            ? this.exchange(pair[0], pair[1], start + cards, { land: e.result !== 'clash' })
             : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards);
         this.at(start, () => this.rolls.addOpposed(roll, this.now, cards));
         this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now));
@@ -1165,14 +1166,32 @@ export class BoardView {
   }
 
   /**
-   * A melee blow its attacker loses: the swing goes in, the defender turns it
-   * aside, and after a beat the counter-blow lands on the attacker. Returns the
-   * counter's hit (the moment that decides the fight, which its consequences —
-   * recoil, knockdown, death — are timed to) and end.
+   * A melee the defender answers: the swing goes in and is turned aside, then
+   * after a beat the defender swings back. `land` says whether that answer
+   * connects (a clash is two blows that both fail). Returns the counter's hit —
+   * the moment that decides the fight, which its consequences (recoil,
+   * knockdown, death) are timed to — and its end.
    */
-  private exchange(attackerId: string, targetId: string, at: number): { hit: number; end: number } {
+  private exchange(
+    attackerId: string,
+    targetId: string,
+    at: number,
+    opts: { land?: boolean } = {},
+  ): { hit: number; end: number } {
     const swing = this.strike(attackerId, targetId, 'melee', at, { land: false });
-    return this.strike(targetId, attackerId, 'melee', swing.end + RIPOSTE_GAP_MS);
+    return this.strike(targetId, attackerId, 'melee', swing.end + RIPOSTE_GAP_MS, opts);
+  }
+
+  /**
+   * Whether a melee blow is answered — the defender swings back, to hurt the
+   * attacker or to be turned aside in its turn. A defender that lost never got
+   * to swing, and one flat on its back answers only on a natural 6, which is
+   * the other thing the engine scores as a clash (see computeCombatResult).
+   */
+  private answered(e: Extract<GameEvent, { type: 'AttackResolved' }>): boolean {
+    if (e.result.startsWith('attacker')) return true;
+    if (e.result !== 'clash') return false;
+    return !this.units.get(e.targetId)?.state.knocked || e.defenseDie === 6;
   }
 
   /** Shove a cutout `dist` back from whoever it is facing down, then let it recover. */
