@@ -544,6 +544,15 @@ button.tool {
   padding: 5px 10px;
 }
 
+button.tool .swatch {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+
 button.tool.active {
   background: var(--accent);
   color: #06210f;

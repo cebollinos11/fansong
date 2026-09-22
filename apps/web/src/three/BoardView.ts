@@ -21,6 +21,18 @@ export interface BoardViewModel {
   selectedUnitId: string | null;
   /** Whether the local human may currently interact. */
   interactive: boolean;
+  /** Tinted hex sets under the move highlights (editor zones and objectives). */
+  overlays?: HexOverlay[];
+}
+
+/** A tinted hex set drawn flat on the board surface. */
+export interface HexOverlay {
+  cells: Vec[];
+  color: number;
+  /** Fill opacity (default 0.3). */
+  opacity?: number;
+  /** Hexagon size relative to a tile (default 0.9). */
+  scale?: number;
 }
 
 const OWNER_COLORS = [0x4f9dff, 0xff6b5b] as const; // P0 blue, P1 red
@@ -169,6 +181,8 @@ export class BoardView {
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
     : 1;
   private readonly highlightGroup = new THREE.Group();
+  private readonly overlayGroup = new THREE.Group();
+  private overlays: HexOverlay[] | undefined;
   /** Board tiles and feature meshes, raycast for cell picking (each carries `userData.cell`). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
@@ -194,7 +208,7 @@ export class BoardView {
     const ambient = new THREE.AmbientLight(0xffffff, 0.7);
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(6, 14, 8);
-    this.scene.add(ambient, key, this.highlightGroup);
+    this.scene.add(ambient, key, this.overlayGroup, this.highlightGroup);
 
     // Left-drag orbits, right-drag (or shift/ctrl + left) pans across the table,
     // wheel zooms. A press that barely moves is still a click (see handlePointerUp).
@@ -369,6 +383,7 @@ export class BoardView {
     }
 
     this.drawHighlights(vm.moveTargets);
+    if (vm.overlays !== this.overlays) this.drawOverlays(vm.overlays ?? []);
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
   }
 
@@ -747,6 +762,34 @@ export class BoardView {
       tile.position.set(w.x, this.surfaceAt(t) + 0.03, w.z);
       this.highlightGroup.add(tile);
     }
+  }
+
+  private drawOverlays(overlays: HexOverlay[]): void {
+    this.overlays = overlays;
+    for (const child of this.overlayGroup.children) {
+      const mesh = child as THREE.Mesh;
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    this.overlayGroup.clear();
+    // Later overlays sit a hair higher so small markers (flags) stay on top.
+    overlays.forEach((o, i) => {
+      const geo = new THREE.CircleGeometry(HEX_SIZE * (o.scale ?? 0.9), 6);
+      const mat = new THREE.MeshBasicMaterial({
+        color: o.color,
+        transparent: true,
+        opacity: o.opacity ?? 0.3,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      for (const c of o.cells) {
+        const tile = new THREE.Mesh(geo, mat);
+        tile.rotation.x = -Math.PI / 2;
+        const w = this.cellToWorld(c);
+        tile.position.set(w.x, this.surfaceAt(c) + 0.012 + i * 0.002, w.z);
+        this.overlayGroup.add(tile);
+      }
+    });
   }
 
   private flashUnit(id: string, amount: number): void {

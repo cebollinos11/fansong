@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  clearFlags,
   commitEdit,
   createHistory,
   MAP_LIMITS,
@@ -13,10 +14,14 @@ import {
   applyDrag,
   applyTool,
   clampMapSize,
+  CONQUEST_LABELS,
   dragCells,
+  hexMarkings,
   MAX_FOOTPRINT_SIDE,
+  mapOverlays,
   mapPreviewState,
   toolDrags,
+  ZONE_COLORS,
   type EditorTool,
 } from './editorView.js';
 import { describeHex } from './hexInfo.js';
@@ -28,9 +33,33 @@ interface Props {
 const DEFAULT_WIDTH = 14;
 const DEFAULT_HEIGHT = 12;
 
-type ToolId = 'select' | 'raise' | 'lower' | 'set' | 'erase' | 'building' | 'forest' | 'rock';
+type ToolId =
+  | 'select'
+  | 'raise'
+  | 'lower'
+  | 'set'
+  | 'erase'
+  | 'building'
+  | 'forest'
+  | 'rock'
+  | 'deploy0'
+  | 'deploy1'
+  | 'flag0'
+  | 'flag1'
+  | 'hill'
+  | 'conquest0'
+  | 'conquest1'
+  | 'conquest2';
 
-const TOOLS: { id: ToolId; label: string; title: string }[] = [
+interface ToolDef {
+  id: ToolId;
+  label: string;
+  title: string;
+  /** Legend swatch (the tool's board overlay colour). */
+  color?: number;
+}
+
+const TOOLS: ToolDef[] = [
   { id: 'select', label: 'Select', title: 'Inspect a hex' },
   { id: 'raise', label: 'Raise', title: 'Raise elevation by one' },
   { id: 'lower', label: 'Lower', title: 'Lower elevation by one' },
@@ -38,7 +67,7 @@ const TOOLS: { id: ToolId; label: string; title: string }[] = [
   { id: 'erase', label: 'Erase', title: 'Flatten and clear features' },
 ];
 
-const FEATURE_TOOLS: { id: ToolId; label: string; title: string }[] = [
+const FEATURE_TOOLS: ToolDef[] = [
   {
     id: 'building',
     label: 'Building',
@@ -56,9 +85,35 @@ const FEATURE_TOOLS: { id: ToolId; label: string; title: string }[] = [
   },
 ];
 
+const ZONE_HINT = 'click the zone to remove hexes; drag to fill a region';
+
+const OBJECTIVE_TOOLS: ToolDef[] = [
+  ...([0, 1] as const).map((p) => ({
+    id: `deploy${p}` as ToolId,
+    label: `Deploy P${p + 1}`,
+    title: `Paint player ${p + 1}'s deploy zone with the brush (${ZONE_HINT})`,
+    color: ZONE_COLORS.deploy[p],
+  })),
+  ...([0, 1] as const).map((p) => ({
+    id: `flag${p}` as ToolId,
+    label: `Flag P${p + 1}`,
+    title: `Click to place player ${p + 1}'s flag base (capture-the-flag)`,
+    color: ZONE_COLORS.deploy[p],
+  })),
+  { id: 'hill', label: 'Hill', title: `Paint the king-of-the-hill zone (${ZONE_HINT})`, color: ZONE_COLORS.hill },
+  ...([0, 1, 2] as const).map((i) => ({
+    id: `conquest${i}` as ToolId,
+    label: `Zone ${CONQUEST_LABELS[i]}`,
+    title: `Paint conquest zone ${CONQUEST_LABELS[i]} (${ZONE_HINT})`,
+    color: ZONE_COLORS.conquest[i],
+  })),
+];
+
+const swatch = (color: number) => `#${color.toString(16).padStart(6, '0')}`;
+
 interface ToolbarProps {
   label: string;
-  tools: { id: ToolId; label: string; title: string }[];
+  tools: ToolDef[];
   active: ToolId;
   onPick: (id: ToolId) => void;
 }
@@ -75,6 +130,7 @@ function Toolbar({ label, tools, active, onPick }: ToolbarProps): JSX.Element {
           className={active === t.id ? 'tool active' : 'tool'}
           onClick={() => onPick(t.id)}
         >
+          {t.color !== undefined ? <span className="swatch" style={{ background: swatch(t.color) }} /> : null}
           {t.label}
         </button>
       ))}
@@ -95,6 +151,18 @@ function toolFor(id: ToolId, level: number): EditorTool {
       return { kind: 'area', feature: id };
     case 'set':
       return { kind: 'elevation', brush: { kind: 'set', value: level } };
+    case 'deploy0':
+    case 'deploy1':
+      return { kind: 'zone', zone: { kind: 'deploy', player: id === 'deploy0' ? 0 : 1 } };
+    case 'flag0':
+    case 'flag1':
+      return { kind: 'flag', player: id === 'flag0' ? 0 : 1 };
+    case 'hill':
+      return { kind: 'zone', zone: { kind: 'hill' } };
+    case 'conquest0':
+    case 'conquest1':
+    case 'conquest2':
+      return { kind: 'zone', zone: { kind: 'conquest', index: Number(id.slice(-1)) as 0 | 1 | 2 } };
     default:
       return { kind: 'elevation', brush: { kind: id } };
   }
@@ -105,7 +173,8 @@ function toolFor(id: ToolId, level: number): EditorTool {
  * `@fansong/content`); the board is rendered through the same {@link BoardCanvas}
  * as play, rebuilt after each edit. Clicking a hex selects it and, with a
  * painting tool active, applies that tool's brush there as one undo step.
- * Drag tools (buildings, forest, rocks) stamp/fill the dragged region on release instead.
+ * Drag tools (buildings, forest, rocks, zones) stamp/fill the dragged region on release instead.
+ * Deploy zones and objectives are drawn as tinted overlays.
  */
 export function EditorScreen({ onExit }: Props): JSX.Element {
   const [history, setHistory] = useState<EditorHistory>(() =>
@@ -123,7 +192,9 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
   const map = history.present;
   const tool = toolFor(toolId, level);
   const state = useMemo(() => mapPreviewState(map), [map]);
+  const overlays = useMemo(() => mapOverlays(map), [map]);
   const selectedInfo = selected ? describeHex(state, selected) : null;
+  const selectedMarks = selected ? hexMarkings(map, selected) : [];
   const highlight = useMemo(() => dragPreview ?? (selected ? [selected] : []), [dragPreview, selected]);
 
   const newMap = (): void => {
@@ -162,6 +233,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
         onCellClick={onCellClick}
         onCellDrag={toolDrags(tool) ? onCellDrag : undefined}
         liveTerrain
+        overlays={overlays}
       />
       <div className="hud">
         <div className="hud-top">
@@ -217,7 +289,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
             Brush
             <select
               value={radius}
-              disabled={toolId === 'select' || toolId === 'building'}
+              disabled={toolId === 'select' || toolId === 'building' || tool.kind === 'flag'}
               onChange={(e) => setRadius(parseInt(e.target.value, 10))}
             >
               {Array.from({ length: MAX_BRUSH_RADIUS + 1 }, (_, r) => (
@@ -242,12 +314,36 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
           ) : null}
         </fieldset>
 
+        <fieldset className="editor-tools">
+          <legend>Zones &amp; objectives</legend>
+          <Toolbar label="Zone tool" tools={OBJECTIVE_TOOLS} active={toolId} onPick={setToolId} />
+          {tool.kind === 'zone' ? (
+            <p className="hint">Click: brush (on the zone: removes) · drag: fill region · middle-drag orbits.</p>
+          ) : tool.kind === 'flag' ? (
+            <p className="hint">Click a hex to move the flag base (the first flag mirrors the other).</p>
+          ) : null}
+          <p className="hint">
+            P1 deploy {map.deployZones[0].length} · P2 deploy {map.deployZones[1].length} · hill{' '}
+            {map.objectives.hill?.length ?? 0} · conquest{' '}
+            {map.objectives.conquest ? map.objectives.conquest.map((z) => z.length).join('/') : '—'} · flags{' '}
+            {map.objectives.flags ? 'set' : '—'}
+          </p>
+          <button
+            type="button"
+            className="ghost"
+            disabled={!map.objectives.flags}
+            onClick={() => setHistory((h) => commitEdit(h, clearFlags(h.present)))}
+          >
+            Remove flags
+          </button>
+        </fieldset>
+
         <div className="editor-selection">
           <h3>Selected hex</h3>
           {selectedInfo ? (
             <>
               <strong>{selectedInfo.title}</strong>
-              {selectedInfo.lines.map((line) => (
+              {[...selectedInfo.lines, ...selectedMarks].map((line) => (
                 <div key={line}>{line}</div>
               ))}
             </>

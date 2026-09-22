@@ -6,9 +6,14 @@ import {
   clampMapSize,
   dragCells,
   footprintCells,
+  hexMarkings,
   MAX_FOOTPRINT_SIDE,
+  mapOverlays,
   mapPreviewState,
   toolDrags,
+  ZONE_COLORS,
+  zoneCells,
+  type EditorTool,
 } from '../src/ui/editorView.js';
 import { describeHex } from '../src/ui/hexInfo.js';
 
@@ -184,5 +189,90 @@ describe('forest & rock tools', () => {
     expect(count(map, 'rock')).toBe(2 * 4);
     expect(at(map, 3, 2)?.feature).toBe('forest');
     expect(at(map, 4, 1)?.feature).toBe('rock');
+  });
+});
+
+describe('zone & objective tools', () => {
+  const blank = () => ({ ...newEditorMap(8, 6), deployZones: [[], []] as [never[], never[]] });
+  const deploy = (player: 0 | 1): EditorTool => ({ kind: 'zone', zone: { kind: 'deploy', player } });
+  const hill: EditorTool = { kind: 'zone', zone: { kind: 'hill' } };
+  const conquest = (index: 0 | 1 | 2): EditorTool => ({ kind: 'zone', zone: { kind: 'conquest', index } });
+
+  it('zone tools drag; flag tools do not', () => {
+    expect(toolDrags(deploy(0))).toBe(true);
+    expect(toolDrags(hill)).toBe(true);
+    expect(toolDrags({ kind: 'flag', player: 0 })).toBe(false);
+    expect(dragCells(blank(), { kind: 'flag', player: 0 }, { x: 0, y: 0 }, { x: 2, y: 2 })).toEqual([]);
+  });
+
+  it('a click paints the brush into a deploy zone, and clicking the zone removes it', () => {
+    const painted = applyTool(blank(), deploy(0), { x: 3, y: 3 }, 1);
+    expect(painted.deployZones[0]).toHaveLength(7);
+    expect(painted.deployZones[1]).toEqual([]);
+    const cleared = applyTool(painted, deploy(0), { x: 3, y: 3 }, 0);
+    expect(cleared.deployZones[0]).toHaveLength(6);
+    expect(cleared.deployZones[0]).not.toContainEqual({ x: 3, y: 3 });
+  });
+
+  it('deploy zones stay disjoint when painted over each other', () => {
+    const a = applyDrag(blank(), deploy(0), { x: 0, y: 0 }, { x: 2, y: 1 });
+    const b = applyTool(a, deploy(1), { x: 1, y: 0 }, 0);
+    expect(b.deployZones[0]).toHaveLength(5);
+    expect(b.deployZones[1]).toEqual([{ x: 1, y: 0 }]);
+  });
+
+  it('drag fills a region, or clears it when started inside the zone', () => {
+    const filled = applyDrag(blank(), hill, { x: 2, y: 2 }, { x: 4, y: 3 });
+    expect(zoneCells(filled, { kind: 'hill' })).toHaveLength(6);
+    const cleared = applyDrag(filled, hill, { x: 4, y: 3 }, { x: 5, y: 5 });
+    expect(zoneCells(cleared, { kind: 'hill' })).toHaveLength(5);
+    expect(applyDrag(filled, hill, { x: 2, y: 2 }, { x: 4, y: 3 }).objectives).toEqual({});
+  });
+
+  it('conquest zones are painted separately and kept disjoint', () => {
+    let m = applyTool(blank(), conquest(0), { x: 1, y: 1 }, 0);
+    m = applyTool(m, conquest(2), { x: 6, y: 4 }, 1);
+    expect(m.objectives.conquest?.map((z) => z.length)).toEqual([1, 0, 7]);
+    m = applyTool(m, conquest(1), { x: 6, y: 4 }, 0);
+    expect(m.objectives.conquest?.map((z) => z.length)).toEqual([1, 1, 6]);
+  });
+
+  it('the first flag mirrors the other; later clicks move one base; same hex is a no-op', () => {
+    const m = applyTool(blank(), { kind: 'flag', player: 0 }, { x: 1, y: 2 }, 2);
+    expect(m.objectives.flags).toEqual([{ x: 1, y: 2 }, { x: 6, y: 3 }]);
+    const moved = applyTool(m, { kind: 'flag', player: 1 }, { x: 7, y: 0 }, 0);
+    expect(moved.objectives.flags).toEqual([{ x: 1, y: 2 }, { x: 7, y: 0 }]);
+    expect(applyTool(moved, { kind: 'flag', player: 1 }, { x: 7, y: 0 }, 0)).toBe(moved);
+    expect(applyTool(moved, { kind: 'flag', player: 1 }, { x: 9, y: 0 }, 0)).toBe(moved);
+  });
+
+  it('a no-op zone click adds no undo step', () => {
+    const h = createHistory(blank());
+    expect(commitEdit(h, applyTool(h.present, hill, { x: 20, y: 20 }, 0)).past).toHaveLength(0);
+  });
+});
+
+describe('mapOverlays & hexMarkings', () => {
+  it('draws deploy zones and nothing else on a fresh map', () => {
+    const m = newEditorMap(8, 6);
+    const o = mapOverlays(m);
+    expect(o.map((x) => x.color)).toEqual([ZONE_COLORS.deploy[0], ZONE_COLORS.deploy[1]]);
+    expect(o[0]!.cells).toEqual(m.deployZones[0]);
+  });
+
+  it('adds hill, conquest and flag overlays, flags last', () => {
+    const m = getMap('crossroads')!;
+    const o = mapOverlays(m);
+    const conquestCount = m.objectives.conquest ? 3 : 0;
+    const flagCount = m.objectives.flags ? 2 : 0;
+    expect(o).toHaveLength(2 + (m.objectives.hill ? 1 : 0) + conquestCount + flagCount);
+    if (m.objectives.flags) expect(o[o.length - 1]!.cells).toEqual([m.objectives.flags[1]]);
+  });
+
+  it('lists what a hex is part of', () => {
+    let m = applyTool(newEditorMap(8, 6), { kind: 'flag', player: 0 }, { x: 0, y: 0 }, 0);
+    m = applyTool(m, { kind: 'zone', zone: { kind: 'hill' } }, { x: 0, y: 0 }, 0);
+    expect(hexMarkings(m, { x: 0, y: 0 })).toEqual(['Deploy zone: player 1', 'Flag base: player 1', 'Hill zone']);
+    expect(hexMarkings(m, { x: 4, y: 3 })).toEqual([]);
   });
 });

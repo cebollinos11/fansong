@@ -194,3 +194,12 @@
   full offset rectangle (`regionCells`, uncapped, radius ignored) as one undo step; a drag started on
   that feature clears it from the region instead. Painting over a building replaces it (same as
   `paintFeature`). Tested in editorView.test.ts; checked with Playwright on a built preview.
+- Task 23: editor "Zones & objectives" tools — Deploy P1/P2, Hill, Zone A/B/C (`EditorTool`
+  `{ kind: 'zone', zone: ZoneId }`) paint with the brush on click and fill the offset rectangle on
+  drag, toggling like forest/rock (click/drag started inside the zone removes). Disjointness comes
+  from the content ops (deploy steals from the other player; conquest zones steal from siblings; the
+  hill may overlap anything). Flag P1/P2 click moves that base (first flag mirrors the other; brush
+  ignored, no drag); "Remove flags" button clears the pair. Zones/objectives render via a new
+  `BoardViewModel.overlays` (tinted flat hexagons; flags as small solid hexes on top, player colours),
+  built by pure `mapOverlays(map)`; the selected-hex panel lists memberships (`hexMarkings`). Tested
+  in editorView.test.ts; checked with Playwright on a built preview.

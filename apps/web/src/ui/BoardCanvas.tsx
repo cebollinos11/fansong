@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameEvent, GameState, Vec } from '@fansong/engine';
-import { BoardView, type BoardViewModel } from '../three/BoardView.js';
+import { BoardView, type BoardViewModel, type HexOverlay } from '../three/BoardView.js';
 import { describeHex } from './hexInfo.js';
 
 interface Props {
@@ -19,6 +19,8 @@ interface Props {
    * play, where the board never changes but is cloned with every command.
    */
   liveTerrain?: boolean;
+  /** Tinted hex sets (editor deploy zones and objectives). */
+  overlays?: HexOverlay[];
   /**
    * Editor drag painting: when set, left-drag reports the press cell and the
    * current cell (then once more with `done`) instead of orbiting the camera.
@@ -76,6 +78,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
       interactive: props.interactive,
+      overlays: props.overlays,
     };
     viewRef.current?.update(vm);
   }, [
@@ -85,6 +88,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.selectableUnitIds,
     props.selectedUnitId,
     props.interactive,
+    props.overlays,
   ]);
 
   // Fire transient FX when a new event batch arrives.

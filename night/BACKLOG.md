@@ -45,7 +45,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 20. Editor: elevation brushes (raise/lower/set) + erase.
 - [x] 21. Editor: buildings — click single hex, drag to stamp a multi-hex footprint.
 - [x] 22. Editor: forest & rocks — brush radius 0–2, drag-fill region, single place/remove.
-- [ ] 23. Editor: deploy zones per player; objectives (flag bases, hill zone, conquest points).
+- [x] 23. Editor: deploy zones per player; objectives (flag bases, hill zone, conquest points).
 - [ ] 24. Editor: undo/redo UI, map name, inline validation errors.
 - [ ] 25. Editor: save/load localStorage, export/import .json; custom maps in Setup picker.
 
