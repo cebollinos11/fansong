@@ -179,3 +179,12 @@
   add no undo step). Painting is click-per-hex for now: left-drag orbits the camera, so drag gestures
   are left to tasks 21/22 (which need drag for footprints/fills). Default tool is Raise so the editor
   is immediately useful; clicking also selects the hex for the details panel. Checked with Playwright.
+- Task 21: editor Features → Building tool. Click toggles a single-hex building (ignores brush radius,
+  keeps elevation, replaces any other feature); drag stamps the offset-rectangle footprint between
+  the press and release hexes, far corner clamped so each side ≤ `MAX_FOOTPRINT_SIDE` = 4, one undo
+  step on release, previewed as highlighted hexes while dragging. Drag gestures: `BoardView.setCellDrag`
+  (via `BoardCanvas.onCellDrag`, set only while a drag tool — `toolDrags` — is active) remaps
+  OrbitControls so left-drag paints, middle-drag orbits, right-drag pans; a press that barely moves is
+  still a click. Off-board pointer keeps the last in-board corner. Pure helpers (`applyDrag`,
+  `dragCells`, `footprintCells`) in editorView.ts, tested; task 22 extends `toolDrags`/`dragCells`
+  for forest/rock fills. Checked with Playwright on a built preview.

@@ -19,6 +19,11 @@ interface Props {
    * play, where the board never changes but is cloned with every command.
    */
   liveTerrain?: boolean;
+  /**
+   * Editor drag painting: when set, left-drag reports the press cell and the
+   * current cell (then once more with `done`) instead of orbiting the camera.
+   */
+  onCellDrag?: (from: Vec, to: Vec, done: boolean) => void;
 }
 
 /** React wrapper that mounts a {@link BoardView} and keeps it in sync with props. */
@@ -27,8 +32,8 @@ export function BoardCanvas(props: Props): JSX.Element {
   const viewRef = useRef<BoardView | null>(null);
   const [hover, setHover] = useState<Vec | null>(null);
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
-  const handlers = useRef({ onUnitClick: props.onUnitClick, onCellClick: props.onCellClick });
-  handlers.current = { onUnitClick: props.onUnitClick, onCellClick: props.onCellClick };
+  const handlers = useRef({ onUnitClick: props.onUnitClick, onCellClick: props.onCellClick, onCellDrag: props.onCellDrag });
+  handlers.current = { onUnitClick: props.onUnitClick, onCellClick: props.onCellClick, onCellDrag: props.onCellDrag };
 
   // Mount once.
   useEffect(() => {
@@ -55,6 +60,12 @@ export function BoardCanvas(props: Props): JSX.Element {
     viewRef.current?.buildBoard(props.state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.liveTerrain, props.state.board]);
+
+  // Editor: switch left-drag between orbiting and drag painting.
+  const dragging = props.onCellDrag !== undefined;
+  useEffect(() => {
+    viewRef.current?.setCellDrag(dragging ? (from, to, done) => handlers.current.onCellDrag?.(from, to, done) : null);
+  }, [dragging]);
 
   // Reconcile visuals on every relevant change.
   useEffect(() => {

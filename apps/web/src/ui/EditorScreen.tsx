@@ -9,7 +9,16 @@ import {
 } from '@fansong/content';
 import { MAX_ELEVATION, type Vec } from '@fansong/engine';
 import { BoardCanvas } from './BoardCanvas.js';
-import { applyTool, clampMapSize, mapPreviewState, type EditorTool } from './editorView.js';
+import {
+  applyDrag,
+  applyTool,
+  clampMapSize,
+  dragCells,
+  MAX_FOOTPRINT_SIDE,
+  mapPreviewState,
+  toolDrags,
+  type EditorTool,
+} from './editorView.js';
 import { describeHex } from './hexInfo.js';
 
 interface Props {
@@ -19,7 +28,7 @@ interface Props {
 const DEFAULT_WIDTH = 14;
 const DEFAULT_HEIGHT = 12;
 
-type ToolId = 'select' | 'raise' | 'lower' | 'set' | 'erase';
+type ToolId = 'select' | 'raise' | 'lower' | 'set' | 'erase' | 'building';
 
 const TOOLS: { id: ToolId; label: string; title: string }[] = [
   { id: 'select', label: 'Select', title: 'Inspect a hex' },
@@ -29,12 +38,48 @@ const TOOLS: { id: ToolId; label: string; title: string }[] = [
   { id: 'erase', label: 'Erase', title: 'Flatten and clear features' },
 ];
 
+const FEATURE_TOOLS: { id: ToolId; label: string; title: string }[] = [
+  {
+    id: 'building',
+    label: 'Building',
+    title: `Click to place/remove a building; drag to stamp a footprint (up to ${MAX_FOOTPRINT_SIDE}×${MAX_FOOTPRINT_SIDE})`,
+  },
+];
+
+interface ToolbarProps {
+  label: string;
+  tools: { id: ToolId; label: string; title: string }[];
+  active: ToolId;
+  onPick: (id: ToolId) => void;
+}
+
+function Toolbar({ label, tools, active, onPick }: ToolbarProps): JSX.Element {
+  return (
+    <div className="editor-toolbar" role="group" aria-label={label}>
+      {tools.map((t) => (
+        <button
+          key={t.id}
+          type="button"
+          title={t.title}
+          aria-pressed={active === t.id}
+          className={active === t.id ? 'tool active' : 'tool'}
+          onClick={() => onPick(t.id)}
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function toolFor(id: ToolId, level: number): EditorTool {
   switch (id) {
     case 'select':
       return { kind: 'select' };
     case 'erase':
       return { kind: 'erase' };
+    case 'building':
+      return { kind: 'building' };
     case 'set':
       return { kind: 'elevation', brush: { kind: 'set', value: level } };
     default:
@@ -47,6 +92,7 @@ function toolFor(id: ToolId, level: number): EditorTool {
  * `@fansong/content`); the board is rendered through the same {@link BoardCanvas}
  * as play, rebuilt after each edit. Clicking a hex selects it and, with a
  * painting tool active, applies that tool's brush there as one undo step.
+ * Drag tools (buildings) stamp the dragged footprint on release instead.
  */
 export function EditorScreen({ onExit }: Props): JSX.Element {
   const [history, setHistory] = useState<EditorHistory>(() =>
@@ -58,11 +104,14 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
   const [toolId, setToolId] = useState<ToolId>('raise');
   const [level, setLevel] = useState(1);
   const [radius, setRadius] = useState(0);
+  /** The footprint of an in-progress drag, previewed as highlighted hexes. */
+  const [dragPreview, setDragPreview] = useState<Vec[] | null>(null);
 
   const map = history.present;
+  const tool = toolFor(toolId, level);
   const state = useMemo(() => mapPreviewState(map), [map]);
   const selectedInfo = selected ? describeHex(state, selected) : null;
-  const highlight = useMemo(() => (selected ? [selected] : []), [selected]);
+  const highlight = useMemo(() => dragPreview ?? (selected ? [selected] : []), [dragPreview, selected]);
 
   const newMap = (): void => {
     const w = clampMapSize(width, 'width');
@@ -75,7 +124,15 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
 
   const onCellClick = (cell: Vec): void => {
     setSelected(cell);
-    setHistory((h) => commitEdit(h, applyTool(h.present, toolFor(toolId, level), cell, radius)));
+    setHistory((h) => commitEdit(h, applyTool(h.present, tool, cell, radius)));
+  };
+
+  // A drag previews its footprint and commits it as one undo step on release.
+  const onCellDrag = (from: Vec, to: Vec, done: boolean): void => {
+    if (!done) return setDragPreview(dragCells(map, tool, from, to));
+    setDragPreview(null);
+    setSelected(to);
+    setHistory((h) => commitEdit(h, applyDrag(h.present, tool, from, to)));
   };
 
   return (
@@ -90,6 +147,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
         events={[]}
         onUnitClick={() => {}}
         onCellClick={onCellClick}
+        onCellDrag={toolDrags(tool) ? onCellDrag : undefined}
         liveTerrain
       />
       <div className="hud">
@@ -131,20 +189,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
 
         <fieldset className="editor-tools">
           <legend>Terrain</legend>
-          <div className="editor-toolbar" role="group" aria-label="Tool">
-            {TOOLS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                title={t.title}
-                aria-pressed={toolId === t.id}
-                className={toolId === t.id ? 'tool active' : 'tool'}
-                onClick={() => setToolId(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+          <Toolbar label="Tool" tools={TOOLS} active={toolId} onPick={setToolId} />
           <label>
             Level
             <select value={level} disabled={toolId !== 'set'} onChange={(e) => setLevel(parseInt(e.target.value, 10))}>
@@ -159,7 +204,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
             Brush
             <select
               value={radius}
-              disabled={toolId === 'select'}
+              disabled={toolId === 'select' || toolId === 'building'}
               onChange={(e) => setRadius(parseInt(e.target.value, 10))}
             >
               {Array.from({ length: MAX_BRUSH_RADIUS + 1 }, (_, r) => (
@@ -169,6 +214,14 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
               ))}
             </select>
           </label>
+        </fieldset>
+
+        <fieldset className="editor-tools">
+          <legend>Features</legend>
+          <Toolbar label="Feature tool" tools={FEATURE_TOOLS} active={toolId} onPick={setToolId} />
+          {toolDrags(tool) ? (
+            <p className="hint">Click: single hex · drag: footprint · middle-drag orbits.</p>
+          ) : null}
         </fieldset>
 
         <div className="editor-selection">

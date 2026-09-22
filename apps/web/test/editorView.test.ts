@@ -1,6 +1,15 @@
 import { commitEdit, createHistory, getMap, MAP_LIMITS, mapToBoard, newEditorMap } from '@fansong/content';
 import { describe, expect, it } from 'vitest';
-import { applyTool, clampMapSize, mapPreviewState } from '../src/ui/editorView.js';
+import {
+  applyDrag,
+  applyTool,
+  clampMapSize,
+  dragCells,
+  footprintCells,
+  MAX_FOOTPRINT_SIDE,
+  mapPreviewState,
+  toolDrags,
+} from '../src/ui/editorView.js';
 import { describeHex } from '../src/ui/hexInfo.js';
 
 describe('mapPreviewState', () => {
@@ -70,5 +79,58 @@ describe('applyTool', () => {
     const h = createHistory(map);
     const lowered = applyTool(map, { kind: 'elevation', brush: { kind: 'lower' } }, { x: 1, y: 1 }, 1);
     expect(commitEdit(h, lowered).past).toHaveLength(0);
+  });
+});
+
+describe('building tool', () => {
+  const building = { kind: 'building' } as const;
+  const at = (map: ReturnType<typeof newEditorMap>, x: number, y: number) => map.hexes[y * map.width + x];
+
+  it('a click toggles a single-hex building, ignoring the radius and keeping elevation', () => {
+    let map = applyTool(newEditorMap(8, 6), { kind: 'elevation', brush: { kind: 'set', value: 2 } }, { x: 3, y: 3 }, 0);
+    map = applyTool(map, building, { x: 3, y: 3 }, 2);
+    expect(at(map, 3, 3)).toEqual({ elevation: 2, feature: 'building' });
+    expect(map.hexes.filter((h) => h.feature === 'building')).toHaveLength(1);
+    expect(mapPreviewState(map).board.terrain).toEqual(mapToBoard(map).terrain);
+    map = applyTool(map, building, { x: 3, y: 3 }, 0);
+    expect(at(map, 3, 3)).toEqual({ elevation: 2 });
+  });
+
+  it('a click replaces another feature and ignores off-board hexes', () => {
+    const rocky = getMap('rocky-pass')!;
+    const i = rocky.hexes.findIndex((h) => h.feature === 'rock');
+    const placed = applyTool(rocky, building, { x: i % rocky.width, y: Math.floor(i / rocky.width) }, 0);
+    expect(placed.hexes[i]?.feature).toBe('building');
+    const map = newEditorMap(8, 6);
+    expect(commitEdit(createHistory(map), applyTool(map, building, { x: 9, y: 9 }, 0)).past).toHaveLength(0);
+  });
+
+  it('only drag tools take over left-drag', () => {
+    expect(toolDrags(building)).toBe(true);
+    expect(toolDrags({ kind: 'select' })).toBe(false);
+    expect(toolDrags({ kind: 'erase' })).toBe(false);
+    expect(dragCells(newEditorMap(8, 6), { kind: 'erase' }, { x: 0, y: 0 }, { x: 2, y: 2 })).toEqual([]);
+  });
+
+  it('a drag stamps the whole footprint as one undo step', () => {
+    const map = newEditorMap(8, 6);
+    const stamped = applyDrag(map, building, { x: 4, y: 3 }, { x: 3, y: 2 });
+    const cells = [
+      { x: 3, y: 2 },
+      { x: 4, y: 2 },
+      { x: 3, y: 3 },
+      { x: 4, y: 3 },
+    ];
+    for (const c of cells) expect(at(stamped, c.x, c.y)?.feature).toBe('building');
+    expect(stamped.hexes.filter((h) => h.feature === 'building')).toHaveLength(4);
+    expect(commitEdit(createHistory(map), stamped).past).toHaveLength(1);
+  });
+
+  it('caps the footprint side and clips it to the board', () => {
+    const map = newEditorMap(12, 10);
+    const big = footprintCells(map, { x: 5, y: 5 }, { x: 0, y: 11 });
+    expect(Math.max(...big.map((c) => c.x)) - Math.min(...big.map((c) => c.x)) + 1).toBe(MAX_FOOTPRINT_SIDE);
+    expect(big.every((c) => c.x >= 2 && c.x <= 5 && c.y >= 5 && c.y <= 8)).toBe(true);
+    expect(footprintCells(map, { x: 10, y: 8 }, { x: 13, y: 9 })).toHaveLength(2 * 2);
   });
 });

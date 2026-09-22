@@ -139,6 +139,12 @@ export class BoardView {
   onCellClick: ((cell: Vec) => void) | null = null;
   /** Fires when the hex under the pointer changes (null when it leaves the board). */
   onCellHover: ((cell: Vec | null) => void) | null = null;
+  /**
+   * Editor drag painting (see {@link setCellDrag}): reports the press cell and
+   * the cell under the pointer while dragging, then once more with `done`.
+   */
+  private onCellDrag: ((from: Vec, to: Vec, done: boolean) => void) | null = null;
+  private drag: { from: Vec; to: Vec; key: string; moved: boolean } | null = null;
 
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
@@ -804,14 +810,36 @@ export class BoardView {
     this.renderer.render(this.scene, this.camera);
   };
 
+  /**
+   * Turn editor drag painting on (a handler) or off (`null`). While on, a
+   * left-drag reports a cell rectangle instead of orbiting — middle-drag orbits
+   * and right-drag still pans. A press that barely moves is still a click.
+   */
+  setCellDrag(handler: ((from: Vec, to: Vec, done: boolean) => void) | null): void {
+    this.onCellDrag = handler;
+    this.drag = null;
+    this.controls.mouseButtons = handler
+      ? { LEFT: null, MIDDLE: THREE.MOUSE.ROTATE, RIGHT: THREE.MOUSE.PAN }
+      : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.PAN };
+  }
+
   private handlePointerDown = (ev: PointerEvent): void => {
     this.downPos = { x: ev.clientX, y: ev.clientY };
+    this.drag = null;
+    if (this.onCellDrag && ev.button === 0) {
+      this.aimRay(ev);
+      const cell = this.pickCell();
+      if (cell && this.inBoard(cell)) this.drag = { from: cell, to: cell, key: `${cell.x},${cell.y}`, moved: false };
+    }
   };
 
   private handlePointerUp = (ev: PointerEvent): void => {
     if (!this.downPos) return;
     const moved = Math.hypot(ev.clientX - this.downPos.x, ev.clientY - this.downPos.y);
     this.downPos = null;
+    const drag = this.drag;
+    this.drag = null;
+    if (drag?.moved) return this.onCellDrag?.(drag.from, drag.to, true);
     if (moved > 6) return; // treat as a drag, not a click
 
     this.aimRay(ev);
@@ -828,6 +856,19 @@ export class BoardView {
   };
 
   private handlePointerMove = (ev: PointerEvent): void => {
+    if (this.drag && (ev.buttons & 1) !== 0 && this.downPos) {
+      const moved = Math.hypot(ev.clientX - this.downPos.x, ev.clientY - this.downPos.y);
+      this.aimRay(ev);
+      const cell = this.pickCell();
+      // Off the board the rectangle keeps its last in-board corner.
+      if (cell && this.inBoard(cell)) {
+        const key = `${cell.x},${cell.y}`;
+        if (moved > 6 && (key !== this.drag.key || !this.drag.moved)) {
+          this.drag = { ...this.drag, to: cell, key, moved: true };
+          this.onCellDrag?.(this.drag.from, cell, false);
+        }
+      }
+    }
     if (!this.onCellHover) return;
     if (ev.buttons !== 0) return this.setHover(null); // orbiting/panning: hide the tooltip
     this.aimRay(ev);
@@ -839,6 +880,10 @@ export class BoardView {
   };
 
   private handlePointerLeave = (): void => this.setHover(null);
+
+  private inBoard(cell: Vec): boolean {
+    return cell.x >= 0 && cell.y >= 0 && cell.x < this.width && cell.y < this.height;
+  }
 
   private setHover(cell: Vec | null): void {
     const key = cell ? `${cell.x},${cell.y}` : null;
