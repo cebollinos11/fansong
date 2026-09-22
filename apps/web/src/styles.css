@@ -525,6 +525,59 @@ button.secondary {
   border-radius: 8px;
 }
 
+.editor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.editor-meta label {
+  margin-right: 0;
+}
+
+.editor-meta input {
+  width: 170px;
+  margin-left: 6px;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.editor-history {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.editor-history button {
+  padding: 5px 10px;
+}
+
+.editor-validation {
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  border-radius: 8px;
+}
+
+.editor-validation.ok {
+  border-color: rgba(120, 220, 140, 0.45);
+  color: #9be3a9;
+}
+
+.editor-validation p {
+  margin: 0;
+}
+
+.editor-validation ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
 .editor-tools {
   margin: 0;
   display: flex;

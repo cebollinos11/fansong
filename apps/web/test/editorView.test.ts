@@ -2,12 +2,18 @@ import { commitEdit, createHistory, getMap, MAP_LIMITS, mapToBoard, newEditorMap
 import { describe, expect, it } from 'vitest';
 import {
   applyDrag,
+  applyMapName,
   applyTool,
   clampMapSize,
   dragCells,
+  editorErrorText,
+  editorValidation,
   footprintCells,
+  historyShortcut,
   hexMarkings,
   MAX_FOOTPRINT_SIDE,
+  MAX_MAP_NAME,
+  MAX_SHOWN_ERRORS,
   mapOverlays,
   mapPreviewState,
   toolDrags,
@@ -274,5 +280,96 @@ describe('mapOverlays & hexMarkings', () => {
     m = applyTool(m, { kind: 'zone', zone: { kind: 'hill' } }, { x: 0, y: 0 }, 0);
     expect(hexMarkings(m, { x: 0, y: 0 })).toEqual(['Deploy zone: player 1', 'Flag base: player 1', 'Hill zone']);
     expect(hexMarkings(m, { x: 4, y: 3 })).toEqual([]);
+  });
+});
+
+describe('applyMapName', () => {
+  const map = newEditorMap(8, 8, 'Start');
+
+  it('renames and re-slugs the id, trimming and collapsing whitespace', () => {
+    const next = applyMapName(map, '  Misty   Vale ');
+    expect(next.name).toBe('Misty Vale');
+    expect(next.id).toBe('misty-vale');
+    expect(map.name).toBe('Start');
+  });
+
+  it('keeps the map (same reference) for a blank or unchanged name', () => {
+    expect(applyMapName(map, '   ')).toBe(map);
+    expect(applyMapName(map, ' Start ')).toBe(map);
+  });
+
+  it('caps the name length', () => {
+    expect(applyMapName(map, 'x'.repeat(100)).name).toHaveLength(MAX_MAP_NAME);
+  });
+
+  it('is one undo step through the history', () => {
+    const h = commitEdit(createHistory(map), applyMapName(map, 'Other'));
+    expect(h.past).toHaveLength(1);
+    expect(commitEdit(h, applyMapName(h.present, 'Other'))).toBe(h);
+  });
+});
+
+describe('editorValidation', () => {
+  it('reports a fresh map as valid with the objective-free modes', () => {
+    const v = editorValidation(newEditorMap(10, 10));
+    expect(v).toEqual({ ok: true, errors: [], modes: ['annihilation', 'kill-the-king'] });
+  });
+
+  it('lists every mode a built-in map supports', () => {
+    const map = getMap('crossroads')!;
+    const v = editorValidation(map);
+    expect(v.ok).toBe(true);
+    expect(v.modes.length).toBeGreaterThan(2);
+  });
+
+  it('words errors with editor labels and caps the list', () => {
+    let map = newEditorMap(10, 10);
+    // Rock over P1's whole deploy zone: every hex is impassable and the zone disconnected.
+    map = applyDrag(map, { kind: 'area', feature: 'rock' }, { x: 0, y: 0 }, { x: 9, y: 1 });
+    const v = editorValidation(map);
+    expect(v.ok).toBe(false);
+    expect(v.modes).toEqual([]);
+    expect(v.errors).toHaveLength(MAX_SHOWN_ERRORS + 1);
+    expect(v.errors[0]).toMatch(/^P[12] deploy zone: hex \(\d+,\d+\) is impassable$/);
+    expect(v.errors.at(-1)).toMatch(/^…and \d+ more$/);
+  });
+});
+
+describe('editorErrorText', () => {
+  it('renames players to P1/P2 and conquest zones to A/B/C', () => {
+    expect(editorErrorText('player 0 deploy zone needs at least 6 hexes, has 2')).toBe(
+      'P1 deploy zone needs at least 6 hexes, has 2',
+    );
+    expect(editorErrorText('player 1 flag base: hex (3,4) is off the map')).toBe(
+      'P2 flag base: hex (3,4) is off the map',
+    );
+    expect(editorErrorText('conquest zone 3 overlaps a deploy zone at 1,1')).toBe(
+      'conquest zone C overlaps a deploy zone at 1,1',
+    );
+    expect(editorErrorText('conquest zones 1 and 2 overlap at 4,4')).toBe('conquest zones A and B overlap at 4,4');
+  });
+});
+
+describe('historyShortcut', () => {
+  const key = (k: string, mods: Partial<{ ctrlKey: boolean; metaKey: boolean; shiftKey: boolean; altKey: boolean }> = {}) => ({
+    key: k,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...mods,
+  });
+
+  it('maps Ctrl/Cmd+Z to undo and Ctrl+Y / Ctrl+Shift+Z to redo', () => {
+    expect(historyShortcut(key('z', { ctrlKey: true }))).toBe('undo');
+    expect(historyShortcut(key('z', { metaKey: true }))).toBe('undo');
+    expect(historyShortcut(key('Z', { ctrlKey: true, shiftKey: true }))).toBe('redo');
+    expect(historyShortcut(key('y', { ctrlKey: true }))).toBe('redo');
+  });
+
+  it('ignores unmodified keys and Alt chords', () => {
+    expect(historyShortcut(key('z'))).toBeNull();
+    expect(historyShortcut(key('z', { ctrlKey: true, altKey: true }))).toBeNull();
+    expect(historyShortcut(key('x', { ctrlKey: true }))).toBeNull();
   });
 });

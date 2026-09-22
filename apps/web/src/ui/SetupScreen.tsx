@@ -13,6 +13,7 @@ import {
 import type { Replay } from '@fansong/engine';
 import type { Launch } from '../game/launch.js';
 import { parseReplay } from '../game/replay-io.js';
+import { MODE_LABELS } from './editorView.js';
 
 interface Props {
   initial: MatchSetup;
@@ -169,14 +170,6 @@ function WarbandPicker({
   );
 }
 
-const MODE_LABELS: Record<string, string> = {
-  annihilation: 'Annihilation',
-  'kill-the-king': 'Kill the king',
-  'king-of-the-hill': 'King of the hill',
-  conquest: 'Conquest',
-  'capture-the-flag': 'Capture the flag',
-};
-
 function MapPicker({
   value,
   onChange,
@@ -187,7 +180,7 @@ function MapPicker({
   disabled: boolean;
 }): JSX.Element {
   const map = getMap(disabled ? DEFAULT_MAP_ID : value)!;
-  const modes = supportedModes(map).map((m) => MODE_LABELS[m] ?? m);
+  const modes = supportedModes(map).map((m) => MODE_LABELS[m]);
   return (
     <div className="map-picker">
       <h3>Map</h3>

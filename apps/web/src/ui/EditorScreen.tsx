@@ -1,25 +1,34 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
+  canRedo,
+  canUndo,
   clearFlags,
   commitEdit,
   createHistory,
   MAP_LIMITS,
   MAX_BRUSH_RADIUS,
   newEditorMap,
+  redoEdit,
+  undoEdit,
   type EditorHistory,
 } from '@fansong/content';
 import { MAX_ELEVATION, type Vec } from '@fansong/engine';
 import { BoardCanvas } from './BoardCanvas.js';
 import {
   applyDrag,
+  applyMapName,
   applyTool,
   clampMapSize,
   CONQUEST_LABELS,
   dragCells,
+  editorValidation,
   hexMarkings,
+  historyShortcut,
   MAX_FOOTPRINT_SIDE,
+  MAX_MAP_NAME,
   mapOverlays,
   mapPreviewState,
+  MODE_LABELS,
   toolDrags,
   ZONE_COLORS,
   type EditorTool,
@@ -174,7 +183,9 @@ function toolFor(id: ToolId, level: number): EditorTool {
  * as play, rebuilt after each edit. Clicking a hex selects it and, with a
  * painting tool active, applies that tool's brush there as one undo step.
  * Drag tools (buildings, forest, rocks, zones) stamp/fill the dragged region on release instead.
- * Deploy zones and objectives are drawn as tinted overlays.
+ * Deploy zones and objectives are drawn as tinted overlays. Undo/redo (buttons
+ * or Ctrl+Z / Ctrl+Y) walk the history; the map name is committed on blur/Enter
+ * as one undo step; `validateMap` problems are listed inline as the map changes.
  */
 export function EditorScreen({ onExit }: Props): JSX.Element {
   const [history, setHistory] = useState<EditorHistory>(() =>
@@ -196,6 +207,26 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
   const selectedInfo = selected ? describeHex(state, selected) : null;
   const selectedMarks = selected ? hexMarkings(map, selected) : [];
   const highlight = useMemo(() => dragPreview ?? (selected ? [selected] : []), [dragPreview, selected]);
+  const validation = useMemo(() => editorValidation(map), [map]);
+
+  const undo = (): void => setHistory(undoEdit);
+  const redo = (): void => setHistory(redoEdit);
+
+  // Ctrl/⌘+Z undoes, Ctrl/⌘+Y or Ctrl/⌘+Shift+Z redoes — except while typing in a field.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      const action = historyShortcut(e);
+      if (!action) return;
+      e.preventDefault();
+      setHistory(action === 'undo' ? undoEdit : redoEdit);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  const rename = (raw: string): void => setHistory((h) => commitEdit(h, applyMapName(h.present, raw)));
 
   const newMap = (): void => {
     const w = clampMapSize(width, 'width');
@@ -243,9 +274,58 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
           </button>
         </div>
 
-        <p className="hint">
-          {map.name} · {map.width}×{map.height}
-        </p>
+        <div className="editor-meta">
+          <label>
+            Name
+            {/* Uncontrolled and keyed on the name, so undo/redo of a rename resets the field. */}
+            <input
+              key={map.name}
+              type="text"
+              defaultValue={map.name}
+              maxLength={MAX_MAP_NAME}
+              aria-label="Map name"
+              onBlur={(e) => {
+                rename(e.target.value);
+                e.target.value = applyMapName(map, e.target.value).name;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+                if (e.key === 'Escape') {
+                  e.currentTarget.value = map.name;
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </label>
+          <span className="hint">
+            {map.id} · {map.width}×{map.height}
+          </span>
+          <div className="editor-history" role="group" aria-label="History">
+            <button type="button" title="Undo (Ctrl+Z)" disabled={!canUndo(history)} onClick={undo}>
+              ↶ Undo
+            </button>
+            <button type="button" title="Redo (Ctrl+Y)" disabled={!canRedo(history)} onClick={redo}>
+              ↷ Redo
+            </button>
+          </div>
+        </div>
+
+        <div className={validation.ok ? 'editor-validation ok' : 'editor-validation'} aria-live="polite">
+          {validation.ok ? (
+            <p>
+              ✓ Valid · modes: {validation.modes.map((m) => MODE_LABELS[m]).join(', ')}
+            </p>
+          ) : (
+            <>
+              <p className="error">Map has problems:</p>
+              <ul>
+                {validation.errors.map((err) => (
+                  <li key={err}>{err}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
 
         <fieldset className="editor-new">
           <legend>New map</legend>

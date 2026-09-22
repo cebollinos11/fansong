@@ -203,3 +203,11 @@
   `BoardViewModel.overlays` (tinted flat hexagons; flags as small solid hexes on top, player colours),
   built by pure `mapOverlays(map)`; the selected-hex panel lists memberships (`hexMarkings`). Tested
   in editorView.test.ts; checked with Playwright on a built preview.
+- Task 24: editor header now has a Name field (uncontrolled, keyed on `map.name` so undo/redo resets
+  it; commits on blur/Enter via pure `applyMapName` — trims, collapses spaces, caps at `MAX_MAP_NAME`
+  = 40, blank keeps the old name; id re-slugs; one undo step), the map id/size, and Undo/Redo buttons
+  (disabled via `canUndo`/`canRedo`) plus Ctrl/⌘+Z, Ctrl/⌘+Y, Ctrl/⌘+Shift+Z (`historyShortcut`;
+  ignored while typing in a field). Below it an inline validation panel (`editorValidation`): green
+  "Valid · modes: …" (via `supportedModes`) or the `validateMap` errors reworded to editor labels
+  (`editorErrorText`: player 0/1 → P1/P2, conquest zones 1–3 → A–C), capped at 6 + "…and N more".
+  `MODE_LABELS` moved from SetupScreen into editorView.ts (shared). Tested; checked with Playwright.

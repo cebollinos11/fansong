@@ -9,11 +9,14 @@ import {
   paintFeature,
   paintHill,
   regionCells,
+  renameMap,
   setFlag,
+  supportedModes,
+  validateMap,
   type ElevationBrush,
   type MapDef,
 } from '@fansong/content';
-import { createGame, vecKey, type GameState, type Vec } from '@fansong/engine';
+import { createGame, vecKey, type GameMode, type GameState, type Vec } from '@fansong/engine';
 import type { HexOverlay } from '../three/BoardView.js';
 
 // Pure editor-screen helpers (no DOM), so they can be unit-tested.
@@ -187,4 +190,72 @@ export function hexMarkings(map: MapDef, cell: Vec): string[] {
   if (has(map.objectives.hill)) out.push('Hill zone');
   map.objectives.conquest?.forEach((z, i) => has(z) && out.push(`Conquest zone ${CONQUEST_LABELS[i]}`));
   return out;
+}
+
+/** Longest map name the editor accepts. */
+export const MAX_MAP_NAME = 40;
+
+/**
+ * Rename from the name field: trimmed and capped at {@link MAX_MAP_NAME};
+ * a blank name keeps the current one (the map is returned unchanged).
+ */
+export function applyMapName(map: MapDef, raw: string): MapDef {
+  const name = raw.trim().replace(/\s+/g, ' ').slice(0, MAX_MAP_NAME).trim();
+  return name && name !== map.name ? renameMap(map, name) : map;
+}
+
+/**
+ * Rewrite `validateMap` wording to the editor's labels: players are P1/P2 and
+ * conquest zones A/B/C (validation counts players from 0 and zones from 1).
+ */
+export function editorErrorText(error: string): string {
+  return error
+    .replace(/\bplayer ([01])\b/g, (_, p: string) => `P${Number(p) + 1}`)
+    .replace(/\bconquest zones ([123]) and ([123])\b/g, (_, a: string, b: string) =>
+      `conquest zones ${CONQUEST_LABELS[Number(a) - 1]} and ${CONQUEST_LABELS[Number(b) - 1]}`,
+    )
+    .replace(/\bconquest zone ([123])\b/g, (_, i: string) => `conquest zone ${CONQUEST_LABELS[Number(i) - 1]}`);
+}
+
+/** Display names for game modes (Setup map picker, editor validation panel). */
+export const MODE_LABELS: Record<GameMode, string> = {
+  annihilation: 'Annihilation',
+  'kill-the-king': 'Kill the king',
+  'king-of-the-hill': 'King of the hill',
+  conquest: 'Conquest',
+  'capture-the-flag': 'Capture the flag',
+};
+
+/** Errors the editor lists before collapsing the rest into "…and N more". */
+export const MAX_SHOWN_ERRORS = 6;
+
+export interface EditorValidation {
+  ok: boolean;
+  /** Editor-worded errors, capped at {@link MAX_SHOWN_ERRORS} plus a summary line. */
+  errors: string[];
+  /** Modes the map can host as it stands (empty while invalid). */
+  modes: GameMode[];
+}
+
+/** The inline validation panel's contents for the current map. */
+export function editorValidation(map: MapDef): EditorValidation {
+  const { ok, errors } = validateMap(map);
+  const shown = errors.slice(0, MAX_SHOWN_ERRORS).map(editorErrorText);
+  if (errors.length > MAX_SHOWN_ERRORS) shown.push(`…and ${errors.length - MAX_SHOWN_ERRORS} more`);
+  return { ok, errors: shown, modes: supportedModes(map) };
+}
+
+/** Undo/redo keyboard shortcut: Ctrl/⌘+Z undoes, Ctrl/⌘+Y or Ctrl/⌘+Shift+Z redoes. */
+export function historyShortcut(e: {
+  key: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+}): 'undo' | 'redo' | null {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return null;
+  const key = e.key.toLowerCase();
+  if (key === 'z') return e.shiftKey ? 'redo' : 'undo';
+  if (key === 'y' && !e.shiftKey) return 'redo';
+  return null;
 }
