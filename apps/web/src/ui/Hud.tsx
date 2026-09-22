@@ -35,7 +35,7 @@ function statusBanner(status: ClientStatus): string | null {
     case 'connecting':
       return 'Connecting…';
     case 'waiting':
-      return 'Waiting for an opponent to join…';
+      return 'Your opponent left. Waiting for them to rejoin with the room code…';
     case 'disconnected':
       return `Disconnected: ${status.reason}`;
     case 'ready':

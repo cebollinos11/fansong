@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
-import type { Owner } from '@fansong/engine';
-import { parseServerMessage, type ServerMessage } from '@fansong/protocol';
-import { getPreset, type MatchSetup, type Warband } from '@fansong/content';
-import { RoomEngine, setupError, type RoomConnection } from '../src/room.js';
+import { parseServerMessage, type Lobby, type ServerMessage } from '@fansong/protocol';
+import { defaultKing, getPreset, type Warband } from '@fansong/content';
+import { lobbySetup, newRoomSnapshot, RoomEngine, setupError, type RoomConnection } from '../src/room.js';
 
 /** A fake socket that records the (parsed) server frames it was sent. */
 class FakeConn implements RoomConnection {
@@ -15,328 +14,314 @@ class FakeConn implements RoomConnection {
   last(): ServerMessage {
     return this.received[this.received.length - 1]!;
   }
-  typesSeen(): string[] {
-    return this.received.map((m) => m.t);
-  }
   clear(): void {
     this.received.length = 0;
   }
+  /** The latest lobby this connection was shown. */
+  lobby(): Lobby {
+    for (let i = this.received.length - 1; i >= 0; i--) {
+      const m = this.received[i]!;
+      if (m.t === 'lobby') return m.lobby;
+    }
+    throw new Error('no lobby received');
+  }
 }
 
-const PVP: MatchSetup = {
-  presets: ['iron-wardens', 'ashfang-raiders'],
-  seats: ['human', 'human'],
-  seed: 42,
-};
-const PVE: MatchSetup = {
-  presets: ['iron-wardens', 'ashfang-raiders'],
-  seats: ['human', 'ai'],
-  seed: 42,
-};
+function msg(room: RoomEngine, conn: FakeConn, body: object): void {
+  room.onMessage(conn, JSON.stringify(body));
+}
 
-function join(room: RoomEngine, conn: FakeConn, seat: Owner): void {
+function join(room: RoomEngine, conn: FakeConn): void {
   room.onConnect(conn);
-  room.onMessage(conn, JSON.stringify({ t: 'join', seat }));
+  msg(room, conn, { t: 'join' });
 }
 
 function send(room: RoomEngine, conn: FakeConn, command: unknown): void {
-  room.onMessage(conn, JSON.stringify({ t: 'command', command }));
+  msg(room, conn, { t: 'command', command });
 }
 
-describe('RoomEngine — joining', () => {
-  it('welcomes a joining seat with full state and presence', () => {
-    const room = new RoomEngine(PVP);
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-    const welcome = c0.last();
-    expect(welcome.t).toBe('welcome');
-    if (welcome.t !== 'welcome') throw new Error('unreachable');
-    expect(welcome.seat).toBe(0);
-    expect(welcome.presence).toEqual([true, false]);
-    expect(welcome.state.phase).toBe('awaitingActivation');
-  });
+function expectError(conn: FakeConn, code: string): void {
+  const m = conn.last();
+  expect(m.t === 'error' && m.code).toBe(code);
+}
 
-  it('rejects claiming an AI-controlled seat', () => {
-    const room = new RoomEngine(PVE);
-    const c = new FakeConn('c');
-    join(room, c, 1); // seat 1 is the AI
-    const msg = c.last();
-    expect(msg.t).toBe('error');
-    if (msg.t === 'error') expect(msg.code).toBe('not_your_seat');
-  });
+/** A room with host and guest seated and a started game (seed 7). */
+function startedRoom(): { room: RoomEngine; host: FakeConn; guest: FakeConn } {
+  const room = new RoomEngine(undefined, () => 7);
+  const host = new FakeConn('host');
+  const guest = new FakeConn('guest');
+  join(room, host);
+  join(room, guest);
+  msg(room, host, { t: 'ready', ready: true });
+  msg(room, guest, { t: 'ready', ready: true });
+  return { room, host, guest };
+}
 
-  it('rejects a second connection claiming a held seat', () => {
-    const room = new RoomEngine(PVP);
+/** Drive both seats with the heuristic AI until the game ends. */
+function playOut(room: RoomEngine, conns: [FakeConn, FakeConn]): void {
+  let guard = 0;
+  while (room.getState()!.phase !== 'gameOver') {
+    const state = room.getState()!;
+    send(room, conns[state.active], chooseCommand(state));
+    if (++guard > 5000) throw new Error('game did not terminate');
+  }
+}
+
+describe('RoomEngine — seats', () => {
+  it('seats the first joiner as host (0) and the second as guest (1), then refuses a third', () => {
+    const room = new RoomEngine();
     const a = new FakeConn('a');
     const b = new FakeConn('b');
-    join(room, a, 0);
-    join(room, b, 0);
-    const msg = b.last();
-    expect(msg.t).toBe('error');
-    if (msg.t === 'error') expect(msg.code).toBe('seat_taken');
+    const c = new FakeConn('c');
+    join(room, a);
+    expect(a.last()).toMatchObject({ t: 'lobby', seat: 0 });
+    expect(a.lobby().seats.map((s) => s.present)).toEqual([true, false]);
+    join(room, b);
+    expect(b.last()).toMatchObject({ t: 'lobby', seat: 1 });
+    // The host hears about the guest arriving.
+    expect(a.lobby().seats.map((s) => s.present)).toEqual([true, true]);
+    join(room, c);
+    expectError(c, 'room_full');
   });
 
-  it('frees a seat on disconnect and re-broadcasts presence', () => {
-    const room = new RoomEngine(PVP);
+  it('frees a seat on disconnect, so the player can come back with the code', () => {
+    const room = new RoomEngine();
     const a = new FakeConn('a');
     const b = new FakeConn('b');
-    join(room, a, 0);
-    join(room, b, 1);
-    expect(room.presence()).toEqual([true, true]);
-    room.onDisconnect(a);
-    expect(room.presence()).toEqual([false, true]);
-    // b was told about the presence change.
-    expect(b.last().t).toBe('presence');
-  });
-});
-
-describe('RoomEngine — authority', () => {
-  it('rejects a command from the seat that is not active', () => {
-    const room = new RoomEngine(PVP);
-    const c0 = new FakeConn('c0');
-    const c1 = new FakeConn('c1');
-    join(room, c0, 0);
-    join(room, c1, 1);
-    // Seat 0 leads round 1; seat 1 tries to act.
-    send(room, c1, { type: 'EndActivation' });
-    const msg = c1.last();
-    expect(msg.t).toBe('error');
-    if (msg.t === 'error') expect(msg.code).toBe('not_your_turn');
+    join(room, a);
+    join(room, b);
+    room.onDisconnect(b);
+    expect(a.lobby().seats[1].present).toBe(false);
+    const b2 = new FakeConn('b2');
+    join(room, b2);
+    expect(b2.last()).toMatchObject({ t: 'lobby', seat: 1 });
   });
 
-  it('rejects an illegal command from the active seat', () => {
-    const room = new RoomEngine(PVP);
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-    // EndActivation is illegal in awaitingActivation.
-    send(room, c0, { type: 'EndActivation' });
-    const msg = c0.last();
-    expect(msg.t).toBe('error');
-    if (msg.t === 'error') expect(msg.code).toBe('illegal_command');
-  });
-
-  it('rejects a command from a connection that has not joined', () => {
-    const room = new RoomEngine(PVP);
-    const c = new FakeConn('c');
-    room.onConnect(c); // connected but never joined
-    send(room, c, { type: 'EndActivation' });
-    const msg = c.last();
-    expect(msg.t).toBe('error');
-    if (msg.t === 'error') expect(msg.code).toBe('not_joined');
-  });
-
-  it('rejects a malformed frame', () => {
-    const room = new RoomEngine(PVP);
+  it('asks an unseated connection to join first, and rejects malformed frames', () => {
+    const room = new RoomEngine();
     const c = new FakeConn('c');
     room.onConnect(c);
+    msg(room, c, { t: 'ready', ready: true });
+    expectError(c, 'not_joined');
     room.onMessage(c, 'not json at all');
-    const msg = c.last();
-    expect(msg.t).toBe('error');
-    if (msg.t === 'error') expect(msg.code).toBe('bad_frame');
-  });
-
-  it('applies a legal command and broadcasts the delta to both seats', () => {
-    const room = new RoomEngine(PVP);
-    const c0 = new FakeConn('c0');
-    const c1 = new FakeConn('c1');
-    join(room, c0, 0);
-    join(room, c1, 1);
-    c0.clear();
-    c1.clear();
-
-    const command = chooseCommand(room.getState());
-    send(room, c0, command);
-
-    const d0 = c0.last();
-    const d1 = c1.last();
-    expect(d0.t).toBe('delta');
-    expect(d1.t).toBe('delta');
-    if (d0.t === 'delta') {
-      expect(d0.by).toBe(0);
-      expect(d0.command).toEqual(command);
-      expect(d0.state).toEqual(room.getState());
-    }
-  });
-
-  it('answers a resync with the current full state', () => {
-    const room = new RoomEngine(PVP);
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-    c0.clear();
-    room.onMessage(c0, JSON.stringify({ t: 'resync' }));
-    const msg = c0.last();
-    expect(msg.t).toBe('sync');
-    if (msg.t === 'sync') expect(msg.state).toEqual(room.getState());
+    expectError(c, 'bad_frame');
   });
 });
 
-describe('RoomEngine — AI seats (PvE)', () => {
-  it('plays the AI seat automatically and broadcasts its moves as deltas', () => {
-    const room = new RoomEngine(PVE);
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-    // Human leads round 1, so no AI move yet.
-    expect(c0.received.some((m) => m.t === 'delta' && m.by === 1)).toBe(false);
-
-    // Drive the human seat until it hands control over; the AI then takes its
-    // turn(s) unprompted (drained synchronously back to the human), which shows
-    // up as broadcast deltas tagged `by: 1`.
-    let guard = 0;
-    while (
-      !c0.received.some((m) => m.t === 'delta' && m.by === 1) &&
-      room.getState().phase !== 'gameOver'
-    ) {
-      expect(room.getState().active).toBe(0);
-      send(room, c0, chooseCommand(room.getState()));
-      if (++guard > 200) throw new Error('AI never took a turn');
-    }
-    expect(c0.received.some((m) => m.t === 'delta' && m.by === 1)).toBe(true);
-  });
-
-  it('plays a full PvE game to a decisive, valid finish through the room', () => {
-    const room = new RoomEngine(PVE);
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-
-    let guard = 0;
-    while (room.getState().phase !== 'gameOver') {
-      const state = room.getState();
-      expect(state.active).toBe(0); // control only ever returns to the human seat
-      send(room, c0, chooseCommand(state));
-      if (++guard > 5000) throw new Error('game did not terminate');
-    }
-    const final = room.getState();
-    expect(final.winner === 0 || final.winner === 1).toBe(true);
-    // No unit ever left the board or went negative — the room used the real engine.
-    for (const u of final.units) {
-      expect(u.pos.x).toBeGreaterThanOrEqual(0);
-      expect(u.pos.y).toBeGreaterThanOrEqual(0);
-    }
-  });
-});
-
-describe('RoomEngine — full PvP game via the wire seam', () => {
-  it('two AI-driven clients play a complete game, seeing an identical final state', () => {
-    const room = new RoomEngine(PVP);
-    const c0 = new FakeConn('c0');
-    const c1 = new FakeConn('c1');
-    join(room, c0, 0);
-    join(room, c1, 1);
-
-    const conns: [FakeConn, FakeConn] = [c0, c1];
-    let guard = 0;
-    while (room.getState().phase !== 'gameOver') {
-      const state = room.getState();
-      const conn = conns[state.active];
-      send(room, conn, chooseCommand(state));
-      if (++guard > 5000) throw new Error('game did not terminate');
-    }
-
-    const final = room.getState();
-    expect(final.phase).toBe('gameOver');
-    // Both clients' last delta carries the same final authoritative state.
-    const lastState = (c: FakeConn): unknown => {
-      for (let i = c.received.length - 1; i >= 0; i--) {
-        const m = c.received[i]!;
-        if (m.t === 'delta') return m.state;
-      }
-      return null;
-    };
-    expect(lastState(c0)).toEqual(final);
-    expect(lastState(c1)).toEqual(final);
-  });
-});
-
-describe('RoomEngine — map and mode', () => {
-  const KOTH: MatchSetup = { ...PVE, mapId: 'rolling-hills', mode: 'king-of-the-hill' };
-
-  it('setupError accepts playable setups and names the problem otherwise', () => {
-    expect(setupError(PVP)).toBeNull();
-    expect(setupError(KOTH)).toBeNull();
-    expect(setupError({ ...PVE, mode: 'kill-the-king', kings: [0, 1] })).toBeNull();
-    expect(setupError({ ...PVE, mapId: 'no-such-map' })).toMatch(/unknown map/);
-    expect(setupError({ ...PVE, presets: ['nope', 'ashfang-raiders'] })).toMatch(/unknown preset/);
-    // Old Forest carries flags, not a hill; and KotH needs a map at all.
-    expect(setupError({ ...PVE, mapId: 'old-forest', mode: 'king-of-the-hill' })).not.toBeNull();
-    expect(setupError({ ...PVE, mode: 'king-of-the-hill' })).not.toBeNull();
-    expect(setupError({ ...PVE, mode: 'kill-the-king', kings: [99, 0] })).not.toBeNull();
-  });
-
-  it('builds the room on the map in the mode and welcomes with that setup', () => {
-    const room = new RoomEngine(KOTH);
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-    const welcome = c0.received.find((m) => m.t === 'welcome');
-    if (welcome?.t !== 'welcome') throw new Error('no welcome');
-    expect(welcome.setup).toEqual(KOTH);
-    expect(welcome.state.mode?.mode).toBe('king-of-the-hill');
-    expect(welcome.state.mode?.objectives.hill).toBeDefined();
-    expect(Object.keys(welcome.state.board.terrain ?? {}).length).toBeGreaterThan(0);
-    expect(welcome.state).toEqual(room.getState());
-  });
-
-  it('plays a PvE king-of-the-hill game to a finish through the room', () => {
-    const room = new RoomEngine(KOTH);
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-    let guard = 0;
-    while (room.getState().phase !== 'gameOver') {
-      send(room, c0, chooseCommand(room.getState()));
-      if (++guard > 5000) throw new Error('game did not terminate');
-    }
-    const final = room.getState();
-    expect(final.winner === 0 || final.winner === 1).toBe(true);
-    expect(c0.received.some((m) => m.t === 'error')).toBe(false);
-  });
-});
-
-describe('RoomEngine — army-builder armies and pending pvp rooms', () => {
+describe('RoomEngine — lobby', () => {
   const HORDE: Warband = {
     name: 'Horde',
     units: Array.from({ length: 9 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, move: 5, look: 'Marauder' })),
   };
-  const CUSTOM: MatchSetup = { ...PVP, presets: ['custom', 'iron-wardens'], warbands: [HORDE, getPreset('iron-wardens')!] };
 
-  it('builds a match from explicit warbands, with no point limit, carrying looks', () => {
-    expect(setupError(CUSTOM)).toBeNull();
-    const units = new RoomEngine(CUSTOM).getState().units.filter((u) => u.owner === 0);
-    expect(units).toHaveLength(9);
-    expect(units[0]).toMatchObject({ name: 'Grunt 0', combat: 6, look: 'Marauder' });
-    expect(setupError({ ...CUSTOM, warbands: [{ ...HORDE, units: [] }, HORDE] })).toMatch(/too few units/);
-    expect(setupError({ ...CUSTOM, warbands: [{ ...HORDE, units: [{ ...HORDE.units[0]!, combat: 9 }] }, HORDE] })).toMatch(
-      /combat 9/,
-    );
+  it('starts with default armies, the default map and annihilation, with no problem', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    join(room, a);
+    const lobby = a.lobby();
+    expect(lobby).toMatchObject({ mapId: 'open-field', mode: 'annihilation', problem: null });
+    expect(lobby.seats[0]).toMatchObject({ preset: 'iron-wardens', ready: false });
+    expect(lobby.seats[1]).toMatchObject({ preset: 'ashfang-raiders', ready: false });
   });
 
-  it('holds commands while pending, then re-welcomes the host with the finalised setup', () => {
-    const room = new RoomEngine(PVP, undefined, { pending: true });
-    const c0 = new FakeConn('c0');
-    join(room, c0, 0);
-    send(room, c0, chooseCommand(room.getState()));
-    const err = c0.last();
-    expect(err.t === 'error' && err.code).toBe('waiting_for_opponent');
-
-    c0.clear();
-    expect(room.finalize(CUSTOM)).toBe(true);
-    const welcome = c0.last();
-    if (welcome.t !== 'welcome') throw new Error('no welcome');
-    expect(welcome.setup).toEqual(CUSTOM);
-    expect(welcome.state.units.filter((u) => u.owner === 0)).toHaveLength(9);
-    expect(room.setup).toEqual(CUSTOM);
-
-    // Once final, play proceeds and the room can't be re-finalised.
-    expect(room.finalize(PVP)).toBe(false);
-    const c1 = new FakeConn('c1');
-    join(room, c1, 1);
-    const before = room.getState();
-    const conn = before.active === 0 ? c0 : c1;
-    send(room, conn, chooseCommand(before));
-    expect(conn.last().t).toBe('delta');
+  it('lets each player bring their own army, broadcast to both', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    msg(room, b, { t: 'setArmy', preset: 'custom', warband: HORDE, king: 3 });
+    expect(a.lobby().seats[1]).toMatchObject({ preset: 'custom', warband: HORDE, king: 3 });
+    expect(a.lobby().seats[0].preset).toBe('iron-wardens'); // the host's own pick is untouched
   });
 
-  it('refuses to finalise with a setup that cannot start', () => {
-    const room = new RoomEngine(PVP, undefined, { pending: true });
-    expect(room.finalize({ ...PVP, presets: ['nope', 'nope'] })).toBe(false);
-    expect(room.isPending()).toBe(true);
+  it('only lets the host pick the map and mode, and only built-in maps', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    msg(room, b, { t: 'setMap', mapId: 'old-forest', mode: 'capture-the-flag' });
+    expectError(b, 'not_host');
+    msg(room, a, { t: 'setMap', mapId: 'custom-mine', mode: 'annihilation' });
+    expectError(a, 'unknown_map');
+    msg(room, a, { t: 'setMap', mapId: 'old-forest', mode: 'capture-the-flag' });
+    expect(b.lobby()).toMatchObject({ mapId: 'old-forest', mode: 'capture-the-flag', problem: null });
+  });
+
+  it('reports picks that cannot start a match, and does not start on them', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    msg(room, a, { t: 'setMap', mapId: 'old-forest', mode: 'king-of-the-hill' });
+    expect(a.lobby().problem).not.toBeNull();
+    msg(room, a, { t: 'ready', ready: true });
+    msg(room, b, { t: 'ready', ready: true });
+    expect(room.getState()).toBeNull();
+    expect(b.last().t).toBe('lobby');
+  });
+
+  it('clears both ready flags when any pick changes', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    msg(room, a, { t: 'ready', ready: true });
+    expect(b.lobby().seats[0].ready).toBe(true);
+    msg(room, b, { t: 'setArmy', preset: 'custom', warband: HORDE, king: 0 });
+    expect(b.lobby().seats.map((s) => s.ready)).toEqual([false, false]);
+  });
+
+  it('does not start with only one player, however ready', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    join(room, a);
+    msg(room, a, { t: 'ready', ready: true });
+    expect(room.getState()).toBeNull();
+  });
+
+  it('starts once both are ready, welcoming each seat with the shared setup', () => {
+    const { room, host, guest } = startedRoom();
+    const w0 = host.last();
+    const w1 = guest.last();
+    if (w0.t !== 'welcome' || w1.t !== 'welcome') throw new Error('expected welcomes');
+    expect(w0.seat).toBe(0);
+    expect(w1.seat).toBe(1);
+    expect(w0.setup).toEqual(w1.setup);
+    expect(w0.setup).toEqual({
+      presets: ['iron-wardens', 'ashfang-raiders'],
+      warbands: [getPreset('iron-wardens'), getPreset('ashfang-raiders')],
+      seats: ['human', 'human'],
+      seed: 7,
+    });
+    expect(w0.presence).toEqual([true, true]);
+    expect(w0.state).toEqual(room.getState());
+  });
+
+  it('builds the chosen map, mode, armies and Kings into the game', () => {
+    const room = new RoomEngine(undefined, () => 3);
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    msg(room, a, { t: 'setMap', mapId: 'open-field', mode: 'kill-the-king' });
+    msg(room, b, { t: 'setArmy', preset: 'custom', warband: HORDE, king: 4 });
+    msg(room, a, { t: 'ready', ready: true });
+    msg(room, b, { t: 'ready', ready: true });
+    expect(room.setup).toMatchObject({ mode: 'kill-the-king', kings: [defaultKing(getPreset('iron-wardens')!.units), 4] });
+    const state = room.getState()!;
+    const guestUnits = state.units.filter((u) => u.owner === 1);
+    expect(guestUnits).toHaveLength(9);
+    expect(state.mode?.kings?.[1]).toBe(guestUnits[4]!.id);
+  });
+
+  it('refuses lobby changes during a game', () => {
+    const { room, host } = startedRoom();
+    msg(room, host, { t: 'setMap', mapId: 'old-forest', mode: 'annihilation' });
+    expectError(host, 'not_in_lobby');
+    expect(room.setup?.mapId).toBeUndefined();
+  });
+});
+
+describe('RoomEngine — game', () => {
+  it('rejects commands before a game starts', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    join(room, a);
+    send(room, a, { type: 'EndActivation' });
+    expectError(a, 'no_game');
+  });
+
+  it('rejects a command from the seat that is not active, and an illegal one', () => {
+    const { room, host, guest } = startedRoom();
+    const [active, idle] = room.getState()!.active === 0 ? [host, guest] : [guest, host];
+    send(room, idle, chooseCommand(room.getState()!));
+    expectError(idle, 'not_your_turn');
+    send(room, active, { type: 'EndActivation' }); // illegal in awaitingActivation
+    expectError(active, 'illegal_command');
+  });
+
+  it('applies a legal command and broadcasts the delta to both seats', () => {
+    const { room, host, guest } = startedRoom();
+    host.clear();
+    guest.clear();
+    const state = room.getState()!;
+    const command = chooseCommand(state);
+    send(room, state.active === 0 ? host : guest, command);
+    for (const c of [host, guest]) {
+      const d = c.last();
+      if (d.t !== 'delta') throw new Error('expected a delta');
+      expect(d.by).toBe(state.active);
+      expect(d.command).toEqual(command);
+      expect(d.state).toEqual(room.getState());
+    }
+  });
+
+  it('re-welcomes a player who reconnects mid-game, and tells the other', () => {
+    const { room, host, guest } = startedRoom();
+    room.onDisconnect(guest);
+    expect(host.last()).toEqual({ t: 'presence', presence: [true, false] });
+    const back = new FakeConn('back');
+    join(room, back);
+    expect(back.last()).toMatchObject({ t: 'welcome', seat: 1, state: room.getState() });
+    expect(host.last()).toEqual({ t: 'presence', presence: [true, true] });
+  });
+
+  it('answers a resync with the game state, or the lobby between games', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    join(room, a);
+    a.clear();
+    msg(room, a, { t: 'resync' });
+    expect(a.last().t).toBe('lobby');
+    const started = startedRoom();
+    msg(started.room, started.host, { t: 'resync' });
+    expect(started.host.last()).toEqual({ t: 'sync', state: started.room.getState() });
+  });
+
+  it('plays a full game to a decisive finish with both clients seeing the same end', () => {
+    const { room, host, guest } = startedRoom();
+    playOut(room, [host, guest]);
+    const final = room.getState()!;
+    expect(final.winner === 0 || final.winner === 1).toBe(true);
+    for (const c of [host, guest]) {
+      const d = c.last();
+      expect(d.t === 'delta' && d.state).toEqual(final);
+    }
+    expect(host.received.some((m) => m.t === 'error')).toBe(false);
+    expect(guest.received.some((m) => m.t === 'error')).toBe(false);
+  });
+
+  it('only allows a rematch after the game, returning both to the lobby with picks kept', () => {
+    const { room, host, guest } = startedRoom();
+    msg(room, host, { t: 'rematch' });
+    expectError(host, 'game_not_over');
+    playOut(room, [host, guest]);
+    msg(room, guest, { t: 'rematch' });
+    expect(room.getState()).toBeNull();
+    for (const c of [host, guest]) {
+      expect(c.last().t).toBe('lobby');
+      expect(c.lobby().seats.map((s) => s.ready)).toEqual([false, false]);
+      expect(c.lobby().seats[0].preset).toBe('iron-wardens');
+    }
+  });
+});
+
+describe('RoomEngine — persistence', () => {
+  it('resumes a lobby and a game from its snapshot', () => {
+    const { room } = startedRoom();
+    const resumed = new RoomEngine(structuredClone(room.snapshot()));
+    const c = new FakeConn('c');
+    join(resumed, c);
+    expect(c.last()).toMatchObject({ t: 'welcome', seat: 0, state: room.getState() });
+  });
+
+  it('lobbySetup and setupError agree with the default room', () => {
+    const setup = lobbySetup(newRoomSnapshot(), 1);
+    expect(setupError(setup)).toBeNull();
+    expect(setupError({ ...setup, mapId: 'no-such-map' })).toMatch(/unknown map/);
   });
 });

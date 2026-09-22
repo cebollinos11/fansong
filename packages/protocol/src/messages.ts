@@ -15,63 +15,72 @@ import {
  * tagged by `t`. Everything crossing the boundary is one of these; the room
  * parses inbound frames with {@link parseClientMessage} and never trusts a raw
  * payload.
+ *
+ * A room is joined by its short code. It starts in a *lobby*: the host (seat 0)
+ * picks the map and game mode, each player picks their own army (and King), and
+ * the match starts once both are ready. After a finished game either player can
+ * call a rematch, which returns the room to its lobby.
  */
 
 // --- Client -> Server -----------------------------------------------------
 
-/** Claim a seat on (re)connect. The seat is assigned by matchmaking; the client
- *  echoes it so the room can bind this socket to a player (and reject spoofs of
- *  a seat already held by another live socket). */
-export const joinMessageSchema = z
-  .object({ t: z.literal('join'), seat: ownerSchema })
+/** Take a seat on connect. The room hands out the first free one (host first). */
+export const joinMessageSchema = z.object({ t: z.literal('join') }).strict();
+
+/** Lobby: bring this army (and King) to your own seat. `preset` labels it: a
+ *  preset id, or `custom` for an army-builder roster. */
+export const setArmyMessageSchema = z
+  .object({
+    t: z.literal('setArmy'),
+    preset: z.string().min(1).max(64),
+    warband: warbandSchema,
+    king: z.number().int().min(0),
+  })
   .strict();
+
+/** Lobby, host only: pick the built-in map and the game mode. */
+export const setMapMessageSchema = z
+  .object({ t: z.literal('setMap'), mapId: z.string().min(1).max(64), mode: gameModeSchema })
+  .strict();
+
+/** Lobby: toggle ready. The match starts once both seats are ready. */
+export const readyMessageSchema = z.object({ t: z.literal('ready'), ready: z.boolean() }).strict();
 
 /** Submit an intent. The room validates legality and authority before applying. */
 export const commandMessageSchema = z
   .object({ t: z.literal('command'), command: commandSchema })
   .strict();
 
-/** Ask for a fresh full-state snapshot (e.g. after a reconnect or a dropped frame). */
+/** After a finished game: return the room to its lobby for another one. */
+export const rematchMessageSchema = z.object({ t: z.literal('rematch') }).strict();
+
+/** Ask for a fresh snapshot (the game state, or the lobby between games). */
 export const resyncMessageSchema = z.object({ t: z.literal('resync') }).strict();
 
 export const clientMessageSchema = z.discriminatedUnion('t', [
   joinMessageSchema,
+  setArmyMessageSchema,
+  setMapMessageSchema,
+  readyMessageSchema,
   commandMessageSchema,
+  rematchMessageSchema,
   resyncMessageSchema,
 ]);
 
 export type JoinMessage = z.infer<typeof joinMessageSchema>;
+export type SetArmyMessage = z.infer<typeof setArmyMessageSchema>;
+export type SetMapMessage = z.infer<typeof setMapMessageSchema>;
+export type ReadyMessage = z.infer<typeof readyMessageSchema>;
 export type CommandMessage = z.infer<typeof commandMessageSchema>;
+export type RematchMessage = z.infer<typeof rematchMessageSchema>;
 export type ResyncMessage = z.infer<typeof resyncMessageSchema>;
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
-// --- Matchmaking (HTTP, client -> worker) -----------------------------------
+// --- Room creation (HTTP, client -> worker) ----------------------------------
 
-/**
- * Body of `POST /api/matchmake`. `mode` is the *queue* (pve = vs the in-room AI,
- * pvp = host or join a human); the match itself is described by `presets` (or
- * explicit army-builder `warbands`, which override them), `seed` and the
- * optional map / game mode / King picks, which the worker copies into the room's
- * `MatchSetup` (only when present, so default setups stay byte-identical).
- * `mapId` must name a built-in map — the worker cannot see a browser's custom
- * maps. A pvp request only pairs with a host queued for the same map and game
- * mode. In pvp each player brings their own army as side 0 (with its King as
- * `kings[0]`): the host's side 1 is only a stand-in until an opponent joins,
- * whose own army then takes seat 1; the host's seed is kept.
- */
-export const matchmakeRequestSchema = z
-  .object({
-    mode: z.enum(['pve', 'pvp']),
-    presets: z.tuple([z.string().min(1).max(64), z.string().min(1).max(64)]),
-    warbands: z.tuple([warbandSchema, warbandSchema]).optional(),
-    seed: z.number().int(),
-    mapId: z.string().min(1).max(64).optional(),
-    gameMode: gameModeSchema.optional(),
-    kings: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
-  })
-  .strict();
-
-export type MatchmakeRequestBody = z.infer<typeof matchmakeRequestSchema>;
+/** Reply to `POST /api/rooms`: the new room's join code. */
+export const createRoomResponseSchema = z.object({ code: z.string() }).strict();
+export type CreateRoomResponse = z.infer<typeof createRoomResponseSchema>;
 
 // --- Server -> Client -----------------------------------------------------
 
@@ -80,7 +89,37 @@ export type MatchmakeRequestBody = z.infer<typeof matchmakeRequestSchema>;
 export const seatPresenceSchema = z.tuple([z.boolean(), z.boolean()]);
 export type SeatPresence = z.infer<typeof seatPresenceSchema>;
 
-/** First message after a successful join: your seat, the match config, the full
+/** One seat in the lobby: whether someone holds it, their army pick, and ready. */
+export const lobbySeatSchema = z
+  .object({
+    present: z.boolean(),
+    preset: z.string(),
+    warband: warbandSchema,
+    king: z.number().int().min(0),
+    ready: z.boolean(),
+  })
+  .strict();
+
+/** The room between games. `problem` says why these picks can't start a match
+ *  (e.g. an army too big for the map's deploy zone), or is null. */
+export const lobbySchema = z
+  .object({
+    mapId: z.string(),
+    mode: gameModeSchema,
+    seats: z.tuple([lobbySeatSchema, lobbySeatSchema]),
+    problem: z.string().nullable(),
+  })
+  .strict();
+
+export type LobbySeat = z.infer<typeof lobbySeatSchema>;
+export type Lobby = z.infer<typeof lobbySchema>;
+
+/** The lobby, re-sent to everyone on every change while no game is running. */
+export const lobbyMessageSchema = z
+  .object({ t: z.literal('lobby'), seat: ownerSchema, lobby: lobbySchema })
+  .strict();
+
+/** A game started (or you rejoined one): your seat, the match config, the full
  *  current state, and who else is present. */
 export const welcomeMessageSchema = z
   .object({
@@ -114,12 +153,14 @@ export const presenceMessageSchema = z
   .object({ t: z.literal('presence'), presence: seatPresenceSchema })
   .strict();
 
-/** A rejected message: bad frame, wrong seat, illegal move, not your turn. */
+/** A rejected message: bad frame, wrong seat, illegal move, not your turn — or
+ *  a fatal one (no such room, room full) after which the room closes the socket. */
 export const errorMessageSchema = z
   .object({ t: z.literal('error'), code: z.string(), message: z.string() })
   .strict();
 
 export const serverMessageSchema = z.discriminatedUnion('t', [
+  lobbyMessageSchema,
   welcomeMessageSchema,
   deltaMessageSchema,
   syncMessageSchema,
@@ -127,6 +168,7 @@ export const serverMessageSchema = z.discriminatedUnion('t', [
   errorMessageSchema,
 ]);
 
+export type LobbyMessage = z.infer<typeof lobbyMessageSchema>;
 export type WelcomeMessage = z.infer<typeof welcomeMessageSchema>;
 export type DeltaMessage = z.infer<typeof deltaMessageSchema>;
 export type SyncMessage = z.infer<typeof syncMessageSchema>;
@@ -137,13 +179,17 @@ export type ServerMessage = z.infer<typeof serverMessageSchema>;
 /** Stable error codes so clients can branch without string-matching prose. */
 export const ErrorCode = {
   BadFrame: 'bad_frame',
+  NoSuchRoom: 'no_such_room',
+  RoomFull: 'room_full',
   NotJoined: 'not_joined',
-  SeatTaken: 'seat_taken',
-  NotYourSeat: 'not_your_seat',
+  NotHost: 'not_host',
+  UnknownMap: 'unknown_map',
+  NotInLobby: 'not_in_lobby',
+  NoGame: 'no_game',
   NotYourTurn: 'not_your_turn',
   IllegalCommand: 'illegal_command',
   GameOver: 'game_over',
-  WaitingForOpponent: 'waiting_for_opponent',
+  GameNotOver: 'game_not_over',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

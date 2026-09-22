@@ -1,25 +1,26 @@
-import type { GameState } from '@fansong/engine';
-import { gameStateSchema, matchSetupSchema } from '@fansong/protocol';
-import type { MatchSetup } from '@fansong/content';
-import { RoomEngine, setupError, type RoomConnection } from '../room.js';
+import { encode, ErrorCode } from '@fansong/protocol';
+import { newRoomSnapshot, RoomEngine, type RoomConnection, type RoomSnapshot } from '../room.js';
 import type { Env } from '../env.js';
 
+/** How long an empty room is kept before its storage is wiped. */
+const IDLE_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Durable Object for one game room. It is a thin transport adapter: it owns a
- * single {@link RoomEngine} (all the game logic and authority) and only shuttles
- * bytes between WebSockets and that engine. The DO is created empty and seeded
- * via an internal `POST …/init` from the matchmaker. A pvp host's room is seeded
- * `pending` (seat 1 is a stand-in army); a second init with `final: true` swaps
- * in the joiner's army once one is matched, fixing the setup both players share.
+ * Durable Object for one game room, addressed by its join code. It is a thin
+ * transport adapter: it owns a single {@link RoomEngine} (all the lobby and game
+ * logic) and only shuttles bytes between WebSockets and that engine. The room
+ * only exists once the worker has `POST …/create`d it; a socket to any other
+ * code is told there is no such room and closed.
  *
- * State is kept in memory in the live DO and mirrored to storage after every
- * applied frame, so a cold restart resumes the same authoritative `GameState`.
+ * The room is kept in memory in the live DO and mirrored to storage after every
+ * frame, so a cold restart resumes the same lobby or game. Once nobody has been
+ * connected for a day, an alarm deletes it.
  */
 export class GameRoomDO implements DurableObject {
   private engine: RoomEngine | null = null;
   private nextConnId = 0;
-  /** Live connections, so message/close events can find their RoomConnection. */
-  private readonly conns = new Map<WebSocket, RoomConnection>();
+  /** Live sockets, so the idle alarm knows whether anyone is still here. */
+  private readonly sockets = new Set<WebSocket>();
 
   constructor(
     private readonly state: DurableObjectState,
@@ -28,8 +29,8 @@ export class GameRoomDO implements DurableObject {
 
   async fetch(req: Request): Promise<Response> {
     const url = new URL(req.url);
-    if (req.method === 'POST' && url.pathname.endsWith('/init')) {
-      return this.handleInit(req);
+    if (req.method === 'POST' && url.pathname.endsWith('/create')) {
+      return this.handleCreate();
     }
     if (req.headers.get('Upgrade') !== 'websocket') {
       return new Response('expected a WebSocket upgrade', { status: 426 });
@@ -37,61 +38,55 @@ export class GameRoomDO implements DurableObject {
     return this.handleUpgrade();
   }
 
-  // --- seeding --------------------------------------------------------------
+  async alarm(): Promise<void> {
+    if (this.sockets.size > 0) {
+      await this.state.storage.setAlarm(Date.now() + IDLE_MS);
+      return;
+    }
+    this.engine = null;
+    await this.state.storage.deleteAll();
+  }
 
-  private async handleInit(req: Request): Promise<Response> {
-    const body = (await req.json().catch(() => null)) as
-      | { setup?: unknown; pending?: boolean; final?: boolean }
-      | null;
-    const parsed = matchSetupSchema.safeParse(body?.setup);
-    if (!parsed.success) {
-      return new Response('invalid setup', { status: 400 });
-    }
-    const problem = setupError(parsed.data);
-    if (problem) return new Response(`invalid setup: ${problem}`, { status: 400 });
-    if (body?.final) {
-      const engine = await this.ensureEngine();
-      if (!engine || !engine.finalize(parsed.data)) return new Response('room is not awaiting an opponent', { status: 409 });
-      await this.state.storage.put({ setup: engine.setup, pending: false });
-      await this.persist();
-      return new Response('ok');
-    }
-    // Idempotent: only the first init seeds the room.
-    const existing = await this.state.storage.get<MatchSetup>('setup');
-    if (!existing) {
-      const pending = body?.pending === true;
-      await this.state.storage.put({ setup: parsed.data, pending });
-      this.engine = new RoomEngine(parsed.data, undefined, { pending });
-      await this.persist();
-    }
-    return new Response('ok');
+  // --- creation -------------------------------------------------------------
+
+  /** Open a fresh room under this code; 409 if the code is already taken. */
+  private async handleCreate(): Promise<Response> {
+    if (await this.ensureEngine()) return new Response('room exists', { status: 409 });
+    const snapshot = newRoomSnapshot();
+    await this.state.storage.put('room', snapshot);
+    this.engine = new RoomEngine(snapshot);
+    await this.state.storage.setAlarm(Date.now() + IDLE_MS);
+    return new Response('created', { status: 201 });
   }
 
   private async ensureEngine(): Promise<RoomEngine | null> {
     if (this.engine) return this.engine;
-    const setup = await this.state.storage.get<MatchSetup>('setup');
-    if (!setup) return null;
-    const stored = await this.state.storage.get<unknown>('state');
-    const resumed = stored ? (gameStateSchema.parse(stored) as GameState) : undefined;
-    const pending = (await this.state.storage.get<boolean>('pending')) ?? false;
-    this.engine = new RoomEngine(setup, resumed, { pending });
+    const snapshot = await this.state.storage.get<RoomSnapshot>('room');
+    if (!snapshot) return null;
+    this.engine = new RoomEngine(snapshot);
     return this.engine;
   }
 
   private async persist(): Promise<void> {
-    if (this.engine) await this.state.storage.put('state', this.engine.getState());
+    if (this.engine) await this.state.storage.put('room', this.engine.snapshot());
   }
 
   // --- websockets -----------------------------------------------------------
 
   private async handleUpgrade(): Promise<Response> {
     const engine = await this.ensureEngine();
-    if (!engine) return new Response('room not initialised', { status: 409 });
 
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
     server.accept();
+
+    if (!engine) {
+      // Say why before closing, so the client can tell "wrong code" from a network error.
+      server.send(encode({ t: 'error', code: ErrorCode.NoSuchRoom, message: 'no room with that code' }));
+      server.close(1000, 'no such room');
+      return new Response(null, { status: 101, webSocket: client });
+    }
 
     const conn: RoomConnection = {
       id: `c${this.nextConnId++}`,
@@ -103,7 +98,7 @@ export class GameRoomDO implements DurableObject {
         }
       },
     };
-    this.conns.set(server, conn);
+    this.sockets.add(server);
     engine.onConnect(conn);
 
     server.addEventListener('message', (event: MessageEvent) => {
@@ -112,9 +107,10 @@ export class GameRoomDO implements DurableObject {
       void this.persist();
     });
     const drop = (): void => {
+      if (!this.sockets.delete(server)) return;
       engine.onDisconnect(conn);
-      this.conns.delete(server);
       void this.persist();
+      if (this.sockets.size === 0) void this.state.storage.setAlarm(Date.now() + IDLE_MS);
     };
     server.addEventListener('close', drop);
     server.addEventListener('error', drop);

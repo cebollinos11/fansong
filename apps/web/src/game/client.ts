@@ -8,7 +8,7 @@ import { MatchController, type Transition } from './controller.js';
 /** Connection/readiness state, surfaced to the HUD. Local play is always ready. */
 export type ClientStatus =
   | { phase: 'connecting' }
-  | { phase: 'waiting' } // online: matched a room, waiting for the opponent to arrive
+  | { phase: 'waiting' } // online: the opponent dropped out of the game, waiting for them to rejoin
   | { phase: 'ready'; presence: SeatPresence | null }
   | { phase: 'disconnected'; reason: string };
 

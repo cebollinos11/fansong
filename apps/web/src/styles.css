@@ -158,6 +158,75 @@ fieldset label {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- Online: create/join a room, and the room lobby --------------------- */
+.online-panel {
+  margin: 18px 0;
+  display: grid;
+  gap: 12px;
+}
+
+.join-row {
+  display: flex;
+  gap: 8px;
+}
+
+.join-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 18px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.join-row button.secondary {
+  width: auto;
+  margin: 0;
+  padding: 0 18px;
+}
+
+.room-code {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 18px 0;
+  padding: 16px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.room-code-label {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.room-code-value {
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  user-select: all;
+}
+
+.room-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.lobby-status {
+  color: var(--muted);
+  margin: 18px 0 8px;
+}
+
 .seed-row {
   display: inline-flex;
   align-items: center;

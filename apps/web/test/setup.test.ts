@@ -1,6 +1,6 @@
 import { configFromSetup, DEFAULT_MAP_ID, getMap, getPreset, listMaps, supportedModes, type Warband } from '@fansong/content';
 import { describe, expect, it } from 'vitest';
-import { effectiveMapId, launchFor, launchProblem, modeFor } from '../src/ui/SetupScreen.js';
+import { launchFor, launchProblem, modeFor } from '../src/ui/SetupScreen.js';
 import { armyChoice, type SavedArmy } from '../src/game/armies.js';
 
 describe('launchFor', () => {
@@ -24,11 +24,6 @@ describe('launchFor', () => {
     expect(configFromSetup(launch.setup).board.terrain).toBeDefined();
   });
 
-  it('online launches carry a built-in map, but not the default or a custom one', () => {
-    expect(launchFor('online', presets, 7, 'old-forest')).toEqual({ kind: 'online', presets, seed: 7, mapId: 'old-forest' });
-    expect(launchFor('online', presets, 7)).toEqual({ kind: 'online', presets, seed: 7 });
-    expect(launchFor('online', presets, 7, 'custom-my-map')).toEqual({ kind: 'online', presets, seed: 7 });
-  });
 });
 
 describe('launchFor game modes', () => {
@@ -55,31 +50,9 @@ describe('launchFor game modes', () => {
     expect(config.warbands[1]!.findIndex((u) => u.king)).toBe(1);
   });
 
-  it('carries mode and Kings online as gameMode/kings', () => {
-    expect(launchFor('online', presets, 7, 'old-forest', { mode: 'capture-the-flag' })).toEqual({
-      kind: 'online',
-      presets,
-      seed: 7,
-      mapId: 'old-forest',
-      gameMode: 'capture-the-flag',
-    });
-    expect(launchFor('online', presets, 7, DEFAULT_MAP_ID, { mode: 'kill-the-king', kings: [0, 3] })).toEqual({
-      kind: 'online',
-      presets,
-      seed: 7,
-      gameMode: 'kill-the-king',
-      kings: [0, 3],
-    });
-  });
 });
 
 describe('mode filtering', () => {
-  it('online play falls back to the default map for custom maps', () => {
-    expect(effectiveMapId('online', 'custom-my-map')).toBe(DEFAULT_MAP_ID);
-    expect(effectiveMapId('online', 'old-forest')).toBe('old-forest');
-    expect(effectiveMapId('vsAI', 'custom-my-map')).toBe('custom-my-map');
-  });
-
   it('keeps a supported mode and falls back to annihilation otherwise', () => {
     const open = getMap(DEFAULT_MAP_ID)!;
     expect(modeFor(open, 'kill-the-king')).toBe('kill-the-king');
@@ -110,12 +83,6 @@ describe('launchFor with saved armies', () => {
     if (launch.kind !== 'local') throw new Error('expected local');
     // Far over the preset budget, but armies have no point limit.
     expect(configFromSetup(launch.setup).warbands[0]).toHaveLength(12);
-    expect(launchProblem(launch, getMap)).toBeNull();
-  });
-
-  it('online launches carry the rosters too', () => {
-    const launch = launchFor('online', [armyChoice('a1'), armyChoice('a1')], 7, DEFAULT_MAP_ID, undefined, armies);
-    expect(launch).toEqual({ kind: 'online', presets: ['custom', 'custom'], warbands: [horde, horde], seed: 7 });
     expect(launchProblem(launch, getMap)).toBeNull();
   });
 

@@ -60,7 +60,7 @@ fansong/
 │  └─ protocol/   # shared wire types (zod) for client <-> Durable Object messages
 ├─ apps/
 │  ├─ web/        # Vite + React shell + three.js board (thin view over engine)
-│  └─ worker/     # Cloudflare Worker + Durable Objects (matchmaking + game rooms)
+│  └─ worker/     # Cloudflare Worker + Durable Objects (game rooms joined by code)
 ├─ tools/
 │  └─ cli/        # headless "play a game" runner — the AI-plays-itself harness
 └─ pnpm-workspace.yaml
@@ -178,10 +178,11 @@ no rules — remove three.js and the game still runs in the CLI.
    subscribes to engine events to animate and translates clicks into `Command`s
    validated against `getLegalCommands`; army setup reuses `packages/content`
    and the AI opponent reuses `chooseCommand`. No game rules live in the UI.
-5. **M4 — Online:** ✅ Worker + Durable Objects, WebSocket sync, matchmaking.
+5. **M4 — Online:** ✅ Worker + Durable Objects, WebSocket sync, rooms joined
+   by a short code with an in-room lobby (armies, map and mode picked once both
+   players are in; matchmaking was dropped as overkill for a fan project).
    A zod wire protocol (`packages/protocol`) is the trust boundary; a
-   transport-agnostic `RoomEngine` and pure `Matchmaker` (`apps/worker`) hold
-   all authority and are covered headlessly, with thin Durable Object + Worker
+   transport-agnostic `RoomEngine` (`apps/worker`) holds all authority and are covered headlessly, with thin Durable Object + Worker
    adapters and a `wrangler.toml` over them. The web app plays local *or* online
    through one `MatchClient` seam. `wrangler deploy` ships it to Cloudflare.
 6. **M5 — Polish:** ✅ more special abilities, morale depth, a replay viewer, and

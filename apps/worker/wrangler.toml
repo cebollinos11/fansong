@@ -2,20 +2,21 @@ name = "fansong"
 main = "src/index.ts"
 compatibility_date = "2024-11-01"
 
-# The authoritative game rooms and the global matchmaker are Durable Objects.
+# The authoritative game rooms are Durable Objects, one per join code.
 [[durable_objects.bindings]]
 name = "GAME_ROOM"
 class_name = "GameRoomDO"
-
-[[durable_objects.bindings]]
-name = "MATCHMAKER"
-class_name = "MatchmakerDO"
 
 # Durable Objects must be declared in a migration before first deploy.
 # SQLite-backed classes are required on the Workers free plan.
 [[migrations]]
 tag = "v1"
 new_sqlite_classes =["GameRoomDO", "MatchmakerDO"]
+
+# Rooms are joined by code now; the global matchmaker is gone.
+[[migrations]]
+tag = "v2"
+deleted_classes = ["MatchmakerDO"]
 
 [observability]
 enabled = true

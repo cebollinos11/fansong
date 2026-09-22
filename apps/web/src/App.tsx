@@ -1,14 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Replay } from '@fansong/engine';
 import { GameScreen } from './ui/GameScreen.js';
 import { SetupScreen } from './ui/SetupScreen.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { EditorScreen } from './ui/EditorScreen.js';
 import { ArmyBuilderScreen } from './ui/ArmyBuilderScreen.js';
-import { DEFAULT_SETUP } from '@fansong/content';
+import { LobbyScreen } from './ui/LobbyScreen.js';
+import { DEFAULT_SETUP, type MatchSetup } from '@fansong/content';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
-import { connectOnline } from './net/server.js';
+import type { OnlineRoom, RoomView } from './game/OnlineRoom.js';
+import { createRoom, joinRoom, takeRoomFromUrl } from './net/server.js';
 import { browserStorage, customMapLookup } from './game/customMaps.js';
 
 /** Which screen the app is showing. A match is keyed so a new one remounts cleanly. */
@@ -20,7 +22,10 @@ type View =
   | { kind: 'replay'; id: number; replay: Replay };
 
 export function App(): JSX.Element {
-  const [view, setView] = useState<View>({ kind: 'setup' });
+  const [view, setView] = useState<View>(() => {
+    const launch = inviteLaunch();
+    return launch ? { kind: 'match', id: Date.now(), launch } : { kind: 'setup' };
+  });
 
   if (view.kind === 'setup') {
     return (
@@ -46,64 +51,73 @@ export function App(): JSX.Element {
     return <ReplayScreen key={view.id} replay={view.replay} onExit={() => setView({ kind: 'setup' })} />;
   }
 
-  return (
-    <MatchHost
-      key={view.id}
-      launch={view.launch}
-      onExit={() => setView({ kind: 'setup' })}
-      onWatchReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
-    />
+  const exit = () => setView({ kind: 'setup' });
+  const watch = (replay: Replay) => setView({ kind: 'replay', id: Date.now(), replay });
+  return view.launch.kind === 'local' ? (
+    <MatchHost key={view.id} setup={view.launch.setup} onExit={exit} onWatchReplay={watch} />
+  ) : (
+    <RoomHost key={view.id} launch={view.launch} onExit={exit} onWatchReplay={watch} />
   );
 }
 
-/**
- * Builds the right {@link MatchClient} for a launch and mounts the game screen.
- * Local matches are ready synchronously; online matches matchmake and connect
- * first, showing a lobby state until the socket is up (the in-game HUD then
- * shows "waiting for opponent" until the second player arrives).
- */
+/** Mounts a local match: built and played in-process, ready at once. */
 function MatchHost({
-  launch,
+  setup,
   onExit,
   onWatchReplay,
 }: {
-  launch: Launch;
+  setup: MatchSetup;
   onExit: () => void;
   onWatchReplay: (replay: Replay) => void;
 }): JSX.Element {
   const [client, setClient] = useState<MatchClient | null>(null);
+
+  useEffect(() => {
+    const c = new LocalMatchClient(setup, customMapLookup(browserStorage()));
+    setClient(c);
+    return () => c.dispose();
+  }, [setup]);
+
+  if (!client) return <></>;
+  return <GameScreen client={client} onExit={onExit} onWatchReplay={onWatchReplay} />;
+}
+
+/**
+ * An online room: creates one (or takes the code to join), opens its socket, and
+ * shows whatever the room is doing — the lobby between games, or the game.
+ */
+function RoomHost({
+  launch,
+  onExit,
+  onWatchReplay,
+}: {
+  launch: Extract<Launch, { kind: 'online' }>;
+  onExit: () => void;
+  onWatchReplay: (replay: Replay) => void;
+}): JSX.Element {
+  const [room, setRoom] = useState<OnlineRoom | null>(null);
+  const [view, setView] = useState<RoomView>({ phase: 'connecting' });
   const [error, setError] = useState<string | null>(null);
-  const clientRef = useRef<MatchClient | null>(null);
+  // This player's army pick, kept across the room's games.
+  const [choice, setChoice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-
-    if (launch.kind === 'local') {
-      const c = new LocalMatchClient(launch.setup, customMapLookup(browserStorage()));
-      clientRef.current = c;
-      setClient(c);
-    } else {
-      const request = onlineRequest(launch);
-      request.users++;
-      request.promise
-        .then((c) => {
-          if (cancelled) {
-            if (request.users === 0) c.dispose();
-            return;
-          }
-          clientRef.current = c;
-          setClient(c);
-        })
-        .catch((e: unknown) => {
-          if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-        });
-    }
-
+    let opened: OnlineRoom | null = null;
+    roomCode(launch)
+      .then((code) => {
+        if (cancelled) return;
+        opened = joinRoom(code);
+        opened.onView(setView);
+        setView(opened.view());
+        setRoom(opened);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      });
     return () => {
       cancelled = true;
-      if (launch.kind === 'online') onlineRequest(launch).users--;
-      clientRef.current?.dispose();
-      clientRef.current = null;
+      opened?.dispose();
     };
   }, [launch]);
 
@@ -115,36 +129,64 @@ function MatchHost({
       </Lobby>
     );
   }
-  if (!client) {
+  if (!room || view.phase === 'connecting') {
     return (
       <Lobby onExit={onExit}>
-        <p>Finding a match…</p>
+        <p>{launch.code ? `Joining room ${launch.code}…` : 'Creating a room…'}</p>
       </Lobby>
     );
   }
-  return <GameScreen client={client} onExit={onExit} onWatchReplay={onWatchReplay} />;
+  if (view.phase === 'closed') {
+    return (
+      <Lobby onExit={onExit}>
+        <p className="error">{view.reason}</p>
+      </Lobby>
+    );
+  }
+  if (view.phase === 'lobby') {
+    return (
+      <LobbyScreen
+        room={room}
+        seat={view.seat}
+        lobby={view.lobby}
+        choice={choice}
+        onChoice={setChoice}
+        onLeave={onExit}
+      />
+    );
+  }
+  return (
+    <GameScreen
+      key={view.game}
+      client={view.client}
+      onExit={onExit}
+      onWatchReplay={onWatchReplay}
+      onRematch={() => room.rematch()}
+    />
+  );
 }
-
-/** One matchmaking request per online launch, and how many mounted hosts await it. */
-interface OnlineRequest {
-  promise: Promise<MatchClient>;
-  users: number;
-}
-const onlineRequests = new WeakMap<Launch, OnlineRequest>();
 
 /**
- * The (shared) matchmaking request for a launch. React's StrictMode runs the
- * connect effect twice in development; a second request would queue this
- * player again and pair them with their own first one, so both runs share it.
+ * The code of the room to join: the launch's own, or a freshly created one.
+ * React's StrictMode runs the connect effect twice in development; both runs
+ * share one creation request so it doesn't open two rooms.
  */
-function onlineRequest(launch: Extract<Launch, { kind: 'online' }>): OnlineRequest {
-  let request = onlineRequests.get(launch);
+const createdRooms = new WeakMap<Launch, Promise<string>>();
+function roomCode(launch: Extract<Launch, { kind: 'online' }>): Promise<string> {
+  if (launch.code) return Promise.resolve(launch.code);
+  let request = createdRooms.get(launch);
   if (!request) {
-    const { presets, warbands, seed, mapId, gameMode, kings } = launch;
-    request = { promise: connectOnline({ mode: 'pvp', presets, warbands, seed, mapId, gameMode, kings }), users: 0 };
-    onlineRequests.set(launch, request);
+    request = createRoom();
+    createdRooms.set(launch, request);
   }
   return request;
+}
+
+/** A `?room=CODE` invite link opens the app straight into that room (read once). */
+let invite: { code: string | null } | null = null;
+function inviteLaunch(): Launch | null {
+  invite ??= { code: takeRoomFromUrl() };
+  return invite.code ? { kind: 'online', code: invite.code } : null;
 }
 
 function Lobby({ children, onExit }: { children: React.ReactNode; onExit: () => void }): JSX.Element {

@@ -13,9 +13,11 @@ interface Props {
   client: MatchClient;
   onExit: () => void;
   onWatchReplay: (replay: Replay) => void;
+  /** Online: go back to the room's lobby for another game (once this one is over). */
+  onRematch?: () => void;
 }
 
-export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Element {
+export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props): JSX.Element {
   // What the board is showing (it may still be rolling dice for it)...
   const [shown, setShown] = useState<{ state: GameState; events: GameEvent[] }>(() => ({
     state: client.getState(),
@@ -65,7 +67,8 @@ export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Elemen
   const interaction = useMemo(() => deriveInteraction(client.legalCommands()), [state, client]);
 
   // A finished local match can be replayed or exported (online play records no replay).
-  const replay = idle && state.phase === 'gameOver' ? client.getReplay() : null;
+  const over = idle && state.phase === 'gameOver';
+  const replay = over ? client.getReplay() : null;
 
   const handleUnitClick = (id: string): void => {
     if (!myTurn) return;
@@ -147,15 +150,24 @@ export function GameScreen({ client, onExit, onWatchReplay }: Props): JSX.Elemen
         onEndActivation={handleEndActivation}
         onExit={onExit}
       />
-      {replay ? (
+      {over && (replay || onRematch) ? (
         <div className="gameover-actions">
           <span>Game over.</span>
-          <button className="primary" onClick={() => onWatchReplay(replay)}>
-            Watch replay
-          </button>
-          <button className="ghost" onClick={() => downloadReplay(replay)}>
-            Download replay
-          </button>
+          {onRematch ? (
+            <button className="primary" onClick={onRematch}>
+              Rematch
+            </button>
+          ) : null}
+          {replay ? (
+            <>
+              <button className="primary" onClick={() => onWatchReplay(replay)}>
+                Watch replay
+              </button>
+              <button className="ghost" onClick={() => downloadReplay(replay)}>
+                Download replay
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

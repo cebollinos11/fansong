@@ -10,8 +10,8 @@ with original **preset warbands**, a **point-buy** cost model, **special-ability
 traits** (ranged, tough, guard) and **morale** (fear + rout) — there is a
 **3D web UI** (`apps/web`: Vite + React + three.js) for local hotseat and vs-AI
 play with a **replay viewer**, and there is **online multiplayer**: a Cloudflare
-Worker + Durable Objects backend (`apps/worker`) with matchmaking and WebSocket
-sync, spoken through a zod wire protocol (`packages/protocol`). Vitest covers the
+Worker + Durable Objects backend (`apps/worker`) with join-by-code rooms and
+WebSocket sync, spoken through a zod wire protocol (`packages/protocol`). Vitest covers the
 rules (including the new traits, morale, and replay determinism), the costing,
 full preset matchups, the UI's engine bridge and replay recording, the wire
 schemas, and the server room (including full games played through the network
@@ -31,7 +31,7 @@ tools/
   cli/      `pnpm play` — headless AI-vs-AI runner with a turn-by-turn log
 apps/
   web/      Vite + React + three.js UI — plays local or online via one seam
-  worker/   Cloudflare Worker + Durable Objects — authoritative rooms + matchmaking
+  worker/   Cloudflare Worker + Durable Objects — authoritative rooms joined by code
 ```
 
 ## Quick start
@@ -42,7 +42,7 @@ pnpm test                 # 600+ tests: rng, hex board, terrain/LOS, combat, tur
                           #            rounds, abilities, morale, game modes,
                           #            replay/golden, costing, validation, maps,
                           #            deploy, self-play (map × mode), editor,
-                          #            wire schemas, matchmaking, server rooms
+                          #            wire schemas, server rooms + lobby
 pnpm play                 # watch two demo AIs fight (seed 42)
 pnpm play --list          # list preset warbands, built-in maps and modes
 pnpm play --p0 iron-wardens --p1 ashfang-raiders   # a preset matchup
@@ -142,17 +142,17 @@ engine as everything else:
   Compile-time drift guards assert the schemas stay identical to the engine's own
   types, so the wire and the engine can't silently diverge.
 - **`apps/worker`** — the backend, built headless-first:
-  - **`RoomEngine`** — a transport-agnostic authoritative game room, the
-    server-side twin of the web client's `MatchController`. Every command goes
+  - **`RoomEngine`** — a transport-agnostic authoritative room. Between games it
+    is a lobby (the host picks map and mode, each player their own army and
+    King, and the game starts when both are ready); during a game it is the
+    server-side twin of the web client's `MatchController`: every command goes
     through the same `applyCommand` guard (validate against `getLegalCommands`,
-    then `reduce`), and AI seats are played with the same `chooseCommand`
-    heuristic as the CLI. It speaks only a tiny `RoomConnection` interface, so its
-    whole behaviour — seat binding, authority, legality, presence, AI turns — is
-    tested with fake sockets and **zero Cloudflare runtime**.
-  - **`Matchmaker`** — pairing as a pure state machine (PvE = instant AI match;
-    PvP = host-and-join with a persisted queue).
-  - **Durable Objects + Worker** (`GameRoomDO`, `MatchmakerDO`, `index.ts`) are
-    thin adapters: they only shuttle bytes between WebSockets and the pure core.
+    then `reduce`). It speaks only a tiny `RoomConnection` interface, so its
+    whole behaviour — seats, lobby, authority, legality, presence, rejoining,
+    rematches — is tested with fake sockets and **zero Cloudflare runtime**.
+  - **Durable Object + Worker** (`GameRoomDO`, `index.ts`) are thin adapters:
+    `POST /api/rooms` opens a room under a fresh 5-letter code, and
+    `/api/room/:code` is its WebSocket. Idle rooms are wiped after a day.
 
 ```bash
 pnpm --filter @fansong/worker dev       # local worker at http://localhost:8787
@@ -160,11 +160,13 @@ pnpm --filter @fansong/worker deploy    # deploy to Cloudflare (needs `wrangler 
 ```
 
 Point the web app at a deployed worker with `VITE_SERVER_URL` (it defaults to the
-local `wrangler dev` address). In the setup screen, pick **Online vs a human** and
-your warband: you either join a player waiting for the same map and mode, or host
-a room until one arrives. Each player brings their own army (preset or
-army-builder); the host's room shows a stand-in until the opponent's army
-arrives, and holds all commands until then. The `apps/web` client plays
+local `wrangler dev` address). In the setup screen, pick **Online with a friend**
+and **Create a room**, then send your friend the code (or the `?room=CODE` invite
+link); they enter it under **Join room**. In the room's lobby each player picks
+their own army (preset or army-builder), the host picks a built-in map and game
+mode, and the game starts once both press **Ready**. A player who drops can
+rejoin with the same code, and after a game **Rematch** returns both to the
+lobby. The `apps/web` client plays
 local *or* online through one `MatchClient` interface — the board, HUD, and
 interaction code never know which they're driving.
 

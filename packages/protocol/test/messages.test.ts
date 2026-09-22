@@ -3,17 +3,17 @@ import { createDemoGame } from '@fansong/engine';
 import {
   ErrorCode,
   encode,
-  matchmakeRequestSchema,
   parseClientMessage,
   parseServerMessage,
   safeParseClientMessage,
   type ClientMessage,
   type ServerMessage,
 } from '../src/messages.js';
+import { newRoomCode, normalizeRoomCode, ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH } from '../src/codes.js';
 
 describe('client messages', () => {
   it('parses join / command / resync from JSON strings', () => {
-    expect(parseClientMessage('{"t":"join","seat":1}')).toEqual({ t: 'join', seat: 1 });
+    expect(parseClientMessage('{"t":"join"}')).toEqual({ t: 'join' });
     expect(
       parseClientMessage('{"t":"command","command":{"type":"EndActivation"}}'),
     ).toEqual({ t: 'command', command: { type: 'EndActivation' } });
@@ -38,7 +38,11 @@ describe('client messages', () => {
 
   it('encode → parse round-trips every client message', () => {
     const msgs: ClientMessage[] = [
-      { t: 'join', seat: 0 },
+      { t: 'join' },
+      { t: 'setArmy', preset: 'custom', warband: { name: 'Few', units: [{ name: 'A', quality: 3, combat: 3, move: 4 }] }, king: 0 },
+      { t: 'setMap', mapId: 'old-forest', mode: 'capture-the-flag' },
+      { t: 'ready', ready: true },
+      { t: 'rematch' },
       { t: 'command', command: { type: 'Move', unitId: 'p0u0', to: { x: 3, y: 4 } } },
       { t: 'resync' },
     ];
@@ -109,21 +113,22 @@ describe('server messages', () => {
   });
 });
 
-describe('matchmake request', () => {
-  it('accepts a plain request and one with map, mode and Kings', () => {
-    const plain = { mode: 'pve', presets: ['iron-wardens', 'ashfang-raiders'], seed: 1 };
-    expect(matchmakeRequestSchema.parse(plain)).toEqual(plain);
-    const full = { ...plain, mode: 'pvp', mapId: 'rolling-hills', gameMode: 'king-of-the-hill', kings: [0, 2] };
-    expect(matchmakeRequestSchema.parse(full)).toEqual(full);
+describe('lobby messages', () => {
+  it('rejects a bad map pick, a negative King and extra keys', () => {
+    expect(safeParseClientMessage({ t: 'setMap', mapId: 'x', mode: 'tag' }).success).toBe(false);
+    const army = { t: 'setArmy', preset: 'p', warband: { name: 'W', units: [] }, king: -1 };
+    expect(safeParseClientMessage(army).success).toBe(false);
+    expect(safeParseClientMessage({ t: 'join', seat: 0 }).success).toBe(false);
   });
 
-  it('rejects unknown queues, game modes, bad Kings and extra keys', () => {
-    const base = { mode: 'pve', presets: ['a', 'b'], seed: 1 };
-    expect(matchmakeRequestSchema.safeParse({ ...base, mode: 'ranked' }).success).toBe(false);
-    expect(matchmakeRequestSchema.safeParse({ ...base, gameMode: 'tag' }).success).toBe(false);
-    expect(matchmakeRequestSchema.safeParse({ ...base, kings: [-1, 0] }).success).toBe(false);
-    expect(matchmakeRequestSchema.safeParse({ ...base, seed: 1.5 }).success).toBe(false);
-    expect(matchmakeRequestSchema.safeParse({ ...base, seats: ['ai', 'ai'] }).success).toBe(false);
+  it('round-trips a lobby', () => {
+    const seat = { present: true, preset: 'iron-wardens', warband: { name: 'W', units: [] }, king: 0, ready: false };
+    const lobby: ServerMessage = {
+      t: 'lobby',
+      seat: 1,
+      lobby: { mapId: 'open-field', mode: 'annihilation', seats: [seat, { ...seat, present: false }], problem: null },
+    };
+    expect(parseServerMessage(encode(lobby))).toEqual(lobby);
   });
 
   it('a welcome carries a setup with map, mode and Kings', () => {
@@ -143,5 +148,20 @@ describe('matchmake request', () => {
       presence: [true, true],
     };
     expect(parseServerMessage(encode(welcome))).toEqual(welcome);
+  });
+});
+
+describe('room codes', () => {
+  it('draws codes of the right length from the look-alike-free alphabet', () => {
+    for (let i = 0; i < 50; i++) {
+      const code = newRoomCode();
+      expect(code).toHaveLength(ROOM_CODE_LENGTH);
+      for (const ch of code) expect(ROOM_CODE_ALPHABET).toContain(ch);
+    }
+    expect(ROOM_CODE_ALPHABET).not.toMatch(/[01OIL]/);
+  });
+
+  it('normalises typed codes', () => {
+    expect(normalizeRoomCode(' ab-c 7d ')).toBe('ABC7D');
   });
 });

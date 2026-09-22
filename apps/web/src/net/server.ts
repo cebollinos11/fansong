@@ -1,50 +1,50 @@
-import type { Owner } from '@fansong/engine';
-import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
-import type { MatchmakeRequestBody } from '@fansong/protocol';
-import { OnlineMatchClient } from '../game/OnlineMatchClient.js';
+import { createRoomResponseSchema, normalizeRoomCode } from '@fansong/protocol';
+import { OnlineRoom } from '../game/OnlineRoom.js';
 
 /** Where the worker lives. Override with `VITE_SERVER_URL` for a deployed worker. */
 export function serverHttpBase(): string {
-  return import.meta.env.VITE_SERVER_URL ?? 'http://localhost:8787';
+  return withScheme(import.meta.env.VITE_SERVER_URL || 'http://localhost:8787');
+}
+
+/** A bare host (`fansong.x.workers.dev`) would be fetched as a relative path; assume https. */
+export function withScheme(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, '');
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }
 
 function serverWsBase(): string {
   return serverHttpBase().replace(/^http/, 'ws');
 }
 
-/** `POST /api/matchmake` body, validated by the worker against the protocol schema. */
-export type MatchmakeBody = MatchmakeRequestBody;
-
-export interface Ticket {
-  roomId: string;
-  seat: Owner;
-  setup: MatchSetup;
-  status: 'matched' | 'waiting';
+/** Ask the worker to open a fresh room; resolves to its join code. */
+export async function createRoom(): Promise<string> {
+  const res = await fetch(`${serverHttpBase()}/api/rooms`, { method: 'POST' });
+  if (!res.ok) throw new Error(`couldn't create a room (${res.status})`);
+  return createRoomResponseSchema.parse(await res.json()).code;
 }
 
-/** Ask the worker to place us in a match (queueing for PvP if needed). */
-export async function matchmake(body: MatchmakeBody): Promise<Ticket> {
-  const res = await fetch(`${serverHttpBase()}/api/matchmake`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`matchmaking failed (${res.status})`);
-  return (await res.json()) as Ticket;
+/** Open the socket to the room with this code (it joins on connect). */
+export function joinRoom(code: string): OnlineRoom {
+  const normalized = normalizeRoomCode(code);
+  return new OnlineRoom(normalized, `${serverWsBase()}/api/room/${normalized}`);
 }
 
-/**
- * Matchmake, then open the authoritative room socket. The returned client holds
- * a provisional mirror of the state (built from the shared setup) that the
- * server's `welcome` immediately overwrites.
- */
-export async function connectOnline(body: MatchmakeBody): Promise<OnlineMatchClient> {
-  const ticket = await matchmake(body);
-  const url = `${serverWsBase()}/api/room/${ticket.roomId}`;
-  return new OnlineMatchClient({
-    url,
-    seat: ticket.seat,
-    setup: ticket.setup,
-    initialState: createMatchFromPresets(ticket.setup),
-  });
+/** A link that opens the app straight into this room. */
+export function roomLink(code: string): string {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('room', code);
+  return url.toString();
+}
+
+/** The room code in the page's `?room=` link, if any, removed from the address
+ *  bar so leaving the room doesn't rejoin it on reload. */
+export function takeRoomFromUrl(): string | null {
+  const url = new URL(window.location.href);
+  const code = normalizeRoomCode(url.searchParams.get('room') ?? '');
+  if (!code) return null;
+  url.searchParams.delete('room');
+  window.history.replaceState(null, '', url.toString());
+  return code;
 }
