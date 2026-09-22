@@ -68,7 +68,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 ## Mode UI
 - [x] 37. Setup: mode picker filtered by map support; king selection for kill-the-king.
 - [x] 38. HUD + board markers: mode, scores, flag carrier, flags, zones, crown.
-- [ ] 39. Log text + light animation for scoring / flag events.
+- [x] 39. Log text + light animation for scoring / flag events.
 
 ## Polish
 - [ ] 40. CLI: `--map` / `--mode` flags; `--list` shows maps.

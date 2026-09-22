@@ -358,3 +358,13 @@
   KotH/conquest. Decision: CTF shows no score (a capture wins outright). Board zones are coloured but not
   lettered (the HUD names them A/B/C). Checked with Playwright on a built preview (CTF twin-towers flags,
   conquest crossroads zones + 0–0, KtK crowns; no page errors); the carried-flag badge was only unit-tested.
+- Task 39: objective log text + light animation. `apps/web/src/ui/log.ts`: scoring lines say what was held
+  ("★ Player 1 scores 1 for holding the hill (0–1)", conquest zones lettered A/B/C like the HUD), flag lines
+  (⚑) tag the unit's owner and the drop hex, GameOver gives the reason in objective modes (annihilation text
+  unchanged). New `eventTone` (objective | end) → `LogEntry.tone` (omitted for ordinary lines) and
+  `latestCallout`. HUD: objective log lines are gold and flash once; a transient callout under the score cards
+  replays a pop-in/fade (to 35% — decision: it lingers faintly as "last objective event" rather than vanishing);
+  the "N pts" in the score cards pulses when it changes (keyed remount). Replay "This step" list uses the same
+  tones. All animation is CSS, disabled under prefers-reduced-motion. Tests: apps/web/test/log.test.ts. Checked
+  with Playwright on a built preview by importing AI-vs-AI KotH/CTF replays (highlighted lines render, no page
+  errors); the in-game callout/pulse was not screenshotted (no AI-vs-AI seat in the UI).

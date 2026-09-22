@@ -510,6 +510,85 @@ button.secondary {
   color: var(--muted);
 }
 
+/* Scoring / flag events and the game-over line stand out and flash in once. */
+.log-line.objective {
+  color: var(--gold, #e0b84c);
+  animation: log-flash 1.2s ease-out;
+}
+
+.log-line.end {
+  color: var(--text, #fff);
+  font-weight: 700;
+}
+
+@keyframes log-flash {
+  from {
+    background: rgba(224, 184, 76, 0.35);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+/* Transient HUD callout for the latest objective event: pops in, lingers, fades away. */
+.callout {
+  background: var(--panel-2);
+  border: 1px solid var(--gold, #e0b84c);
+  color: var(--gold, #e0b84c);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 600;
+  font-size: 13px;
+  animation: callout 3.2s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes callout {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  8% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+  14% {
+    transform: scale(1);
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.35;
+  }
+}
+
+.score-points.pulse {
+  display: inline-block;
+  animation: score-pulse 0.7s ease-out;
+}
+
+@keyframes score-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.35);
+    color: var(--gold, #e0b84c);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .log-line.objective,
+  .callout,
+  .score-points.pulse {
+    animation: none;
+  }
+}
+
 /* --- Replay viewer + game-over actions (M5) --- */
 .replay-controls {
   display: flex;
