@@ -135,6 +135,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         onEventsPlayed={(ms) => queueRef.current?.played(ms)}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
+        followToggle
       />
       <Hud
         state={state}

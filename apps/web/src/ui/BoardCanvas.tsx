@@ -29,6 +29,27 @@ interface Props {
    * current cell (then once more with `done`) instead of orbiting the camera.
    */
   onCellDrag?: (from: Vec, to: Vec, done: boolean) => void;
+  /** Show the "Follow action" toggle (play and replays; the camera pans to off-screen action). */
+  followToggle?: boolean;
+}
+
+const FOLLOW_KEY = 'fansong.followAction';
+
+/** The remembered "Follow action" choice (on unless turned off; storage may be unavailable). */
+function loadFollow(): boolean {
+  try {
+    return localStorage.getItem(FOLLOW_KEY) !== 'off';
+  } catch {
+    return true;
+  }
+}
+
+function saveFollow(on: boolean): void {
+  try {
+    localStorage.setItem(FOLLOW_KEY, on ? 'on' : 'off');
+  } catch {
+    // Not remembered; the toggle still works for this session.
+  }
 }
 
 /** React wrapper that mounts a {@link BoardView} and keeps it in sync with props. */
@@ -36,6 +57,7 @@ export function BoardCanvas(props: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
   const [hover, setHover] = useState<Vec | null>(null);
+  const [follow, setFollow] = useState(loadFollow);
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
   const handlers = useRef({
     onUnitClick: props.onUnitClick,
@@ -81,6 +103,12 @@ export function BoardCanvas(props: Props): JSX.Element {
   useEffect(() => {
     viewRef.current?.setCellDrag(dragging ? (from, to, done) => handlers.current.onCellDrag?.(from, to, done) : null);
   }, [dragging]);
+
+  // Only a board that plays out a game follows the action (the editor has none to follow).
+  const following = !!props.followToggle && follow;
+  useEffect(() => {
+    if (viewRef.current) viewRef.current.followAction = following;
+  }, [following]);
 
   // Game-mode markings, recomputed only when they change (the state is cloned per command).
   const markingsKey = modeMarkingsKey(props.state);
@@ -142,14 +170,30 @@ export function BoardCanvas(props: Props): JSX.Element {
           ))}
         </div>
       ) : null}
-      <button
-        type="button"
-        className="board-reset-view"
-        title="Reset camera (drag to orbit, right-drag to pan, wheel to zoom)"
-        onClick={() => viewRef.current?.resetCamera()}
-      >
-        Reset view
-      </button>
+      <div className="board-tools">
+        <button
+          type="button"
+          className="board-reset-view"
+          title="Reset camera (drag to orbit, right-drag to pan, wheel to zoom)"
+          onClick={() => viewRef.current?.resetCamera()}
+        >
+          Reset view
+        </button>
+        {props.followToggle ? (
+          <button
+            type="button"
+            className={`board-follow${follow ? ' on' : ''}`}
+            aria-pressed={follow}
+            title="Pan the camera to action happening off-screen"
+            onClick={() => {
+              setFollow(!follow);
+              saveFollow(!follow);
+            }}
+          >
+            Follow action: {follow ? 'on' : 'off'}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }

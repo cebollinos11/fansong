@@ -79,6 +79,7 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
         onEventsPlayed={(ms) => (stepMs.current = ms)}
         onUnitClick={() => {}}
         onCellClick={() => {}}
+        followToggle
       />
       <div className="hud">
         <div className="hud-top">

@@ -110,6 +110,16 @@ const ROUT_MS = 700; // a routed unit flees toward its own board edge while fadi
 const MAX_QUEUE_MS = 4000; // most a new batch waits behind the previous one's animations
 const NERVE_LEAD_MS = 900; // pause between a killing blow (its verdict) and the nerve checks it causes
 
+// Following the action: a batch whose units sit outside this part of the view
+// (normalised device coords, ±1 = the edges) pans the camera to them first.
+const FOLLOW_MARGIN_X = 0.8;
+const FOLLOW_MARGIN_TOP = 0.65; // tighter at the top, where the dice cards float over heads
+const FOLLOW_MARGIN_BOTTOM = 0.85;
+const FOLLOW_HEAD = 1.3; // world height above a base that must stay in view (the dice card)
+const PAN_MIN_MS = 400;
+const PAN_MAX_MS = 850;
+const PAN_MS_PER_UNIT = 70; // extra pan time per world unit travelled
+
 // Camera limits: stay above the table, and never tip over the top into a flip.
 const CAMERA_MIN_POLAR = 0.12; // radians from straight down
 const CAMERA_MAX_POLAR = 1.3; // ~75°, just above the tabletop
@@ -233,6 +243,13 @@ export class BoardView {
   private now = 0;
   /** When the current batch of combat animations finishes. */
   private busyUntil = 0;
+  /**
+   * Pan the camera to off-screen action before playing it (see {@link planPan}).
+   * The batch's animations wait for the pan to finish.
+   */
+  followAction = true;
+  /** A camera pan in progress: the orbit pivot glides from `from` by `delta`. */
+  private pan: { from: THREE.Vector3; delta: THREE.Vector3; start: number; dur: number } | null = null;
   /** Dev aid: `?animSpeed=0.25` plays animations at quarter speed. */
   private readonly animSpeed = import.meta.env.DEV
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
@@ -281,6 +298,8 @@ export class BoardView {
     this.controls.minPolarAngle = CAMERA_MIN_POLAR;
     this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
     this.controls.zoomToCursor = true;
+    // Grabbing the camera takes it back from a follow pan.
+    this.controls.addEventListener('start', () => (this.pan = null));
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
@@ -469,6 +488,8 @@ export class BoardView {
    */
   animateEvents(events: GameEvent[]): number {
     let t = Math.min(MAX_QUEUE_MS, Math.max(0, this.busyUntil - this.now));
+    // Off-screen action: pan there first, and start everything once the camera arrives.
+    t += this.planPan(events, t);
     let lastHit = t; // when the most recent blow lands, for its consequences
     let settle = t; // when state changes caused by the latest roll or blow are shown
     let nerveAt: number | null = null; // start of the current run of nerve checks
@@ -574,9 +595,77 @@ export class BoardView {
     return t;
   }
 
+  /**
+   * If the units a batch is about (the one activating, a mover's path, both
+   * sides of a blow) aren't comfortably in view, schedule a pan of the orbit
+   * pivot to them starting `at` ms from now. Returns the pan's length, which the
+   * caller delays the batch by (0 when no pan is needed).
+   */
+  private planPan(events: GameEvent[], at: number): number {
+    if (!this.followAction || this.downPos) return 0; // never fight a hand on the camera
+    const points: THREE.Vector3[] = [];
+    const unitAt = (id: string) => {
+      const obj = this.units.get(id);
+      if (obj && !obj.fade) points.push(obj.group.position.clone());
+    };
+    for (const e of events) {
+      if (e.type === 'ActivationChosen' || e.type === 'DiceRolled') unitAt(e.unitId);
+      else if (e.type === 'UnitMoved') {
+        if (e.path) points.push(...e.path.map((c) => this.unitWorld(c)));
+        else points.push(this.unitWorld(e.from), this.unitWorld(e.to));
+      } else if (e.type === 'AttackResolved' || e.type === 'ShotResolved' || e.type === 'FreeHackResolved') {
+        unitAt(e.attackerId);
+        unitAt(e.targetId);
+      } else if (e.type === 'GuardRiposte') {
+        unitAt(e.guardId);
+        unitAt(e.attackerId);
+      }
+    }
+    if (points.length === 0) return 0;
+
+    // Judge from where the camera will be once any pan already under way ends.
+    const pivot = this.pan ? this.pan.from.clone().add(this.pan.delta) : this.controls.target.clone();
+    const cam = this.camera.clone();
+    cam.position.add(pivot.clone().sub(this.controls.target));
+    cam.updateMatrixWorld();
+    const inView = points.every((p) =>
+      [0, FOLLOW_HEAD].every((h) => {
+        const n = p.clone().setY(p.y + TILE_TOP + h).project(cam);
+        return (
+          n.z < 1 && Math.abs(n.x) <= FOLLOW_MARGIN_X && n.y <= FOLLOW_MARGIN_TOP && n.y >= -FOLLOW_MARGIN_BOTTOM
+        );
+      }),
+    );
+    if (inView) return 0;
+
+    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
+    const delta = new THREE.Vector3(centre.x - pivot.x, 0, centre.z - pivot.z);
+    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + delta.length() * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
+    this.at(at, () => {
+      if (!this.followAction || this.downPos) return;
+      const from = this.controls.target.clone();
+      this.pan = { from, delta: new THREE.Vector3(centre.x - from.x, 0, centre.z - from.z), start: this.now, dur };
+    });
+    return dur;
+  }
+
+  /** Glide the orbit pivot (and the camera with it, so the view angle holds) along the current pan. */
+  private stepPan(): void {
+    const pan = this.pan;
+    if (!pan) return;
+    const k = THREE.MathUtils.clamp((this.now - pan.start) / pan.dur, 0, 1);
+    const eased = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    const goal = pan.from.clone().addScaledVector(pan.delta, eased);
+    const step = goal.sub(this.controls.target);
+    this.controls.target.add(step);
+    this.camera.position.add(step);
+    if (k >= 1) this.pan = null;
+  }
+
   /** Cut short every pending animation step and dice card (a replay jump). */
   clearAnimations(): void {
     this.timeline.length = 0;
+    this.pan = null;
     this.busyUntil = this.now;
     this.rolls.clear();
     for (const obj of this.units.values()) {
@@ -1149,9 +1238,6 @@ export class BoardView {
     const dt = Math.min(rawDt, 0.05);
     const lerp = 1 - Math.pow(0.001, dt); // frame-rate independent smoothing
 
-    this.clampCameraTarget();
-    this.controls.update();
-
     // Animations run on wall-clock time (a slow frame doesn't slow them down);
     // only a long stall, like a background tab, is capped.
     const dtMs = Math.min(rawDt, 0.25) * 1000 * this.animSpeed;
@@ -1163,6 +1249,10 @@ export class BoardView {
         step.fn();
       } else i++;
     }
+
+    this.stepPan();
+    this.clampCameraTarget();
+    this.controls.update();
 
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
