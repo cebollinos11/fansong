@@ -8,6 +8,7 @@ import { DEFAULT_SETUP } from '@fansong/content';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
 import { connectOnline } from './net/server.js';
+import { browserStorage, customMapLookup } from './game/customMaps.js';
 
 /** Which screen the app is showing. A match is keyed so a new one remounts cleanly. */
 type View =
@@ -71,7 +72,7 @@ function MatchHost({
     let cancelled = false;
 
     if (launch.kind === 'local') {
-      const c = new LocalMatchClient(launch.setup);
+      const c = new LocalMatchClient(launch.setup, customMapLookup(browserStorage()));
       clientRef.current = c;
       setClient(c);
     } else {

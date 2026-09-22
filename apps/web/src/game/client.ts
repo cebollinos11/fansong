@@ -1,7 +1,7 @@
-import { REPLAY_VERSION } from '@fansong/engine';
-import type { Command, GameState, Owner, Replay } from '@fansong/engine';
+import { createGame, REPLAY_VERSION } from '@fansong/engine';
+import type { Command, GameConfig, GameState, Owner, Replay } from '@fansong/engine';
 import type { SeatPresence } from '@fansong/protocol';
-import { configFromSetup, createMatchFromPresets, isAiSeat, type MatchSetup } from '@fansong/content';
+import { configFromSetup, DEFAULT_BOARD, getMap, isAiSeat, type MapLookup, type MatchSetup } from '@fansong/content';
 import { AiDriver } from './ai-driver.js';
 import { MatchController, type Transition } from './controller.js';
 
@@ -48,19 +48,25 @@ export function humanSeats(setup: MatchSetup): Owner[] {
  * Local match: a {@link MatchController} plus an {@link AiDriver} for any AI seat.
  * This is the hotseat and local-vs-AI path; no network is involved. It exposes
  * the exact same surface as the online client so the UI is identical.
+ *
+ * `lookup` resolves `setup.mapId` (pass one that knows custom maps). The config
+ * is built once, so the replay stays correct even if a custom map is later
+ * edited or deleted.
  */
 export class LocalMatchClient implements MatchClient {
   readonly setup: MatchSetup;
   readonly controlledSeats: readonly Owner[];
+  private readonly config: GameConfig;
   private readonly controller: MatchController;
   private readonly driver: AiDriver;
   /** Every command applied, in order — the command list half of a {@link Replay}. */
   private readonly recorded: Command[] = [];
   private readonly unrecord: () => void;
 
-  constructor(setup: MatchSetup) {
+  constructor(setup: MatchSetup, lookup: MapLookup = getMap) {
     this.setup = setup;
-    this.controller = new MatchController(createMatchFromPresets(setup));
+    this.config = configFromSetup(setup, DEFAULT_BOARD, lookup);
+    this.controller = new MatchController(createGame(this.config));
     this.controlledSeats = humanSeats(setup);
     // Record every applied command (human and AI alike) for replay.
     this.unrecord = this.controller.subscribe(({ command }) => {
@@ -95,7 +101,7 @@ export class LocalMatchClient implements MatchClient {
   }
 
   getReplay(): Replay {
-    return { version: REPLAY_VERSION, config: configFromSetup(this.setup), commands: [...this.recorded] };
+    return { version: REPLAY_VERSION, config: this.config, commands: [...this.recorded] };
   }
 
   dispose(): void {

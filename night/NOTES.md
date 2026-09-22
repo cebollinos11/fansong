@@ -211,3 +211,16 @@
   "Valid · modes: …" (via `supportedModes`) or the `validateMap` errors reworded to editor labels
   (`editorErrorText`: player 0/1 → P1/P2, conquest zones 1–3 → A–C), capped at 6 + "…and N more".
   `MODE_LABELS` moved from SetupScreen into editorView.ts (shared). Tested; checked with Playwright.
+- Task 25: custom maps. `apps/web/src/game/customMaps.ts` (tested, storage injected — `MapStorage`, `null` =
+  unavailable) keeps editor maps as one JSON array under localStorage key `fansong.customMaps`; entries
+  are untrusted and go through `parseMapJson` (zod `parseMap` + size limits + hex count, so the editor
+  can render them); corrupt storage/entries are skipped, never thrown. Saving upserts by id (the name
+  slug), and a custom id that collides with a built-in gets `-custom` appended (`customMapId`) so it
+  never shadows one. Only maps passing `validateMap` are playable: Setup lists them in a "Custom"
+  optgroup after the built-ins, and `customMapLookup` resolves them for `LocalMatchClient`, which now
+  takes a `MapLookup` and builds its `GameConfig` once (replay stays right even if the map is later
+  edited/deleted). Editor "Save & load" panel: Save, Export .json (`mapToJson`, `<id>.json`, via a new
+  generic `downloadJson` in replay-io.ts), Import .json…, saved-map select + Load/Delete; load/import
+  confirm before discarding edits (only when there is undo history), delete always confirms. Online
+  still plays the default map (task 32). Checked with Playwright on a built preview: save/export/import
+  (good + bad file)/load, custom maps in the Setup picker, and a match started on one.

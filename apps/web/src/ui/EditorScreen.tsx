@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   canRedo,
   canUndo,
@@ -6,11 +6,13 @@ import {
   commitEdit,
   createHistory,
   MAP_LIMITS,
+  mapToJson,
   MAX_BRUSH_RADIUS,
   newEditorMap,
   redoEdit,
   undoEdit,
   type EditorHistory,
+  type MapDef,
 } from '@fansong/content';
 import { MAX_ELEVATION, type Vec } from '@fansong/engine';
 import { BoardCanvas } from './BoardCanvas.js';
@@ -34,6 +36,14 @@ import {
   type EditorTool,
 } from './editorView.js';
 import { describeHex } from './hexInfo.js';
+import {
+  browserStorage,
+  deleteCustomMap,
+  loadCustomMaps,
+  parseMapText,
+  saveCustomMap,
+} from '../game/customMaps.js';
+import { downloadJson } from '../game/replay-io.js';
 
 interface Props {
   onExit: () => void;
@@ -186,6 +196,8 @@ function toolFor(id: ToolId, level: number): EditorTool {
  * Deploy zones and objectives are drawn as tinted overlays. Undo/redo (buttons
  * or Ctrl+Z / Ctrl+Y) walk the history; the map name is committed on blur/Enter
  * as one undo step; `validateMap` problems are listed inline as the map changes.
+ * Maps save to / load from browser storage (valid ones then appear in Setup's
+ * map picker) and export/import as `.json` files.
  */
 export function EditorScreen({ onExit }: Props): JSX.Element {
   const [history, setHistory] = useState<EditorHistory>(() =>
@@ -199,6 +211,11 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
   const [radius, setRadius] = useState(0);
   /** The footprint of an in-progress drag, previewed as highlighted hexes. */
   const [dragPreview, setDragPreview] = useState<Vec[] | null>(null);
+
+  const [saved, setSaved] = useState<MapDef[]>(() => loadCustomMaps(browserStorage()));
+  const [savedId, setSavedId] = useState<string>(() => saved[0]?.id ?? '');
+  const [fileStatus, setFileStatus] = useState<{ text: string; error: boolean } | null>(null);
+  const importInput = useRef<HTMLInputElement>(null);
 
   const map = history.present;
   const tool = toolFor(toolId, level);
@@ -235,6 +252,62 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
     setHeight(h);
     setSelected(null);
     setHistory(createHistory(newEditorMap(w, h, map.name)));
+  };
+
+  /** Replace the edited map (load/import) — a fresh history, so undo can't cross maps. */
+  const openMap = (next: MapDef): void => {
+    setWidth(next.width);
+    setHeight(next.height);
+    setSelected(null);
+    setHistory(createHistory(next));
+  };
+
+  const report = (text: string, error = false): void => setFileStatus({ text, error });
+  const discardOk = (what: string): boolean =>
+    !canUndo(history) || window.confirm(`${what}? Unsaved changes to "${map.name}" will be lost.`);
+
+  const save = (): void => {
+    try {
+      const result = saveCustomMap(browserStorage(), map);
+      setSaved(loadCustomMaps(browserStorage()));
+      setSavedId(result.map.id);
+      const playable = validation.ok ? '' : ' (fix the problems above to play it)';
+      report(`${result.replaced ? 'Updated' : 'Saved'} "${result.map.name}"${playable}.`);
+    } catch (e) {
+      report(e instanceof Error ? e.message : String(e), true);
+    }
+  };
+
+  const loadSaved = (): void => {
+    const target = saved.find((m) => m.id === savedId);
+    if (!target || !discardOk(`Load "${target.name}"`)) return;
+    openMap(target);
+    report(`Loaded "${target.name}".`);
+  };
+
+  const deleteSaved = (): void => {
+    const target = saved.find((m) => m.id === savedId);
+    if (!target || !window.confirm(`Delete saved map "${target.name}"?`)) return;
+    try {
+      deleteCustomMap(browserStorage(), target.id);
+      const rest = loadCustomMaps(browserStorage());
+      setSaved(rest);
+      setSavedId(rest[0]?.id ?? '');
+      report(`Deleted "${target.name}".`);
+    } catch (e) {
+      report(e instanceof Error ? e.message : String(e), true);
+    }
+  };
+
+  const importFile = async (file: File): Promise<void> => {
+    try {
+      const next = parseMapText(await file.text());
+      if (!discardOk(`Import "${next.name}"`)) return;
+      openMap(next);
+      report(`Imported "${next.name}" — save it to keep it.`);
+    } catch (e) {
+      report(`Couldn't import ${file.name}: ${e instanceof Error ? e.message : String(e)}`, true);
+    }
   };
 
   const onCellClick = (cell: Vec): void => {
@@ -326,6 +399,54 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
             </>
           )}
         </div>
+
+        <fieldset className="editor-files">
+          <legend>Save &amp; load</legend>
+          <div className="editor-row">
+            <button type="button" title="Save to this browser (valid maps appear in Setup)" onClick={save}>
+              Save
+            </button>
+            <button type="button" onClick={() => downloadJson(mapToJson(map), `${map.id}.json`)}>
+              Export .json
+            </button>
+            <button type="button" onClick={() => importInput.current?.click()}>
+              Import .json…
+            </button>
+            <input
+              ref={importInput}
+              type="file"
+              accept="application/json,.json"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void importFile(file);
+                e.target.value = ''; // allow re-selecting the same file
+              }}
+            />
+          </div>
+          <div className="editor-row">
+            <select
+              aria-label="Saved maps"
+              value={savedId}
+              disabled={saved.length === 0}
+              onChange={(e) => setSavedId(e.target.value)}
+            >
+              {saved.length === 0 ? <option value="">No saved maps</option> : null}
+              {saved.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name} ({m.width}×{m.height})
+                </option>
+              ))}
+            </select>
+            <button type="button" disabled={saved.length === 0} onClick={loadSaved}>
+              Load
+            </button>
+            <button type="button" className="ghost" disabled={saved.length === 0} onClick={deleteSaved}>
+              Delete
+            </button>
+          </div>
+          {fileStatus ? <p className={fileStatus.error ? 'error' : 'hint'}>{fileStatus.text}</p> : null}
+        </fieldset>
 
         <fieldset className="editor-new">
           <legend>New map</legend>

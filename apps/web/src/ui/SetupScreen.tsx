@@ -8,12 +8,14 @@ import {
   supportedModes,
   validateWarband,
   warbandCost,
+  type MapDef,
   type MatchSetup,
 } from '@fansong/content';
 import type { Replay } from '@fansong/engine';
 import type { Launch } from '../game/launch.js';
 import { parseReplay } from '../game/replay-io.js';
 import { MODE_LABELS } from './editorView.js';
+import { browserStorage, playableCustomMaps } from '../game/customMaps.js';
 
 interface Props {
   initial: MatchSetup;
@@ -42,7 +44,12 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor }: Pr
   const [p0, setP0] = useState(initial.presets[0]);
   const [p1, setP1] = useState(initial.presets[1]);
   const [seed, setSeed] = useState(initial.seed);
-  const [mapId, setMapId] = useState(initial.mapId ?? DEFAULT_MAP_ID);
+  // Custom maps saved from the editor (read once; the editor is a separate screen).
+  const [customMaps] = useState(() => playableCustomMaps(browserStorage()));
+  const [mapId, setMapId] = useState(() => {
+    const id = initial.mapId ?? DEFAULT_MAP_ID;
+    return getMap(id) || customMaps.some((m) => m.id === id) ? id : DEFAULT_MAP_ID;
+  });
   const [replayError, setReplayError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -94,7 +101,7 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor }: Pr
           <WarbandPicker label={label1} value={p1} onChange={setP1} />
         </div>
 
-        <MapPicker value={mapId} onChange={setMapId} disabled={mode === 'online'} />
+        <MapPicker value={mapId} custom={customMaps} onChange={setMapId} disabled={mode === 'online'} />
         <button className="ghost" onClick={onOpenEditor}>
           Map editor…
         </button>
@@ -172,24 +179,36 @@ function WarbandPicker({
 
 function MapPicker({
   value,
+  custom,
   onChange,
   disabled,
 }: {
   value: string;
+  /** Playable custom maps, listed after the built-ins. */
+  custom: readonly MapDef[];
   onChange: (id: string) => void;
   disabled: boolean;
 }): JSX.Element {
-  const map = getMap(disabled ? DEFAULT_MAP_ID : value)!;
+  const id = disabled ? DEFAULT_MAP_ID : value;
+  const map = getMap(id) ?? custom.find((m) => m.id === id) ?? getMap(DEFAULT_MAP_ID)!;
   const modes = supportedModes(map).map((m) => MODE_LABELS[m]);
+  const option = (m: MapDef) => (
+    <option key={m.id} value={m.id}>
+      {m.name}
+    </option>
+  );
   return (
     <div className="map-picker">
       <h3>Map</h3>
-      <select value={disabled ? DEFAULT_MAP_ID : value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
-        {listMaps().map((m) => (
-          <option key={m.id} value={m.id}>
-            {m.name}
-          </option>
-        ))}
+      <select value={map.id} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        {custom.length === 0 ? (
+          listMaps().map(option)
+        ) : (
+          <>
+            <optgroup label="Built-in">{listMaps().map(option)}</optgroup>
+            <optgroup label="Custom">{custom.map(option)}</optgroup>
+          </>
+        )}
       </select>
       <p className="warband-meta">
         {map.width}×{map.height} · {modes.join(', ')}

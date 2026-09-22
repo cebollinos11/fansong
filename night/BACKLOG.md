@@ -47,7 +47,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 22. Editor: forest & rocks — brush radius 0–2, drag-fill region, single place/remove.
 - [x] 23. Editor: deploy zones per player; objectives (flag bases, hill zone, conquest points).
 - [x] 24. Editor: undo/redo UI, map name, inline validation errors.
-- [ ] 25. Editor: save/load localStorage, export/import .json; custom maps in Setup picker.
+- [x] 25. Editor: save/load localStorage, export/import .json; custom maps in Setup picker.
 
 ## Game modes
 - [ ] 26. Engine: mode model — `GameConfig.mode`/objectives, optional state (omitted for

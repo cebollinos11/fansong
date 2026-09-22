@@ -14,7 +14,12 @@ export function replayToJson(replay: Replay): string {
 
 /** Trigger a browser download of a replay as a `.json` file. */
 export function downloadReplay(replay: Replay, filename = 'fansong-replay.json'): void {
-  const blob = new Blob([replayToJson(replay)], { type: 'application/json' });
+  downloadJson(replayToJson(replay), filename);
+}
+
+/** Trigger a browser download of JSON text as a file. */
+export function downloadJson(text: string, filename: string): void {
+  const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
