@@ -3,7 +3,8 @@
 A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: M0–M6 complete.** The game plays on a **flat-top hex grid** (M6). A
+**Status: M0–M7 complete.** The game plays on a **flat-top hex grid** (M6) with
+**terrain, premade maps, a map editor and five game modes** (M7). A
 full AI-vs-AI game is playable in the terminal —
 with original **preset warbands**, a **point-buy** cost model, **special-ability
 traits** (ranged, tough, guard) and **morale** (fear + rout) — there is a
@@ -23,7 +24,8 @@ thin view over it.
 packages/
   engine/   pure TS state machine: RNG, hex board, reduce, getLegalCommands, combat
   ai/       deterministic heuristic opponent (also the test bot)
-  content/  point-buy costing, warband validation, original preset warbands
+  content/  point-buy costing, warband validation, original preset warbands,
+            map format + validation, built-in maps (maps/*.json), editor model
   protocol/ zod wire schemas + client/server message envelopes (the trust boundary)
 tools/
   cli/      `pnpm play` — headless AI-vs-AI runner with a turn-by-turn log
@@ -36,14 +38,17 @@ apps/
 
 ```bash
 pnpm install
-pnpm test                 # 158 tests: rng, hex board, combat, turnover, rounds,
-                          #            abilities, morale, replay/golden,
-                          #            costing, validation, deploy, self-play,
+pnpm test                 # 517 tests: rng, hex board, terrain/LOS, combat, turnover,
+                          #            rounds, abilities, morale, game modes,
+                          #            replay/golden, costing, validation, maps,
+                          #            deploy, self-play (map × mode), editor,
                           #            wire schemas, matchmaking, server rooms
 pnpm play                 # watch two demo AIs fight (seed 42)
-pnpm play --list          # list the preset warbands
+pnpm play --list          # list preset warbands, built-in maps and modes
 pnpm play --p0 iron-wardens --p1 ashfang-raiders   # a preset matchup
+pnpm play --map twin-towers --mode capture-the-flag  # a map + game mode
 pnpm play --seed 7 -q     # a specific seed, result only
+pnpm play --help          # every option
 pnpm typecheck            # tsc across all packages
 ```
 
@@ -204,3 +209,59 @@ this swap):
 
 The engine is still the whole game: remove three.js, React, and the worker and a
 seed + command list replays byte-for-byte in the terminal.
+
+## Terrain, maps & game modes (M7)
+
+The default game is still the flat 12×10 annihilation board, byte-for-byte (the
+golden replay is unchanged): everything below is optional state that is simply
+absent when unused.
+
+- **Terrain** — each hex has an **elevation** 0–3 and at most one **feature**:
+  - `rock`, `building` — impassable, block line of sight;
+  - `forest` — passable; blocks sight *through* it, but a unit inside a forest
+    hex can see out and be seen.
+
+  Moves need a real path around obstacles (at most `move` steps). **High
+  ground:** a standing combatant on a strictly higher hex gets **+1** to its
+  roll — attacking, defending, riposting or shooting — and the log says so.
+- **Maps** — a JSON `MapDef` (`id`, `name`, `width`, `height`, row-major
+  `hexes: {elevation, feature}[]`, per-player `deployZones`, `objectives`),
+  checked by a zod schema and `validateMap` (size limits, passable deploy zones
+  with room for a warband, objectives valid for the mode); `supportedModes(map)`
+  says which modes a map can host. Built-ins live in `packages/content/maps/`:
+
+  | Map | Character | Modes beyond annihilation / kill-the-king |
+  |-----|-----------|-------------------------------------------|
+  | Open Field | the flat default board | — |
+  | Rolling Hills | elevation-heavy, few features | king-of-the-hill |
+  | Old Forest | dense forest, line-of-sight play | capture-the-flag |
+  | Ruined Village | buildings and streets | king-of-the-hill, capture-the-flag |
+  | Rocky Pass | rocks, chokepoints, a ridge | king-of-the-hill |
+  | Twin Towers | two raised plateaus | capture-the-flag |
+  | Crossroads | three objective zones | king-of-the-hill, conquest |
+
+- **Game modes** (chosen in Setup or with `--mode`; the map must support it):
+  - **annihilation** — the default: destroy or rout the enemy warband.
+  - **kill-the-king** — each side has one **King** (♛; picked in Setup, the most
+    expensive unit by default). Your King falls → you lose at once.
+  - **king-of-the-hill** — at each round boundary, whoever has more standing
+    units on the hill scores 1. First to **5**, else the higher score after
+    round 12 (ties go to an annihilation-style tiebreak).
+  - **conquest** — as above with three zones (A/B/C) scored separately; first
+    to **8**, else higher score after round 12.
+  - **capture-the-flag** — move onto the enemy flag to pick it up; a knocked-down
+    or killed carrier drops it; move onto your own dropped flag to return it;
+    end a move on your base with the enemy flag to win.
+
+  The heuristic AI plays every mode (zones, flags, Kings, high ground and cover),
+  and a self-play matrix runs every built-in map × every mode it supports.
+- **Map editor** — the web app's Setup screen has a **Map editor…** button: pick
+  a size, then paint elevation (raise / lower / set / erase), buildings (click or
+  drag a footprint), forest and rocks (brush radius 0–2, drag-fill), deploy
+  zones, flag bases, the hill and conquest zones. Undo/redo, inline validation,
+  save to the browser (localStorage) or export/import `.json`. Valid custom maps
+  show up in the Setup map picker for local games; online matches use built-in
+  maps only (the server can't see your browser's maps).
+- **In the web UI** hexes are extruded by elevation with low-poly rocks, joined
+  buildings and cone trees; zones, flags, crowns and flag carriers are marked on
+  the board, and the HUD shows the mode, scores and flag status.

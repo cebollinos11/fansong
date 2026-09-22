@@ -377,3 +377,8 @@
   instead of being silently ignored; the result line shows the score only for hill/conquest (matches the web HUD —
   a CTF capture wins outright); the roster marks kill-the-king Kings with ♛. Tests: tools/cli/test/options.test.ts.
   Ran `pnpm play --list`, a CTF match on twin-towers, and the conquest-without-map error by hand.
+- Task 41: docs. PLAN.md: roadmap item 8 "M7 — Terrain, maps & game modes" (terrain/high ground, map format +
+  7 built-ins, modes, AI, clients/editor/protocol/CLI), a "Terrain & modes" row in the decisions table, content
+  line in the layout tree. README: status M0–M7, layout/quick-start updated (517 tests, `--map`/`--mode`/`--help`
+  examples), new "Terrain, maps & game modes (M7)" section with a map table (from `pnpm play --list`), mode rules,
+  editor usage and the online built-in-maps-only limitation. Docs only — no code changed.
