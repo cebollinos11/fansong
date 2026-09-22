@@ -617,13 +617,18 @@ export class BoardView {
         t += this.pause(this.frameCombat(pair, t));
         const start = t;
         const cards = OPPOSED_ROLL_MS + COMBAT_CARD_HOLD_MS; // shows the outcome, holds, fades
+        // Whoever pair[0] is — attacker, shooter, hacker, riposting guard — the
+        // blow only reaches pair[1] on a defender-side result. Anything else is
+        // a miss, a getaway, a clash, or a parry the guard didn't land, and
+        // must not flash the other unit as though it had connected.
+        const land = e.result.startsWith('defender');
         // Melee the defender answers plays as an exchange, so the swing goes in
         // and is turned aside before the answer comes back — landing when the
         // attacker lost the roll, turned aside in its turn when they clashed.
         const s =
           e.type === 'AttackResolved' && this.answered(e)
-            ? this.exchange(pair[0], pair[1], start + cards, { land: e.result !== 'clash' })
-            : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards);
+            ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') })
+            : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land });
         this.at(start, () => this.rolls.addOpposed(roll, this.now, cards));
         this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now));
         lastHit = s.hit;
