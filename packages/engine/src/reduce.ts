@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Board } from './board.js';
 import { computeCombatResult, highGroundBonus } from './combat.js';
-import { checkRoundLimit, fallenKingOwner, finishGame, scoreZones } from './mode.js';
+import { checkRoundLimit, dropFallenCarriers, fallenKingOwner, finishGame, flagsAfterMove, scoreZones } from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
@@ -131,6 +131,7 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   unit.pos = { x: to.x, y: to.y };
   s.actionsRemaining -= 1;
   events.push({ type: 'UnitMoved', unitId, from, to: { x: to.x, y: to.y } });
+  if (flagsAfterMove(s, events, unitId)) return;
 
   if (s.actionsRemaining <= 0) endActivation(s, events);
 }
@@ -413,6 +414,8 @@ function endRound(s: GameState, events: GameEvent[]): void {
 
 function checkGameOver(s: GameState, events: GameEvent[]): boolean {
   if (s.phase === 'gameOver') return true;
+  // Capture-the-flag: knocked-down and fallen carriers drop what they carry.
+  dropFallenCarriers(s, events);
   // Kill-the-king: a fallen King loses at once, even with the warband intact.
   const kingless = fallenKingOwner(s);
   if (kingless !== undefined) {

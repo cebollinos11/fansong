@@ -50,6 +50,19 @@ export interface ModeState {
   scores: [number, number];
   /** Kill-the-king: the unit id of player 0's and player 1's King. */
   kings?: [string, string];
+  /** Capture-the-flag: where player 0's and player 1's flag is, and who carries it. */
+  flags?: [FlagState, FlagState];
+}
+
+/**
+ * One flag in capture-the-flag. `at` is its hex: the owner's base, the hex it
+ * was dropped on, or — while carried — the carrier's hex (kept in step on
+ * every move so renderers never need to look the carrier up).
+ */
+export interface FlagState {
+  at: Vec;
+  /** Unit id of the enemy unit carrying it, or `null` when it lies on a hex. */
+  carrier: string | null;
 }
 
 /** Static rules per mode: the score that wins outright and the round cap. */
@@ -93,6 +106,15 @@ export function createModeState(mode: GameMode | undefined, objectives: ModeObje
     const f = objectives?.flags;
     if (!f) throw new Error(`mode '${mode}' needs flag bases`);
     obj.flags = [{ x: f[0].x, y: f[0].y }, { x: f[1].x, y: f[1].y }];
+    return {
+      mode,
+      objectives: obj,
+      scores: [0, 0],
+      flags: [
+        { at: { x: f[0].x, y: f[0].y }, carrier: null },
+        { at: { x: f[1].x, y: f[1].y }, carrier: null },
+      ],
+    };
   } else if (need === 'hill') {
     const h = objectives?.hill;
     if (!h || h.length === 0) throw new Error(`mode '${mode}' needs a hill zone`);
@@ -264,4 +286,76 @@ export function scoreZones(s: GameState, events: GameEvent[]): boolean {
   if (s0 < target && s1 < target) return false;
   finishGame(s, events, s0 === s1 ? tiebreakWinner(s) : s0 > s1 ? 0 : 1, 'score');
   return true;
+}
+
+const sameHex = (a: Vec, b: Vec): boolean => a.x === b.x && a.y === b.y;
+
+/** Capture-the-flag: which player's flag `unitId` is carrying, if any. */
+export function flagCarriedBy(state: GameState, unitId: string): Owner | undefined {
+  const flags = state.mode?.flags;
+  if (!flags) return undefined;
+  if (flags[0].carrier === unitId) return 0;
+  if (flags[1].carrier === unitId) return 1;
+  return undefined;
+}
+
+/** Capture-the-flag: whether `player`'s flag is sitting on its base hex. */
+export function flagAtBase(state: GameState, player: Owner): boolean {
+  const m = state.mode;
+  if (!m?.flags || !m.objectives.flags) return false;
+  return m.flags[player].carrier === null && sameHex(m.flags[player].at, m.objectives.flags[player]);
+}
+
+/**
+ * Capture-the-flag, after `unitId` ends a move (mutates `s`): a carried flag
+ * follows its carrier; moving onto your own dropped flag returns it to base;
+ * moving onto the enemy flag (at its base or dropped) picks it up; and a carrier
+ * ending its move on its own base captures — scoring 1 and winning at once
+ * (whether or not its own flag is home). Returns whether the game ended.
+ */
+export function flagsAfterMove(s: GameState, events: GameEvent[], unitId: string): boolean {
+  const m = s.mode;
+  const unit = s.units.find((u) => u.id === unitId);
+  if (!m?.flags || !m.objectives.flags || !unit) return false;
+  const bases = m.objectives.flags;
+  const own = unit.owner;
+  const enemy: Owner = own === 0 ? 1 : 0;
+  for (const f of m.flags) if (f.carrier === unit.id) f.at = { x: unit.pos.x, y: unit.pos.y };
+
+  const mine = m.flags[own];
+  if (mine.carrier === null && sameHex(mine.at, unit.pos) && !sameHex(mine.at, bases[own])) {
+    mine.at = { x: bases[own].x, y: bases[own].y };
+    events.push({ type: 'FlagReturned', player: own, unitId: unit.id });
+  }
+  const theirs = m.flags[enemy];
+  if (theirs.carrier === null && sameHex(theirs.at, unit.pos)) {
+    theirs.carrier = unit.id;
+    events.push({ type: 'FlagPickedUp', player: enemy, unitId: unit.id });
+  }
+  if (theirs.carrier === unit.id && sameHex(unit.pos, bases[own])) {
+    m.scores[own] += 1;
+    events.push({ type: 'FlagCaptured', player: own, unitId: unit.id });
+    finishGame(s, events, own, 'flag');
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Capture-the-flag (mutates `s`): a carrier that has been knocked down or has
+ * died (killed or routed) drops the flag on its hex. Checked after every
+ * combat and activation, before the game-over checks.
+ */
+export function dropFallenCarriers(s: GameState, events: GameEvent[]): void {
+  const flags = s.mode?.flags;
+  if (!flags) return;
+  flags.forEach((f, p) => {
+    if (f.carrier === null) return;
+    const carrier = s.units.find((u) => u.id === f.carrier);
+    if (carrier && !carrier.dead && !carrier.knockedDown) return;
+    const at = carrier ? { x: carrier.pos.x, y: carrier.pos.y } : f.at;
+    events.push({ type: 'FlagDropped', player: p as Owner, unitId: f.carrier, at: { x: at.x, y: at.y } });
+    f.carrier = null;
+    f.at = at;
+  });
 }

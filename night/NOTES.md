@@ -259,3 +259,15 @@
   log updated. Decision: `scoreZones` now tallies every zone before checking the target, so zone order never
   decides a game — if both players reach the target on the same boundary the higher score wins, and an equal
   score goes to `tiebreakWinner` (reason still `'score'`). KotH behaviour is identical (one zone).
+- Task 30: capture-the-flag. `ModeState.flags: [FlagState, FlagState]` (player 0's and player 1's flag), each
+  `{ at, carrier }`; `at` tracks the carrier's hex while carried so renderers need no lookup. Only a Move's
+  **destination** counts (passing over a flag does nothing). After each move (`flagsAfterMove`): a carried flag
+  follows; ending on your own *dropped* flag returns it to base (`FlagReturned`); ending on the enemy flag — at
+  its base or dropped — picks it up (`FlagPickedUp`, incl. a carrier grabbing its own dropped flag back on the
+  way home, which is a return); a carrier ending on its own base captures (`FlagCaptured`, score +1, `GameOver`
+  reason `'flag'`, no `ActivationEnded`). Decision: capturing does **not** require your own flag to be home
+  (spec doesn't ask for it). Drops (`dropFallenCarriers`) run at the top of `checkGameOver`, i.e. after every
+  attack/shot/riposte and every activation hand-off, so a carrier knocked down, killed or routed drops on its
+  hex before the turn passes (`FlagDropped` carries `at`). A knocked-down carrier that stands up does not
+  re-take a flag lying under it — it must move off and back (pickup is by moving onto). No round cap for CTF.
+  Protocol: `flagStateSchema` + four flag event schemas + drift guard; CLI/web logs got basic flag lines.

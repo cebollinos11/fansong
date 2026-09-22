@@ -53,6 +53,14 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `=== Round ${e.round} — P${e.nextLeader} leads ===`;
     case 'ScoreChanged':
       return `  Player ${e.player} scores ${e.points}${e.zone !== undefined ? ` for zone ${e.zone + 1}` : ''} (${e.scores[0]}–${e.scores[1]})`;
+    case 'FlagPickedUp':
+      return `  ${name(state, e.unitId)} seizes Player ${e.player}'s flag`;
+    case 'FlagDropped':
+      return `  ${name(state, e.unitId)} drops Player ${e.player}'s flag`;
+    case 'FlagReturned':
+      return `  ${name(state, e.unitId)} returns Player ${e.player}'s flag to base`;
+    case 'FlagCaptured':
+      return `  ${name(state, e.unitId)} carries the flag home — Player ${e.player} captures it!`;
     case 'GameOver':
       return `GAME OVER — Player ${e.winner} wins`;
     case 'ActivationEnded':

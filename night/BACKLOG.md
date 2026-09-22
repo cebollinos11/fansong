@@ -55,7 +55,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 27. Engine: kill-the-king — `UnitSpec.king`, king death = immediate loss. Tests.
 - [x] 28. Engine: king-of-the-hill scoring at round start, first to 5, round-12 end. Tests.
 - [x] 29. Engine: conquest — 3 zones scored separately, first to 8. Tests.
-- [ ] 30. Engine: capture-the-flag — pickup/drop/return/capture + events. Tests.
+- [x] 30. Engine: capture-the-flag — pickup/drop/return/capture + events. Tests.
 - [ ] 31. Content: mode wiring — `MatchSetup.mode`, map objectives → engine config, king designation.
 - [ ] 32. Protocol/worker: map + mode in match setup messages; room uses them. Tests.
 

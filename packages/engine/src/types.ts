@@ -201,6 +201,14 @@ export type GameEvent =
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }
   /** `zone` (index into the conquest zones) is present only for conquest zone scoring. */
   | { type: 'ScoreChanged'; player: Owner; points: number; scores: [number, number]; zone?: number }
+  /** Capture-the-flag: `player` is the flag's owner; `unitId` the enemy that took it. */
+  | { type: 'FlagPickedUp'; player: Owner; unitId: string }
+  /** Capture-the-flag: `player`'s flag falls from its knocked-down or slain carrier onto `at`. */
+  | { type: 'FlagDropped'; player: Owner; unitId: string; at: Vec }
+  /** Capture-the-flag: `unitId` returned its own side's (`player`'s) dropped flag to base. */
+  | { type: 'FlagReturned'; player: Owner; unitId: string }
+  /** Capture-the-flag: `player` carried the enemy flag home with `unitId` (and wins). */
+  | { type: 'FlagCaptured'; player: Owner; unitId: string }
   /** `reason` is present only in an objective mode (see {@link ModeState}). */
   | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
 

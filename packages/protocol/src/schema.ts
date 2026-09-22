@@ -6,6 +6,7 @@ import type {
   ChooseActivation,
   Command,
   EndActivation,
+  FlagState,
   GameEvent,
   GameMode,
   GameState,
@@ -150,12 +151,15 @@ export const modeObjectivesSchema = z
   })
   .strict();
 
+export const flagStateSchema = z.object({ at: vecSchema, carrier: z.string().nullable() }).strict();
+
 export const modeStateSchema = z
   .object({
     mode: z.enum(['capture-the-flag', 'king-of-the-hill', 'conquest', 'kill-the-king']),
     objectives: modeObjectivesSchema,
     scores: z.tuple([z.number().int(), z.number().int()]),
     kings: z.tuple([z.string(), z.string()]).optional(),
+    flags: z.tuple([flagStateSchema, flagStateSchema]).optional(),
   })
   .strict();
 
@@ -261,6 +265,10 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     scores: z.tuple([z.number().int(), z.number().int()]),
     zone: z.number().int().min(0).optional(),
   }),
+  z.object({ type: z.literal('FlagPickedUp'), player: ownerSchema, unitId: z.string() }),
+  z.object({ type: z.literal('FlagDropped'), player: ownerSchema, unitId: z.string(), at: vecSchema }),
+  z.object({ type: z.literal('FlagReturned'), player: ownerSchema, unitId: z.string() }),
+  z.object({ type: z.literal('FlagCaptured'), player: ownerSchema, unitId: z.string() }),
   z.object({
     type: z.literal('GameOver'),
     winner: ownerSchema,
@@ -314,4 +322,5 @@ export type SchemaDriftChecks = [
   Expect<Eq<z.infer<typeof gameModeSchema>, GameMode>>,
   Expect<Eq<z.infer<typeof modeObjectivesSchema>, ModeObjectives>>,
   Expect<Eq<z.infer<typeof modeStateSchema>, ModeState>>,
+  Expect<Eq<z.infer<typeof flagStateSchema>, FlagState>>,
 ];

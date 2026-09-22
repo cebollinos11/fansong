@@ -145,6 +145,23 @@ describe('mode state', () => {
     expect(gameStateSchema.safeParse({ ...state, mode: { ...state.mode, kings: ['p0u0'] } }).success).toBe(false);
   });
 
+  it('round-trips capture-the-flag state with its flags', () => {
+    const state = createGame({
+      seed: 5,
+      board: { width: 6, height: 5 },
+      warbands: [
+        [{ name: 'A', quality: 3, combat: 3, pos: { x: 0, y: 0 } }],
+        [{ name: 'B', quality: 3, combat: 3, pos: { x: 5, y: 4 } }],
+      ],
+      mode: 'capture-the-flag',
+      objectives: { flags: [{ x: 0, y: 2 }, { x: 5, y: 2 }] },
+    });
+    state.mode!.flags![1] = { at: { x: 0, y: 0 }, carrier: 'p0u0' };
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    const bad = { ...state.mode, flags: [{ at: { x: 0, y: 2 } }, state.mode!.flags![1]] };
+    expect(gameStateSchema.safeParse({ ...state, mode: bad }).success).toBe(false);
+  });
+
   it('rejects annihilation or malformed scores as mode state', () => {
     const state = modeGame();
     const bad = [
@@ -161,6 +178,19 @@ describe('mode state', () => {
     expect(gameEventSchema.safeParse({ type: 'ScoreChanged', player: 0, points: 1, scores: [1, 0], zone: -1 }).success).toBe(false);
     expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'roundLimit' }).success).toBe(true);
     expect(gameEventSchema.safeParse({ type: 'GameOver', winner: 0, reason: 'bored' }).success).toBe(false);
+  });
+
+  it('accepts the capture-the-flag events', () => {
+    for (const e of [
+      { type: 'FlagPickedUp', player: 1, unitId: 'p0u0' },
+      { type: 'FlagDropped', player: 1, unitId: 'p0u0', at: { x: 3, y: 2 } },
+      { type: 'FlagReturned', player: 1, unitId: 'p1u2' },
+      { type: 'FlagCaptured', player: 0, unitId: 'p0u0' },
+      { type: 'GameOver', winner: 0, reason: 'flag' },
+    ]) {
+      expect(gameEventSchema.safeParse(e).success).toBe(true);
+    }
+    expect(gameEventSchema.safeParse({ type: 'FlagDropped', player: 1, unitId: 'p0u0' }).success).toBe(false);
   });
 });
 
