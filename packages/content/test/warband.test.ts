@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RULES, validateWarband, warbandCost, type Warband } from '../src/warband.js';
+import {
+  ARMY_RULES,
+  DEFAULT_RULES,
+  parseWarband,
+  validateArmy,
+  validateWarband,
+  warbandCost,
+  type Warband,
+} from '../src/warband.js';
 
 const legal: Warband = {
   name: 'Test Band',
@@ -66,5 +74,46 @@ describe('validateWarband', () => {
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.startsWith('Gremlin:'))).toBe(true);
     expect(result.errors.some((e) => e.includes('over budget'))).toBe(false);
+  });
+});
+
+describe('validateArmy (army builder: no point limit)', () => {
+  const grunt = { name: 'Grunt', quality: 2, combat: 6, move: 8, ranged: 8, tough: true, guard: true };
+
+  it('accepts any point total within the roster size', () => {
+    const army: Warband = { name: 'Horde', units: Array.from({ length: ARMY_RULES.maxUnits }, () => grunt) };
+    const check = validateArmy(army);
+    expect(check.ok).toBe(true);
+    expect(check.cost).toBeGreaterThan(DEFAULT_RULES.budget * 10);
+  });
+
+  it('allows a single unit but not none, nor more than the cap', () => {
+    expect(validateArmy({ name: 'Lone', units: [grunt] }).ok).toBe(true);
+    expect(validateArmy({ name: 'Empty', units: [] }).errors).toContain('too few units: 0 < 1');
+    const over = validateArmy({ name: 'Over', units: Array.from({ length: ARMY_RULES.maxUnits + 1 }, () => grunt) });
+    expect(over.ok).toBe(false);
+  });
+
+  it('still checks stat ranges and names', () => {
+    const check = validateArmy({ name: ' ', units: [{ ...grunt, combat: 7 }, { ...grunt, name: '' }] });
+    expect(check.errors).toEqual(expect.arrayContaining(['the army needs a name', 'unit 2 needs a name']));
+    expect(check.errors.some((e) => e.includes('combat 7'))).toBe(true);
+  });
+});
+
+describe('parseWarband', () => {
+  it('keeps known fields, drops unknown ones and false traits', () => {
+    const w = parseWarband({
+      name: 'X',
+      extra: 1,
+      units: [{ name: 'A', quality: 3, combat: 3, move: 3, tough: false, guard: true, look: 'Longbow', hp: 9 }],
+    });
+    expect(w).toEqual({ name: 'X', units: [{ name: 'A', quality: 3, combat: 3, move: 3, guard: true, look: 'Longbow' }] });
+  });
+
+  it('rejects malformed input with a friendly error', () => {
+    expect(() => parseWarband(null)).toThrow(/Not an army/);
+    expect(() => parseWarband({ name: 'X' })).toThrow(/unit list/);
+    expect(() => parseWarband({ name: 'X', units: [{ name: 'A', quality: '3', combat: 3, move: 3 }] })).toThrow(/quality/);
   });
 });

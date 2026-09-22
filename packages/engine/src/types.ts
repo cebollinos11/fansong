@@ -35,6 +35,12 @@ export interface Unit {
   owner: Owner;
   name: string;
   /**
+   * Cosmetic: which unit this one is drawn as (a preset unit's name, e.g. an
+   * army-builder unit that "looks like" a Longbow). Omitted = drawn by `name`.
+   * No rule reads it.
+   */
+  look?: string;
+  /**
    * Quality target number. A die is a success when `die >= quality`
    * (so *lower* Quality is better). Used for activation dice.
    */

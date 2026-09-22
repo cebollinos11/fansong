@@ -4,6 +4,7 @@ import { GameScreen } from './ui/GameScreen.js';
 import { SetupScreen } from './ui/SetupScreen.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { EditorScreen } from './ui/EditorScreen.js';
+import { ArmyBuilderScreen } from './ui/ArmyBuilderScreen.js';
 import { DEFAULT_SETUP } from '@fansong/content';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
@@ -14,6 +15,7 @@ import { browserStorage, customMapLookup } from './game/customMaps.js';
 type View =
   | { kind: 'setup' }
   | { kind: 'editor' }
+  | { kind: 'armies' }
   | { kind: 'match'; id: number; launch: Launch }
   | { kind: 'replay'; id: number; replay: Replay };
 
@@ -27,8 +29,13 @@ export function App(): JSX.Element {
         onStart={(launch) => setView({ kind: 'match', id: Date.now(), launch })}
         onLoadReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
         onOpenEditor={() => setView({ kind: 'editor' })}
+        onOpenArmies={() => setView({ kind: 'armies' })}
       />
     );
+  }
+
+  if (view.kind === 'armies') {
+    return <ArmyBuilderScreen onExit={() => setView({ kind: 'setup' })} />;
   }
 
   if (view.kind === 'editor') {
@@ -76,11 +83,12 @@ function MatchHost({
       clientRef.current = c;
       setClient(c);
     } else {
-      const { presets, seed, mapId, gameMode, kings } = launch;
-      connectOnline({ mode: 'pvp', presets, seed, mapId, gameMode, kings })
+      const request = onlineRequest(launch);
+      request.users++;
+      request.promise
         .then((c) => {
           if (cancelled) {
-            c.dispose();
+            if (request.users === 0) c.dispose();
             return;
           }
           clientRef.current = c;
@@ -93,6 +101,7 @@ function MatchHost({
 
     return () => {
       cancelled = true;
+      if (launch.kind === 'online') onlineRequest(launch).users--;
       clientRef.current?.dispose();
       clientRef.current = null;
     };
@@ -114,6 +123,28 @@ function MatchHost({
     );
   }
   return <GameScreen client={client} onExit={onExit} onWatchReplay={onWatchReplay} />;
+}
+
+/** One matchmaking request per online launch, and how many mounted hosts await it. */
+interface OnlineRequest {
+  promise: Promise<MatchClient>;
+  users: number;
+}
+const onlineRequests = new WeakMap<Launch, OnlineRequest>();
+
+/**
+ * The (shared) matchmaking request for a launch. React's StrictMode runs the
+ * connect effect twice in development; a second request would queue this
+ * player again and pair them with their own first one, so both runs share it.
+ */
+function onlineRequest(launch: Extract<Launch, { kind: 'online' }>): OnlineRequest {
+  let request = onlineRequests.get(launch);
+  if (!request) {
+    const { presets, warbands, seed, mapId, gameMode, kings } = launch;
+    request = { promise: connectOnline({ mode: 'pvp', presets, warbands, seed, mapId, gameMode, kings }), users: 0 };
+    onlineRequests.set(launch, request);
+  }
+  return request;
 }
 
 function Lobby({ children, onExit }: { children: React.ReactNode; onExit: () => void }): JSX.Element {

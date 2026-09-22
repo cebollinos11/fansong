@@ -8,8 +8,9 @@ import type { Env } from '../env.js';
  * Durable Object for one game room. It is a thin transport adapter: it owns a
  * single {@link RoomEngine} (all the game logic and authority) and only shuttles
  * bytes between WebSockets and that engine. The DO is created empty and seeded
- * once via an internal `POST …/init` from the matchmaker, which fixes the match
- * setup both players will share.
+ * via an internal `POST …/init` from the matchmaker. A pvp host's room is seeded
+ * `pending` (seat 1 is a stand-in army); a second init with `final: true` swaps
+ * in the joiner's army once one is matched, fixing the setup both players share.
  *
  * State is kept in memory in the live DO and mirrored to storage after every
  * applied frame, so a cold restart resumes the same authoritative `GameState`.
@@ -39,18 +40,28 @@ export class GameRoomDO implements DurableObject {
   // --- seeding --------------------------------------------------------------
 
   private async handleInit(req: Request): Promise<Response> {
-    const body = (await req.json().catch(() => null)) as { setup?: unknown } | null;
+    const body = (await req.json().catch(() => null)) as
+      | { setup?: unknown; pending?: boolean; final?: boolean }
+      | null;
     const parsed = matchSetupSchema.safeParse(body?.setup);
     if (!parsed.success) {
       return new Response('invalid setup', { status: 400 });
     }
     const problem = setupError(parsed.data);
     if (problem) return new Response(`invalid setup: ${problem}`, { status: 400 });
+    if (body?.final) {
+      const engine = await this.ensureEngine();
+      if (!engine || !engine.finalize(parsed.data)) return new Response('room is not awaiting an opponent', { status: 409 });
+      await this.state.storage.put({ setup: engine.setup, pending: false });
+      await this.persist();
+      return new Response('ok');
+    }
     // Idempotent: only the first init seeds the room.
     const existing = await this.state.storage.get<MatchSetup>('setup');
     if (!existing) {
-      await this.state.storage.put('setup', parsed.data);
-      this.engine = new RoomEngine(parsed.data);
+      const pending = body?.pending === true;
+      await this.state.storage.put({ setup: parsed.data, pending });
+      this.engine = new RoomEngine(parsed.data, undefined, { pending });
       await this.persist();
     }
     return new Response('ok');
@@ -62,7 +73,8 @@ export class GameRoomDO implements DurableObject {
     if (!setup) return null;
     const stored = await this.state.storage.get<unknown>('state');
     const resumed = stored ? (gameStateSchema.parse(stored) as GameState) : undefined;
-    this.engine = new RoomEngine(setup, resumed);
+    const pending = (await this.state.storage.get<boolean>('pending')) ?? false;
+    this.engine = new RoomEngine(setup, resumed, { pending });
     return this.engine;
   }
 

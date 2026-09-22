@@ -1,4 +1,4 @@
-import type { MatchSetup } from '@fansong/content';
+import type { MatchSetup, Warband } from '@fansong/content';
 import type { GameMode } from '@fansong/engine';
 
 /**
@@ -10,7 +10,10 @@ export type Launch =
   | { kind: 'local'; setup: MatchSetup }
   | {
       kind: 'online';
+      /** [own army, a stand-in opponent until one joins] (see the matchmake request). */
       presets: [string, string];
+      /** Army-builder rosters for the two sides; override `presets`. */
+      warbands?: [Warband, Warband];
       seed: number;
       /** Built-in map id (the worker can't see custom maps); omitted = default board. */
       mapId?: string;

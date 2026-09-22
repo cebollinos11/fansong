@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultKing, getPreset } from '@fansong/content';
+import { defaultKing, getPreset, type Warband } from '@fansong/content';
 import { Matchmaker } from '../src/matchmaker.js';
 
 /** Deterministic id source: r0, r1, r2, … */
@@ -31,12 +31,12 @@ describe('Matchmaker — PvP', () => {
     expect(host.roomId).toBe('r0');
     expect(mm.pendingCount()).toBe(1);
 
-    const joiner = mm.request({ mode: 'pvp', presets: ['whatever', 'ignored'], seed: 999 });
+    const joiner = mm.request({ mode: 'pvp', presets: ['hollow-watch', 'ignored'], seed: 999 });
     expect(joiner.status).toBe('matched');
     expect(joiner.seat).toBe(1);
-    // The joiner drops into the host's room and shares the host's setup exactly.
+    // The joiner drops into the host's room with the host's seed, bringing its own army.
     expect(joiner.roomId).toBe('r0');
-    expect(joiner.setup).toEqual(host.setup);
+    expect(joiner.setup).toEqual({ ...host.setup, presets: ['iron-wardens', 'hollow-watch'] });
     expect(mm.pendingCount()).toBe(0);
   });
 
@@ -125,7 +125,7 @@ describe('Matchmaker — map and mode', () => {
     // A matching request joins the CTF host, even though it isn't first in line.
     const joiner = mm.request({ mode: 'pvp', presets: ['x', 'y'], seed: 1, mapId: 'old-forest', gameMode: 'capture-the-flag' });
     expect(joiner).toMatchObject({ status: 'matched', seat: 1, roomId: ctf.roomId });
-    expect(joiner.setup).toEqual(ctf.setup);
+    expect(joiner.setup).toEqual({ ...ctf.setup, presets: ['iron-wardens', 'x'] });
     expect(mm.pendingCount()).toBe(2);
   });
 
@@ -163,5 +163,58 @@ describe('Matchmaker — map and mode', () => {
       kings: [1, 2],
     });
     expect(pve.setup.kings).toEqual([1, 2]);
+  });
+
+  it('a pvp joiner fields its own King in kill-the-king', () => {
+    const mm = new Matchmaker(ids());
+    mm.request({ mode: 'pvp', presets: ['iron-wardens', 'iron-wardens'], seed: 3, gameMode: 'kill-the-king', kings: [1, 0] });
+    const joiner = mm.request({ mode: 'pvp', presets: ['ashfang-raiders', 'x'], seed: 4, gameMode: 'kill-the-king', kings: [4, 0] });
+    expect(joiner.setup.kings).toEqual([1, 4]);
+  });
+});
+
+describe('Matchmaker — army-builder armies', () => {
+  const horde: Warband = {
+    name: 'Horde',
+    units: Array.from({ length: 14 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, move: 5, look: 'Marauder' })),
+  };
+
+  it('copies custom warbands into a pve setup', () => {
+    const t = new Matchmaker(ids()).request({
+      mode: 'pve',
+      presets: ['custom', 'custom'],
+      warbands: [horde, getPreset('free-company')!],
+      seed: 1,
+    });
+    expect(t.setup.warbands).toEqual([horde, getPreset('free-company')]);
+  });
+
+  it('a custom joiner writes both armies out; a preset host is copied in', () => {
+    const mm = new Matchmaker(ids());
+    mm.request({ mode: 'pvp', presets: ['iron-wardens', 'iron-wardens'], seed: 3 });
+    const joiner = mm.request({ mode: 'pvp', presets: ['custom', 'custom'], warbands: [horde, horde], seed: 4 });
+    expect(joiner.setup).toEqual({
+      presets: ['iron-wardens', 'custom'],
+      warbands: [getPreset('iron-wardens'), horde],
+      seats: ['human', 'human'],
+      seed: 3,
+    });
+  });
+
+  it("a custom host's stand-in opponent is replaced by a preset joiner", () => {
+    const mm = new Matchmaker(ids());
+    mm.request({ mode: 'pvp', presets: ['custom', 'custom'], warbands: [horde, horde], seed: 3 });
+    const joiner = mm.request({ mode: 'pvp', presets: ['thorn-patrol', 'thorn-patrol'], seed: 4 });
+    expect(joiner.setup.warbands).toEqual([horde, getPreset('thorn-patrol')]);
+    expect(joiner.setup.presets).toEqual(['custom', 'thorn-patrol']);
+  });
+
+  it('skips a host whose joined setup is rejected, leaving it queued', () => {
+    const mm = new Matchmaker(ids(), [], (s) => (s.warbands?.[1]?.units.length ?? 0) < 10);
+    const host = mm.request({ mode: 'pvp', presets: ['iron-wardens', 'iron-wardens'], seed: 3 });
+    const big = mm.request({ mode: 'pvp', presets: ['custom', 'custom'], warbands: [horde, horde], seed: 4 });
+    expect(big).toMatchObject({ status: 'waiting', seat: 0 });
+    expect(big.roomId).not.toBe(host.roomId);
+    expect(mm.pendingCount()).toBe(2);
   });
 });

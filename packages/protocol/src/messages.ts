@@ -6,6 +6,7 @@ import {
   gameStateSchema,
   matchSetupSchema,
   ownerSchema,
+  warbandSchema,
 } from './schema.js';
 
 /**
@@ -48,19 +49,21 @@ export type ClientMessage = z.infer<typeof clientMessageSchema>;
 
 /**
  * Body of `POST /api/matchmake`. `mode` is the *queue* (pve = vs the in-room AI,
- * pvp = host or join a human); the match itself is described by `presets`,
- * `seed` and the optional map / game mode / King picks, which the worker copies
- * into the room's `MatchSetup` (only when present, so default setups stay
- * byte-identical). `mapId` must name a built-in map — the worker cannot see a
- * browser's custom maps. A pvp request only pairs with a host queued for the
- * same map and game mode; the joiner then plays the host's setup (its own
- * presets, seed and Kings are ignored). A pvp host picks only its own King —
- * seat 1 always fields its preset's default King.
+ * pvp = host or join a human); the match itself is described by `presets` (or
+ * explicit army-builder `warbands`, which override them), `seed` and the
+ * optional map / game mode / King picks, which the worker copies into the room's
+ * `MatchSetup` (only when present, so default setups stay byte-identical).
+ * `mapId` must name a built-in map — the worker cannot see a browser's custom
+ * maps. A pvp request only pairs with a host queued for the same map and game
+ * mode. In pvp each player brings their own army as side 0 (with its King as
+ * `kings[0]`): the host's side 1 is only a stand-in until an opponent joins,
+ * whose own army then takes seat 1; the host's seed is kept.
  */
 export const matchmakeRequestSchema = z
   .object({
     mode: z.enum(['pve', 'pvp']),
     presets: z.tuple([z.string().min(1).max(64), z.string().min(1).max(64)]),
+    warbands: z.tuple([warbandSchema, warbandSchema]).optional(),
     seed: z.number().int(),
     mapId: z.string().min(1).max(64).optional(),
     gameMode: gameModeSchema.optional(),
@@ -140,6 +143,7 @@ export const ErrorCode = {
   NotYourTurn: 'not_your_turn',
   IllegalCommand: 'illegal_command',
   GameOver: 'game_over',
+  WaitingForOpponent: 'waiting_for_opponent',
 } as const;
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 

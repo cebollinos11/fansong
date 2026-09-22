@@ -1072,3 +1072,195 @@ button.tool.active {
 .editor-selection h3 {
   margin: 0 0 4px;
 }
+
+/* --- Army builder ------------------------------------------------------- */
+.army {
+  min-height: 100%;
+  padding: 20px 24px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.army-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.army-header h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.army-header .hint {
+  margin: 0;
+}
+
+.army-body {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+@media (max-width: 820px) {
+  .army-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.army-list,
+.army-editor {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.army-list h3 {
+  margin: 0 0 8px;
+}
+
+.army-list ul {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+button.army-item {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+
+button.army-item.active {
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.army-list-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.army select,
+.army input[type='number'],
+.army input:not([type]) {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+}
+
+.army-title {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.army input.army-name {
+  flex: 1 1 240px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.army-total {
+  color: var(--muted);
+}
+
+.army-total strong {
+  color: var(--text);
+  font-size: 20px;
+}
+
+.army-table-wrap {
+  overflow-x: auto;
+  margin: 14px 0;
+}
+
+.army-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.army-table th {
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 4px 6px;
+  white-space: nowrap;
+}
+
+.army-table td {
+  border-top: 1px solid var(--line);
+  padding: 4px 4px;
+  vertical-align: middle;
+}
+
+.army-sprite {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  object-position: center 30%;
+  display: block;
+}
+
+.army input.army-unit-name {
+  width: 130px;
+}
+
+.army-table select {
+  width: 130px;
+}
+
+.army input.army-stat {
+  width: 48px;
+  padding: 6px 4px 6px 8px;
+}
+
+.army-table .stats {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.army-row-actions {
+  white-space: nowrap;
+}
+
+.army-row-actions button {
+  padding: 3px 7px;
+  margin-left: 2px;
+}
+
+.army-add {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.army-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  align-items: stretch;
+}
+
+.army-actions button.primary {
+  width: auto;
+  flex: 1;
+}
+
+.setup-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

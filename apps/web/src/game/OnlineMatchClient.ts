@@ -25,7 +25,7 @@ import type { ClientStatus, MatchClient } from './client.js';
  * re-checks authoritatively.
  */
 export class OnlineMatchClient implements MatchClient {
-  readonly setup: MatchSetup;
+  private currentSetup: MatchSetup;
   readonly controlledSeats: readonly Owner[];
   private readonly seat: Owner;
   private ws: WebSocket | null = null;
@@ -37,10 +37,15 @@ export class OnlineMatchClient implements MatchClient {
 
   constructor(opts: { url: string; seat: Owner; setup: MatchSetup; initialState: GameState }) {
     this.seat = opts.seat;
-    this.setup = opts.setup;
+    this.currentSetup = opts.setup;
     this.controlledSeats = [opts.seat];
     this.state = opts.initialState;
     this.connect(opts.url);
+  }
+
+  /** The room's setup; a pvp host's changes when the opponent's army arrives. */
+  get setup(): MatchSetup {
+    return this.currentSetup;
   }
 
   private connect(url: string): void {
@@ -72,6 +77,8 @@ export class OnlineMatchClient implements MatchClient {
     }
     switch (msg.t) {
       case 'welcome':
+        // Also re-sent to a waiting host when the opponent joins with their army.
+        this.currentSetup = msg.setup;
         this.state = msg.state;
         this.setReady(msg.presence);
         this.emit({ state: this.state, events: [] });

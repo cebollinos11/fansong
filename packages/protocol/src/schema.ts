@@ -20,7 +20,7 @@ import type {
   TerrainFeature,
   Unit,
 } from '@fansong/engine';
-import type { MatchSetup, Seat } from '@fansong/content';
+import { ARMY_RULES, NAME_LIMITS, type MatchSetup, type Seat, type Warband } from '@fansong/content';
 
 /**
  * Wire schemas. These are the trust boundary: a Durable Object never `reduce`s a
@@ -127,6 +127,7 @@ export const unitSchema = z
     id: z.string(),
     owner: ownerSchema,
     name: z.string(),
+    look: z.string().optional(),
     quality: z.number(),
     combat: z.number(),
     move: z.number(),
@@ -313,9 +314,35 @@ export const gameEventSchema = z.discriminatedUnion('type', [
 
 export const seatSchema: z.ZodType<Seat> = z.enum(['human', 'ai']);
 
+/**
+ * An army-builder unit as it crosses the wire. Only the shape and sizes are
+ * checked here; stat ranges and roster rules are `validateArmy`'s job (the room
+ * runs it when it builds the match).
+ */
+export const warbandUnitSchema = z
+  .object({
+    name: z.string().max(NAME_LIMITS.unit),
+    quality: z.number().int(),
+    combat: z.number().int(),
+    move: z.number().int(),
+    ranged: z.number().int().optional(),
+    tough: z.boolean().optional(),
+    guard: z.boolean().optional(),
+    look: z.string().max(64).optional(),
+  })
+  .strict();
+
+export const warbandSchema = z
+  .object({
+    name: z.string().max(NAME_LIMITS.warband),
+    units: z.array(warbandUnitSchema).max(ARMY_RULES.maxUnits),
+  })
+  .strict();
+
 export const matchSetupSchema = z
   .object({
     presets: z.tuple([z.string(), z.string()]),
+    warbands: z.tuple([warbandSchema, warbandSchema]).optional(),
     seats: z.tuple([seatSchema, seatSchema]),
     seed: z.number().int(),
     mapId: z.string().min(1).max(64).optional(),
@@ -343,6 +370,7 @@ export type SchemaDriftChecks = [
   Expect<Eq<GameEventFromSchema, GameEvent>>,
   Expect<Eq<GameStateFromSchema, GameState>>,
   Expect<Eq<MatchSetupFromSchema, MatchSetup>>,
+  Expect<Eq<z.infer<typeof warbandSchema>, Warband>>,
   // Individual command variants line up too.
   Expect<Eq<z.infer<typeof chooseActivationSchema>, ChooseActivation>>,
   Expect<Eq<z.infer<typeof moveCommandSchema>, MoveCommand>>,

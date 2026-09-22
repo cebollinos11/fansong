@@ -55,16 +55,55 @@ export class RoomEngine {
   private readonly members = new Map<string, Member>();
   /** connId currently bound to each human seat (undefined = open). */
   private readonly seatHolder: (string | undefined)[] = [undefined, undefined];
+  private currentSetup: MatchSetup;
+  private pendingOpponent: boolean;
 
-  constructor(
-    readonly setup: MatchSetup,
-    initial?: GameState,
-  ) {
+  /**
+   * `pending` marks a pvp host's room whose seat 1 army is still a stand-in: no
+   * command is accepted until {@link finalize} swaps in the joiner's army.
+   */
+  constructor(setup: MatchSetup, initial?: GameState, opts: { pending?: boolean } = {}) {
+    this.currentSetup = setup;
+    this.pendingOpponent = opts.pending ?? false;
     this.state = initial ?? createMatchFromPresets(setup);
+  }
+
+  get setup(): MatchSetup {
+    return this.currentSetup;
   }
 
   getState(): GameState {
     return this.state;
+  }
+
+  /** Whether seat 1's army is still a stand-in awaiting the joiner's. */
+  isPending(): boolean {
+    return this.pendingOpponent;
+  }
+
+  /**
+   * Swap in the final setup once a pvp opponent is matched (their army in seat
+   * 1), rebuild the untouched starting state, and re-welcome everyone seated so
+   * the host sees the real opposing army. Only a pending room can be finalised
+   * — no command has been played in one. Returns false (and changes nothing)
+   * otherwise, or if the setup cannot start a match.
+   */
+  finalize(setup: MatchSetup): boolean {
+    if (!this.pendingOpponent || setupError(setup) !== null) return false;
+    this.currentSetup = setup;
+    this.state = createMatchFromPresets(setup);
+    this.pendingOpponent = false;
+    for (const member of this.members.values()) {
+      if (member.seat === null) continue;
+      this.sendTo(member.conn, {
+        t: 'welcome',
+        seat: member.seat,
+        setup: this.currentSetup,
+        state: this.state,
+        presence: this.presence(),
+      });
+    }
+    return true;
   }
 
   /** Register a freshly opened connection. It holds no seat until it `join`s. */
@@ -158,6 +197,14 @@ export class RoomEngine {
     }
     if (this.state.phase === 'gameOver') {
       this.sendTo(member.conn, { t: 'error', code: ErrorCode.GameOver, message: 'the game is over' });
+      return;
+    }
+    if (this.pendingOpponent) {
+      this.sendTo(member.conn, {
+        t: 'error',
+        code: ErrorCode.WaitingForOpponent,
+        message: 'waiting for an opponent to join',
+      });
       return;
     }
     if (this.state.active !== member.seat) {

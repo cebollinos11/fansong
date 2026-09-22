@@ -160,8 +160,11 @@ pnpm --filter @fansong/worker deploy    # deploy to Cloudflare (needs `wrangler 
 ```
 
 Point the web app at a deployed worker with `VITE_SERVER_URL` (it defaults to the
-local `wrangler dev` address). In the setup screen, pick **Online vs a human** to
-host a room; the next player to queue drops into it. The `apps/web` client plays
+local `wrangler dev` address). In the setup screen, pick **Online vs a human** and
+your warband: you either join a player waiting for the same map and mode, or host
+a room until one arrives. Each player brings their own army (preset or
+army-builder); the host's room shows a stand-in until the opponent's army
+arrives, and holds all commands until then. The `apps/web` client plays
 local *or* online through one `MatchClient` interface — the board, HUD, and
 interaction code never know which they're driving.
 
@@ -275,6 +278,13 @@ absent when unused.
   save to the browser (localStorage) or export/import `.json`. Valid custom maps
   show up in the Setup map picker for local games; online matches use built-in
   maps only (the server can't see your browser's maps).
+- **Army builder** — the Setup screen's **Army builder…** button makes custom
+  warbands with **no point limit** (1–30 units; the total is shown so players can
+  agree on a size). Start blank or from a preset, add preset units as templates,
+  set each unit's stats, traits and which sprite it *looks like*. Save to the
+  browser (localStorage) or export/import `.json`. Saved armies show up in the
+  warband pickers for vs-AI, hotseat and online play; they travel inside the
+  `MatchSetup` as `warbands`, so the server and replays need no local storage.
 - **In the web UI** hexes are extruded by elevation with low-poly rocks, joined
   buildings and cone trees; zones, flags, crowns and flag carriers are marked on
   the board, and the HUD shows the mode, scores and flag status.

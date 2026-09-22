@@ -20,6 +20,8 @@ export interface UnitSpec {
    * mode). Ignored in every other mode.
    */
   king?: boolean;
+  /** Cosmetic: the unit this one is drawn as (see {@link Unit.look}). */
+  look?: string;
 }
 
 export interface GameConfig {
@@ -42,7 +44,7 @@ export interface GameConfig {
 }
 
 function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
-  return {
+  const unit: Unit = {
     id: `p${owner}u${index}`,
     owner,
     name: spec.name,
@@ -60,6 +62,9 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
     },
     guarding: false,
   };
+  // Only carried when set, so states (and replay hashes) without looks are unchanged.
+  if (spec.look !== undefined) unit.look = spec.look;
+  return unit;
 }
 
 /** The id of the one unit flagged `king` in a warband; throws unless exactly one is. */

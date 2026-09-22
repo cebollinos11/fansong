@@ -42,27 +42,31 @@ export class MatchmakerDO implements DurableObject {
     // same waiting host.
     const ticket = await this.state.blockConcurrencyWhile(async () => {
       const queue = (await this.state.storage.get<PendingRoom[]>('queue')) ?? [];
-      const mm = new Matchmaker(() => crypto.randomUUID(), queue);
+      const mm = new Matchmaker(() => crypto.randomUUID(), queue, (setup) => setupError(setup) === null);
       const t = mm.request(body);
       await this.state.storage.put('queue', mm.snapshot());
       return t;
     });
 
-    // Seed the room the first time we hand it out (the hosting/pve request).
+    // Seed the room the first time we hand it out (the hosting/pve request) —
+    // a pvp host's as pending — and finalise it with the joiner's army on a match.
     if (ticket.status === 'waiting' || ticket.setup.seats[1] === 'ai') {
-      await this.seedRoom(ticket);
+      await this.seedRoom(ticket, { pending: ticket.status === 'waiting' });
+    } else {
+      const res = await this.seedRoom(ticket, { final: true });
+      if (!res.ok) return new Response('the matched room could not start', { status: 500 });
     }
     return Response.json(ticket satisfies Ticket);
   }
 
-  /** Send the finalised setup to the room DO so it is ready before the connect. */
-  private async seedRoom(ticket: Ticket): Promise<void> {
+  /** Send the setup to the room DO so it is ready before the connect. */
+  private async seedRoom(ticket: Ticket, flags: { pending?: boolean; final?: boolean }): Promise<Response> {
     const id = this.env.GAME_ROOM.idFromName(ticket.roomId);
     const stub = this.env.GAME_ROOM.get(id);
-    await stub.fetch('https://room/init', {
+    return stub.fetch('https://room/init', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ setup: ticket.setup }),
+      body: JSON.stringify({ setup: ticket.setup, ...flags }),
     });
   }
 }

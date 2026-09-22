@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
 import type { Owner } from '@fansong/engine';
 import { parseServerMessage, type ServerMessage } from '@fansong/protocol';
-import type { MatchSetup } from '@fansong/content';
+import { getPreset, type MatchSetup, type Warband } from '@fansong/content';
 import { RoomEngine, setupError, type RoomConnection } from '../src/room.js';
 
 /** A fake socket that records the (parsed) server frames it was sent. */
@@ -287,5 +287,56 @@ describe('RoomEngine — map and mode', () => {
     const final = room.getState();
     expect(final.winner === 0 || final.winner === 1).toBe(true);
     expect(c0.received.some((m) => m.t === 'error')).toBe(false);
+  });
+});
+
+describe('RoomEngine — army-builder armies and pending pvp rooms', () => {
+  const HORDE: Warband = {
+    name: 'Horde',
+    units: Array.from({ length: 9 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, move: 5, look: 'Marauder' })),
+  };
+  const CUSTOM: MatchSetup = { ...PVP, presets: ['custom', 'iron-wardens'], warbands: [HORDE, getPreset('iron-wardens')!] };
+
+  it('builds a match from explicit warbands, with no point limit, carrying looks', () => {
+    expect(setupError(CUSTOM)).toBeNull();
+    const units = new RoomEngine(CUSTOM).getState().units.filter((u) => u.owner === 0);
+    expect(units).toHaveLength(9);
+    expect(units[0]).toMatchObject({ name: 'Grunt 0', combat: 6, look: 'Marauder' });
+    expect(setupError({ ...CUSTOM, warbands: [{ ...HORDE, units: [] }, HORDE] })).toMatch(/too few units/);
+    expect(setupError({ ...CUSTOM, warbands: [{ ...HORDE, units: [{ ...HORDE.units[0]!, combat: 9 }] }, HORDE] })).toMatch(
+      /combat 9/,
+    );
+  });
+
+  it('holds commands while pending, then re-welcomes the host with the finalised setup', () => {
+    const room = new RoomEngine(PVP, undefined, { pending: true });
+    const c0 = new FakeConn('c0');
+    join(room, c0, 0);
+    send(room, c0, chooseCommand(room.getState()));
+    const err = c0.last();
+    expect(err.t === 'error' && err.code).toBe('waiting_for_opponent');
+
+    c0.clear();
+    expect(room.finalize(CUSTOM)).toBe(true);
+    const welcome = c0.last();
+    if (welcome.t !== 'welcome') throw new Error('no welcome');
+    expect(welcome.setup).toEqual(CUSTOM);
+    expect(welcome.state.units.filter((u) => u.owner === 0)).toHaveLength(9);
+    expect(room.setup).toEqual(CUSTOM);
+
+    // Once final, play proceeds and the room can't be re-finalised.
+    expect(room.finalize(PVP)).toBe(false);
+    const c1 = new FakeConn('c1');
+    join(room, c1, 1);
+    const before = room.getState();
+    const conn = before.active === 0 ? c0 : c1;
+    send(room, conn, chooseCommand(before));
+    expect(conn.last().t).toBe('delta');
+  });
+
+  it('refuses to finalise with a setup that cannot start', () => {
+    const room = new RoomEngine(PVP, undefined, { pending: true });
+    expect(room.finalize({ ...PVP, presets: ['nope', 'nope'] })).toBe(false);
+    expect(room.isPending()).toBe(true);
   });
 });

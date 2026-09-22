@@ -3,7 +3,7 @@ import { DEFAULT_BOARD, buildMatch, type BoardSize } from './deploy.js';
 import type { MapDef } from './map.js';
 import { getMap } from './mapRegistry.js';
 import { getPreset } from './presets.js';
-import { validateWarband, type Warband } from './warband.js';
+import { validateArmy, validateWarband, type Warband } from './warband.js';
 
 /** Who controls a given player seat. */
 export type Seat = 'human' | 'ai';
@@ -16,8 +16,16 @@ export type Seat = 'human' | 'ai';
  * {@link createMatchFromPresets}, so none of them lays units out on its own.
  */
 export interface MatchSetup {
-  /** Preset id for each player (keys of PRESETS). */
+  /**
+   * Preset id for each player (keys of PRESETS). When {@link warbands} is given
+   * these are only labels (e.g. `"custom"`) and are not resolved.
+   */
   presets: [string, string];
+  /**
+   * Explicit rosters for both sides — army-builder armies, or a preset's units
+   * copied in. Overrides `presets`. Checked with `validateArmy`: no point limit.
+   */
+  warbands?: [Warband, Warband];
   /** Who controls each seat. Hotseat = [human, human]; vs-AI = [human, ai]. */
   seats: [Seat, Seat];
   seed: number;
@@ -63,6 +71,19 @@ export function resolveWarband(id: string): Warband {
   return wb;
 }
 
+/** Resolve an explicit army to a warband, or throw if it is illegal. */
+export function resolveArmy(w: Warband): Warband {
+  const check = validateArmy(w);
+  if (!check.ok) throw new Error(`army "${w.name}" is illegal: ${check.errors.join('; ')}`);
+  return w;
+}
+
+/** The two warbands a setup fields: its explicit `warbands`, else its presets. */
+export function warbandsFor(setup: MatchSetup): [Warband, Warband] {
+  if (setup.warbands) return [resolveArmy(setup.warbands[0]), resolveArmy(setup.warbands[1])];
+  return [resolveWarband(setup.presets[0]), resolveWarband(setup.presets[1])];
+}
+
 /** Resolve a setup's `mapId` via `lookup`, or throw if it names no known map. */
 export function resolveMap(id: string, lookup: MapLookup = getMap): MapDef {
   const map = lookup(id);
@@ -84,8 +105,7 @@ export function configFromSetup(
   board: BoardSize = DEFAULT_BOARD,
   lookup: MapLookup = getMap,
 ): GameConfig {
-  const p0 = resolveWarband(setup.presets[0]);
-  const p1 = resolveWarband(setup.presets[1]);
+  const [p0, p1] = warbandsFor(setup);
   const mode = { mode: setup.mode, kings: setup.kings };
   if (setup.mapId !== undefined)
     return buildMatch(p0, p1, { seed: setup.seed, map: resolveMap(setup.mapId, lookup), ...mode });

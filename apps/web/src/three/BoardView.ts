@@ -152,6 +152,8 @@ interface UnitFlags {
 
 interface UnitObj {
   owner: 0 | 1;
+  /** The {@link spriteFor} path this unit is drawn with. */
+  spriteName: string;
   group: THREE.Group;
   /** Turns the cutout to face the camera (yaw only, so it stays upright); carries the melee lunge. */
   facing: THREE.Group;
@@ -410,8 +412,15 @@ export class BoardView {
     for (const u of state.units) {
       seen.add(u.id);
       let obj = this.units.get(u.id);
+      // A unit whose look changed (an online host's stand-in opponent replaced
+      // by the real army) is rebuilt with its new sprite.
+      if (obj && obj.spriteName !== spriteFor(u.look ?? u.name)) {
+        this.scene.remove(obj.group);
+        this.units.delete(u.id);
+        obj = undefined;
+      }
       if (!obj) {
-        obj = this.createUnit(u.id, u.owner, u.name);
+        obj = this.createUnit(u.id, u.owner, u.look ?? u.name);
         this.units.set(u.id, obj);
         obj.group.position.copy(this.unitWorld(u.pos));
       }
@@ -662,6 +671,7 @@ export class BoardView {
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
     const obj: UnitObj = {
       owner,
+      spriteName,
       group,
       facing,
       tilt,

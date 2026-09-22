@@ -1,6 +1,7 @@
-import { configFromSetup, DEFAULT_MAP_ID, getMap, listMaps, supportedModes } from '@fansong/content';
+import { configFromSetup, DEFAULT_MAP_ID, getMap, getPreset, listMaps, supportedModes, type Warband } from '@fansong/content';
 import { describe, expect, it } from 'vitest';
-import { effectiveMapId, launchFor, modeFor } from '../src/ui/SetupScreen.js';
+import { effectiveMapId, launchFor, launchProblem, modeFor } from '../src/ui/SetupScreen.js';
+import { armyChoice, type SavedArmy } from '../src/game/armies.js';
 
 describe('launchFor', () => {
   const presets: [string, string] = ['iron-wardens', 'ashfang-raiders'];
@@ -85,5 +86,42 @@ describe('mode filtering', () => {
     expect(modeFor(open, 'capture-the-flag')).toBe('annihilation');
     for (const map of listMaps())
       for (const m of supportedModes(map)) expect(modeFor(map, m)).toBe(m);
+  });
+});
+
+describe('launchFor with saved armies', () => {
+  const horde: Warband = {
+    name: 'Horde',
+    units: Array.from({ length: 12 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, move: 5 })),
+  };
+  const armies: SavedArmy[] = [{ id: 'a1', warband: horde }];
+
+  it('writes both rosters out when a side is a saved army, labelling it custom', () => {
+    const launch = launchFor('vsAI', [armyChoice('a1'), 'iron-wardens'], 7, DEFAULT_MAP_ID, undefined, armies);
+    expect(launch).toEqual({
+      kind: 'local',
+      setup: {
+        presets: ['custom', 'iron-wardens'],
+        warbands: [horde, getPreset('iron-wardens')],
+        seats: ['human', 'ai'],
+        seed: 7,
+      },
+    });
+    if (launch.kind !== 'local') throw new Error('expected local');
+    // Far over the preset budget, but armies have no point limit.
+    expect(configFromSetup(launch.setup).warbands[0]).toHaveLength(12);
+    expect(launchProblem(launch, getMap)).toBeNull();
+  });
+
+  it('online launches carry the rosters too', () => {
+    const launch = launchFor('online', [armyChoice('a1'), armyChoice('a1')], 7, DEFAULT_MAP_ID, undefined, armies);
+    expect(launch).toEqual({ kind: 'online', presets: ['custom', 'custom'], warbands: [horde, horde], seed: 7 });
+    expect(launchProblem(launch, getMap)).toBeNull();
+  });
+
+  it('reports an army too big for the map deploy zone', () => {
+    const huge: SavedArmy = { id: 'a2', warband: { name: 'Huge', units: Array.from({ length: 30 }, () => horde.units[0]!) } };
+    const launch = launchFor('hotseat', [armyChoice('a2'), 'iron-wardens'], 7, 'twin-towers', undefined, [huge]);
+    expect(launchProblem(launch, getMap)).toMatch(/deploy zone/);
   });
 });

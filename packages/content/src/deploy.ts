@@ -51,7 +51,7 @@ export const DEFAULT_BOARD: BoardSize = { width: 12, height: 10 };
 export const DEFAULT_MAP: MapDef = flatMap(DEFAULT_BOARD.width, DEFAULT_BOARD.height);
 
 function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
-  return {
+  const spec: UnitSpec = {
     name: unit.name,
     quality: unit.quality,
     combat: unit.combat,
@@ -62,6 +62,8 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     tough: unit.tough,
     guard: unit.guard,
   };
+  if (unit.look !== undefined) spec.look = unit.look;
+  return spec;
 }
 
 /**
