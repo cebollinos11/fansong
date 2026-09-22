@@ -502,3 +502,34 @@ button.secondary {
 .muted {
   color: var(--muted);
 }
+
+/* --- Map editor -------------------------------------------------------- */
+.editor-new {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.editor-new label {
+  margin-right: 0;
+}
+
+.editor-new input {
+  width: 56px;
+  padding: 4px 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.editor-selection {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.editor-selection h3 {
+  margin: 0 0 4px;
+}

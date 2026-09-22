@@ -18,6 +18,7 @@ interface Props {
   initial: MatchSetup;
   onStart: (launch: Launch) => void;
   onLoadReplay: (replay: Replay) => void;
+  onOpenEditor: () => void;
 }
 
 export type Mode = 'vsAI' | 'hotseat' | 'online';
@@ -35,7 +36,7 @@ export function launchFor(mode: Mode, presets: [string, string], seed: number, m
   return { kind: 'local', setup };
 }
 
-export function SetupScreen({ initial, onStart, onLoadReplay }: Props): JSX.Element {
+export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor }: Props): JSX.Element {
   const [mode, setMode] = useState<Mode>(initial.seats[1] === 'ai' ? 'vsAI' : 'hotseat');
   const [p0, setP0] = useState(initial.presets[0]);
   const [p1, setP1] = useState(initial.presets[1]);
@@ -93,6 +94,9 @@ export function SetupScreen({ initial, onStart, onLoadReplay }: Props): JSX.Elem
         </div>
 
         <MapPicker value={mapId} onChange={setMapId} disabled={mode === 'online'} />
+        <button className="ghost" onClick={onOpenEditor}>
+          Map editor…
+        </button>
 
         <label className="seed-row">
           Seed

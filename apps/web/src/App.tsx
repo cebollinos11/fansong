@@ -3,6 +3,7 @@ import type { Replay } from '@fansong/engine';
 import { GameScreen } from './ui/GameScreen.js';
 import { SetupScreen } from './ui/SetupScreen.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
+import { EditorScreen } from './ui/EditorScreen.js';
 import { DEFAULT_SETUP } from '@fansong/content';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
@@ -11,6 +12,7 @@ import { connectOnline } from './net/server.js';
 /** Which screen the app is showing. A match is keyed so a new one remounts cleanly. */
 type View =
   | { kind: 'setup' }
+  | { kind: 'editor' }
   | { kind: 'match'; id: number; launch: Launch }
   | { kind: 'replay'; id: number; replay: Replay };
 
@@ -23,8 +25,13 @@ export function App(): JSX.Element {
         initial={DEFAULT_SETUP}
         onStart={(launch) => setView({ kind: 'match', id: Date.now(), launch })}
         onLoadReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
+        onOpenEditor={() => setView({ kind: 'editor' })}
       />
     );
+  }
+
+  if (view.kind === 'editor') {
+    return <EditorScreen onExit={() => setView({ kind: 'setup' })} />;
   }
 
   if (view.kind === 'replay') {

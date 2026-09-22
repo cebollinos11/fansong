@@ -163,3 +163,13 @@
   hill / all-empty conquest drops the key so JSON stays sparse. Ops never refuse invalid states
   (rock on a deploy hex, empty zone) — `validateMap` errors are shown inline (task 24). Map id
   follows the name via `slugify` (fallback `custom-map`).
+- Task 19: `EditorScreen` (apps/web/src/ui) reachable via a "Map editor…" button under the Setup
+  map picker; Back returns to Setup. Holds an `EditorHistory` (starts as a 14×12 `newEditorMap`);
+  "New map" takes width/height clamped to `MAP_LIMITS` (`clampMapSize`) and resets history + keeps
+  the name. Rendering reuses `BoardCanvas` with a new `liveTerrain` prop: when set, a changed
+  `state.board` reference rebuilds the terrain (off in play, because reduce clones the board every
+  command). `BoardView.buildBoard` is now re-callable — it disposes the old tiles/feature meshes and
+  only re-frames the camera when the board size changes. The preview state is
+  `createGame` with empty warbands (`mapPreviewState`, tested). Clicking a hex selects it (green
+  highlight via `moveTargets`, details in the side panel). Deploy zones/objectives aren't drawn yet
+  (task 23). Checked with Playwright on a built preview: select, resize 8×40→8×24, back to Setup.

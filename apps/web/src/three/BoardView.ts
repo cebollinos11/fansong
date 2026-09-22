@@ -211,8 +211,14 @@ export class BoardView {
     this.renderer.setAnimationLoop(this.render);
   }
 
-  /** Build the static board (grid + terrain). Call once per match. */
+  /**
+   * Build the static board (grid + terrain). Called once per match; the editor
+   * calls it again after every edit, which replaces the old tiles and keeps the
+   * camera unless the board size changed.
+   */
   buildBoard(state: GameState): void {
+    const resized = state.board.width !== this.width || state.board.height !== this.height;
+    this.clearBoard();
     this.board = state.board;
     this.width = state.board.width;
     this.height = state.board.height;
@@ -250,7 +256,21 @@ export class BoardView {
     }
 
     this.buildFeatures(state.board);
-    this.positionCamera();
+    if (resized) this.positionCamera();
+  }
+
+  /** Remove the tiles and feature meshes of a previously built board. */
+  private clearBoard(): void {
+    const geometries = new Set<THREE.BufferGeometry>();
+    const materials = new Set<THREE.Material>();
+    for (const mesh of this.tiles) {
+      this.scene.remove(mesh);
+      geometries.add(mesh.geometry);
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) materials.add(m);
+    }
+    for (const g of geometries) g.dispose();
+    for (const m of materials) m.dispose();
+    this.tiles.length = 0;
   }
 
   /** Low-poly rocks, buildings and trees; pickable as the hex they stand on. */

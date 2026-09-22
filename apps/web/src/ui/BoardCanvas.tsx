@@ -14,6 +14,11 @@ interface Props {
   events: GameEvent[];
   onUnitClick: (id: string) => void;
   onCellClick: (cell: Vec) => void;
+  /**
+   * Rebuild the terrain whenever `state.board` changes (the editor). Off in
+   * play, where the board never changes but is cloned with every command.
+   */
+  liveTerrain?: boolean;
 }
 
 /** React wrapper that mounts a {@link BoardView} and keeps it in sync with props. */
@@ -41,6 +46,15 @@ export function BoardCanvas(props: Props): JSX.Element {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Editor: re-draw the terrain after an edit (the mount effect drew the first board).
+  const builtBoard = useRef(props.state.board);
+  useEffect(() => {
+    if (!props.liveTerrain || builtBoard.current === props.state.board) return;
+    builtBoard.current = props.state.board;
+    viewRef.current?.buildBoard(props.state);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.liveTerrain, props.state.board]);
 
   // Reconcile visuals on every relevant change.
   useEffect(() => {
