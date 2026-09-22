@@ -73,4 +73,4 @@ is untouched — new state is **optional/sparse** and omitted when default.
 ## Polish
 - [x] 40. CLI: `--map` / `--mode` flags; `--list` shows maps.
 - [x] 41. Docs: PLAN.md M7 section + README usage.
-- [ ] 42. Final pass: full test run, build, small fixes.
+- [x] 42. Final pass: full test run, build, small fixes.

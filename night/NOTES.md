@@ -1,5 +1,27 @@
 # Night build notes
 
+## Summary (night build complete — 42/42 tasks, none blocked)
+
+M7 "Terrain, maps & game modes" is implemented on `night-build` (not pushed):
+- **Engine**: sparse per-hex terrain (elevation 0–3; rock/building/forest), LOS with features (forest blocks
+  *through* only), BFS movement pathing, +1 high ground in melee/riposte/shooting, and the modes kill-the-king,
+  king-of-the-hill, conquest and capture-the-flag, each with a round-12 limit and annihilation tiebreak. New state
+  is optional and left out when it's at its default, so the golden replay is byte-identical (fixture untouched).
+- **Content**: `MapDef` + zod schema, `validateMap`/`supportedModes`, `mapToBoard`, deploy zones, a registry of
+  7 built-in maps (Open Field + the 6 in the spec), and mode wiring in `buildMatch`.
+- **AI**: plays for the objectives in every mode. Self-play tests cover every built-in map × each supported mode.
+- **Web**: extruded elevation, low-poly feature meshes, a terrain editor (brushes, building stamps,
+  forest/rock regions, deploy zones/objectives, undo/redo, validation, localStorage + .json import/export),
+  map + mode pickers with King selection, a mode HUD, board markers and objective log lines.
+- **Protocol/worker/CLI**: match setup carries map + mode; CLI `--map`/`--mode`/`--list`. Docs in PLAN.md/README.
+- Final state: 517 tests passing across 49 files, typecheck clean, web build OK.
+- Known limitations and open follow-ups: online play accepts built-in maps only (custom maps are local);
+  the web bundle is ~870 kB, which triggers Vite's chunk-size warning (three.js; code-splitting not attempted);
+  the in-game callout/pulse animation and the carried-flag badge were unit-tested but not screenshotted;
+  AI zone approach uses hex distance rather than path distance.
+
+## Log
+
 - Backlog: 42 tasks. Key constraint: `hashGameState` is `JSON.stringify(state)`, so all new
   state (terrain, mode, scores, flags) must be optional and omitted when default to keep the
   golden replay byte-identical.
@@ -382,3 +404,8 @@
   line in the layout tree. README: status M0–M7, layout/quick-start updated (517 tests, `--map`/`--mode`/`--help`
   examples), new "Terrain, maps & game modes (M7)" section with a map table (from `pnpm play --list`), mode rules,
   editor usage and the online built-in-maps-only limitation. Docs only — no code changed.
+- Task 42: final pass. Full `pnpm test` (517/517), `pnpm typecheck`, web build all green; golden fixture has no
+  diff vs main; branch diff scanned for stray debug code (only intended CLI/script output). Smoke-ran the CLI for
+  conquest/crossroads, CTF/twin-towers, KotH/rolling-hills, KtK/ruined-village and annihilation/old-forest — all
+  finish with sensible results (conquest can overshoot 8, e.g. 7→9, since zones score together — per spec). No
+  code changes needed.
