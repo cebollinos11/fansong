@@ -1,6 +1,7 @@
 import {
   aliveUnits,
   enemiesOf,
+  flagAtBase,
   getLegalCommands,
   makeHexGrid,
   scoringZones,
@@ -30,11 +31,12 @@ export function chooseCommand(state: GameState): Command {
   }
   const board = makeHexGrid(state.board);
   const zones = zonePlan(state, state.active);
+  const flags = flagPlan(state, board, state.active);
 
   let best = commands[0]!;
   let bestScore = -Infinity;
   for (const command of commands) {
-    const score = scoreCommand(state, board, zones, command);
+    const score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, command);
     if (score > bestScore) {
       bestScore = score;
       best = command;
@@ -122,6 +124,17 @@ function targetZone(board: Board, zones: ZoneView[], unit: Unit): ZoneView | und
   return best;
 }
 
+/**
+ * Dice policy: normally 2 dice (enough output, modest turnover risk). When this
+ * is the player's last available unit, take the safe 1 die that can never turn
+ * over, to preserve tempo.
+ */
+function diceScore(state: GameState, player: Owner, diceCount: number): number {
+  const availableCount = aliveUnits(state, player).filter((u) => !u.activatedThisRound).length;
+  if (availableCount <= 1) return diceCount === 1 ? 3 : diceCount === 2 ? 2 : 1;
+  return diceCount === 2 ? 3 : diceCount === 3 ? 2 : 1;
+}
+
 function scoreCommand(state: GameState, board: Board, zones: ZoneView[], command: Command): number {
   const player = state.active;
   const enemies = enemiesOf(state, player);
@@ -146,17 +159,7 @@ function scoreCommand(state: GameState, board: Board, zones: ZoneView[], command
       // Prefer the unit that can already fight, else the one closest to a foe.
       const unitScore = canAttack ? 100_000 : holding ? 1_000 : 10_000 - dist * 100;
 
-      // Dice policy: normally 2 dice (enough output, modest turnover risk). When
-      // this is the player's last available unit, take the safe 1 die that can
-      // never turn over, to preserve tempo.
-      const availableCount = aliveUnits(state, player).filter((u) => !u.activatedThisRound).length;
-      let diceScore: number;
-      if (availableCount <= 1) {
-        diceScore = command.diceCount === 1 ? 3 : command.diceCount === 2 ? 2 : 1;
-      } else {
-        diceScore = command.diceCount === 2 ? 3 : command.diceCount === 3 ? 2 : 1;
-      }
-      return unitScore + diceScore;
+      return unitScore + diceScore(state, player, command.diceCount);
     }
 
     case 'Attack': {
@@ -227,6 +230,144 @@ function zoneMoveScore(board: Board, zones: ZoneView[], mover: Unit, to: Vec): n
   if (!target) return undefined;
   if (target.keys.has(vecKey(to))) return 130_000;
   return 100_000 - zoneDistance(board, to, target) * 100;
+}
+
+/** Walking distance (steps over passable hexes) from every reachable hex to `target`. */
+function distanceField(board: Board, target: Vec): Map<string, number> {
+  const field = new Map<string, number>([[vecKey(target), 0]]);
+  let frontier = [target];
+  for (let d = 1; frontier.length > 0; d++) {
+    const next: Vec[] = [];
+    for (const v of frontier) {
+      for (const n of board.neighbors(v)) {
+        const key = vecKey(n);
+        if (field.has(key)) continue;
+        field.set(key, d);
+        next.push(n);
+      }
+    }
+    frontier = next;
+  }
+  return field;
+}
+
+/** Unreachable hexes count as this far away. */
+const FAR = 999;
+
+const walk = (field: Map<string, number>, v: Vec): number => field.get(vecKey(v)) ?? FAR;
+
+/**
+ * Capture-the-flag as the AI sees it, from `player`'s side: our carrier (if we
+ * hold the enemy flag) and the way home for it, and the hexes everyone else
+ * should head for — the enemy flag while it's there to grab, our own dropped
+ * flag to return, and the enemy unit carrying ours to hunt down.
+ */
+interface FlagPlan {
+  carrierId: string | undefined;
+  home: Map<string, number>;
+  /** Hex of the enemy flag when it lies free to pick up. */
+  grab: Vec | undefined;
+  /** Hex of our own flag when it lies dropped away from its base. */
+  rescue: Vec | undefined;
+  /** Id of the enemy unit carrying our flag. */
+  enemyCarrierId: string | null;
+  /** Distance fields to each of grab / rescue / enemy carrier (whichever exist). */
+  goals: Map<string, number>[];
+}
+
+/** The flag plan in capture-the-flag, `undefined` in every other mode. */
+function flagPlan(state: GameState, board: Board, player: Owner): FlagPlan | undefined {
+  const m = state.mode;
+  if (!m?.flags || !m.objectives.flags) return undefined;
+  const enemy: Owner = player === 0 ? 1 : 0;
+  const mine = m.flags[player];
+  const theirs = m.flags[enemy];
+  const grab = theirs.carrier === null ? theirs.at : undefined;
+  const rescue = mine.carrier === null && !flagAtBase(state, player) ? mine.at : undefined;
+  const goals: Map<string, number>[] = [];
+  for (const v of [grab, rescue, mine.carrier !== null ? mine.at : undefined]) if (v) goals.push(distanceField(board, v));
+  return {
+    carrierId: theirs.carrier ?? undefined,
+    home: distanceField(board, m.objectives.flags[player]),
+    grab,
+    rescue,
+    enemyCarrierId: mine.carrier,
+    goals,
+  };
+}
+
+/** Walking distance from `v` to the nearest flag goal (`FAR` when there is none). */
+function goalDistance(plan: FlagPlan, v: Vec): number {
+  let min = FAR;
+  for (const g of plan.goals) min = Math.min(min, walk(g, v));
+  return min;
+}
+
+const sameVec = (a: Vec | undefined, b: Vec) => !!a && a.x === b.x && a.y === b.y;
+
+/**
+ * Capture-the-flag scoring. Our carrier runs for home — any step closer beats
+ * fighting, and stepping onto the base (which wins) beats everything. Everyone
+ * else makes for the nearest goal by walking distance: grabbing the enemy flag
+ * or returning our own outranks any attack, and a blow or shot at the enemy
+ * carrier outranks other attacks. With no goal left (we carry theirs and ours
+ * is home) the rest fight as in annihilation.
+ */
+function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, command: Command): number {
+  const player = state.active;
+  const enemies = enemiesOf(state, player);
+  const goalOrEnemy = (to: Vec) => {
+    const goal = goalDistance(plan, to);
+    if (goal < FAR) return 100_000 - goal * 100;
+    return 100_000 - nearestEnemyDistance(board, to, enemies) * 100;
+  };
+
+  switch (command.type) {
+    case 'ChooseActivation': {
+      const unit = unitById(state, command.unitId)!;
+      const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
+      const canAttack = enemyDist === 1 || (unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged);
+      const goal = goalDistance(plan, unit.pos);
+      const dist = goal < FAR ? goal : enemyDist;
+      let unitScore = canAttack ? 100_000 : 10_000 - Math.min(dist, 99) * 100;
+      // The carrier moves first: every activation it waits is a chance to lose the flag.
+      if (unit.id === plan.carrierId) unitScore = 150_000;
+      return unitScore + diceScore(state, player, command.diceCount);
+    }
+
+    case 'Attack':
+    case 'Shoot': {
+      const targetId = command.targetId;
+      const target = unitById(state, targetId)!;
+      let score = command.type === 'Attack' ? 1_000_000 : 900_000;
+      if (target.knockedDown) score += 5_000;
+      score += (6 - target.combat) * 100;
+      if (command.type === 'Attack') score += (unitById(state, command.attackerId)!.combat - target.combat) * 50;
+      // Knocking the enemy carrier down drops our flag where we can return it.
+      if (targetId === plan.enemyCarrierId) score += 200_000;
+      return score;
+    }
+
+    case 'Move': {
+      const mover = unitById(state, command.unitId)!;
+      const to = command.to;
+      if (mover.id === plan.carrierId) {
+        const now = walk(plan.home, mover.pos);
+        const then = walk(plan.home, to);
+        if (then === 0) return 2_000_000;
+        return (then < now ? 1_100_000 : 100_000) - then * 100;
+      }
+      if (sameVec(plan.grab, to)) return 1_500_000;
+      if (sameVec(plan.rescue, to)) return 1_400_000;
+      return goalOrEnemy(to);
+    }
+
+    case 'Guard':
+      return 1;
+
+    case 'EndActivation':
+      return 0;
+  }
 }
 
 export function playerLabel(owner: Owner): string {

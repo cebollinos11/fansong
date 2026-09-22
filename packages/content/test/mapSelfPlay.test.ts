@@ -108,6 +108,26 @@ describe('AI in the zone modes', () => {
   }
 });
 
+describe('AI in capture-the-flag', () => {
+  for (const map of listMaps()) {
+    if (!supportedModes(map).includes('capture-the-flag')) continue;
+    it(`${map.id}: games complete, and the AI goes for the flags`, () => {
+      let pickups = 0;
+      let captures = 0;
+      for (let seed = 1; seed <= 3; seed++) {
+        const events: GameEvent[] = [];
+        const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 1) % PRESET_IDS.length]!];
+        const final = playOn(map, seed, presets, 'capture-the-flag', events);
+        expect(final.phase).toBe('gameOver');
+        pickups += events.filter((e) => e.type === 'FlagPickedUp').length;
+        captures += events.filter((e) => e.type === 'FlagCaptured').length;
+      }
+      expect(pickups).toBeGreaterThanOrEqual(1);
+      expect(captures).toBeGreaterThanOrEqual(1);
+    });
+  }
+});
+
 describe('premade map character', () => {
   const count = (map: MapDef, pred: (h: MapDef['hexes'][number]) => boolean) => map.hexes.filter(pred).length;
 

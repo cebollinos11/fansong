@@ -301,3 +301,14 @@
   maps are open enough). No coordination between units, so several may converge on one conquest zone.
   Tests: ai/test/zones.test.ts (unit behaviours) + map self-play in each built-in KotH/conquest map
   (completes ≤ round 12, ≥ 6 score events over 3 seeds; observed 10–41).
+- Task 34: AI capture-the-flag. In CTF `chooseCommand` switches to `scoreFlagCommand` (other modes untouched,
+  golden unchanged). Uses **walking distance** (BFS field over passable hexes, new `distanceField`) rather
+  than hex distance, since Twin Towers' rock walls would otherwise trap units. Our carrier activates first,
+  steps onto its base to win (2M), and any step closer to home beats fighting (1.1M > attack 1M). Everyone
+  else heads for the nearest goal — the enemy flag if free, our own dropped flag, or the enemy carrier —
+  and stepping onto the enemy flag (1.5M) or our dropped flag (1.4M) beats any attack; attacks/shots on the
+  enemy carrier get +200k. With no goal left (we carry theirs, ours is home) the rest fight as in
+  annihilation, which escorts the carrier implicitly. Decision: no defenders are held back and shooters
+  don't keep their standoff in CTF (simple; the flag is the point). Dice policy pulled into `diceScore`.
+  Tests: ai/test/flags.test.ts + CTF self-play on each built-in flag map (3 seeds; observed pickups/captures
+  old-forest 4/1, ruined-village 6/2, twin-towers 8/3).
