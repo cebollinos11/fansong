@@ -133,6 +133,26 @@ fieldset label {
   border-top: 1px solid var(--line);
 }
 
+.roster li label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.roster li.king {
+  color: #f2c14e;
+}
+
+.mode-picker label {
+  margin-bottom: 4px;
+}
+
+.mode-picker label.unsupported {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
 .roster .stats {
   color: var(--muted);
   font-variant-numeric: tabular-nums;

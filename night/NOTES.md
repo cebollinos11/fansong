@@ -334,3 +334,14 @@
   GameOver, winner matches state, reason is one the mode allows, score/roundLimit/flag/king reasons agree with
   scores, FlagCaptured and the dead King. The earlier per-mode suites (tasks 33–35) keep their "AI actually
   scores" thresholds. No engine or AI changes needed — everything passed first time.
+- Task 37: Setup "Game mode" fieldset (below the map picker) lists all five modes; ones the played map
+  can't host are disabled with "(not on this map)". The chosen mode is remembered as a *wish*
+  (`modeFor(map, wanted)` → falls back to annihilation on maps that lack it, and comes back when you
+  return to a map that supports it). Kill-the-king turns each roster into a radio list for the King
+  (♛ + gold), defaulting to `defaultKing` and resetting to it when the preset changes. `launchFor`
+  gained a `GameChoice` arg: annihilation stays implicit (no `mode`), Kings only in kill-the-king, online
+  as `gameMode`/`kings`. Also fixed an inconsistency from task 32: the map picker was *disabled* online
+  and claimed "online matches use the default map" while the launch actually carried built-in maps; it is
+  now enabled online with built-ins only (`effectiveMapId` maps a custom pick to the default board), so
+  mode filtering matches what the worker will play. Tests in apps/web/test/setup.test.ts; checked with
+  Playwright on a built preview (mode filtering, King radio, KtK match starts, no page errors).

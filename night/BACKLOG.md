@@ -66,7 +66,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 36. Self-play: every built-in map × each supported mode completes; objective sanity checks.
 
 ## Mode UI
-- [ ] 37. Setup: mode picker filtered by map support; king selection for kill-the-king.
+- [x] 37. Setup: mode picker filtered by map support; king selection for kill-the-king.
 - [ ] 38. HUD + board markers: mode, scores, flag carrier, flags, zones, crown.
 - [ ] 39. Log text + light animation for scoring / flag events.
 
