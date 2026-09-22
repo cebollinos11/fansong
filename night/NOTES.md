@@ -290,3 +290,14 @@
   custom maps, so `launchFor('online', …)` only carries a built-in non-default `mapId` (custom → default board).
   The web `Launch` online variant and `connectOnline` pass `mapId/gameMode/kings` through; the Setup UI has no
   mode picker yet (task 37). The room itself needed no change — `welcome.setup` already carried the fields.
+- Task 33: AI zone play (KotH + conquest). `chooseCommand` builds a per-decision zone view from engine
+  `scoringZones`/`standingInZone`; outside the zone modes it is empty and every score is exactly as before
+  (golden replay untouched). A unit is a *holder* when it stands in a zone its side wouldn't hold outright
+  without it: it activates late, Guards (10) or ends, and never moves (in-zone shuffle -1, leaving -1000).
+  Anyone else targets the nearest zone its side doesn't hold outright (tie → most units needed): stepping
+  in scores 130k (beats a shooter's 120k standoff), otherwise closing hex distance replaces enemy distance
+  in both activation choice and moves. Attacks/shots still outscore everything. When every zone is held,
+  spare units hunt enemies as in annihilation. Decision: hex distance, not path distance, to zones (simple;
+  maps are open enough). No coordination between units, so several may converge on one conquest zone.
+  Tests: ai/test/zones.test.ts (unit behaviours) + map self-play in each built-in KotH/conquest map
+  (completes ≤ round 12, ≥ 6 score events over 3 seeds; observed 10–41).

@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
-import { createGame, getLegalCommands, makeHexGrid, reduce, type GameState, type Vec } from '@fansong/engine';
+import {
+  createGame,
+  getLegalCommands,
+  makeHexGrid,
+  reduce,
+  type GameEvent,
+  type GameMode,
+  type GameState,
+  type Vec,
+} from '@fansong/engine';
 import { buildMatch } from '../src/deploy.js';
 import { mapHexAt, type MapDef } from '../src/map.js';
 import { getMap, listMaps } from '../src/mapRegistry.js';
@@ -9,15 +18,23 @@ import { PRESET_IDS, getPreset } from '../src/presets.js';
 
 const STEP_CAP = 20_000;
 
-/** Play a full AI-vs-AI annihilation game on `map`, checking terrain invariants each step. */
-function playOn(map: MapDef, seed: number, presets: [string, string]): GameState {
-  let state = createGame(buildMatch(getPreset(presets[0])!, getPreset(presets[1])!, { seed, map }));
+/** Play a full AI-vs-AI game on `map`, checking terrain invariants each step. */
+function playOn(
+  map: MapDef,
+  seed: number,
+  presets: [string, string],
+  mode?: GameMode,
+  events: GameEvent[] = [],
+): GameState {
+  let state = createGame(buildMatch(getPreset(presets[0])!, getPreset(presets[1])!, { seed, map, mode }));
   const board = makeHexGrid(state.board);
   let steps = 0;
   while (state.phase !== 'gameOver' && steps < STEP_CAP) {
     const command = chooseCommand(state);
     expect(getLegalCommands(state)).toContainEqual(command);
-    state = reduce(state, command).state;
+    const result = reduce(state, command);
+    state = result.state;
+    events.push(...result.events);
     steps++;
     // Nobody ever stands in a rock or building.
     for (const u of state.units) if (!u.dead) expect(board.isBlocked(u.pos)).toBe(false);
@@ -65,6 +82,29 @@ describe('built-in maps', () => {
         }
       });
     });
+  }
+});
+
+describe('AI in the zone modes', () => {
+  const zoneModes = ['king-of-the-hill', 'conquest'] as const;
+  for (const map of listMaps()) {
+    for (const mode of zoneModes) {
+      if (!supportedModes(map).includes(mode)) continue;
+      it(`${map.id}: ${mode} games complete within the round cap, and the AI actually scores`, () => {
+        let scored = 0;
+        for (let seed = 1; seed <= 3; seed++) {
+          const events: GameEvent[] = [];
+          const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 1) % PRESET_IDS.length]!];
+          const final = playOn(map, seed, presets, mode, events);
+          expect(final.phase).toBe('gameOver');
+          expect(final.round).toBeLessThanOrEqual(12);
+          expect(events.some((e) => e.type === 'GameOver')).toBe(true);
+          scored += events.filter((e) => e.type === 'ScoreChanged').length;
+        }
+        // Zone-seeking AIs hold zones for a good share of the rounds.
+        expect(scored).toBeGreaterThanOrEqual(6);
+      });
+    }
   }
 });
 
