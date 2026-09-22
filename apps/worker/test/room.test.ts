@@ -3,7 +3,7 @@ import { chooseCommand } from '@fansong/ai';
 import type { Owner } from '@fansong/engine';
 import { parseServerMessage, type ServerMessage } from '@fansong/protocol';
 import type { MatchSetup } from '@fansong/content';
-import { RoomEngine, type RoomConnection } from '../src/room.js';
+import { RoomEngine, setupError, type RoomConnection } from '../src/room.js';
 
 /** A fake socket that records the (parsed) server frames it was sent. */
 class FakeConn implements RoomConnection {
@@ -244,5 +244,48 @@ describe('RoomEngine — full PvP game via the wire seam', () => {
     };
     expect(lastState(c0)).toEqual(final);
     expect(lastState(c1)).toEqual(final);
+  });
+});
+
+describe('RoomEngine — map and mode', () => {
+  const KOTH: MatchSetup = { ...PVE, mapId: 'rolling-hills', mode: 'king-of-the-hill' };
+
+  it('setupError accepts playable setups and names the problem otherwise', () => {
+    expect(setupError(PVP)).toBeNull();
+    expect(setupError(KOTH)).toBeNull();
+    expect(setupError({ ...PVE, mode: 'kill-the-king', kings: [0, 1] })).toBeNull();
+    expect(setupError({ ...PVE, mapId: 'no-such-map' })).toMatch(/unknown map/);
+    expect(setupError({ ...PVE, presets: ['nope', 'ashfang-raiders'] })).toMatch(/unknown preset/);
+    // Old Forest carries flags, not a hill; and KotH needs a map at all.
+    expect(setupError({ ...PVE, mapId: 'old-forest', mode: 'king-of-the-hill' })).not.toBeNull();
+    expect(setupError({ ...PVE, mode: 'king-of-the-hill' })).not.toBeNull();
+    expect(setupError({ ...PVE, mode: 'kill-the-king', kings: [99, 0] })).not.toBeNull();
+  });
+
+  it('builds the room on the map in the mode and welcomes with that setup', () => {
+    const room = new RoomEngine(KOTH);
+    const c0 = new FakeConn('c0');
+    join(room, c0, 0);
+    const welcome = c0.received.find((m) => m.t === 'welcome');
+    if (welcome?.t !== 'welcome') throw new Error('no welcome');
+    expect(welcome.setup).toEqual(KOTH);
+    expect(welcome.state.mode?.mode).toBe('king-of-the-hill');
+    expect(welcome.state.mode?.objectives.hill).toBeDefined();
+    expect(Object.keys(welcome.state.board.terrain ?? {}).length).toBeGreaterThan(0);
+    expect(welcome.state).toEqual(room.getState());
+  });
+
+  it('plays a PvE king-of-the-hill game to a finish through the room', () => {
+    const room = new RoomEngine(KOTH);
+    const c0 = new FakeConn('c0');
+    join(room, c0, 0);
+    let guard = 0;
+    while (room.getState().phase !== 'gameOver') {
+      send(room, c0, chooseCommand(room.getState()));
+      if (++guard > 5000) throw new Error('game did not terminate');
+    }
+    const final = room.getState();
+    expect(final.winner === 0 || final.winner === 1).toBe(true);
+    expect(c0.received.some((m) => m.t === 'error')).toBe(false);
   });
 });

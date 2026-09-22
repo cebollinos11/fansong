@@ -76,3 +76,46 @@ describe('Matchmaker — PvP', () => {
     expect(joiner.roomId).toBe(snap[0]!.roomId);
   });
 });
+
+describe('Matchmaker — map and mode', () => {
+  it('a plain request yields a setup with no map/mode keys', () => {
+    const t = new Matchmaker(ids()).request({ mode: 'pve', presets: ['a', 'b'], seed: 1 });
+    expect(Object.keys(t.setup).sort()).toEqual(['presets', 'seats', 'seed']);
+  });
+
+  it('copies map, game mode and Kings into the setup', () => {
+    const mm = new Matchmaker(ids());
+    const pve = mm.request({
+      mode: 'pve',
+      presets: ['iron-wardens', 'ashfang-raiders'],
+      seed: 3,
+      mapId: 'rolling-hills',
+      gameMode: 'king-of-the-hill',
+    });
+    expect(pve.setup).toEqual({
+      presets: ['iron-wardens', 'ashfang-raiders'],
+      seats: ['human', 'ai'],
+      seed: 3,
+      mapId: 'rolling-hills',
+      mode: 'king-of-the-hill',
+    });
+    const kings = mm.request({ mode: 'pve', presets: ['a', 'b'], seed: 3, gameMode: 'kill-the-king', kings: [1, 2] });
+    expect(kings.setup.mode).toBe('kill-the-king');
+    expect(kings.setup.kings).toEqual([1, 2]);
+  });
+
+  it('a pvp joiner plays the host map and mode, not its own', () => {
+    const mm = new Matchmaker(ids());
+    const host = mm.request({
+      mode: 'pvp',
+      presets: ['iron-wardens', 'ashfang-raiders'],
+      seed: 3,
+      mapId: 'old-forest',
+      gameMode: 'capture-the-flag',
+    });
+    const joiner = mm.request({ mode: 'pvp', presets: ['x', 'y'], seed: 9, mapId: 'rolling-hills' });
+    expect(joiner.setup).toEqual(host.setup);
+    expect(joiner.setup.mapId).toBe('old-forest');
+    expect(joiner.setup.mode).toBe('capture-the-flag');
+  });
+});

@@ -3,6 +3,7 @@ import { createDemoGame } from '@fansong/engine';
 import {
   ErrorCode,
   encode,
+  matchmakeRequestSchema,
   parseClientMessage,
   parseServerMessage,
   safeParseClientMessage,
@@ -105,5 +106,42 @@ describe('server messages', () => {
   it('round-trips an error message with a stable code', () => {
     const err: ServerMessage = { t: 'error', code: ErrorCode.NotYourTurn, message: 'not your turn' };
     expect(parseServerMessage(encode(err))).toEqual(err);
+  });
+});
+
+describe('matchmake request', () => {
+  it('accepts a plain request and one with map, mode and Kings', () => {
+    const plain = { mode: 'pve', presets: ['iron-wardens', 'ashfang-raiders'], seed: 1 };
+    expect(matchmakeRequestSchema.parse(plain)).toEqual(plain);
+    const full = { ...plain, mode: 'pvp', mapId: 'rolling-hills', gameMode: 'king-of-the-hill', kings: [0, 2] };
+    expect(matchmakeRequestSchema.parse(full)).toEqual(full);
+  });
+
+  it('rejects unknown queues, game modes, bad Kings and extra keys', () => {
+    const base = { mode: 'pve', presets: ['a', 'b'], seed: 1 };
+    expect(matchmakeRequestSchema.safeParse({ ...base, mode: 'ranked' }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, gameMode: 'tag' }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, kings: [-1, 0] }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, seed: 1.5 }).success).toBe(false);
+    expect(matchmakeRequestSchema.safeParse({ ...base, seats: ['ai', 'ai'] }).success).toBe(false);
+  });
+
+  it('a welcome carries a setup with map, mode and Kings', () => {
+    const state = createDemoGame(5);
+    const welcome: ServerMessage = {
+      t: 'welcome',
+      seat: 1,
+      setup: {
+        presets: ['iron-wardens', 'ashfang-raiders'],
+        seats: ['human', 'human'],
+        seed: 5,
+        mapId: 'rolling-hills',
+        mode: 'kill-the-king',
+        kings: [1, 0],
+      },
+      state,
+      presence: [true, true],
+    };
+    expect(parseServerMessage(encode(welcome))).toEqual(welcome);
   });
 });

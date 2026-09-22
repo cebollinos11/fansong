@@ -279,3 +279,14 @@
   expensive unit by `unitCost` (first on a tie) — decision, the spec only says "designated during deploy";
   the Setup UI (task 37) will let players pick. Out-of-range King indices throw. Protocol `matchSetupSchema`
   got `mode`/`kings` already here because the drift guard ties it to `MatchSetup` (task 32 does messages/room).
+- Task 32: protocol/worker map + mode. Protocol gains `matchmakeRequestSchema` (the `POST /api/matchmake`
+  body): queue `mode` pve/pvp + presets + seed + optional `mapId`, `gameMode`, `kings`. Decision: the game mode
+  field is named `gameMode` because `mode` already means the queue there; the pure `Matchmaker` copies it into
+  `MatchSetup.mode` via new `setupFor` (keys only when present, so plain requests give the pre-map setup). A pvp
+  joiner still plays the host's setup verbatim (map/mode included). The MatchmakerDO now zod-parses the body
+  instead of a cast, and both DOs reject unplayable setups with 400 via new `setupError(setup)` in room.ts (runs
+  the real `createMatchFromPresets`, so unknown preset/map, mode unsupported by the map, bad King index are all
+  caught before a room is seeded). Online play is limited to **built-in** maps: the worker can't see a browser's
+  custom maps, so `launchFor('online', …)` only carries a built-in non-default `mapId` (custom → default board).
+  The web `Launch` online variant and `connectOnline` pass `mapId/gameMode/kings` through; the Setup UI has no
+  mode picker yet (task 37). The room itself needed no change — `welcome.setup` already carried the fields.

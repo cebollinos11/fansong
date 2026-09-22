@@ -76,7 +76,8 @@ function MatchHost({
       clientRef.current = c;
       setClient(c);
     } else {
-      connectOnline({ mode: 'pvp', presets: launch.presets, seed: launch.seed })
+      const { presets, seed, mapId, gameMode, kings } = launch;
+      connectOnline({ mode: 'pvp', presets, seed, mapId, gameMode, kings })
         .then((c) => {
           if (cancelled) {
             c.dispose();

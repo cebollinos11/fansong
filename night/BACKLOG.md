@@ -57,7 +57,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 29. Engine: conquest — 3 zones scored separately, first to 8. Tests.
 - [x] 30. Engine: capture-the-flag — pickup/drop/return/capture + events. Tests.
 - [x] 31. Content: mode wiring — `MatchSetup.mode`, map objectives → engine config, king designation.
-- [ ] 32. Protocol/worker: map + mode in match setup messages; room uses them. Tests.
+- [x] 32. Protocol/worker: map + mode in match setup messages; room uses them. Tests.
 
 ## AI
 - [ ] 33. AI: king-of-the-hill & conquest — move to/hold zones.

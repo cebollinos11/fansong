@@ -29,10 +29,15 @@ export type Mode = 'vsAI' | 'hotseat' | 'online';
 /**
  * The launch for the chosen options. The default map is left implicit (no
  * `mapId`) so default setups stay byte-identical to pre-map ones. Online matches
- * don't carry a map yet — the worker always plays the default board.
+ * carry built-in maps only — the worker can't resolve a browser's custom maps,
+ * so a custom pick falls back to the default board there.
  */
 export function launchFor(mode: Mode, presets: [string, string], seed: number, mapId: string = DEFAULT_MAP_ID): Launch {
-  if (mode === 'online') return { kind: 'online', presets, seed };
+  if (mode === 'online') {
+    const launch: Launch = { kind: 'online', presets, seed };
+    if (mapId !== DEFAULT_MAP_ID && getMap(mapId)) launch.mapId = mapId;
+    return launch;
+  }
   const seats = mode === 'vsAI' ? (['human', 'ai'] as const) : (['human', 'human'] as const);
   const setup: MatchSetup = { presets, seats: [seats[0], seats[1]], seed };
   if (mapId !== DEFAULT_MAP_ID) setup.mapId = mapId;

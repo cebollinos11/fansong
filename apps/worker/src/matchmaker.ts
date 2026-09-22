@@ -1,5 +1,5 @@
-import type { Owner } from '@fansong/engine';
-import type { MatchSetup } from '@fansong/content';
+import type { GameMode, Owner } from '@fansong/engine';
+import type { MatchSetup, Seat } from '@fansong/content';
 
 /**
  * Matchmaking, as a pure state machine — no Cloudflare, no clock, no network —
@@ -13,18 +13,27 @@ import type { MatchSetup } from '@fansong/content';
  *    same room. One host is paired per incoming opponent (FIFO).
  */
 
-export interface MatchmakePvE {
+/** The match a requester asks for (a pvp joiner's is ignored — it plays the host's). */
+interface MatchFields {
+  seed: number;
+  /** Built-in map id; omitted = the legacy default board. */
+  mapId?: string;
+  /** Game mode (named apart from the queue `mode`); omitted = annihilation. */
+  gameMode?: GameMode;
+  /** Kill-the-king: King index into each preset's units. */
+  kings?: [number, number];
+}
+
+export interface MatchmakePvE extends MatchFields {
   mode: 'pve';
   /** [human warband, AI warband]. */
   presets: [string, string];
-  seed: number;
 }
 
-export interface MatchmakePvP {
+export interface MatchmakePvP extends MatchFields {
   mode: 'pvp';
   /** The host defines both sides; the joiner takes seat 1 as configured here. */
   presets: [string, string];
-  seed: number;
 }
 
 export type MatchmakeRequest = MatchmakePvE | MatchmakePvP;
@@ -70,11 +79,7 @@ export class Matchmaker {
   }
 
   private pve(req: MatchmakePvE): Ticket {
-    const setup: MatchSetup = {
-      presets: [req.presets[0], req.presets[1]],
-      seats: ['human', 'ai'],
-      seed: req.seed,
-    };
+    const setup = setupFor(req, ['human', 'ai']);
     return { roomId: this.newRoomId(), seat: 0, setup, status: 'matched' };
   }
 
@@ -85,11 +90,7 @@ export class Matchmaker {
       return { roomId: waiting.roomId, seat: 1, setup: waiting.setup, status: 'matched' };
     }
     // No host waiting: become one.
-    const setup: MatchSetup = {
-      presets: [req.presets[0], req.presets[1]],
-      seats: ['human', 'human'],
-      seed: req.seed,
-    };
+    const setup = setupFor(req, ['human', 'human']);
     const roomId = this.newRoomId();
     this.queue.push({ roomId, setup });
     return { roomId, seat: 0, setup, status: 'waiting' };
@@ -108,4 +109,16 @@ export class Matchmaker {
   pendingCount(): number {
     return this.queue.length;
   }
+}
+
+/**
+ * The room's {@link MatchSetup} for a request. Map, mode and King picks are
+ * copied only when given, so a plain request yields exactly the pre-map setup.
+ */
+export function setupFor(req: MatchmakeRequest, seats: [Seat, Seat]): MatchSetup {
+  const setup: MatchSetup = { presets: [req.presets[0], req.presets[1]], seats, seed: req.seed };
+  if (req.mapId !== undefined) setup.mapId = req.mapId;
+  if (req.gameMode !== undefined) setup.mode = req.gameMode;
+  if (req.kings !== undefined) setup.kings = [req.kings[0], req.kings[1]];
+  return setup;
 }

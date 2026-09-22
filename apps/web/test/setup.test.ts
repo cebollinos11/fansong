@@ -23,7 +23,9 @@ describe('launchFor', () => {
     expect(configFromSetup(launch.setup).board.terrain).toBeDefined();
   });
 
-  it('online launches do not carry a map (yet)', () => {
-    expect(launchFor('online', presets, 7, 'old-forest')).toEqual({ kind: 'online', presets, seed: 7 });
+  it('online launches carry a built-in map, but not the default or a custom one', () => {
+    expect(launchFor('online', presets, 7, 'old-forest')).toEqual({ kind: 'online', presets, seed: 7, mapId: 'old-forest' });
+    expect(launchFor('online', presets, 7)).toEqual({ kind: 'online', presets, seed: 7 });
+    expect(launchFor('online', presets, 7, 'custom-my-map')).toEqual({ kind: 'online', presets, seed: 7 });
   });
 });
