@@ -264,7 +264,8 @@ export class BoardView {
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
 
-    const ambient = new THREE.AmbientLight(0xffffff, 1.1);
+    // Physical lighting divides indirect light by π, so ~π is "full" ambient.
+    const ambient = new THREE.HemisphereLight(0xeef2ff, 0x5a5448, 2.6);
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(6, 14, 8);
     this.scene.add(ambient, key, this.overlayGroup, this.highlightGroup, this.markerGroup);
