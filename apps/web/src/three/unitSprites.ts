@@ -44,6 +44,20 @@ export const UNIT_SPRITES: Record<string, string> = {
   'Thorn-Spear': 'human-loyalists/spearman.png',
 };
 
+/**
+ * The frame of a sprite's death clip that shows it knocked down but alive —
+ * kneeling or staggered, before the fall. Hand-picked; a sprite without one
+ * crouches (squashes) instead.
+ */
+export const DOWN_POSES: Record<string, string> = {
+  'orcs/grunt.png': 'orcs/grunt-die-2.png',
+  'goblins/spearman.png': 'goblins/spearman-die-1.png',
+  'goblins/wolf-rider.png': 'goblins/wolf-rider-die-3.png',
+  'human-loyalists/spearman.png': 'human-loyalists/spearman-death3.png',
+  'human-loyalists/lieutenant-crossbow.png': 'human-loyalists/lieutenant-die-3.png',
+  'human-peasants/peasant.png': 'human-peasants/peasant-die3.png',
+};
+
 /** Used for any unit name without an entry above. */
 export const FALLBACK_SPRITE = 'human-loyalists/spearman.png';
 

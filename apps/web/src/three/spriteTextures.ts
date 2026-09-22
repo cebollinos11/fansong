@@ -60,6 +60,8 @@ const MAPPINGS = [buildMapping(TEAM_RANGES[0]), buildMapping(TEAM_RANGES[1])] as
 export interface FrameRect {
   u: number;
   v: number;
+  /** Topmost opaque row, in pixels from the cell's top edge (the head). */
+  top: number;
 }
 
 /**
@@ -153,7 +155,7 @@ function buildAtlas(
       anchorX = (bounds.minX + bounds.maxX + 1) / 2 - cx;
       anchorY = bounds.maxY + 1 - cy;
     }
-    rects.set(path, { u: cx / atlasW, v: 1 - (cy + cellH) / atlasH });
+    rects.set(path, { u: cx / atlasW, v: 1 - (cy + cellH) / atlasH, top: bounds ? bounds.minY - cy : 0 });
   });
 
   const alpha = ctx.getImageData(0, 0, atlasW, atlasH).data;

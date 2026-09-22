@@ -16,7 +16,7 @@ import {
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
 import { hexElevation, surfaceY, TILE_TOP, tileHeight, tileSideColor, tileTopColor } from './terrain.js';
-import { spriteFor } from './unitSprites.js';
+import { DOWN_POSES, spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
 export interface BoardViewModel {
@@ -86,6 +86,19 @@ const BASE_HEIGHT = 0.06;
 const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
 const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so the steep view doesn't squash it
 
+// Knocked down: a sprite with a down pose (a frame of its death clip) holds it;
+// one without crouches, squashed at the feet and leaning a little. Either way
+// dizzy stars circle its head.
+const DOWN_SQUASH = 0.72; // height scale of a crouching cutout
+const DOWN_WIDEN = 1.08; // width scale of a crouching cutout
+const DOWN_LEAN = 0.12; // radians a crouching cutout sags sideways
+const STAR_COUNT = 3;
+const STAR_SIZE = 0.2; // world size of a star sprite
+const STAR_CLEARANCE = 0.08; // orbit centre above the top of the head
+const STAR_ORBIT = 0.26; // orbit radius (world units)
+const STAR_SPIN = 2.6; // radians per second
+const STAR_COLOR = '#ffe066';
+
 // Animation timing (ms). Clip timings come from Wesnoth; these fill the gaps.
 const LUNGE = 0.3; // how far (world units) a melee strike leans into its target
 const WALK_MS_PER_HEX = 300; // a move walks its path hex by hex at this steady pace
@@ -142,7 +155,7 @@ interface UnitObj {
   group: THREE.Group;
   /** Turns the cutout to face the camera (yaw only, so it stays upright); carries the melee lunge. */
   facing: THREE.Group;
-  /** Knockdown pivot at the cutout's feet. */
+  /** Knockdown pivot at the cutout's feet: sags and squashes a crouching unit. */
   tilt: THREE.Group;
   /** Flips the cutout to face screen-left. */
   mirror: THREE.Group;
@@ -151,7 +164,11 @@ interface UnitObj {
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   /** Mode badge sprite (shares a texture per badge kind); hidden when none. */
   badge: THREE.Sprite;
+  /** Dizzy stars circling the head while knocked down. */
+  stars: THREE.Group;
   anims: SpriteAnimations;
+  /** Frame held while knocked down, or null to crouch instead. */
+  downPose: string | null;
   animator: UnitAnimator;
   atlas: SpriteAtlas | null;
   shownImage: string | null;
@@ -224,6 +241,7 @@ export class BoardView {
   private readonly markerGroup = new THREE.Group();
   private markingsKey: string | undefined;
   private readonly badgeTextures = new Map<string, THREE.Texture>();
+  private starMaterial: THREE.SpriteMaterial | null = null;
   /** Board tiles and feature meshes, raycast for cell picking (each carries `userData.cell`). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
@@ -574,6 +592,8 @@ export class BoardView {
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
     for (const t of this.badgeTextures.values()) t.dispose();
+    this.starMaterial?.map?.dispose();
+    this.starMaterial?.dispose();
     this.rolls.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
@@ -627,8 +647,17 @@ export class BoardView {
     badge.position.y = TILE_TOP + BADGE_HEIGHT;
     badge.visible = false;
 
+    const stars = new THREE.Group();
+    for (let i = 0; i < STAR_COUNT; i++) {
+      const star = new THREE.Sprite(this.dizzyStarMaterial());
+      star.scale.setScalar(STAR_SIZE);
+      stars.add(star);
+    }
+    stars.visible = false;
+
     const spriteName = spriteFor(name);
     const anims = animationsFor(spriteName);
+    const downPose = DOWN_POSES[spriteName] ?? null;
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
     const obj: UnitObj = {
       owner,
@@ -640,7 +669,9 @@ export class BoardView {
       base,
       ring,
       badge,
+      stars,
       anims,
+      downPose: downPose && anims.death?.frames.some(([f]) => f === downPose) ? downPose : null,
       animator: new UnitAnimator(spriteName, anims),
       atlas: null,
       shownImage: null,
@@ -676,6 +707,7 @@ export class BoardView {
       (err) => console.error(err),
     );
 
+    facing.add(stars); // follows the lunge, and the lean back
     group.add(ring, base, facing, badge);
     group.name = name;
     this.scene.add(group);
@@ -757,8 +789,25 @@ export class BoardView {
     const { state, shown } = obj;
     if (state.dead && !shown.dead) this.startLeaving(obj);
     if (!state.dead && shown.dead) this.revive(obj); // replay rewind
+    if (!state.dead && state.knocked !== shown.knocked) {
+      // Stagger into the down pose, or climb back out of it.
+      const fall = this.deathClip(obj, 'fall');
+      if (fall && state.knocked) obj.animator.play(fall);
+      else if (fall) obj.animator.play({ frames: [...fall.frames].reverse() });
+    }
     obj.shown = { ...state };
-    obj.targetTilt = state.knocked ? Math.PI / 2.4 : 0;
+    obj.targetTilt = state.knocked && !obj.downPose ? DOWN_LEAN : 0;
+  }
+
+  /**
+   * The part of a unit's death clip before its down pose (`fall`, ending on
+   * it) or after (`rest`, starting from it); undefined without a down pose.
+   */
+  private deathClip(obj: UnitObj, part: 'fall' | 'rest'): Clip | undefined {
+    const frames = obj.anims.death?.frames;
+    const i = frames?.findIndex(([f]) => f === obj.downPose) ?? -1;
+    if (!frames || i < 0) return undefined;
+    return { frames: part === 'fall' ? frames.slice(0, i + 1) : frames.slice(i) };
   }
 
   private startLeaving(obj: UnitObj): void {
@@ -770,9 +819,11 @@ export class BoardView {
       flee = new THREE.Vector3(obj.owner === 0 ? -1 : 1, 0, 0);
       this.setHeading(obj, flee.clone());
       obj.animator.moveFor(ROUT_MS);
-    } else if (!obj.shown.knocked) {
+    } else {
       // Wesnoth plays the death clip, then fades; without one it just fades.
-      fadeIn = obj.animator.play(obj.anims.death, { hold: true });
+      // A downed unit finishes its fall from the down pose.
+      const clip = obj.shown.knocked ? this.deathClip(obj, 'rest') : obj.anims.death;
+      fadeIn = obj.animator.play(clip, { hold: true });
     }
     obj.fade = { start: this.now + fadeIn, end: this.now + fadeIn + (flee ? ROUT_MS : DEATH_FADE_MS), flee };
     // Blend while fading; a low alpha test still drops the cleared background.
@@ -804,7 +855,7 @@ export class BoardView {
 
     // On Guard, hold the braced defence pose.
     const guardPose = obj.anims.defendMelee?.frames[1]?.[0] ?? null;
-    obj.animator.pose = obj.shown.guarding && !obj.shown.knocked ? guardPose : null;
+    obj.animator.pose = obj.shown.knocked ? obj.downPose : obj.shown.guarding ? guardPose : null;
     obj.animator.restless = !obj.shown.knocked && !obj.fade && !obj.walk;
     const image = obj.animator.update(dtMs);
     if (obj.atlas && image !== obj.shownImage) {
@@ -824,6 +875,10 @@ export class BoardView {
       this.camera.position.z - obj.group.position.z,
     );
     obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
+    const crouch = obj.shown.knocked && !obj.downPose && !obj.fade;
+    obj.tilt.scale.x += ((crouch ? DOWN_WIDEN : 1) - obj.tilt.scale.x) * lerp;
+    obj.tilt.scale.y += ((crouch ? DOWN_SQUASH : 1) - obj.tilt.scale.y) * lerp;
+    this.spinStars(obj);
 
     // Melee lunge: lean in until the hit frame, then settle back.
     const off = new THREE.Vector3();
@@ -850,6 +905,23 @@ export class BoardView {
       // A basic material's colour multiplies the texture; > 1 washes it toward white.
       obj.sprite.material.color.setScalar(1 + obj.flash * 2.5);
     }
+  }
+
+  /** Circle the dizzy stars over a downed unit's head, twinkling as they go. */
+  private spinStars(obj: UnitObj): void {
+    const { stars, atlas } = obj;
+    stars.visible = obj.shown.knocked && !obj.fade && atlas !== null;
+    if (!stars.visible || !atlas) return;
+    // Ride just over the head of whatever is drawn, crouched or posed.
+    const rect = atlas.frames.get(obj.shownImage ?? '') ?? atlas.frames.get(obj.animator.base);
+    const head = (atlas.anchorY - (rect?.top ?? 0)) * SPRITE_PX * obj.tilt.scale.y;
+    stars.position.set(0, head * Math.cos(SPRITE_LEAN) + STAR_CLEARANCE, -head * Math.sin(SPRITE_LEAN));
+    const spin = (this.now / 1000) * STAR_SPIN;
+    stars.children.forEach((star, i) => {
+      const a = spin + (i / STAR_COUNT) * Math.PI * 2;
+      star.position.set(Math.cos(a) * STAR_ORBIT, Math.sin(a * 2) * 0.03, Math.sin(a) * STAR_ORBIT * 0.8);
+      star.scale.setScalar(STAR_SIZE * (0.85 + 0.15 * Math.sin(spin * 3 + i * 2)));
+    });
   }
 
   /** Place a walking unit along its path (waiting at the origin until the walk starts), facing its current step. */
@@ -971,6 +1043,31 @@ export class BoardView {
         obj.badge.material.needsUpdate = true;
       }
     }
+  }
+
+  /** The shared material of the dizzy stars: a yellow five-pointed star. */
+  private dizzyStarMaterial(): THREE.SpriteMaterial {
+    if (this.starMaterial) return this.starMaterial;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 32;
+    const g = canvas.getContext('2d')!;
+    g.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? 14 : 6;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      g.lineTo(16 + Math.cos(a) * r, 16 + Math.sin(a) * r);
+    }
+    g.closePath();
+    g.fillStyle = STAR_COLOR;
+    g.fill();
+    g.lineJoin = 'round';
+    g.lineWidth = 2.5;
+    g.strokeStyle = '#1b1f27';
+    g.stroke();
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    this.starMaterial = new THREE.SpriteMaterial({ map, alphaTest: 0.5 });
+    return this.starMaterial;
   }
 
   /** A small canvas-drawn badge image, cached per kind. */
