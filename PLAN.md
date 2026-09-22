@@ -256,6 +256,27 @@ no rules — remove three.js and the game still runs in the CLI.
      picker (local play). Setup picks map → supported mode → King. The wire
      protocol and worker carry `mapId`/`gameMode`/`kings` (built-in maps only
      online), and the CLI gained `--map` / `--mode`.
+9. **M8 — Source-game melee & shooting rules** (in progress; see
+   [RULES_GAP.md](RULES_GAP.md)): the first four gaps against the source game.
+   - **Contact** — `walkRules`/`moveReach` (engine `query.ts`) layer a
+     `WalkRules` over the board's BFS: an enemy's hex can't be crossed and a
+     walk stops on entering contact. A unit leaving contact takes a **free
+     hack** (`FreeHackResolved`) from each standing enemy it touched: only the
+     leaver can be hurt; a knockdown or kill stops the move, a "recoil" lets it
+     slip away. `UnitMoved.path` carries the walk so clients don't re-derive it.
+   - **Outnumbering** — −1 per standing enemy in contact beyond the first, for
+     attacks, ripostes and free hacks (`…Outnumbered` event fields).
+   - **Gruesome kills** — tripling the loser (`gruesome: true`); fear checks
+     now follow only these, within a "long" `MORALE_RADIUS` of 4. Rout checks
+     still follow any kill. Scores can now drop to 0 or below, so a kill needs a
+     strict win and a double.
+   - **Range bands & cover** — −1 beyond short range (`ceil(ranged / 2)`), −1
+     for cover (`Board.inCover`: target in a forest, or the sight line only
+     just grazing a blocker, detected by rounding edge ties the other way).
+   - The AI avoids disengaging (a flat cost per standing adjacent foe), prefers
+     short, clear shots and a short-range standoff, and ganging up. The golden
+     replay was regenerated. Preset balance shifted (small warbands suffer
+     from outnumbering) and is not yet re-tuned.
 
 ---
 

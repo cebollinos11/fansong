@@ -456,7 +456,7 @@ export class BoardView {
         const obj = this.units.get(e.unitId);
         if (obj) {
           // Walk hex by hex at a steady pace, so a longer move takes proportionally longer.
-          const path = this.walkPath(e.from, e.to);
+          const path = e.path ? e.path.map((c) => this.unitWorld(c)) : this.walkPath(e.from, e.to);
           const dur = (path.length - 1) * WALK_MS_PER_HEX;
           obj.walk = { path, start: this.now + t };
           this.at(t, () => {
@@ -483,13 +483,18 @@ export class BoardView {
         t = end;
       } else if (e.type === 'UnitStoodUp') {
         hold(e.unitId, settle);
-      } else if (e.type === 'AttackResolved' || e.type === 'ShotResolved' || e.type === 'GuardRiposte') {
+      } else if (
+        e.type === 'AttackResolved' ||
+        e.type === 'ShotResolved' ||
+        e.type === 'GuardRiposte' ||
+        e.type === 'FreeHackResolved'
+      ) {
         const roll = describeCombat(e, after);
         const start = t;
         const s =
           e.type === 'GuardRiposte'
             ? this.strike(e.guardId, e.attackerId, 'melee', start + OPPOSED_ROLL_MS)
-            : this.strike(e.attackerId, e.targetId, e.type === 'AttackResolved' ? 'melee' : 'ranged', start + OPPOSED_ROLL_MS);
+            : this.strike(e.attackerId, e.targetId, e.type === 'ShotResolved' ? 'ranged' : 'melee', start + OPPOSED_ROLL_MS);
         this.at(start, () => this.rolls.addOpposed(roll, this.now, s.end - start + ROLL_LINGER_MS));
         this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now));
         lastHit = s.hit;

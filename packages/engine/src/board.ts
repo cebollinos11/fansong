@@ -70,6 +70,17 @@ export function blocksSight(f: TerrainFeature | undefined): boolean {
   return f !== undefined;
 }
 
+/**
+ * Extra movement constraints layered over terrain by a rule (e.g. enemy contact).
+ * Terrain passability always applies on top.
+ */
+export interface WalkRules {
+  /** Can a walk enter this hex at all? (Default: yes.) */
+  passable?(v: Vec): boolean;
+  /** Does a walk that enters this hex have to stop there? The start hex never stops. (Default: no.) */
+  stops?(v: Vec): boolean;
+}
+
 export interface Board {
   readonly width: number;
   readonly height: number;
@@ -101,19 +112,28 @@ export interface Board {
    * walking only through in-bounds, unblocked hexes (BFS around rocks, buildings
    * and legacy blocked cells). Occupancy is ignored — the caller decides whether
    * a destination may hold another unit. Returned as a set of `"x,y"` keys.
+   * `rules` can forbid hexes or force a walk to stop in them.
    */
-  reachableWithin(v: Vec, steps: number): Set<string>;
+  reachableWithin(v: Vec, steps: number, rules?: WalkRules): Set<string>;
   /**
    * A shortest walk from `a` to `b` (both included) through the same hexes
-   * {@link reachableWithin} walks, or null when `b` isn't reachable in `steps`.
+   * {@link reachableWithin} walks (under the same `rules`), or null when `b`
+   * isn't reachable in `steps`.
    */
-  pathWithin(a: Vec, b: Vec, steps: number): Vec[] | null;
+  pathWithin(a: Vec, b: Vec, steps: number, rules?: WalkRules): Vec[] | null;
   /**
    * Line of sight between hex centres (symmetric). Any intervening blocked cell,
    * rock/building/forest hex, or (optionally) occupied cell breaks it; the
    * endpoints themselves never do.
    */
   lineOfSight(a: Vec, b: Vec, occupied?: (v: Vec) => boolean): boolean;
+  /**
+   * Whether a target at `b`, seen from `a`, has partial cover: it stands in a
+   * forest hex, or the sight line only just grazes past a blocker (the line
+   * nudged to the other side of an edge would be broken, by terrain or by an
+   * occupied cell). Assumes {@link lineOfSight} is clear.
+   */
+  inCover(a: Vec, b: Vec, occupied?: (v: Vec) => boolean): boolean;
 }
 
 // --- Cube coordinates (internal working representation) -------------------
@@ -170,11 +190,12 @@ function cubeRound(fq: number, fr: number, fs: number): Cube {
  * nudge keeps a line that grazes an edge/vertex from rounding ambiguously, so the
  * draw is deterministic.
  */
-function cubeLine(a: Cube, b: Cube): Cube[] {
+function cubeLine(a: Cube, b: Cube, nudge = 1): Cube[] {
   const n = cubeDistance(a, b);
   if (n === 0) return [a];
-  // Nudge the endpoints off exact edges (redblobgames' standard trick).
-  const eq = 1e-6;
+  // Nudge the endpoints off exact edges (redblobgames' standard trick). A
+  // negative `nudge` rounds edge grazes the other way (used to detect cover).
+  const eq = 1e-6 * nudge;
   const cells: Cube[] = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
@@ -198,6 +219,13 @@ export function makeHexGrid(data: BoardData): Board {
 
   const distance = (a: Vec, b: Vec) => cubeDistance(offsetToCube(a), offsetToCube(b));
 
+  /** The hexes a walk may step to from `cell` under `rules` (none out of a stopping hex). */
+  const walkSteps = (cell: Vec, isStart: boolean, rules?: WalkRules): Vec[] => {
+    if (!isStart && rules?.stops?.(cell)) return [];
+    const ns = neighbors(cell);
+    return rules?.passable ? ns.filter((n) => rules.passable!(n)) : ns;
+  };
+
   const neighbors = (v: Vec): Vec[] => {
     const c = offsetToCube(v);
     const result: Vec[] = [];
@@ -206,6 +234,24 @@ export function makeHexGrid(data: BoardData): Board {
       if (inBounds(n) && !isBlocked(n)) result.push(n);
     }
     return result;
+  };
+
+  /**
+   * Is the hex line between `a` and `b` free of blockers? Always drawn in a
+   * canonical direction (lower column, then lower row, first) so an
+   * edge-grazing tie rounds the same way whichever end is looking: sight is
+   * symmetric. `nudge` picks which way such a graze rounds.
+   */
+  const lineClear = (a: Vec, b: Vec, nudge: number, occupied?: (v: Vec) => boolean): boolean => {
+    const [from, to] = a.x < b.x || (a.x === b.x && a.y <= b.y) ? [a, b] : [b, a];
+    const line = cubeLine(offsetToCube(from), offsetToCube(to), nudge);
+    // Endpoints never count as blockers, so a unit standing in a forest sees
+    // out and is seen; an intermediate blocked/forest/occupied cell breaks sight.
+    for (let i = 1; i < line.length - 1; i++) {
+      const cell = cubeToOffset(line[i]!);
+      if (isBlocked(cell) || blocksSight(feature(cell)) || (occupied?.(cell) ?? false)) return false;
+    }
+    return true;
   };
 
   return {
@@ -243,14 +289,14 @@ export function makeHexGrid(data: BoardData): Board {
       }
       return cells;
     },
-    reachableWithin(v, steps) {
+    reachableWithin(v, steps, rules) {
       const start = vecKey(v);
       const seen = new Set<string>([start]);
       let frontier: Vec[] = [v];
       for (let step = 0; step < steps && frontier.length > 0; step++) {
         const next: Vec[] = [];
         for (const cell of frontier) {
-          for (const n of neighbors(cell)) {
+          for (const n of walkSteps(cell, step === 0, rules)) {
             const k = vecKey(n);
             if (seen.has(k)) continue;
             seen.add(k);
@@ -262,7 +308,7 @@ export function makeHexGrid(data: BoardData): Board {
       seen.delete(start);
       return seen;
     },
-    pathWithin(a, b, steps) {
+    pathWithin(a, b, steps, rules) {
       const goal = vecKey(b);
       const parent = new Map<string, Vec | null>([[vecKey(a), null]]);
       let frontier: Vec[] = [a];
@@ -275,7 +321,7 @@ export function makeHexGrid(data: BoardData): Board {
             return path.reverse();
           }
           if (step === steps) continue;
-          for (const n of neighbors(cell)) {
+          for (const n of walkSteps(cell, step === 0, rules)) {
             const k = vecKey(n);
             if (parent.has(k)) continue;
             parent.set(k, cell);
@@ -287,18 +333,10 @@ export function makeHexGrid(data: BoardData): Board {
       return null;
     },
     lineOfSight(a, b, occupied) {
-      // Always draw the line in a canonical direction (lower column, then lower
-      // row, first) so an edge-grazing tie rounds the same way whichever end is
-      // looking: sight is symmetric.
-      const [from, to] = a.x < b.x || (a.x === b.x && a.y <= b.y) ? [a, b] : [b, a];
-      const line = cubeLine(offsetToCube(from), offsetToCube(to));
-      // Endpoints never count as blockers, so a unit standing in a forest sees
-      // out and is seen; an intermediate blocked/forest/occupied cell breaks sight.
-      for (let i = 1; i < line.length - 1; i++) {
-        const cell = cubeToOffset(line[i]!);
-        if (isBlocked(cell) || blocksSight(feature(cell)) || (occupied?.(cell) ?? false)) return false;
-      }
-      return true;
+      return lineClear(a, b, 1, occupied);
+    },
+    inCover(a, b, occupied) {
+      return feature(b) === 'forest' || !lineClear(a, b, -1, occupied);
     },
   };
 }

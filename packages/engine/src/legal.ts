@@ -1,5 +1,5 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
-import { enemiesOf, inMelee, isOccupied, occupiedKeys, unitAvailable, unitById } from './query.js';
+import { enemiesOf, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -58,9 +58,10 @@ export function getLegalCommands(state: GameState): Command[] {
   }
 
   // Moves: every empty cell reachable within move range by walking around
-  // impassable hexes (other units don't block the path, only the destination).
-  // Enumerated in `cellsWithin` order so the command list stays deterministic.
-  const reach = board.reachableWithin(unit.pos, unit.move);
+  // impassable hexes. Friends don't block the path (only the destination); an
+  // enemy's hex can't be crossed, and entering contact with an enemy ends the
+  // walk. Enumerated in `cellsWithin` order so the command list stays deterministic.
+  const reach = moveReach(state, unit, board);
   for (const to of board.cellsWithin(unit.pos, unit.move)) {
     if (!reach.has(vecKey(to))) continue;
     if (isOccupied(state, to)) continue;

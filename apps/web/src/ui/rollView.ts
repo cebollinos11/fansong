@@ -15,7 +15,7 @@ export interface RollModifier {
 /** One side of an opposed roll: its die, modifiers and total. */
 export interface RollSide {
   unitId: string;
-  /** Short role heading: Attack / Defend / Shoot / Riposte. */
+  /** Short role heading: Attack / Defend / Shoot / Riposte / Free hack / Leaving. */
   role: string;
   die: number;
   mods: RollModifier[];
@@ -66,20 +66,27 @@ export interface NerveRoll {
   summary: string;
 }
 
-type Combat = Extract<GameEvent, { type: 'AttackResolved' | 'ShotResolved' | 'GuardRiposte' }>;
+type Combat = Extract<GameEvent, { type: 'AttackResolved' | 'ShotResolved' | 'GuardRiposte' | 'FreeHackResolved' }>;
 
+/**
+ * One side of the roll. `extras` are the situational modifiers the engine
+ * reported (absent or 0 = not shown); Combat is whatever remains of the total.
+ */
 function side(
   unitId: string,
   role: string,
   die: number,
   total: number,
-  bonus: number | undefined,
+  extras: [label: string, value: number | undefined][],
   outcome: RollSide['outcome'],
 ): RollSide {
-  const mods: RollModifier[] = [{ label: 'Combat', value: total - die - (bonus ?? 0) }];
-  if (bonus) mods.push({ label: 'High ground', value: bonus });
+  const shown = extras.filter((x): x is [string, number] => !!x[1]).map(([label, value]) => ({ label, value }));
+  const combat = total - die - shown.reduce((sum, m) => sum + m.value, 0);
+  const mods: RollModifier[] = [{ label: 'Combat', value: combat }, ...shown];
   return { unitId, role, die, mods, total, outcome };
 }
+
+const minus = (n: number | undefined) => (n ? -n : undefined);
 
 function outcomes(a: number, b: number): [RollSide['outcome'], RollSide['outcome']] {
   if (a > b) return ['win', 'lose'];
@@ -88,28 +95,36 @@ function outcomes(a: number, b: number): [RollSide['outcome'], RollSide['outcome
 }
 
 /**
- * Describe an attack, shot or riposte. `after` is the rest of the event batch,
- * scanned for a Tough save that turns the would-be kill into a knockdown.
+ * Describe an attack, shot, riposte or free hack. `after` is the rest of the
+ * event batch, scanned for a Tough save that turns the would-be kill into a
+ * knockdown.
  */
 export function describeCombat(e: Combat, after: readonly GameEvent[] = []): OpposedRoll {
   let a: RollSide;
   let b: RollSide;
   if (e.type === 'GuardRiposte') {
     const [oa, ob] = outcomes(e.guardScore, e.attackerScore);
-    a = side(e.guardId, 'Riposte', e.guardDie, e.guardScore, e.guardBonus, oa);
-    b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, e.attackerBonus, ob);
-  } else {
+    a = side(e.guardId, 'Riposte', e.guardDie, e.guardScore, [['High ground', e.guardBonus], ['Outnumbered', minus(e.guardOutnumbered)]], oa);
+    b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
+  } else if (e.type === 'ShotResolved') {
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, e.type === 'ShotResolved' ? 'Shoot' : 'Attack', e.attackDie, e.attackScore, e.attackBonus, oa);
-    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, e.defenseBonus, ob);
+    a = side(e.attackerId, 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
+    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus]], ob);
+  } else {
+    const hack = e.type === 'FreeHackResolved';
+    const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
+    a = side(e.attackerId, hack ? 'Free hack' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
+    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Outnumbered', minus(e.defenseOutnumbered)]], ob);
   }
 
-  // A higher total that did nothing: a shot never hurts the shooter, and a
-  // knocked-down unit only strikes back on a natural 6.
+  // A higher total that did nothing: a shot never hurts the shooter, a unit
+  // leaving contact can't hit back, and a knocked-down unit only strikes back
+  // on a natural 6.
   if (e.result === 'clash' && b.outcome === 'win') {
     b.outcome = 'tie';
     a.outcome = 'tie';
-    b.note = e.type === 'ShotResolved' ? 'No return fire' : 'Down: only a 6 strikes back';
+    b.note =
+      e.type === 'ShotResolved' ? 'No return fire' : e.type === 'FreeHackResolved' ? "Leaving: can't strike back" : 'Down: only a 6 strikes back';
   }
   if (e.type === 'GuardRiposte' && e.result === 'clash' && a.total > b.total) {
     a.outcome = 'tie';
@@ -127,7 +142,14 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
   const hitsA = e.type !== 'GuardRiposte' && e.result.startsWith('attacker');
   if (!hitsA && !hitsB) {
     const detail = a.total === b.total ? `${a.total} ties ${b.total}` : undefined;
-    const text = e.type === 'GuardRiposte' ? 'Attack goes through' : e.type === 'ShotResolved' ? 'Missed' : 'Clash';
+    const text =
+      e.type === 'GuardRiposte'
+        ? 'Attack goes through'
+        : e.type === 'ShotResolved'
+          ? 'Missed'
+          : e.type === 'FreeHackResolved'
+            ? 'Gets away'
+            : 'Clash';
     return { text, ...(detail ? { detail } : {}), on: [a.unitId, b.unitId], tone: 'neutral' };
   }
   const [winner, loser] = hitsB ? [a, b] : [b, a];
@@ -137,8 +159,13 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
   if (killed) {
     const saved = after.some((x) => x.type === 'ToughnessSaved' && x.unitId === loser.unitId);
     if (saved) return { text: 'Tough!', detail: `${detail} — knocked down instead`, on: [loser.unitId], tone: 'save' };
+    if (e.gruesome) return { text: 'Gruesome!', detail: `${winner.total} triples ${loser.total}`, on: [loser.unitId], tone: 'kill' };
     const already = !doubled ? ' — already down' : '';
     return { text: 'Slain!', detail: `${detail}${already}`, on: [loser.unitId], tone: 'kill' };
+  }
+  if (e.type === 'FreeHackResolved' && e.result === 'defenderRecoiled') {
+    // Pushed the way it was going anyway: the leaver slips away.
+    return { text: 'Slips away', detail: `${detail} on an odd ${winner.die}`, on: [loser.unitId], tone: 'neutral' };
   }
   if (e.result === 'defenderRecoiled' || e.result === 'attackerRecoiled') {
     return { text: 'Pushed back', detail: `${detail} on an odd ${winner.die}`, on: [loser.unitId], tone: 'down' };

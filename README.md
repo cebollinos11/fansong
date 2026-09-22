@@ -3,7 +3,7 @@
 A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: M0–M7 complete.** The game plays on a **flat-top hex grid** (M6) with
+**Status: M0–M7 complete; M8 (source-game melee & shooting rules) in progress.** The game plays on a **flat-top hex grid** (M6) with
 **terrain, premade maps, a map editor and five game modes** (M7). A
 full AI-vs-AI game is playable in the terminal —
 with original **preset warbands**, a **point-buy** cost model, **special-ability
@@ -38,7 +38,7 @@ apps/
 
 ```bash
 pnpm install
-pnpm test                 # 517 tests: rng, hex board, terrain/LOS, combat, turnover,
+pnpm test                 # 600+ tests: rng, hex board, terrain/LOS, combat, turnover,
                           #            rounds, abilities, morale, game modes,
                           #            replay/golden, costing, validation, maps,
                           #            deploy, self-play (map × mode), editor,
@@ -71,7 +71,16 @@ action; the AI, the tests, and any future UI all pick from that list.
   loser back a hex on the winner's odd die or knocks it down on an even one
   (a loser with nowhere to go falls instead). A knocked-down
   defender only hurts its attacker on a natural 6 that also wins the roll;
-  otherwise its best result is a clash.
+  otherwise its best result is a clash. Tripling the loser is a **gruesome
+  kill** — the only kind of death that makes nearby friends test their nerve.
+- **Contact:** a unit that walks next to an enemy stops there, and a unit
+  leaving contact takes a **free hack** from each standing enemy it was
+  touching (it can't hit back; a knockdown stops it in its tracks).
+- **Outnumbering:** in melee, each standing enemy in contact beyond the first
+  costs −1.
+- **Shooting:** −1 beyond short range (the first half of the shooter's reach)
+  and −1 against a target in cover (in a forest, or only just visible past a
+  blocker).
 
 All of this lives behind `reduce` / the turn controller and is covered by
 `packages/engine/test` (mechanics) and `packages/ai/test` (AI-vs-AI invariants:

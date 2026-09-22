@@ -6,6 +6,14 @@ function name(state: GameState, id: string | null): string {
   return u ? `${u.name}[${u.id}]` : id;
 }
 
+/** Score modifiers worth calling out, e.g. " [outnumbered -1, cover -1]". */
+function mods(parts: [string, number | undefined][]): string {
+  const shown = parts.filter(([, v]) => v).map(([label, v]) => `${label} ${v! > 0 ? '+' : ''}${v}`);
+  return shown.length ? ` [${shown.join(', ')}]` : '';
+}
+
+const gore = (e: { gruesome?: true }) => (e.gruesome ? ' (gruesome!)' : '');
+
 /** One-line human description of an event, resolved against post-reduce state. */
 export function formatEvent(state: GameState, e: GameEvent): string {
   switch (e.type) {
@@ -20,13 +28,15 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves (${e.from.x},${e.from.y}) -> (${e.to.x},${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} attacks ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie}) -> ${e.result}`;
+      return `  ${name(state, e.attackerId)} attacks ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['outnumbered', e.attackOutnumbered && -e.attackOutnumbered], ['foe outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered]])} -> ${e.result}${gore(e)}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} shoots ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie}) -> ${e.result}`;
+      return `  ${name(state, e.attackerId)} shoots ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['long range', e.rangePenalty && -e.rangePenalty], ['cover', e.coverPenalty && -e.coverPenalty]])} -> ${e.result}${gore(e)}`;
+    case 'FreeHackResolved':
+      return `  ${name(state, e.attackerId)} takes a free hack at ${name(state, e.targetId)} leaving contact: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['leaver outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered]])} -> ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
     case 'GuardRiposte':
-      return `  ⚔ ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)}: ${e.guardScore} vs ${e.attackerScore} (d${e.guardDie}/d${e.attackerDie}) -> ${e.result}${e.prevented ? ' (attack stopped)' : ''}`;
+      return `  ⚔ ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)}: ${e.guardScore} vs ${e.attackerScore} (d${e.guardDie}/d${e.attackerDie}) -> ${e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `    ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'NerveCheck':

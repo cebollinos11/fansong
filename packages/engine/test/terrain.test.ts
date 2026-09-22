@@ -320,7 +320,7 @@ describe('high ground', () => {
     };
     const up = shoot({ '1,1': { elevation: 2 } });
     expect(up.attackBonus).toBe(1);
-    expect(up.attackScore).toBe(3 + up.attackDie + 1);
+    expect(up.attackScore).toBe(3 + up.attackDie + 1 - (up.rangePenalty ?? 0));
     const down = shoot({ '4,1': { elevation: 1 } });
     expect(down.defenseBonus).toBe(1);
     expect(down.defenseScore).toBe(3 + down.defenseDie + 1);

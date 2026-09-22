@@ -99,6 +99,63 @@ describe('opposed roll cards', () => {
     expect(r.b).toMatchObject({ unitId: 'a', outcome: 'win', note: 'Guard is unhurt' });
     expect(r.verdict).toMatchObject({ text: 'Attack goes through', tone: 'neutral' });
   });
+
+  it('lists outnumbering as its own modifier, leaving Combat intact', () => {
+    const r = describeCombat(attack({ defenseScore: 4, defenseOutnumbered: 1 }));
+    expect(r.b.mods).toEqual([
+      { label: 'Combat', value: 3 },
+      { label: 'Outnumbered', value: -1 },
+    ]);
+  });
+
+  it('lists long range and cover on a shot', () => {
+    const shot: GameEvent = {
+      type: 'ShotResolved',
+      attackerId: 'a',
+      targetId: 'd',
+      attackDie: 5,
+      defenseDie: 1,
+      attackScore: 5,
+      defenseScore: 4,
+      rangePenalty: 1,
+      coverPenalty: 1,
+      result: 'defenderRecoiled',
+    };
+    expect(describeCombat(shot).a.mods).toEqual([
+      { label: 'Combat', value: 2 },
+      { label: 'Long range', value: -1 },
+      { label: 'Cover', value: -1 },
+    ]);
+  });
+
+  it('calls a tripled kill gruesome', () => {
+    const r = describeCombat(attack({ attackScore: 9, defenseScore: 3, result: 'defenderKilled', gruesome: true }));
+    expect(r.verdict).toEqual({ text: 'Gruesome!', detail: '9 triples 3', on: ['d'], tone: 'kill' });
+  });
+
+  it('shows a free hack at a unit leaving contact', () => {
+    type Hack = Extract<GameEvent, { type: 'FreeHackResolved' }>;
+    const hack = (over: Partial<Hack>): Hack => ({
+      type: 'FreeHackResolved',
+      attackerId: 'h',
+      targetId: 'l',
+      attackDie: 3,
+      defenseDie: 2,
+      attackScore: 6,
+      defenseScore: 5,
+      result: 'defenderRecoiled',
+      ...over,
+    });
+    const slipped = describeCombat(hack({}));
+    expect(slipped.a).toMatchObject({ unitId: 'h', role: 'Free hack' });
+    expect(slipped.b).toMatchObject({ unitId: 'l', role: 'Leaving' });
+    expect(slipped.verdict).toEqual({ text: 'Slips away', detail: '6 beats 5 on an odd 3', on: ['l'], tone: 'neutral' });
+    const felled = describeCombat(hack({ attackDie: 4, attackScore: 7, result: 'defenderKnockedDown' }));
+    expect(felled.verdict).toMatchObject({ text: 'Knocked down', on: ['l'] });
+    const missed = describeCombat(hack({ attackScore: 4, defenseScore: 6, result: 'clash' }));
+    expect(missed.b.note).toBe("Leaving: can't strike back");
+    expect(missed.verdict.text).toBe('Gets away');
+  });
 });
 
 describe('activation roll cards', () => {

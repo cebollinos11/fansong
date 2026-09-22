@@ -6,8 +6,10 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
 /**
  * Morale. Beyond the activation turnover, casualties shake the survivors:
  *
- *  - **Fear** — when a unit is killed in combat, every nearby friend must pass a
- *    nerve check (a d6 ≥ its Quality) or be knocked down. Losses ripple outward.
+ *  - **Fear** — when a unit suffers a *gruesome* kill in combat (the winner
+ *    tripled its score), every friend within {@link MORALE_RADIUS} must pass a
+ *    nerve check (a d6 ≥ its Quality) or be knocked down. An ordinary kill
+ *    shakes no one.
  *  - **Rout** — the first time a warband is ground down to a third of its
  *    starting strength it *breaks*: every survivor takes a nerve check, and each
  *    that fails flees the field (removed from play). It happens once per side.
@@ -16,8 +18,11 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  * events, so it replays exactly and is fully unit-testable.
  */
 
-/** Friends within this board-distance radius of a fresh casualty must test nerve. */
-export const MORALE_RADIUS = 2;
+/**
+ * Friends within this board-distance radius of a gruesome casualty must test
+ * nerve: a "long" reach, half again the baseline move of 3.
+ */
+export const MORALE_RADIUS = 4;
 
 /** A warband breaks when its living count falls to this fraction of its start. */
 export const ROUT_FRACTION = 1 / 3;
@@ -32,13 +37,20 @@ function nerveCheck(s: GameState, events: GameEvent[], unit: Unit): boolean {
 }
 
 /**
- * Resolve the morale fallout of a combat casualty: nearby friends test nerve
- * (fear), then the casualty's warband tests for a rout if it has just crossed the
- * break threshold. Mutates `s` and appends events. Rout removals never trigger
- * further fear, so the cascade is bounded.
+ * Resolve the morale fallout of a combat casualty: after a `gruesome` kill,
+ * nearby friends test nerve (fear); then, for any kill, the casualty's warband
+ * tests for a rout if it has just crossed the break threshold. Mutates `s` and
+ * appends events. Rout removals never trigger further fear, so the cascade is
+ * bounded.
  */
-export function resolveCombatMorale(s: GameState, events: GameEvent[], victim: Unit, board: Board): void {
-  fearCheck(s, events, victim, board);
+export function resolveCombatMorale(
+  s: GameState,
+  events: GameEvent[],
+  victim: Unit,
+  board: Board,
+  gruesome: boolean,
+): void {
+  if (gruesome) fearCheck(s, events, victim, board);
   routCheck(s, events, victim.owner);
 }
 

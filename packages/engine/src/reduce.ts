@@ -1,5 +1,5 @@
 import { makeHexGrid, vecKey, type Board, type Vec } from './board.js';
-import { canStrikeBack, computeCombatResult, highGroundBonus } from './combat.js';
+import { canStrikeBack, computeCombatResult, highGroundBonus, COVER_PENALTY, isGruesome, rangePenalty } from './combat.js';
 import {
   carryFlags,
   checkRoundLimit,
@@ -11,8 +11,19 @@ import {
 } from './mode.js';
 import { resolveCombatMorale } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
-import { inMelee, isOccupied, livingCount, occupiedKeys, playerHasAvailable, unitAvailable, unitById } from './query.js';
-import type { Command, GameEvent, GameState, Owner, ReduceResult, Unit } from './types.js';
+import {
+  adjacentEnemies,
+  inMelee,
+  isOccupied,
+  livingCount,
+  occupiedKeys,
+  outnumberedPenalty,
+  playerHasAvailable,
+  unitAvailable,
+  unitById,
+  walkRules,
+} from './query.js';
+import type { CombatResult, Command, GameEvent, GameState, Owner, ReduceResult, Unit } from './types.js';
 
 /** Turnover happens at 2 or more failed activation dice. */
 export const TURNOVER_FAILURES = 2;
@@ -130,15 +141,26 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   if (!board.inBounds(to)) throw new Error('destination out of bounds');
   if (board.isBlocked(to)) throw new Error('destination blocked');
   if (board.distance(unit.pos, to) > unit.move) throw new Error('destination beyond move range');
-  if (!board.reachableWithin(unit.pos, unit.move).has(vecKey(to))) {
+  // Walks stop on entering contact with an enemy and never pass through one.
+  const rules = walkRules(s, unit, board);
+  if (!board.reachableWithin(unit.pos, unit.move, rules).has(vecKey(to))) {
     throw new Error('destination unreachable within move range');
   }
   if (isOccupied(s, to, unit.id)) throw new Error('destination occupied');
+  const path = board.pathWithin(unit.pos, to, unit.move, rules)!;
+
+  s.actionsRemaining -= 1;
+  // Leaving contact: each standing enemy in contact takes a free hack first. A
+  // leaver that is cut down or knocked down goes nowhere, and its activation ends.
+  if (!resolveFreeHacks(s, events, unit, board)) {
+    if (checkGameOver(s, events)) return;
+    endActivation(s, events);
+    return;
+  }
 
   const from = { ...unit.pos };
   unit.pos = { x: to.x, y: to.y };
-  s.actionsRemaining -= 1;
-  events.push({ type: 'UnitMoved', unitId, from, to: { x: to.x, y: to.y } });
+  events.push({ type: 'UnitMoved', unitId, from, to: { x: to.x, y: to.y }, path });
   if (flagsAfterMove(s, events, unitId)) return;
 
   if (s.actionsRemaining <= 0) endActivation(s, events);
@@ -177,14 +199,17 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   s.rngState = def.state;
   const attackBonus = highGroundBonus(board, attacker, target);
   const defenseBonus = highGroundBonus(board, target, attacker);
-  const attackScore = attacker.combat + atk.die + attackBonus;
-  const defenseScore = target.combat + def.die + defenseBonus;
+  const attackOutnumbered = outnumberedPenalty(s, attacker, board);
+  const defenseOutnumbered = outnumberedPenalty(s, target, board);
+  const attackScore = attacker.combat + atk.die + attackBonus - attackOutnumbered;
+  const defenseScore = target.combat + def.die + defenseBonus - defenseOutnumbered;
   const attackerRecoil = recoilHex(s, board, attacker, target);
   const targetRecoil = recoilHex(s, board, target, attacker);
   const result = computeCombatResult(
     { score: attackScore, die: atk.die, knockedDown: attacker.knockedDown, canRecoil: attackerRecoil !== null },
     { score: defenseScore, die: def.die, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
   );
+  const gruesome = gruesomeKill(result, attackScore, defenseScore);
 
   events.push({
     type: 'AttackResolved',
@@ -196,13 +221,16 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
     defenseScore,
     ...(attackBonus ? { attackBonus } : {}),
     ...(defenseBonus ? { defenseBonus } : {}),
+    ...(attackOutnumbered ? { attackOutnumbered } : {}),
+    ...(defenseOutnumbered ? { defenseOutnumbered } : {}),
     result,
+    ...(gruesome ? { gruesome } : {}),
   });
 
   let attackerEnded = false;
   switch (result) {
     case 'defenderKilled':
-      strike(s, target, attacker.id, events, board);
+      strike(s, target, attacker.id, events, board, gruesome);
       break;
     case 'defenderKnockedDown':
       target.knockedDown = true;
@@ -212,7 +240,7 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
       recoil(s, events, target, targetRecoil!);
       break;
     case 'attackerKilled':
-      strike(s, attacker, target.id, events, board);
+      strike(s, attacker, target.id, events, board, gruesome);
       attackerEnded = true;
       break;
     case 'attackerKnockedDown':
@@ -261,7 +289,9 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   s.rngState = def.state;
   const attackBonus = highGroundBonus(board, attacker, target);
   const defenseBonus = highGroundBonus(board, target, attacker);
-  const attackScore = attacker.combat + atk.die + attackBonus;
+  const range = rangePenalty(attacker.traits.ranged, d);
+  const cover = board.inCover(attacker.pos, target.pos, (v) => occ.has(vecKey(v))) ? COVER_PENALTY : 0;
+  const attackScore = attacker.combat + atk.die + attackBonus - range - cover;
   const defenseScore = target.combat + def.die + defenseBonus;
 
   const targetRecoil = recoilHex(s, board, target, attacker);
@@ -271,6 +301,7 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   );
   // A shot only ever harms the target — the shooter takes no return damage.
   if (!result.startsWith('defender')) result = 'clash';
+  const gruesome = gruesomeKill(result, attackScore, defenseScore);
 
   events.push({
     type: 'ShotResolved',
@@ -282,10 +313,13 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
     defenseScore,
     ...(attackBonus ? { attackBonus } : {}),
     ...(defenseBonus ? { defenseBonus } : {}),
+    ...(range ? { rangePenalty: range } : {}),
+    ...(cover ? { coverPenalty: cover } : {}),
     result,
+    ...(gruesome ? { gruesome } : {}),
   });
 
-  if (result === 'defenderKilled') strike(s, target, attacker.id, events, board);
+  if (result === 'defenderKilled') strike(s, target, attacker.id, events, board, gruesome);
   else if (result === 'defenderKnockedDown') {
     target.knockedDown = true;
     events.push({ type: 'UnitKnockedDown', unitId: target.id });
@@ -321,8 +355,10 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   s.rngState = ad.state;
   const guardBonus = highGroundBonus(board, guard, attacker);
   const attackerBonus = highGroundBonus(board, attacker, guard);
-  const guardScore = guard.combat + gd.die + guardBonus;
-  const attackerScore = attacker.combat + ad.die + attackerBonus;
+  const guardOutnumbered = outnumberedPenalty(s, guard, board);
+  const attackerOutnumbered = outnumberedPenalty(s, attacker, board);
+  const guardScore = guard.combat + gd.die + guardBonus - guardOutnumbered;
+  const attackerScore = attacker.combat + ad.die + attackerBonus - attackerOutnumbered;
   const attackerRecoil = recoilHex(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6.
   const result = canStrikeBack(guard.knockedDown, gd.die)
@@ -332,6 +368,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
       )
     : 'clash';
   const prevented = result.startsWith('defender');
+  const gruesome = gruesomeKill(result, guardScore, attackerScore);
 
   events.push({
     type: 'GuardRiposte',
@@ -343,17 +380,85 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackerScore,
     ...(guardBonus ? { guardBonus } : {}),
     ...(attackerBonus ? { attackerBonus } : {}),
+    ...(guardOutnumbered ? { guardOutnumbered } : {}),
+    ...(attackerOutnumbered ? { attackerOutnumbered } : {}),
     result,
+    ...(gruesome ? { gruesome } : {}),
     prevented,
   });
 
   if (result === 'defenderKilled') {
-    strike(s, attacker, guard.id, events, board);
+    strike(s, attacker, guard.id, events, board, gruesome);
   } else if (result === 'defenderKnockedDown' && !attacker.knockedDown) {
     attacker.knockedDown = true;
     events.push({ type: 'UnitKnockedDown', unitId: attacker.id });
   } else if (result === 'defenderRecoiled') recoil(s, events, attacker, attackerRecoil!);
   return prevented;
+}
+
+// --- Free hacks -------------------------------------------------------------
+
+/**
+ * A unit leaving contact takes a free hack from every *standing* enemy in
+ * contact with it, in unit order. Each is an opposed roll where only the leaver
+ * can be hurt: a double kills it (or a Tough save knocks it down), an even-die
+ * win knocks it down — either stops the move — and an odd-die win (a "recoil")
+ * just lets it slip away. Returns whether the leaver may carry on moving.
+ */
+function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board: Board): boolean {
+  for (const hacker of adjacentEnemies(s, mover, board)) {
+    if (hacker.knockedDown) continue;
+    const atk = rollD6(s.rngState);
+    const def = rollD6(atk.state);
+    s.rngState = def.state;
+    const attackBonus = highGroundBonus(board, hacker, mover);
+    const defenseBonus = highGroundBonus(board, mover, hacker);
+    const attackOutnumbered = outnumberedPenalty(s, hacker, board);
+    const defenseOutnumbered = outnumberedPenalty(s, mover, board);
+    const attackScore = hacker.combat + atk.die + attackBonus - attackOutnumbered;
+    const defenseScore = mover.combat + def.die + defenseBonus - defenseOutnumbered;
+    let result = computeCombatResult(
+      { score: attackScore, die: atk.die, knockedDown: false, canRecoil: false },
+      // A leaver always has somewhere to "recoil": the way it was going.
+      { score: defenseScore, die: def.die, knockedDown: mover.knockedDown, canRecoil: true },
+    );
+    if (!result.startsWith('defender')) result = 'clash';
+    const gruesome = gruesomeKill(result, attackScore, defenseScore);
+
+    events.push({
+      type: 'FreeHackResolved',
+      attackerId: hacker.id,
+      targetId: mover.id,
+      attackDie: atk.die,
+      defenseDie: def.die,
+      attackScore,
+      defenseScore,
+      ...(attackBonus ? { attackBonus } : {}),
+      ...(defenseBonus ? { defenseBonus } : {}),
+      ...(attackOutnumbered ? { attackOutnumbered } : {}),
+      ...(defenseOutnumbered ? { defenseOutnumbered } : {}),
+      result,
+      ...(gruesome ? { gruesome } : {}),
+    });
+
+    if (result === 'defenderKilled') {
+      strike(s, mover, hacker.id, events, board, gruesome); // dead, or Tough-saved onto the ground
+      return false;
+    }
+    if (result === 'defenderKnockedDown') {
+      mover.knockedDown = true;
+      events.push({ type: 'UnitKnockedDown', unitId: mover.id });
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Whether `result` is a kill that tripled the loser, given the aggressor's and the defender's scores. */
+function gruesomeKill(result: CombatResult, aggressorScore: number, defenderScore: number): boolean {
+  if (result === 'defenderKilled') return isGruesome(aggressorScore, defenderScore);
+  if (result === 'attackerKilled') return isGruesome(defenderScore, aggressorScore);
+  return false;
 }
 
 /** Where `unit` recoils when beaten by `by`: the hex directly away, or null if off-board, impassable or occupied. */
@@ -371,13 +476,20 @@ function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {
 
 /**
  * A killing blow from combat: apply it (honouring Tough), and if the unit
- * actually dies, resolve the morale fallout — nearby friends test nerve, and the
- * warband may rout. Tough saves that downgrade the blow to a knockdown are not a
- * death, so they raise no morale check.
+ * actually dies, resolve the morale fallout — after a `gruesome` kill nearby
+ * friends test nerve, and the warband may rout. Tough saves that downgrade the
+ * blow to a knockdown are not a death, so they raise no morale check.
  */
-function strike(s: GameState, unit: Unit, byId: string | null, events: GameEvent[], board: Board): boolean {
+function strike(
+  s: GameState,
+  unit: Unit,
+  byId: string | null,
+  events: GameEvent[],
+  board: Board,
+  gruesome: boolean,
+): boolean {
   const died = resolveKill(unit, byId, events);
-  if (died) resolveCombatMorale(s, events, unit, board);
+  if (died) resolveCombatMorale(s, events, unit, board, gruesome);
   return died;
 }
 

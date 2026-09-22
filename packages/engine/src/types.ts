@@ -146,7 +146,14 @@ export type GameEvent =
   | { type: 'DiceRolled'; unitId: string; quality: number; dice: number[]; successes: number; failures: number }
   | { type: 'Turnover'; player: Owner; unitId: string }
   | { type: 'UnitStoodUp'; unitId: string }
-  | { type: 'UnitMoved'; unitId: string; from: Vec; to: Vec }
+  | {
+      type: 'UnitMoved';
+      unitId: string;
+      from: Vec;
+      to: Vec;
+      /** The hexes walked, `from` and `to` included (a shortest legal walk). */
+      path?: Vec[];
+    }
   | {
       type: 'AttackResolved';
       attackerId: string;
@@ -159,7 +166,13 @@ export type GameEvent =
       attackBonus?: number;
       /** High-ground bonus added to the defense score; present only when non-zero. */
       defenseBonus?: number;
+      /** Outnumbering penalty subtracted from the attack score; present only when non-zero. */
+      attackOutnumbered?: number;
+      /** Outnumbering penalty subtracted from the defense score; present only when non-zero. */
+      defenseOutnumbered?: number;
       result: CombatResult;
+      /** Present when the kill tripled the loser's score (a gruesome kill, which spreads fear). */
+      gruesome?: true;
     }
   | {
       type: 'ShotResolved';
@@ -173,8 +186,39 @@ export type GameEvent =
       attackBonus?: number;
       /** High-ground bonus added to the defense score; present only when non-zero. */
       defenseBonus?: number;
+      /** Long-range penalty subtracted from the attack score; present only when non-zero. */
+      rangePenalty?: number;
+      /** Cover penalty subtracted from the attack score; present only when non-zero. */
+      coverPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
       result: CombatResult;
+      /** Present when the kill tripled the target's score (a gruesome kill, which spreads fear). */
+      gruesome?: true;
+    }
+  | {
+      /**
+       * A free hack: `attackerId` strikes `targetId` as it leaves contact. Only
+       * defender-side outcomes apply (the hacker is never hurt); a recoil means
+       * the leaver slips away and carries on, a knockdown stops its move.
+       */
+      type: 'FreeHackResolved';
+      attackerId: string;
+      targetId: string;
+      attackDie: number;
+      defenseDie: number;
+      attackScore: number;
+      defenseScore: number;
+      /** High-ground bonus added to the attack score; present only when non-zero. */
+      attackBonus?: number;
+      /** High-ground bonus added to the defense score; present only when non-zero. */
+      defenseBonus?: number;
+      /** Outnumbering penalty subtracted from the attack score; present only when non-zero. */
+      attackOutnumbered?: number;
+      /** Outnumbering penalty subtracted from the defense score; present only when non-zero. */
+      defenseOutnumbered?: number;
+      result: CombatResult;
+      /** Present when the kill tripled the leaver's score (a gruesome kill, which spreads fear). */
+      gruesome?: true;
     }
   | { type: 'GuardDeclared'; unitId: string }
   | {
@@ -189,7 +233,13 @@ export type GameEvent =
       guardBonus?: number;
       /** High-ground bonus added to the attacker's score; present only when non-zero. */
       attackerBonus?: number;
+      /** Outnumbering penalty subtracted from the guard's score; present only when non-zero. */
+      guardOutnumbered?: number;
+      /** Outnumbering penalty subtracted from the attacker's score; present only when non-zero. */
+      attackerOutnumbered?: number;
       result: CombatResult;
+      /** Present when the riposte's kill tripled the attacker's score (a gruesome kill). */
+      gruesome?: true;
       /** True if the riposte stopped the incoming attack (attacker killed, knocked down or pushed back). */
       prevented: boolean;
     }

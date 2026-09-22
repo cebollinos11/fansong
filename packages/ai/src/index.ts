@@ -1,11 +1,15 @@
 import {
+  adjacentEnemies,
   aliveUnits,
   enemiesOf,
   flagAtBase,
   getLegalCommands,
   kingOf,
   makeHexGrid,
+  outnumberedPenalty,
+  rangePenalty,
   scoringZones,
+  shortRange,
   standingInZone,
   unitById,
   vecKey,
@@ -38,13 +42,42 @@ export function chooseCommand(state: GameState): Command {
   let best = commands[0]!;
   let bestScore = -Infinity;
   for (const command of commands) {
-    const score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
+    let score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
+    if (command.type === 'Move') score -= disengageCost(state, board, command.unitId);
     if (score > bestScore) {
       bestScore = score;
       best = command;
     }
   }
   return best;
+}
+
+/**
+ * Score cost of a move that leaves contact: every standing enemy in contact gets
+ * a free hack at the mover. Big enough that an ordinary reposition never pays
+ * for it, small enough that a carrier's run home or a King's escape from a lone
+ * foe still does.
+ */
+const DISENGAGE_COST = 30_000;
+
+function disengageCost(state: GameState, board: Board, unitId: string): number {
+  const mover = unitById(state, unitId)!;
+  return adjacentEnemies(state, mover, board).filter((e) => !e.knockedDown).length * DISENGAGE_COST;
+}
+
+/** Score cost per point a shot loses to range or cover — worth about one point of target Combat. */
+const SHOT_PENALTY_COST = 100;
+
+/** Range and cover penalties `shooter` would take shooting `target` from where it stands. */
+function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit): number {
+  const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
+  const cover = board.inCover(shooter.pos, target.pos, (v) => occupied.has(vecKey(v))) ? 1 : 0;
+  return rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) + cover;
+}
+
+/** A ranged mover's standoff score at `dist` from the nearest foe: short range beats long range. */
+function standoffScore(ranged: number, dist: number): number {
+  return (dist <= shortRange(ranged) ? 125_000 : 120_000) + dist;
 }
 
 function nearestEnemyDistance(board: Board, from: Vec, enemies: Unit[]): number {
@@ -180,6 +213,8 @@ function scoreCommand(
       if (target.knockedDown) score += 5_000; // likely a kill — finish it
       score += (6 - target.combat) * 100; // focus-fire the weakest reachable foe
       score += (attacker.combat - target.combat) * 50; // favour favourable match-ups
+      // Gang up: hit a foe we outnumber, not while we are the outnumbered one.
+      score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
       if (kings) {
         // Our King only trades blows to end the game or finish a downed foe;
         // stuck in melee with nowhere safer, it still hits back rather than idle.
@@ -193,9 +228,11 @@ function scoreCommand(
       // Shooting deals damage with no risk of reprisal — nearly as good as a
       // melee blow, and better against a soft or already-downed target.
       const target = unitById(state, command.targetId)!;
+      const shooter = unitById(state, command.attackerId)!;
       let score = 900_000;
       if (target.knockedDown) score += 5_000;
       score += (6 - target.combat) * 100; // pick off the weakest reachable foe
+      score -= shotPenalty(state, board, shooter, target) * SHOT_PENALTY_COST; // a close, clear shot
       if (kings) score += kingTargetBonus(kings, target);
       return score;
     }
@@ -213,7 +250,7 @@ function scoreCommand(
       // is already available, Shoot outscores every Move anyway.)
       if (mover.traits.ranged >= 2) {
         const r = mover.traits.ranged;
-        if (dist >= 2 && dist <= r) return 120_000 + dist; // in the sweet spot — hold at the edge of range
+        if (dist >= 2 && dist <= r) return standoffScore(r, dist); // in the sweet spot — short range, else the edge of range
         if (dist < 2) return 40_000; // stepping into melee is a last resort for a shooter
         return 100_000 - dist * 100; // out of range: close the gap
       }
@@ -358,7 +395,7 @@ function kingMoveScore(state: GameState, board: Board, plan: KingPlan, mover: Un
     if (dist >= 2 && dist <= r) {
       if (!hasShotFrom(board, plan, mover, to, r, enemies)) return 110_000 + height;
       const kingInRange = !!plan.theirKing && board.distance(to, plan.theirKing.pos) <= r;
-      return 120_000 + (kingInRange ? 50 : 0) + height;
+      return standoffScore(r, dist) - dist + (kingInRange ? 50 : 0) + height;
     }
     if (dist < 2) return 40_000;
   }
@@ -472,10 +509,14 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
     case 'Shoot': {
       const targetId = command.targetId;
       const target = unitById(state, targetId)!;
+      const attacker = unitById(state, command.attackerId)!;
       let score = command.type === 'Attack' ? 1_000_000 : 900_000;
       if (target.knockedDown) score += 5_000;
       score += (6 - target.combat) * 100;
-      if (command.type === 'Attack') score += (unitById(state, command.attackerId)!.combat - target.combat) * 50;
+      if (command.type === 'Attack') {
+        score += (attacker.combat - target.combat) * 50;
+        score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
+      } else score -= shotPenalty(state, board, attacker, target) * SHOT_PENALTY_COST;
       // Knocking the enemy carrier down drops our flag where we can return it.
       if (targetId === plan.enemyCarrierId) score += 200_000;
       return score;

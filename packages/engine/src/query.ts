@@ -1,4 +1,4 @@
-import { vecKey, type Board, type Vec } from './board.js';
+import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
 import type { GameState, Owner, Unit } from './types.js';
 
 export function unitById(state: GameState, id: string): Unit | undefined {
@@ -48,4 +48,43 @@ export function playerHasAvailable(state: GameState, p: Owner): boolean {
 
 export function livingCount(state: GameState, owner: Owner): number {
   return state.units.reduce((n, u) => (!u.dead && u.owner === owner ? n + 1 : n), 0);
+}
+
+/** Living enemies of `unit` adjacent to it (in contact), in unit order. */
+export function adjacentEnemies(state: GameState, unit: Unit, board: Board): Unit[] {
+  return state.units.filter((u) => !u.dead && u.owner !== unit.owner && board.distance(u.pos, unit.pos) === 1);
+}
+
+/**
+ * Outnumbering: a combatant fighting in melee takes −1 for each *standing* enemy
+ * in contact with it beyond the first. Returns that penalty (0 when facing at
+ * most one standing foe).
+ */
+export function outnumberedPenalty(state: GameState, unit: Unit, board: Board): number {
+  const standing = adjacentEnemies(state, unit, board).filter((u) => !u.knockedDown).length;
+  return Math.max(0, standing - 1);
+}
+
+/**
+ * How `unit` may walk: never through an enemy's hex, and a walk that enters a
+ * hex in contact with any living enemy stops there. Leaving contact from the
+ * start hex is allowed (it provokes free hacks — see `reduce`).
+ */
+export function walkRules(state: GameState, unit: Unit, board: Board): WalkRules {
+  const enemyHexes = new Set<string>();
+  const contact = new Set<string>();
+  for (const e of state.units) {
+    if (e.dead || e.owner === unit.owner) continue;
+    enemyHexes.add(vecKey(e.pos));
+    for (const n of board.neighbors(e.pos)) contact.add(vecKey(n));
+  }
+  return {
+    passable: (v) => !enemyHexes.has(vecKey(v)),
+    stops: (v) => contact.has(vecKey(v)),
+  };
+}
+
+/** Every hex `unit` can reach with one Move action (ignoring occupancy of the destination). */
+export function moveReach(state: GameState, unit: Unit, board: Board): Set<string> {
+  return board.reachableWithin(unit.pos, unit.move, walkRules(state, unit, board));
 }
