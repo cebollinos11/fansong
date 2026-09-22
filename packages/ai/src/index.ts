@@ -75,6 +75,38 @@ function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit
   return rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) + cover;
 }
 
+/**
+ * How much a two-action blow or shot is worth against swinging twice with the
+ * same actions. Kept well below the ±50 steps target selection uses, so it only
+ * ever decides *how* to hit the foe the AI already picked, never *which* foe.
+ */
+const PRESSED_EDGE = 10;
+
+/**
+ * Should the aggressor spend both actions on one pressed blow, or swing twice?
+ * Two swings are two chances to kill, so they normally win. The exceptions:
+ *
+ * - **Melee**, when the match-up is against us (the defender is no weaker, once
+ *   outnumbering is counted): each exchange risks *our* neck, so buying better
+ *   odds beats buying a second exchange.
+ * - **Shooting**, when range and cover have already eaten 2 points: a raw shot
+ *   that is unlikely to land at all is not worth firing twice.
+ *
+ * Returns the bonus to add for the pressed variant (negative = swing twice).
+ */
+function pressedEdge(worthIt: boolean, pressed: boolean): number {
+  return pressed === worthIt ? PRESSED_EDGE : -PRESSED_EDGE;
+}
+
+/** How far the melee is stacked our way: our Combat less the foe's, both after outnumbering. */
+function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
+  return (
+    attacker.combat -
+    outnumberedPenalty(state, attacker, board) -
+    (target.combat - outnumberedPenalty(state, target, board))
+  );
+}
+
 /** A ranged mover's standoff score at `dist` from the nearest foe: short range beats long range. */
 function standoffScore(ranged: number, dist: number): number {
   return (dist <= shortRange(ranged) ? 125_000 : 120_000) + dist;
@@ -215,6 +247,8 @@ function scoreCommand(
       score += (attacker.combat - target.combat) * 50; // favour favourable match-ups
       // Gang up: hit a foe we outnumber, not while we are the outnumbered one.
       score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
+      // Power blow or two swings? Press the attack only when the odds are against us.
+      score += pressedEdge(meleeEdge(state, board, attacker, target) < 0, command.power === true);
       if (kings) {
         // Our King only trades blows to end the game or finish a downed foe;
         // stuck in melee with nowhere safer, it still hits back rather than idle.
@@ -232,7 +266,10 @@ function scoreCommand(
       let score = 900_000;
       if (target.knockedDown) score += 5_000;
       score += (6 - target.combat) * 100; // pick off the weakest reachable foe
-      score -= shotPenalty(state, board, shooter, target) * SHOT_PENALTY_COST; // a close, clear shot
+      const penalty = shotPenalty(state, board, shooter, target);
+      score -= penalty * SHOT_PENALTY_COST; // a close, clear shot
+      // Aimed shot or two shots? Steady the aim only when the shot is badly penalised.
+      score += pressedEdge(penalty >= 2, command.aimed === true);
       if (kings) score += kingTargetBonus(kings, target);
       return score;
     }
@@ -516,7 +553,12 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
       if (command.type === 'Attack') {
         score += (attacker.combat - target.combat) * 50;
         score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
-      } else score -= shotPenalty(state, board, attacker, target) * SHOT_PENALTY_COST;
+        score += pressedEdge(meleeEdge(state, board, attacker, target) < 0, command.power === true);
+      } else {
+        const penalty = shotPenalty(state, board, attacker, target);
+        score -= penalty * SHOT_PENALTY_COST;
+        score += pressedEdge(penalty >= 2, command.aimed === true);
+      }
       // Knocking the enemy carrier down drops our flag where we can return it.
       if (targetId === plan.enemyCarrierId) score += 200_000;
       return score;

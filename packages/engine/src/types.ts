@@ -111,12 +111,24 @@ export interface AttackCommand {
   type: 'Attack';
   attackerId: string;
   targetId: string;
+  /**
+   * A **power blow**: put the weight of two actions behind one swing. It costs
+   * {@link PRESSED_COST} actions instead of one and the defender fights it at
+   * {@link POWER_BLOW_PENALTY}. Omitted = an ordinary one-action attack.
+   */
+  power?: true;
 }
 
 export interface ShootCommand {
   type: 'Shoot';
   attackerId: string;
   targetId: string;
+  /**
+   * An **aimed shot**: the ranged twin of a power blow. It costs
+   * {@link PRESSED_COST} actions instead of one and the target defends at
+   * {@link AIMED_SHOT_PENALTY}. Omitted = an ordinary one-action shot.
+   */
+  aimed?: true;
 }
 
 export interface GuardCommand {
@@ -176,6 +188,8 @@ export type GameEvent =
       attackOutnumbered?: number;
       /** Outnumbering penalty subtracted from the defense score; present only when non-zero. */
       defenseOutnumbered?: number;
+      /** Power-blow penalty subtracted from the defense score; present only on a two-action attack. */
+      powerPenalty?: number;
       result: CombatResult;
       /** Present when the kill tripled the loser's score (a gruesome kill, which spreads fear). */
       gruesome?: true;
@@ -196,6 +210,8 @@ export type GameEvent =
       rangePenalty?: number;
       /** Cover penalty subtracted from the attack score; present only when non-zero. */
       coverPenalty?: number;
+      /** Aimed-shot penalty subtracted from the defense score; present only on a two-action shot. */
+      aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
       result: CombatResult;
       /** Present when the kill tripled the target's score (a gruesome kill, which spreads fear). */

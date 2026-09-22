@@ -128,6 +128,36 @@ describe('opposed roll cards', () => {
     ]);
   });
 
+  it('names a power blow and puts its penalty on the defender', () => {
+    const r = describeCombat(attack({ defenseScore: 4, powerPenalty: 1 }));
+    expect(r.a.role).toBe('Power blow');
+    expect(r.b.role).toBe('Defend');
+    expect(r.b.mods).toEqual([
+      { label: 'Combat', value: 3 },
+      { label: 'Power blow', value: -1 },
+    ]);
+  });
+
+  it('names an aimed shot and puts its penalty on the target', () => {
+    const shot: GameEvent = {
+      type: 'ShotResolved',
+      attackerId: 'a',
+      targetId: 'd',
+      attackDie: 5,
+      defenseDie: 1,
+      attackScore: 7,
+      defenseScore: 3,
+      aimPenalty: 1,
+      result: 'defenderKnockedDown',
+    };
+    const r = describeCombat(shot);
+    expect(r.a.role).toBe('Aimed shot');
+    expect(r.b.mods).toEqual([
+      { label: 'Combat', value: 3 },
+      { label: 'Aimed at', value: -1 },
+    ]);
+  });
+
   it('calls a tripled kill gruesome', () => {
     const r = describeCombat(attack({ attackScore: 9, defenseScore: 3, result: 'defenderKilled', gruesome: true }));
     expect(r.verdict).toEqual({ text: 'Gruesome!', detail: '9 triples 3', on: ['d'], tone: 'kill' });

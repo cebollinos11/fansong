@@ -28,9 +28,9 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves (${e.from.x},${e.from.y}) -> (${e.to.x},${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} attacks ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['outnumbered', e.attackOutnumbered && -e.attackOutnumbered], ['foe outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered]])} -> ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['outnumbered', e.attackOutnumbered && -e.attackOutnumbered], ['foe outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['foe power-blown', e.powerPenalty && -e.powerPenalty]])} -> ${e.result}${gore(e)}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} shoots ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['long range', e.rangePenalty && -e.rangePenalty], ['cover', e.coverPenalty && -e.coverPenalty]])} -> ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['long range', e.rangePenalty && -e.rangePenalty], ['cover', e.coverPenalty && -e.coverPenalty], ['foe aimed at', e.aimPenalty && -e.aimPenalty]])} -> ${e.result}${gore(e)}`;
     case 'FreeHackResolved':
       return `  ${name(state, e.attackerId)} takes a free hack at ${name(state, e.targetId)} leaving contact: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['leaver outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered]])} -> ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':

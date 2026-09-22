@@ -1,5 +1,15 @@
 import { makeHexGrid, vecKey, type Board, type Vec } from './board.js';
-import { canStrikeBack, computeCombatResult, highGroundBonus, COVER_PENALTY, isGruesome, rangePenalty } from './combat.js';
+import {
+  AIMED_SHOT_PENALTY,
+  canStrikeBack,
+  computeCombatResult,
+  highGroundBonus,
+  COVER_PENALTY,
+  isGruesome,
+  POWER_BLOW_PENALTY,
+  PRESSED_COST,
+  rangePenalty,
+} from './combat.js';
 import {
   carryFlags,
   checkRoundLimit,
@@ -23,7 +33,17 @@ import {
   unitById,
   walkRules,
 } from './query.js';
-import type { CombatResult, Command, GameEvent, GameState, Owner, ReduceResult, Unit } from './types.js';
+import type {
+  AttackCommand,
+  CombatResult,
+  Command,
+  GameEvent,
+  GameState,
+  Owner,
+  ReduceResult,
+  ShootCommand,
+  Unit,
+} from './types.js';
 
 /** Turnover happens at 2 or more failed activation dice. */
 export const TURNOVER_FAILURES = 2;
@@ -44,10 +64,10 @@ export function reduce(state: GameState, command: Command): ReduceResult {
       handleMove(s, events, command.unitId, command.to);
       break;
     case 'Attack':
-      handleAttack(s, events, command.attackerId, command.targetId);
+      handleAttack(s, events, command);
       break;
     case 'Shoot':
-      handleShoot(s, events, command.attackerId, command.targetId);
+      handleShoot(s, events, command);
       break;
     case 'Guard':
       handleGuard(s, events, command.unitId);
@@ -168,11 +188,15 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
 
 // --- Attack ---------------------------------------------------------------
 
-function handleAttack(s: GameState, events: GameEvent[], attackerId: string, targetId: string): void {
+function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand): void {
+  const { attackerId, targetId } = command;
   requirePhase(s, 'acting');
   const attacker = activeUnit(s);
   if (attacker.id !== attackerId) throw new Error(`unit '${attackerId}' is not the activating unit`);
-  if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
+  // A power blow buys the defender's penalty with a second action.
+  const cost = command.power ? PRESSED_COST : 1;
+  const powerPenalty = command.power ? POWER_BLOW_PENALTY : 0;
+  if (s.actionsRemaining < cost) throw new Error('not enough actions remaining');
 
   const target = unitById(s, targetId);
   if (!target) throw new Error(`unknown target '${targetId}'`);
@@ -185,9 +209,11 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   // Guard reaction: a guarding defender strikes first. If the riposte kills or
   // knocks the attacker down, the incoming attack is prevented entirely.
   if (target.guarding && target.traits.guard) {
+    // The guard strikes before the blow lands, so a power blow's penalty never
+    // reaches the riposte — only the swing it was bought for.
     const prevented = resolveRiposte(s, events, target, attacker, board);
     if (prevented) {
-      s.actionsRemaining -= 1; // the attack action is spent even though it was repelled
+      s.actionsRemaining -= cost; // the actions are spent even though the attack was repelled
       if (checkGameOver(s, events)) return;
       endActivation(s, events);
       return;
@@ -202,7 +228,7 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
   const attackOutnumbered = outnumberedPenalty(s, attacker, board);
   const defenseOutnumbered = outnumberedPenalty(s, target, board);
   const attackScore = attacker.combat + atk.die + attackBonus - attackOutnumbered;
-  const defenseScore = target.combat + def.die + defenseBonus - defenseOutnumbered;
+  const defenseScore = target.combat + def.die + defenseBonus - defenseOutnumbered - powerPenalty;
   const attackerRecoil = recoilHex(s, board, attacker, target);
   const targetRecoil = recoilHex(s, board, target, attacker);
   const result = computeCombatResult(
@@ -223,6 +249,7 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
     ...(defenseBonus ? { defenseBonus } : {}),
     ...(attackOutnumbered ? { attackOutnumbered } : {}),
     ...(defenseOutnumbered ? { defenseOutnumbered } : {}),
+    ...(powerPenalty ? { powerPenalty } : {}),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -255,7 +282,7 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
       break;
   }
 
-  s.actionsRemaining -= 1;
+  s.actionsRemaining -= cost;
 
   if (checkGameOver(s, events)) return;
   if (attackerEnded || s.actionsRemaining <= 0) endActivation(s, events);
@@ -263,11 +290,15 @@ function handleAttack(s: GameState, events: GameEvent[], attackerId: string, tar
 
 // --- Shoot ----------------------------------------------------------------
 
-function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targetId: string): void {
+function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): void {
+  const { attackerId, targetId } = command;
   requirePhase(s, 'acting');
   const attacker = activeUnit(s);
   if (attacker.id !== attackerId) throw new Error(`unit '${attackerId}' is not the activating unit`);
-  if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
+  // An aimed shot spends a second action to steady the aim.
+  const cost = command.aimed ? PRESSED_COST : 1;
+  const aimPenalty = command.aimed ? AIMED_SHOT_PENALTY : 0;
+  if (s.actionsRemaining < cost) throw new Error('not enough actions remaining');
   if (attacker.traits.ranged < 1) throw new Error('unit has no ranged attack');
   const board = makeHexGrid(s.board);
   if (inMelee(s, attacker, board)) throw new Error('cannot shoot while in melee');
@@ -292,7 +323,7 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
   const range = rangePenalty(attacker.traits.ranged, d);
   const cover = board.inCover(attacker.pos, target.pos, (v) => occ.has(vecKey(v))) ? COVER_PENALTY : 0;
   const attackScore = attacker.combat + atk.die + attackBonus - range - cover;
-  const defenseScore = target.combat + def.die + defenseBonus;
+  const defenseScore = target.combat + def.die + defenseBonus - aimPenalty;
 
   const targetRecoil = recoilHex(s, board, target, attacker);
   let result = computeCombatResult(
@@ -315,6 +346,7 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
     ...(defenseBonus ? { defenseBonus } : {}),
     ...(range ? { rangePenalty: range } : {}),
     ...(cover ? { coverPenalty: cover } : {}),
+    ...(aimPenalty ? { aimPenalty } : {}),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -325,7 +357,7 @@ function handleShoot(s: GameState, events: GameEvent[], attackerId: string, targ
     events.push({ type: 'UnitKnockedDown', unitId: target.id });
   } else if (result === 'defenderRecoiled') recoil(s, events, target, targetRecoil!);
 
-  s.actionsRemaining -= 1;
+  s.actionsRemaining -= cost;
   if (checkGameOver(s, events)) return;
   if (s.actionsRemaining <= 0) endActivation(s, events);
 }

@@ -116,7 +116,11 @@ describe('AI in capture-the-flag', () => {
     it(`${map.id}: games complete, and the AI goes for the flags`, () => {
       let pickups = 0;
       let captures = 0;
-      for (let seed = 1; seed <= 3; seed++) {
+      // A capture needs the AI to grab the flag *and* survive the walk home, which
+      // it manages on roughly half the seeds on the stingiest map. Three seeds would
+      // therefore fail about one AI change in six on luck alone; eight makes this an
+      // assertion about the AI rather than about the seeds it happened to draw.
+      for (let seed = 1; seed <= 8; seed++) {
         const events: GameEvent[] = [];
         const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 1) % PRESET_IDS.length]!];
         const final = playOn(map, seed, presets, 'capture-the-flag', events);

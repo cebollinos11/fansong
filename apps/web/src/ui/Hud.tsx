@@ -150,6 +150,9 @@ export function Hud(props: Props): JSX.Element {
               </p>
               <p className="hint">
                 Click a green tile to move, a highlighted enemy to attack.
+                {state.actionsRemaining >= 2
+                  ? ' With two actions in hand you can spend both on one power blow (or aimed shot) for −1 to the defender.'
+                  : ''}
               </p>
               <button className="secondary" disabled={!interaction.canEndActivation} onClick={props.onEndActivation}>
                 End activation

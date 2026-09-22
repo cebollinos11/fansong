@@ -14,9 +14,21 @@ describe('commandSchema', () => {
       { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 2 },
       { type: 'Move', unitId: 'p0u0', to: { x: 1, y: 2 } },
       { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' },
+      { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0', power: true },
+      { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' },
+      { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0', aimed: true },
       { type: 'EndActivation' },
     ];
     for (const c of cmds) expect(commandSchema.parse(c)).toEqual(c);
+  });
+
+  it('accepts a pressed flag only as an explicit true (never false, never a number)', () => {
+    const at = { type: 'Attack', attackerId: 'a', targetId: 'b' };
+    expect(commandSchema.safeParse({ ...at, power: false }).success).toBe(false);
+    expect(commandSchema.safeParse({ ...at, power: 1 }).success).toBe(false);
+    expect(commandSchema.safeParse({ type: 'Shoot', attackerId: 'a', targetId: 'b', aimed: false }).success).toBe(false);
+    // And the flags don't cross weapons.
+    expect(commandSchema.safeParse({ ...at, aimed: true }).success).toBe(false);
   });
 
   it('rejects an out-of-range dice count (the untrusted trust boundary)', () => {

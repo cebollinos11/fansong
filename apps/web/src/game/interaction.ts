@@ -16,6 +16,10 @@ export interface Interaction {
   attackTargetIds: string[];
   /** Enemy unit ids the active unit may shoot at range (acting). */
   shootTargetIds: string[];
+  /** Of {@link attackTargetIds}, those a two-action power blow is also offered against. */
+  powerAttackTargetIds: string[];
+  /** Of {@link shootTargetIds}, those a two-action aimed shot is also offered against. */
+  aimedShotTargetIds: string[];
   /** Whether EndActivation is currently legal. */
   canEndActivation: boolean;
 }
@@ -26,6 +30,8 @@ export function deriveInteraction(legal: Command[]): Interaction {
   const moveTargets: Vec[] = [];
   const attackTargetIds: string[] = [];
   const shootTargetIds: string[] = [];
+  const powerAttackTargetIds: string[] = [];
+  const aimedShotTargetIds: string[] = [];
   let canEndActivation = false;
 
   for (const c of legal) {
@@ -38,10 +44,12 @@ export function deriveInteraction(legal: Command[]): Interaction {
         moveTargets.push(c.to);
         break;
       case 'Attack':
-        attackTargetIds.push(c.targetId);
+        if (c.power) powerAttackTargetIds.push(c.targetId);
+        else attackTargetIds.push(c.targetId);
         break;
       case 'Shoot':
-        shootTargetIds.push(c.targetId);
+        if (c.aimed) aimedShotTargetIds.push(c.targetId);
+        else shootTargetIds.push(c.targetId);
         break;
       case 'EndActivation':
         canEndActivation = true;
@@ -55,6 +63,8 @@ export function deriveInteraction(legal: Command[]): Interaction {
     moveTargets,
     attackTargetIds,
     shootTargetIds,
+    powerAttackTargetIds,
+    aimedShotTargetIds,
     canEndActivation,
   };
 }

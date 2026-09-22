@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GameEvent, GameState, Replay, Vec } from '@fansong/engine';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { unitById, type GameEvent, type GameState, type Replay, type Vec } from '@fansong/engine';
 import type { ClientStatus, MatchClient } from '../game/client.js';
 import type { Transition } from '../game/controller.js';
 import { deriveInteraction } from '../game/interaction.js';
 import { PresentationQueue } from '../game/presentation.js';
 import { downloadReplay } from '../game/replay-io.js';
+import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { Hud } from './Hud.js';
 import { appendEvents, type LogEntry } from './log.js';
@@ -29,7 +30,12 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
   const [log, setLog] = useState<LogEntry[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [status, setStatus] = useState<ClientStatus>(client.status());
+  // Open when a target was clicked with two actions in hand: attack, or press it?
+  const [attackChoice, setAttackChoice] = useState<AttackChoice | null>(null);
   const queueRef = useRef<PresentationQueue<Transition> | null>(null);
+  // The board reports a unit click without the event, so remember where the
+  // pointer last went down — that is where the attack menu opens.
+  const pointer = useRef({ x: 0, y: 0 });
 
   // Subscribe to transitions (local reduce or server delta — same seam) and to
   // connection status. The client owns the state; the screen only renders it,
@@ -40,6 +46,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         setIdle(false);
         setShown({ state: t.state, events: t.events });
         setSelectedUnitId(null);
+        setAttackChoice(null);
       },
       (t, nowIdle) => {
         setState(t.state);
@@ -59,6 +66,15 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     };
   }, [client]);
 
+  // Remember the last pointer position for the attack menu's anchor.
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent): void => {
+      pointer.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, []);
+
   const ready = status.phase === 'ready';
   // Input waits for the board to catch up, so a human never acts on a result
   // the dice haven't shown yet (once idle, `state` is the client's state).
@@ -77,14 +93,40 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
       return;
     }
     if (state.phase !== 'acting' || !state.activeUnitId) return;
-    if (interaction.attackTargetIds.includes(id)) {
-      client.send({ type: 'Attack', attackerId: state.activeUnitId, targetId: id });
-    } else if (interaction.shootTargetIds.includes(id)) {
-      client.send({ type: 'Shoot', attackerId: state.activeUnitId, targetId: id });
+    const melee = interaction.attackTargetIds.includes(id);
+    const ranged = !melee && interaction.shootTargetIds.includes(id);
+    if (!melee && !ranged) return;
+    // With a second action in hand the engine also offers the pressed version,
+    // so ask which one before spending anything.
+    const canPress = melee ? interaction.powerAttackTargetIds.includes(id) : interaction.aimedShotTargetIds.includes(id);
+    if (canPress) {
+      setAttackChoice({
+        targetId: id,
+        targetName: unitById(state, id)?.name ?? id,
+        kind: melee ? 'melee' : 'ranged',
+        at: { ...pointer.current },
+      });
+      return;
     }
+    if (melee) client.send({ type: 'Attack', attackerId: state.activeUnitId, targetId: id });
+    else client.send({ type: 'Shoot', attackerId: state.activeUnitId, targetId: id });
   };
 
+  const resolveAttackChoice = (pressed: boolean): void => {
+    const choice = attackChoice;
+    setAttackChoice(null);
+    if (!choice || !myTurn || state.phase !== 'acting' || !state.activeUnitId) return;
+    client.send(
+      choice.kind === 'melee'
+        ? { type: 'Attack', attackerId: state.activeUnitId, targetId: choice.targetId, ...(pressed ? { power: true } as const : {}) }
+        : { type: 'Shoot', attackerId: state.activeUnitId, targetId: choice.targetId, ...(pressed ? { aimed: true } as const : {}) },
+    );
+  };
+
+  const cancelAttackChoice = useCallback(() => setAttackChoice(null), []);
+
   const handleCellClick = (cell: Vec): void => {
+    setAttackChoice(null);
     if (!myTurn) return;
     if (state.phase === 'acting' && state.activeUnitId) {
       const legalMove = interaction.moveTargets.some((t) => t.x === cell.x && t.y === cell.y);
@@ -115,7 +157,13 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [myTurn, state.phase, selectedUnitId, interaction, client]);
 
+  // A menu left open when the turn moves on has nothing left to answer.
+  useEffect(() => {
+    if (!myTurn || state.phase !== 'acting') setAttackChoice(null);
+  }, [myTurn, state.phase]);
+
   const handleEndActivation = (): void => {
+    setAttackChoice(null);
     if (!myTurn) return;
     client.send({ type: 'EndActivation' });
   };
@@ -151,6 +199,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         onEndActivation={handleEndActivation}
         onExit={onExit}
       />
+      {attackChoice ? (
+        <AttackMenu choice={attackChoice} onPick={resolveAttackChoice} onCancel={cancelAttackChoice} />
+      ) : null}
       {over && (replay || onRematch) ? (
         <div className="gameover-actions">
           <span>Game over.</span>

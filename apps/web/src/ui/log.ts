@@ -63,9 +63,9 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves to (${e.to.x}, ${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]])}) attacks ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered]])}) → ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]])}) ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered], ['power blow', e.powerPenalty]])}) → ${e.result}${gore(e)}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['long range', e.rangePenalty], ['cover', e.coverPenalty]])}) shoots ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus)}) → ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['long range', e.rangePenalty], ['cover', e.coverPenalty]])}) ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['aimed at', e.aimPenalty]])}) → ${e.result}${gore(e)}`;
     case 'FreeHackResolved':
       return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]])}) takes a free hack at ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered]])}) → ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':

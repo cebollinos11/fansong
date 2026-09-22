@@ -71,6 +71,24 @@ describe('deriveInteraction', () => {
     ]);
     expect(interaction.attackTargetIds).toEqual(['near']);
     expect(interaction.shootTargetIds).toEqual(['far']);
+    expect(interaction.powerAttackTargetIds).toHaveLength(0);
+    expect(interaction.aimedShotTargetIds).toHaveLength(0);
+  });
+
+  it('lists the two-action variants separately, so the board can ask which one', () => {
+    const interaction = deriveInteraction([
+      { type: 'EndActivation' },
+      { type: 'Attack', attackerId: 'a', targetId: 'near' },
+      { type: 'Attack', attackerId: 'a', targetId: 'near', power: true },
+      { type: 'Attack', attackerId: 'a', targetId: 'other' },
+      { type: 'Shoot', attackerId: 'a', targetId: 'far' },
+      { type: 'Shoot', attackerId: 'a', targetId: 'far', aimed: true },
+    ]);
+    // A target stays in the plain list whether or not it can also be pressed.
+    expect(interaction.attackTargetIds).toEqual(['near', 'other']);
+    expect(interaction.powerAttackTargetIds).toEqual(['near']);
+    expect(interaction.shootTargetIds).toEqual(['far']);
+    expect(interaction.aimedShotTargetIds).toEqual(['far']);
   });
 
   it('projects moves and end-activation once a unit is acting', () => {
@@ -108,5 +126,18 @@ describe('commandsEqual', () => {
     expect(
       commandsEqual({ type: 'EndActivation' }, { type: 'Attack', attackerId: 'a', targetId: 'b' }),
     ).toBe(false);
+    // A power blow is its own command, not the same blow with a flag along for the ride.
+    expect(
+      commandsEqual(
+        { type: 'Attack', attackerId: 'a', targetId: 'b' },
+        { type: 'Attack', attackerId: 'a', targetId: 'b', power: true },
+      ),
+    ).toBe(false);
+    expect(
+      commandsEqual(
+        { type: 'Shoot', attackerId: 'a', targetId: 'b', aimed: true },
+        { type: 'Shoot', attackerId: 'a', targetId: 'b', aimed: true },
+      ),
+    ).toBe(true);
   });
 });

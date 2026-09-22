@@ -62,6 +62,8 @@ export const attackCommandSchema = z
     type: z.literal('Attack'),
     attackerId: z.string().min(1),
     targetId: z.string().min(1),
+    /** A power blow: two actions for one swing the defender meets at a penalty. */
+    power: z.literal(true).optional(),
   })
   .strict();
 
@@ -70,6 +72,8 @@ export const shootCommandSchema = z
     type: z.literal('Shoot'),
     attackerId: z.string().min(1),
     targetId: z.string().min(1),
+    /** An aimed shot: two actions for one shot the target meets at a penalty. */
+    aimed: z.literal(true).optional(),
   })
   .strict();
 
@@ -227,6 +231,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseBonus: z.number().optional(),
     attackOutnumbered: z.number().optional(),
     defenseOutnumbered: z.number().optional(),
+    powerPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
   }),
@@ -242,6 +247,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseBonus: z.number().optional(),
     rangePenalty: z.number().optional(),
     coverPenalty: z.number().optional(),
+    aimPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
   }),

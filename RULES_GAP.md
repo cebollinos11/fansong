@@ -31,6 +31,8 @@ These are implemented, so they are not listed again below:
 - Shooting cannot be done while the shooter is in melee, needs line of sight,
   and the shooter takes no damage back.
 - Tough, so the first killing blow becomes a fall.
+- A **power blow** or **aimed shot**: spend both actions of a two-action
+  activation on one attack or shot, and its target defends at −1 (§3.5, §4.6).
 - **(M8)** Moving into contact stops a walk, leaving contact draws free hacks,
   outnumbering gives −1 per extra standing foe, tripling the loser is a
   gruesome kill (the only kind that causes fear), and shots take −1 beyond
@@ -100,7 +102,14 @@ These are implemented, so they are not listed again below:
 4. **Other combat modifiers** *(verify)*: +1 when mounted against models on
    foot, +1 when bigger than the opponent, −1 when unarmed, and a penalty for
    fighting from water or difficult terrain.
-5. **Power blow** *(advanced, verify)*. Spend 2 actions on one attack to give
+5. ✅ **Done — power blow.** *Implemented:* an attack may be declared as a
+   **power blow**, costing 2 actions instead of 1, and the defender rolls at −1.
+   It is a separate legal command (`Attack` with `power: true`), so a unit is
+   only offered it with 2 actions in hand. The penalty is a defender-side
+   modifier like outnumbering, so it can push a defence to 0 or below and make
+   the kill threshold easier to reach. A guard's riposte happens *before* the
+   blow lands and so is unaffected — but the 2 actions are spent even when the
+   riposte repels the attack. *Original:* Spend 2 actions on one attack to give
    the target −1.
 6. **Lethal attacks.** Beating a target that is asleep, transfixed, entangled or
    otherwise helpless kills it, just like beating a fallen model. This only
@@ -124,7 +133,11 @@ These are implemented, so they are not listed again below:
    shooter.
 5. **Must shoot the closest enemy**, unless that enemy is fallen, hidden,
    behind cover or much cheaper *(verify)*.
-6. **Aimed shot** *(verify)*. Spend 2 actions on one shot to give the target −1.
+6. ✅ **Done — aimed shot.** *Implemented:* the ranged twin of the power blow
+   (§3.5) — `Shoot` with `aimed: true`, 2 actions, and the target defends at −1.
+   It stacks with the range and cover penalties on the shooter's own side, so a
+   long shot into cover is still a long shot into cover. *Original:* Spend 2
+   actions on one shot to give the target −1.
 7. **Group shooting.** Shooters activated together with a Leader combine their
    fire (§6).
 

@@ -1,4 +1,5 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
+import { PRESSED_COST } from './combat.js';
 import { enemiesOf, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById } from './query.js';
 import type { Command, GameState } from './types.js';
 
@@ -32,10 +33,15 @@ export function getLegalCommands(state: GameState): Command[] {
 
   const board = makeHexGrid(state.board);
 
-  // Attacks: any adjacent living enemy.
+  // A unit with two actions in hand may spend both on one pressed blow or shot:
+  // a power blow / aimed shot, which its target defends at a penalty.
+  const canPress = state.actionsRemaining >= PRESSED_COST;
+
+  // Attacks: any adjacent living enemy, ordinarily or as a power blow.
   for (const enemy of enemiesOf(state, unit.owner)) {
     if (board.distance(unit.pos, enemy.pos) === 1) {
       commands.push({ type: 'Attack', attackerId: unit.id, targetId: enemy.id });
+      if (canPress) commands.push({ type: 'Attack', attackerId: unit.id, targetId: enemy.id, power: true });
     }
   }
 
@@ -48,6 +54,7 @@ export function getLegalCommands(state: GameState): Command[] {
       const d = board.distance(unit.pos, enemy.pos);
       if (d >= 2 && d <= unit.traits.ranged && board.lineOfSight(unit.pos, enemy.pos, seeThrough)) {
         commands.push({ type: 'Shoot', attackerId: unit.id, targetId: enemy.id });
+        if (canPress) commands.push({ type: 'Shoot', attackerId: unit.id, targetId: enemy.id, aimed: true });
       }
     }
   }

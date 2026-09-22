@@ -46,6 +46,18 @@ export function isGruesome(winnerScore: number, loserScore: number): boolean {
   return winnerScore > loserScore && winnerScore >= loserScore * 3;
 }
 
+/**
+ * What a **power blow** or an **aimed shot** costs: both actions of a two-action
+ * activation, instead of the one an ordinary blow or shot costs.
+ */
+export const PRESSED_COST = 2;
+
+/** How much worse a defender fights a power blow (a two-action melee attack). */
+export const POWER_BLOW_PENALTY = 1;
+
+/** How much worse a target defends against an aimed shot (a two-action shot). */
+export const AIMED_SHOT_PENALTY = 1;
+
 /** Shooting penalty for a target beyond short range. */
 export const LONG_RANGE_PENALTY = 1;
 

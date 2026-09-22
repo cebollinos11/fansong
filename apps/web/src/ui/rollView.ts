@@ -15,7 +15,7 @@ export interface RollModifier {
 /** One side of an opposed roll: its die, modifiers and total. */
 export interface RollSide {
   unitId: string;
-  /** Short role heading: Attack / Defend / Shoot / Riposte / Free hack / Leaving. */
+  /** Short role heading: Attack / Power blow / Defend / Shoot / Aimed shot / Riposte / Free hack / Leaving. */
   role: string;
   die: number;
   mods: RollModifier[];
@@ -108,13 +108,14 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
     b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
   } else if (e.type === 'ShotResolved') {
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
-    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus]], ob);
+    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
+    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Aimed at', minus(e.aimPenalty)]], ob);
   } else {
     const hack = e.type === 'FreeHackResolved';
+    const power = e.type === 'AttackResolved' ? e.powerPenalty : undefined;
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, hack ? 'Free hack' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
-    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Outnumbered', minus(e.defenseOutnumbered)]], ob);
+    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
+    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Outnumbered', minus(e.defenseOutnumbered)], ['Power blow', minus(power)]], ob);
   }
 
   // A higher total that did nothing: a shot never hurts the shooter, a unit
