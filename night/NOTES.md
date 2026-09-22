@@ -140,3 +140,12 @@
   buildings/forest/rocks/low rises from symmetric noise. Conquest zone order convention for
   built-in maps: zone 2 is self-symmetric, zones 1 and 3 mirror each other — the symmetry test
   now checks this.
+- Task 17: resumed an interrupted run (content/protocol/replay-test diff was complete) and finished
+  it. `MatchSetup.mapId?` (omitted = legacy flat board; `open-field` yields byte-identical state);
+  `configFromSetup`/`createMatchFromPresets` take an optional `MapLookup` (defaults to the built-in
+  registry) so task 25 can resolve custom maps; `resolveMap` throws on unknown ids; protocol
+  `matchSetupSchema` accepts `mapId` (1–64 chars). Setup screen gained a Map select showing size +
+  supported modes; `launchFor` omits `mapId` for the default map so default setups are unchanged.
+  Online launches deliberately don't carry a map yet (picker disabled with a hint) — that's task 32.
+  Replays already carry the map because `LocalMatchClient.getReplay` records `configFromSetup`.
+  Visually checked Rocky Pass in a built preview.

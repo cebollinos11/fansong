@@ -131,4 +131,12 @@ describe('matchSetupSchema', () => {
       matchSetupSchema.safeParse({ presets: ['a', 'b'], seats: ['human', 'wizard'], seed: 1 }).success,
     ).toBe(false);
   });
+
+  it('accepts an optional map id and rejects an empty or non-string one', () => {
+    const base = { presets: ['a', 'b'], seats: ['human', 'ai'], seed: 1 };
+    const ok = matchSetupSchema.safeParse({ ...base, mapId: 'rocky-pass' });
+    expect(ok.success && ok.data.mapId).toBe('rocky-pass');
+    expect(matchSetupSchema.safeParse({ ...base, mapId: '' }).success).toBe(false);
+    expect(matchSetupSchema.safeParse({ ...base, mapId: 3 }).success).toBe(false);
+  });
 });

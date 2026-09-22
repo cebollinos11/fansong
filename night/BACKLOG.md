@@ -37,7 +37,7 @@ is untouched — new state is **optional/sparse** and omitted when default.
 - [x] 14. Maps: Rolling Hills, Old Forest.
 - [x] 15. Maps: Ruined Village, Rocky Pass.
 - [x] 16. Maps: Twin Towers, Crossroads.
-- [ ] 17. Setup: `MatchSetup.mapId`; map picker in Setup screen; replays/config carry the map.
+- [x] 17. Setup: `MatchSetup.mapId`; map picker in Setup screen; replays/config carry the map.
 
 ## Terrain editor
 - [ ] 18. Editor: pure editor model (new map, brushes, stamps, undo/redo stacks) with tests.

@@ -1,5 +1,15 @@
 import { useRef, useState } from 'react';
-import { PRESET_IDS, PRESETS, validateWarband, warbandCost, type MatchSetup } from '@fansong/content';
+import {
+  DEFAULT_MAP_ID,
+  getMap,
+  listMaps,
+  PRESET_IDS,
+  PRESETS,
+  supportedModes,
+  validateWarband,
+  warbandCost,
+  type MatchSetup,
+} from '@fansong/content';
 import type { Replay } from '@fansong/engine';
 import type { Launch } from '../game/launch.js';
 import { parseReplay } from '../game/replay-io.js';
@@ -10,12 +20,19 @@ interface Props {
   onLoadReplay: (replay: Replay) => void;
 }
 
-type Mode = 'vsAI' | 'hotseat' | 'online';
+export type Mode = 'vsAI' | 'hotseat' | 'online';
 
-function launchFor(mode: Mode, presets: [string, string], seed: number): Launch {
+/**
+ * The launch for the chosen options. The default map is left implicit (no
+ * `mapId`) so default setups stay byte-identical to pre-map ones. Online matches
+ * don't carry a map yet — the worker always plays the default board.
+ */
+export function launchFor(mode: Mode, presets: [string, string], seed: number, mapId: string = DEFAULT_MAP_ID): Launch {
   if (mode === 'online') return { kind: 'online', presets, seed };
   const seats = mode === 'vsAI' ? (['human', 'ai'] as const) : (['human', 'human'] as const);
-  return { kind: 'local', setup: { presets, seats: [seats[0], seats[1]], seed } };
+  const setup: MatchSetup = { presets, seats: [seats[0], seats[1]], seed };
+  if (mapId !== DEFAULT_MAP_ID) setup.mapId = mapId;
+  return { kind: 'local', setup };
 }
 
 export function SetupScreen({ initial, onStart, onLoadReplay }: Props): JSX.Element {
@@ -23,10 +40,11 @@ export function SetupScreen({ initial, onStart, onLoadReplay }: Props): JSX.Elem
   const [p0, setP0] = useState(initial.presets[0]);
   const [p1, setP1] = useState(initial.presets[1]);
   const [seed, setSeed] = useState(initial.seed);
+  const [mapId, setMapId] = useState(initial.mapId ?? DEFAULT_MAP_ID);
   const [replayError, setReplayError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  const start = () => onStart(launchFor(mode, [p0, p1], Number.isFinite(seed) ? seed : 0));
+  const start = () => onStart(launchFor(mode, [p0, p1], Number.isFinite(seed) ? seed : 0, mapId));
 
   const loadReplayFile = async (file: File): Promise<void> => {
     setReplayError(null);
@@ -73,6 +91,8 @@ export function SetupScreen({ initial, onStart, onLoadReplay }: Props): JSX.Elem
           <WarbandPicker label={label0} value={p0} onChange={setP0} />
           <WarbandPicker label={label1} value={p1} onChange={setP1} />
         </div>
+
+        <MapPicker value={mapId} onChange={setMapId} disabled={mode === 'online'} />
 
         <label className="seed-row">
           Seed
@@ -141,6 +161,43 @@ function WarbandPicker({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+const MODE_LABELS: Record<string, string> = {
+  annihilation: 'Annihilation',
+  'kill-the-king': 'Kill the king',
+  'king-of-the-hill': 'King of the hill',
+  conquest: 'Conquest',
+  'capture-the-flag': 'Capture the flag',
+};
+
+function MapPicker({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  disabled: boolean;
+}): JSX.Element {
+  const map = getMap(disabled ? DEFAULT_MAP_ID : value)!;
+  const modes = supportedModes(map).map((m) => MODE_LABELS[m] ?? m);
+  return (
+    <div className="map-picker">
+      <h3>Map</h3>
+      <select value={disabled ? DEFAULT_MAP_ID : value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        {listMaps().map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.name}
+          </option>
+        ))}
+      </select>
+      <p className="warband-meta">
+        {map.width}×{map.height} · {modes.join(', ')}
+        {disabled ? ' · online matches use the default map' : ''}
+      </p>
     </div>
   );
 }

@@ -243,6 +243,7 @@ export const matchSetupSchema = z
     presets: z.tuple([z.string(), z.string()]),
     seats: z.tuple([seatSchema, seatSchema]),
     seed: z.number().int(),
+    mapId: z.string().min(1).max(64).optional(),
   })
   .strict();
 
