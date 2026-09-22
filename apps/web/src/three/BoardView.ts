@@ -89,6 +89,8 @@ const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so th
 // Animation timing (ms). Clip timings come from Wesnoth; these fill the gaps.
 const LUNGE = 0.3; // how far (world units) a melee strike leans into its target
 const WALK_MS_PER_HEX = 300; // a move walks its path hex by hex at this steady pace
+const WALK_HOP = 0.12; // world units a walking mini hops up on each hex step
+const WALK_SWAY = 0.12; // radians it rocks side to side, alternating each step (Wesnoth foot units have no walk frames)
 const DEFEND_LEAD_MS = 126; // Wesnoth's defend reaction starts this long before impact
 const DEATH_FADE_MS = 600; // fade after a death clip (or instead of one)
 const ROUT_MS = 700; // a routed unit flees toward its own board edge while fading
@@ -540,6 +542,7 @@ export class BoardView {
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
       obj.walk = null;
+      obj.mirror.rotation.z = 0;
       obj.animator.moveFor(0, { reset: true });
     }
   }
@@ -843,13 +846,19 @@ export class BoardView {
     const f = (this.now - start) / WALK_MS_PER_HEX;
     if (f >= path.length - 1) {
       obj.group.position.copy(path[path.length - 1]!);
+      obj.mirror.rotation.z = 0;
       obj.walk = null;
       return;
     }
     const i = Math.max(0, Math.floor(f));
     const from = path[i]!;
     const to = path[i + 1]!;
-    obj.group.position.lerpVectors(from, to, THREE.MathUtils.clamp(f - i, 0, 1));
+    const k = THREE.MathUtils.clamp(f - i, 0, 1);
+    obj.group.position.lerpVectors(from, to, k);
+    // A tabletop hop per step: up and down, rocking onto alternate feet.
+    const arc = Math.sin(Math.PI * k);
+    obj.group.position.y += WALK_HOP * arc;
+    obj.mirror.rotation.z = WALK_SWAY * arc * (i % 2 === 0 ? 1 : -1);
     if (f >= 0) this.setHeading(obj, to.clone().sub(from));
   }
 
