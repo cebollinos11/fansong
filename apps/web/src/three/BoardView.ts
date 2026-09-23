@@ -193,6 +193,8 @@ interface UnitFlags {
 
 interface UnitObj {
   owner: 0 | 1;
+  /** The unit's name from the state, for cards that sit away from it. */
+  name: string;
   /** The {@link spriteFor} path this unit is drawn with. */
   spriteName: string;
   group: THREE.Group;
@@ -384,7 +386,11 @@ export class BoardView {
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
 
-    this.rolls = new RollOverlay(this.container, (id) => this.units.get(id)?.owner);
+    this.rolls = new RollOverlay(
+      this.container,
+      (id) => this.units.get(id)?.owner,
+      (id) => this.units.get(id)?.name,
+    );
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.container);
@@ -522,6 +528,7 @@ export class BoardView {
         obj.group.position.copy(this.unitWorld(u.pos));
       }
       obj.targetPos = this.unitWorld(u.pos);
+      obj.name = u.name;
       obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead };
 
       const isActive = state.activeUnitId === u.id;
@@ -648,7 +655,8 @@ export class BoardView {
             ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') })
             : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land });
         this.at(start, () => this.rolls.addOpposed(roll, this.now, cards));
-        this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now));
+        // The conclusion lands along the bottom centre, between the two dice cards.
+        this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now, 'bottom'));
         lastHit = s.hit;
         settle = s.hit;
         t = s.end;
@@ -1095,6 +1103,7 @@ export class BoardView {
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
     const obj: UnitObj = {
       owner,
+      name,
       spriteName,
       group,
       facing,

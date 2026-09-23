@@ -44,6 +44,11 @@ const VERDICT_MS = 1700;
 const CARD_HEIGHT = 1.5;
 const VERDICT_HEIGHT = 0.9;
 
+/** Inset of a pinned card from the bottom corner it sits in. */
+const PIN_MARGIN = 14;
+/** How far a pinned verdict's foot sits above the bottom edge. */
+const VERDICT_BOTTOM = 30;
+
 /** A unit's anchor on screen, in container pixels; null when off screen. */
 export type Projector = (unitId: string, height: number) => { x: number; y: number } | null;
 
@@ -77,11 +82,16 @@ interface Reveal {
   done: boolean;
 }
 
+/** A bottom corner a card is parked in, rather than following its unit. */
+type Pin = 'left' | 'right' | null;
+
 interface Card {
   el: HTMLElement;
   unitId: string;
   /** The other side of an opposed roll: the pair sits side by side. */
   partnerId: string | null;
+  /** Bottom corner this card is pinned to, or null to follow its unit. */
+  pin: Pin;
   height: number;
   dice: Die[];
   reveals: Reveal[];
@@ -92,6 +102,8 @@ interface Card {
 interface Verdict {
   el: HTMLElement;
   on: string[];
+  /** Fixed to the bottom centre (a combat's conclusion) rather than over its unit. */
+  pin: boolean;
   start: number;
   endAt: number;
 }
@@ -109,12 +121,19 @@ export class RollOverlay {
   private verdicts: Verdict[] = [];
   private now = 0;
 
-  constructor(container: HTMLElement, private readonly owners: (unitId: string) => 0 | 1 | undefined) {
+  constructor(
+    container: HTMLElement,
+    private readonly owners: (unitId: string) => 0 | 1 | undefined,
+    private readonly nameOf: (unitId: string) => string | undefined = () => undefined,
+  ) {
     this.layer = h('div', 'roll-layer');
     container.appendChild(this.layer);
   }
 
-  /** An attack, shot or riposte: two cards side by side, one per combatant. */
+  /**
+   * An attack, shot or riposte: one card in each bottom corner — aggressor on
+   * the left, defender on the right — so the blow itself stays in the clear.
+   */
   addOpposed(roll: OpposedRoll, now: number, lifeMs: number): void {
     this.now = now;
     for (const [s, other] of [
@@ -122,8 +141,16 @@ export class RollOverlay {
       [roll.b, roll.a],
     ] as const) {
       this.retire(s.unitId);
-      const card = this.card(s.unitId, other.unitId, lifeMs, `roll-card opposed ${s === roll.a ? 'aggressor' : 'defender'}`);
-      card.el.append(this.header(s.role, s.unitId));
+      const aggressor = s === roll.a;
+      const card = this.card(
+        s.unitId,
+        other.unitId,
+        lifeMs,
+        `roll-card opposed pinned ${aggressor ? 'aggressor' : 'defender'}`,
+        aggressor ? 'left' : 'right',
+      );
+      // Parked away from its unit, the card has to say whose roll it is.
+      card.el.append(this.header(s.role, s.unitId, true));
       const line = h('div', 'roll-line');
       const die = this.die(s.unitId, s.die, now + TUMBLE_MS);
       card.dice.push(die);
@@ -184,14 +211,19 @@ export class RollOverlay {
     this.reveal(card, summary, now + NERVE_RESOLVE_MS);
   }
 
-  /** Big floating text over the affected unit(s), or mid-board when `on` is empty. */
-  addVerdict(v: RollVerdict, now: number): void {
+  /**
+   * Big floating text: over the affected unit(s) (mid-board when `on` is
+   * empty), or — with `place` 'bottom' — across the bottom centre, between the
+   * two combat cards, where a fight's conclusion always reads the same way.
+   */
+  addVerdict(v: RollVerdict, now: number, place: 'unit' | 'bottom' = 'unit'): void {
     this.now = now;
-    const el = h('div', `roll-verdict ${v.tone}`);
+    const pin = place === 'bottom';
+    const el = h('div', `roll-verdict ${v.tone}${pin ? ' pinned' : ''}`);
     el.append(h('div', 'verdict-text', v.text));
     if (v.detail) el.append(h('div', 'verdict-detail', v.detail));
     this.layer.append(el);
-    this.verdicts.push({ el, on: v.on, start: now, endAt: now + VERDICT_MS });
+    this.verdicts.push({ el, on: v.on, pin, start: now, endAt: now + VERDICT_MS });
   }
 
   /** Fade out every card still up (the rolls that follow are about something else). */
@@ -239,6 +271,17 @@ export class RollOverlay {
 
     const placed: { left: number; top: number; w: number; h: number }[] = [];
     for (const c of this.cards) {
+      if (c.pin) {
+        // A bottom corner, whatever the camera does: the pair reads left to
+        // right (aggressor, then defender) and never covers the fight.
+        c.el.style.visibility = '';
+        const w = c.el.offsetWidth;
+        const hgt = c.el.offsetHeight;
+        const left = c.pin === 'left' ? PIN_MARGIN : Math.max(PIN_MARGIN, width - w - PIN_MARGIN);
+        const top = Math.max(4, height - hgt - PIN_MARGIN);
+        c.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+        continue;
+      }
       const p = project(c.unitId, c.height);
       if (!p) {
         c.el.style.visibility = 'hidden';
@@ -277,17 +320,21 @@ export class RollOverlay {
         v.el.remove();
         return false;
       }
-      let x = width / 2;
-      let y = height * 0.32;
-      const points = v.on.map((id) => project(id, VERDICT_HEIGHT)).filter((p) => p !== null);
-      if (points.length > 0) {
-        x = points.reduce((s, p) => s + p.x, 0) / points.length;
-        y = points.reduce((s, p) => s + p.y, 0) / points.length;
-      }
       const f = (now - v.start) / (v.endAt - v.start);
       const rise = 28 * f;
       const w = v.el.offsetWidth;
       const hgt = v.el.offsetHeight;
+      let x = width / 2;
+      let y = height * 0.32;
+      if (v.pin) {
+        y = height - VERDICT_BOTTOM - hgt / 2;
+      } else {
+        const points = v.on.map((id) => project(id, VERDICT_HEIGHT)).filter((p) => p !== null);
+        if (points.length > 0) {
+          x = points.reduce((s, p) => s + p.x, 0) / points.length;
+          y = points.reduce((s, p) => s + p.y, 0) / points.length;
+        }
+      }
       const left = Math.max(4, Math.min(width - w - 4, x - w / 2));
       v.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(y - hgt / 2 - rise)}px)`;
       v.el.style.opacity = String(f < 0.75 ? 1 : 1 - (f - 0.75) / 0.25);
@@ -297,21 +344,23 @@ export class RollOverlay {
 
   // --- internals ----------------------------------------------------------
 
-  private card(unitId: string, partnerId: string | null, lifeMs: number, cls: string): Card {
+  private card(unitId: string, partnerId: string | null, lifeMs: number, cls: string, pin: Pin = null): Card {
     const owner = this.owners(unitId);
     const el = h('div', `${cls}${owner === undefined ? '' : ` p${owner}`}`);
     el.style.visibility = 'hidden'; // until placed on the next frame
     this.layer.append(el);
-    const card: Card = { el, unitId, partnerId, height: CARD_HEIGHT, dice: [], reveals: [], endAt: this.now + lifeMs, leaving: false };
+    const card: Card = { el, unitId, partnerId, pin, height: CARD_HEIGHT, dice: [], reveals: [], endAt: this.now + lifeMs, leaving: false };
     this.cards.push(card);
     return card;
   }
 
-  private header(role: string, unitId: string): HTMLElement {
+  /** Role on the left; on the right the roller's side, or their name when the card sits away from them. */
+  private header(role: string, unitId: string, named = false): HTMLElement {
     const el = h('div', 'roll-head');
     el.append(h('span', 'roll-role', role));
     const owner = this.owners(unitId);
-    if (owner !== undefined) el.append(h('span', 'roll-owner', `P${owner}`));
+    const who = (named ? this.nameOf(unitId) : undefined) ?? (owner === undefined ? null : `P${owner}`);
+    if (who !== null) el.append(h('span', `roll-owner${owner === undefined ? '' : ` p${owner}`}`, who));
     return el;
   }
 

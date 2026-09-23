@@ -395,7 +395,8 @@ button.ghost {
 
 .hex-tooltip {
   position: absolute;
-  bottom: 10px;
+  /* Under the camera buttons: the bottom band belongs to the combat cards. */
+  top: 44px;
   left: 10px;
   padding: 6px 10px;
   font-size: 12px;
@@ -467,6 +468,22 @@ button.ghost {
   filter: saturate(0.5);
 }
 
+/* A combat card in a bottom corner: roomier than one crowded over a unit. */
+.roll-card.pinned {
+  min-width: 150px;
+  padding: 8px 11px 9px;
+  font-size: 13px;
+}
+
+.roll-card.pinned .roll-total {
+  font-size: 26px;
+}
+
+.roll-card.pinned .die {
+  width: 38px;
+  height: 38px;
+}
+
 .roll-card.nerve {
   min-width: 0;
 }
@@ -500,6 +517,14 @@ button.ghost {
 .roll-role {
   font-weight: 700;
   color: var(--text);
+}
+
+.roll-owner.p0 {
+  color: var(--p0);
+}
+
+.roll-owner.p1 {
+  color: var(--p1);
 }
 
 .roll-line {
@@ -688,6 +713,21 @@ button.ghost {
 .roll-verdict.neutral .verdict-text {
   color: #cfd8e3;
   font-size: 22px;
+}
+
+/* Pinned to the bottom centre: the fight's conclusion, always in one place. */
+.roll-verdict.pinned {
+  padding: 6px 18px 7px;
+  background: rgba(13, 17, 23, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5);
+}
+
+.roll-verdict.pinned .verdict-detail {
+  background: none;
+  padding: 0;
+  color: var(--muted);
 }
 
 @keyframes roll-verdict-in {
