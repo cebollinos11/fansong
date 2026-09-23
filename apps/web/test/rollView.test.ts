@@ -91,12 +91,14 @@ describe('opposed roll cards', () => {
       attackerDie: 5,
       guardScore: 4,
       attackerScore: 8,
-      result: 'attackerKilled',
+      // The guard losing the exchange costs it nothing, so the engine reports a
+      // clash — the attack simply goes through.
+      result: 'clash',
       prevented: false,
     };
     const r = describeCombat(riposte);
     expect(r.a).toMatchObject({ unitId: 'g', role: 'Riposte' });
-    expect(r.b).toMatchObject({ unitId: 'a', outcome: 'win', note: 'Guard is unhurt' });
+    expect(r.b).toMatchObject({ unitId: 'a', outcome: 'tie', note: 'Guard is unhurt' });
     expect(r.verdict).toMatchObject({ text: 'Attack goes through', tone: 'neutral' });
   });
 

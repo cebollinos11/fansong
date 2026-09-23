@@ -202,6 +202,29 @@ describe('Guard trait and riposte', () => {
     expect(events.some((e) => e.type === 'GuardRiposte')).toBe(true);
   });
 
+  it('reports a riposte the guard loses as a clash, and leaves the guard unhurt', () => {
+    let sawLoss = false;
+    for (let seed = 1; seed <= 300; seed++) {
+      const s = acting({ ...base, seed }, 'p1u0');
+      s.units.find((u) => u.id === 'p0u0')!.guarding = true;
+      const { state, events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+      const rip = events.find((e) => e.type === 'GuardRiposte') as Extract<GameEvent, { type: 'GuardRiposte' }>;
+      // A guard never wounds itself parrying, so no attacker-side outcome is
+      // ever applied — and none is ever reported either.
+      expect(rip.result.startsWith('attacker')).toBe(false);
+      if (rip.attackerScore > rip.guardScore) {
+        sawLoss = true;
+        expect(rip.result).toBe('clash');
+        expect(rip.prevented).toBe(false);
+        const sentry = state.units.find((u) => u.id === 'p0u0')!;
+        // The riposte itself cost the guard nothing; only the blow that follows can.
+        expect(sentry.dead).toBe(false);
+        expect(events.some((e) => e.type === 'AttackResolved')).toBe(true);
+      }
+    }
+    expect(sawLoss).toBe(true);
+  });
+
   it("a knocked-down guard's riposte only lands on a natural 6", () => {
     let sawSix = false;
     let sawMiss = false;

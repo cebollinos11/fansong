@@ -1,4 +1,4 @@
-import { applyCommand, isLegalCommand, type Command, type GameMode, type GameState, type Owner } from '@fansong/engine';
+import { isLegalCommand, reduce, type Command, type GameMode, type GameState, type Owner } from '@fansong/engine';
 import {
   createMatchFromPresets,
   DEFAULT_MAP_ID,
@@ -300,11 +300,14 @@ export class RoomEngine {
       this.error(conn, ErrorCode.NotYourTurn, 'not your turn');
       return;
     }
+    // Legality is checked here rather than through `applyCommand` so a rejected
+    // command answers with a code instead of a throw. Enumerating the legal set
+    // walks every unit's reach, so it is done once and `reduce` runs directly.
     if (!isLegalCommand(game.state, command)) {
       this.error(conn, ErrorCode.IllegalCommand, 'command is not legal in the current state');
       return;
     }
-    const { state, events } = applyCommand(game.state, command);
+    const { state, events } = reduce(game.state, command);
     game.state = state;
     this.broadcast({ t: 'delta', by: seat, command, events, state });
   }

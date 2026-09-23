@@ -220,20 +220,13 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     }
   }
 
-  const atk = rollD6(s.rngState);
-  const def = rollD6(atk.state);
-  s.rngState = def.state;
-  const attackBonus = highGroundBonus(board, attacker, target);
-  const defenseBonus = highGroundBonus(board, target, attacker);
-  const attackOutnumbered = outnumberedPenalty(s, attacker, board);
-  const defenseOutnumbered = outnumberedPenalty(s, target, board);
-  const attackScore = attacker.combat + atk.die + attackBonus - attackOutnumbered;
-  const defenseScore = target.combat + def.die + defenseBonus - defenseOutnumbered - powerPenalty;
+  const roll = rollMelee(s, board, attacker, target, powerPenalty);
+  const { attackDie, defenseDie, attackScore, defenseScore } = roll;
   const attackerRecoil = recoilHex(s, board, attacker, target);
   const targetRecoil = recoilHex(s, board, target, attacker);
   const result = computeCombatResult(
-    { score: attackScore, die: atk.die, knockedDown: attacker.knockedDown, canRecoil: attackerRecoil !== null },
-    { score: defenseScore, die: def.die, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
+    { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: attackerRecoil !== null },
+    { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
   );
   const gruesome = gruesomeKill(result, attackScore, defenseScore);
 
@@ -241,15 +234,11 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     type: 'AttackResolved',
     attackerId,
     targetId,
-    attackDie: atk.die,
-    defenseDie: def.die,
+    attackDie,
+    defenseDie,
     attackScore,
     defenseScore,
-    ...(attackBonus ? { attackBonus } : {}),
-    ...(defenseBonus ? { defenseBonus } : {}),
-    ...(attackOutnumbered ? { attackOutnumbered } : {}),
-    ...(defenseOutnumbered ? { defenseOutnumbered } : {}),
-    ...(powerPenalty ? { powerPenalty } : {}),
+    ...shown({ ...roll.mods, powerPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -257,22 +246,16 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
   let attackerEnded = false;
   switch (result) {
     case 'defenderKilled':
-      strike(s, target, attacker.id, events, board, gruesome);
-      break;
     case 'defenderKnockedDown':
-      target.knockedDown = true;
-      events.push({ type: 'UnitKnockedDown', unitId: target.id });
-      break;
     case 'defenderRecoiled':
-      recoil(s, events, target, targetRecoil!);
+      hitDefender(s, events, result, target, attacker.id, board, gruesome, targetRecoil);
       break;
     case 'attackerKilled':
       strike(s, attacker, target.id, events, board, gruesome);
       attackerEnded = true;
       break;
     case 'attackerKnockedDown':
-      attacker.knockedDown = true;
-      events.push({ type: 'UnitKnockedDown', unitId: attacker.id });
+      knockDown(events, attacker);
       attackerEnded = true; // a knocked-down attacker's activation ends
       break;
     case 'attackerRecoiled':
@@ -315,47 +298,38 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   if (!board.lineOfSight(attacker.pos, target.pos, (v) => occ.has(vecKey(v))))
     throw new Error('no line of sight to target');
 
-  const atk = rollD6(s.rngState);
-  const def = rollD6(atk.state);
-  s.rngState = def.state;
+  const { attackDie, defenseDie } = rollPair(s);
   const attackBonus = highGroundBonus(board, attacker, target);
   const defenseBonus = highGroundBonus(board, target, attacker);
   const range = rangePenalty(attacker.traits.ranged, d);
   const cover = board.inCover(attacker.pos, target.pos, (v) => occ.has(vecKey(v))) ? COVER_PENALTY : 0;
-  const attackScore = attacker.combat + atk.die + attackBonus - range - cover;
-  const defenseScore = target.combat + def.die + defenseBonus - aimPenalty;
+  const attackScore = attacker.combat + attackDie + attackBonus - range - cover;
+  const defenseScore = target.combat + defenseDie + defenseBonus - aimPenalty;
 
   const targetRecoil = recoilHex(s, board, target, attacker);
-  let result = computeCombatResult(
-    { score: attackScore, die: atk.die, knockedDown: attacker.knockedDown, canRecoil: false },
-    { score: defenseScore, die: def.die, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
-  );
   // A shot only ever harms the target — the shooter takes no return damage.
-  if (!result.startsWith('defender')) result = 'clash';
+  const result = defenderOnly(
+    computeCombatResult(
+      { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: false },
+      { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
+    ),
+  );
   const gruesome = gruesomeKill(result, attackScore, defenseScore);
 
   events.push({
     type: 'ShotResolved',
     attackerId,
     targetId,
-    attackDie: atk.die,
-    defenseDie: def.die,
+    attackDie,
+    defenseDie,
     attackScore,
     defenseScore,
-    ...(attackBonus ? { attackBonus } : {}),
-    ...(defenseBonus ? { defenseBonus } : {}),
-    ...(range ? { rangePenalty: range } : {}),
-    ...(cover ? { coverPenalty: cover } : {}),
-    ...(aimPenalty ? { aimPenalty } : {}),
+    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, aimPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
 
-  if (result === 'defenderKilled') strike(s, target, attacker.id, events, board, gruesome);
-  else if (result === 'defenderKnockedDown') {
-    target.knockedDown = true;
-    events.push({ type: 'UnitKnockedDown', unitId: target.id });
-  } else if (result === 'defenderRecoiled') recoil(s, events, target, targetRecoil!);
+  hitDefender(s, events, result, target, attacker.id, board, gruesome, targetRecoil);
 
   s.actionsRemaining -= cost;
   if (checkGameOver(s, events)) return;
@@ -379,52 +353,53 @@ function handleGuard(s: GameState, events: GameEvent[], unitId: string): void {
  * A guarding unit's pre-emptive strike against an incoming melee attacker. The
  * guard is treated as the aggressor; only defender-side (attacker-harming)
  * outcomes matter — the guard never wounds itself parrying. Returns whether the
- * attack is prevented (attacker killed or knocked down).
+ * attack is prevented (the attacker killed, knocked down or pushed back).
  */
 function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker: Unit, board: Board): boolean {
-  const gd = rollD6(s.rngState);
-  const ad = rollD6(gd.state);
-  s.rngState = ad.state;
-  const guardBonus = highGroundBonus(board, guard, attacker);
-  const attackerBonus = highGroundBonus(board, attacker, guard);
-  const guardOutnumbered = outnumberedPenalty(s, guard, board);
-  const attackerOutnumbered = outnumberedPenalty(s, attacker, board);
-  const guardScore = guard.combat + gd.die + guardBonus - guardOutnumbered;
-  const attackerScore = attacker.combat + ad.die + attackerBonus - attackerOutnumbered;
+  const roll = rollMelee(s, board, guard, attacker);
+  const { attackDie: guardDie, defenseDie: attackerDie, attackScore: guardScore, defenseScore: attackerScore } = roll;
+  const {
+    attackBonus: guardBonus,
+    defenseBonus: attackerBonus,
+    attackOutnumbered: guardOutnumbered,
+    defenseOutnumbered: attackerOutnumbered,
+  } = roll.mods;
   const attackerRecoil = recoilHex(s, board, attacker, guard);
-  // A knocked-down guard's riposte only lands on a natural 6.
-  const result = canStrikeBack(guard.knockedDown, gd.die)
-    ? computeCombatResult(
-        { score: guardScore, die: gd.die, knockedDown: guard.knockedDown, canRecoil: false },
-        { score: attackerScore, die: ad.die, knockedDown: attacker.knockedDown, canRecoil: attackerRecoil !== null },
-      )
-    : 'clash';
-  const prevented = result.startsWith('defender');
+  // A knocked-down guard's riposte only lands on a natural 6. And a guard never
+  // wounds itself parrying, so only attacker-harming outcomes stand: losing the
+  // exchange merely lets the blow in, and is reported — like a shot that draws
+  // no return fire — as a clash.
+  const result = defenderOnly(
+    canStrikeBack(guard.knockedDown, guardDie)
+      ? computeCombatResult(
+          { score: guardScore, die: guardDie, knockedDown: guard.knockedDown, canRecoil: false },
+          {
+            score: attackerScore,
+            die: attackerDie,
+            knockedDown: attacker.knockedDown,
+            canRecoil: attackerRecoil !== null,
+          },
+        )
+      : 'clash',
+  );
+  const prevented = result !== 'clash';
   const gruesome = gruesomeKill(result, guardScore, attackerScore);
 
   events.push({
     type: 'GuardRiposte',
     guardId: guard.id,
     attackerId: attacker.id,
-    guardDie: gd.die,
-    attackerDie: ad.die,
+    guardDie,
+    attackerDie,
     guardScore,
     attackerScore,
-    ...(guardBonus ? { guardBonus } : {}),
-    ...(attackerBonus ? { attackerBonus } : {}),
-    ...(guardOutnumbered ? { guardOutnumbered } : {}),
-    ...(attackerOutnumbered ? { attackerOutnumbered } : {}),
+    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered }),
     result,
     ...(gruesome ? { gruesome } : {}),
     prevented,
   });
 
-  if (result === 'defenderKilled') {
-    strike(s, attacker, guard.id, events, board, gruesome);
-  } else if (result === 'defenderKnockedDown' && !attacker.knockedDown) {
-    attacker.knockedDown = true;
-    events.push({ type: 'UnitKnockedDown', unitId: attacker.id });
-  } else if (result === 'defenderRecoiled') recoil(s, events, attacker, attackerRecoil!);
+  hitDefender(s, events, result, attacker, guard.id, board, gruesome, attackerRecoil);
   return prevented;
 }
 
@@ -440,50 +415,142 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
 function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board: Board): boolean {
   for (const hacker of adjacentEnemies(s, mover, board)) {
     if (hacker.knockedDown) continue;
-    const atk = rollD6(s.rngState);
-    const def = rollD6(atk.state);
-    s.rngState = def.state;
-    const attackBonus = highGroundBonus(board, hacker, mover);
-    const defenseBonus = highGroundBonus(board, mover, hacker);
-    const attackOutnumbered = outnumberedPenalty(s, hacker, board);
-    const defenseOutnumbered = outnumberedPenalty(s, mover, board);
-    const attackScore = hacker.combat + atk.die + attackBonus - attackOutnumbered;
-    const defenseScore = mover.combat + def.die + defenseBonus - defenseOutnumbered;
-    let result = computeCombatResult(
-      { score: attackScore, die: atk.die, knockedDown: false, canRecoil: false },
-      // A leaver always has somewhere to "recoil": the way it was going.
-      { score: defenseScore, die: def.die, knockedDown: mover.knockedDown, canRecoil: true },
+    const roll = rollMelee(s, board, hacker, mover);
+    const { attackDie, defenseDie, attackScore, defenseScore } = roll;
+    // Only the leaver can be hurt; the hacker never is.
+    const result = defenderOnly(
+      computeCombatResult(
+        { score: attackScore, die: attackDie, knockedDown: false, canRecoil: false },
+        // A leaver always has somewhere to "recoil": the way it was going.
+        { score: defenseScore, die: defenseDie, knockedDown: mover.knockedDown, canRecoil: true },
+      ),
     );
-    if (!result.startsWith('defender')) result = 'clash';
     const gruesome = gruesomeKill(result, attackScore, defenseScore);
 
     events.push({
       type: 'FreeHackResolved',
       attackerId: hacker.id,
       targetId: mover.id,
-      attackDie: atk.die,
-      defenseDie: def.die,
+      attackDie,
+      defenseDie,
       attackScore,
       defenseScore,
-      ...(attackBonus ? { attackBonus } : {}),
-      ...(defenseBonus ? { defenseBonus } : {}),
-      ...(attackOutnumbered ? { attackOutnumbered } : {}),
-      ...(defenseOutnumbered ? { defenseOutnumbered } : {}),
+      ...shown(roll.mods),
       result,
       ...(gruesome ? { gruesome } : {}),
     });
 
-    if (result === 'defenderKilled') {
-      strike(s, mover, hacker.id, events, board, gruesome); // dead, or Tough-saved onto the ground
-      return false;
-    }
-    if (result === 'defenderKnockedDown') {
-      mover.knockedDown = true;
-      events.push({ type: 'UnitKnockedDown', unitId: mover.id });
-      return false;
-    }
+    // A kill (or a Tough save onto the ground) and a knockdown both stop the
+    // move; a recoil is just the leaver slipping away, so it carries on.
+    hitDefender(s, events, result, mover, hacker.id, board, gruesome, null);
+    if (result === 'defenderKilled' || result === 'defenderKnockedDown') return false;
   }
   return true;
+}
+
+// --- The shared shape of one opposed roll ---------------------------------
+
+/**
+ * The situational modifiers already folded into an opposed melee's scores. They
+ * ride along so the event can report *why* a score is what it is.
+ */
+interface MeleeMods {
+  attackBonus: number;
+  defenseBonus: number;
+  attackOutnumbered: number;
+  defenseOutnumbered: number;
+}
+
+/** One opposed melee: both dice, both scores, and the modifiers behind them. */
+interface MeleeRoll {
+  attackDie: number;
+  defenseDie: number;
+  attackScore: number;
+  defenseScore: number;
+  mods: MeleeMods;
+}
+
+/** Roll the aggressor's die then the defender's, advancing `s.rngState`. */
+function rollPair(s: GameState): { attackDie: number; defenseDie: number } {
+  const atk = rollD6(s.rngState);
+  const def = rollD6(atk.state);
+  s.rngState = def.state;
+  return { attackDie: atk.die, defenseDie: def.die };
+}
+
+/**
+ * Roll one opposed melee exchange (mutates `s.rngState`). Each side scores its
+ * Combat plus its die and any high ground, less what it is outnumbered by;
+ * `defensePenalty` (a power blow's) comes off the defender on top. Every melee
+ * in the game — an ordinary blow, a guard's riposte, a free hack — is scored
+ * exactly this way, so none of them can drift from the others.
+ */
+function rollMelee(
+  s: GameState,
+  board: Board,
+  aggressor: Unit,
+  defender: Unit,
+  defensePenalty = 0,
+): MeleeRoll {
+  const { attackDie, defenseDie } = rollPair(s);
+  const mods: MeleeMods = {
+    attackBonus: highGroundBonus(board, aggressor, defender),
+    defenseBonus: highGroundBonus(board, defender, aggressor),
+    attackOutnumbered: outnumberedPenalty(s, aggressor, board),
+    defenseOutnumbered: outnumberedPenalty(s, defender, board),
+  };
+  return {
+    attackDie,
+    defenseDie,
+    attackScore: aggressor.combat + attackDie + mods.attackBonus - mods.attackOutnumbered,
+    defenseScore: defender.combat + defenseDie + mods.defenseBonus - mods.defenseOutnumbered - defensePenalty,
+    mods,
+  };
+}
+
+/**
+ * An outcome for a combat where only the defender can be hurt (a shot, a
+ * riposte, a free hack): anything that would harm the aggressor is reported as
+ * the clash it effectively is, so no event ever names damage the rules never
+ * dealt.
+ */
+function defenderOnly(result: CombatResult): CombatResult {
+  return result.startsWith('defender') ? result : 'clash';
+}
+
+/** Drop the zero modifiers, so an event only ever carries the ones that applied. */
+function shown<K extends string>(mods: Record<K, number | undefined>): Partial<Record<K, number>> {
+  const out: Partial<Record<K, number>> = {};
+  for (const key of Object.keys(mods) as K[]) {
+    const value = mods[key];
+    if (value) out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Apply a defender-side outcome to `victim` (mutates `s`): a killing blow
+ * (honouring Tough and the morale that follows), a knockdown, or a push into
+ * `recoilTo`. Any other `result` — including a clash — does nothing.
+ */
+function hitDefender(
+  s: GameState,
+  events: GameEvent[],
+  result: CombatResult,
+  victim: Unit,
+  byId: string,
+  board: Board,
+  gruesome: boolean,
+  recoilTo: Vec | null,
+): void {
+  if (result === 'defenderKilled') strike(s, victim, byId, events, board, gruesome);
+  else if (result === 'defenderKnockedDown') knockDown(events, victim);
+  else if (result === 'defenderRecoiled' && recoilTo) recoil(s, events, victim, recoilTo);
+}
+
+function knockDown(events: GameEvent[], unit: Unit): void {
+  unit.knockedDown = true;
+  events.push({ type: 'UnitKnockedDown', unitId: unit.id });
 }
 
 /** Whether `result` is a kill that tripled the loser, given the aggressor's and the defender's scores. */
@@ -512,17 +579,8 @@ function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {
  * friends test nerve, and the warband may rout. Tough saves that downgrade the
  * blow to a knockdown are not a death, so they raise no morale check.
  */
-function strike(
-  s: GameState,
-  unit: Unit,
-  byId: string | null,
-  events: GameEvent[],
-  board: Board,
-  gruesome: boolean,
-): boolean {
-  const died = resolveKill(unit, byId, events);
-  if (died) resolveCombatMorale(s, events, unit, board, gruesome);
-  return died;
+function strike(s: GameState, unit: Unit, byId: string | null, events: GameEvent[], board: Board, gruesome: boolean): void {
+  if (resolveKill(unit, byId, events)) resolveCombatMorale(s, events, unit, board, gruesome);
 }
 
 /**
@@ -533,19 +591,14 @@ function strike(
  */
 function resolveKill(unit: Unit, byId: string | null, events: GameEvent[]): boolean {
   if (unit.traits.tough && !unit.knockedDown) {
-    unit.knockedDown = true;
     events.push({ type: 'ToughnessSaved', unitId: unit.id });
-    events.push({ type: 'UnitKnockedDown', unitId: unit.id });
+    knockDown(events, unit);
     return false;
   }
-  kill(unit, byId, events);
-  return true;
-}
-
-function kill(unit: Unit, byId: string | null, events: GameEvent[]): void {
   unit.dead = true;
   unit.knockedDown = false;
   events.push({ type: 'UnitKilled', unitId: unit.id, byId });
+  return true;
 }
 
 // --- Activation / round control ------------------------------------------

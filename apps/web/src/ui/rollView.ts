@@ -119,21 +119,25 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
   }
 
   // A higher total that did nothing: a shot never hurts the shooter, a unit
-  // leaving contact can't hit back, and a knocked-down unit only strikes back
-  // on a natural 6.
+  // leaving contact can't hit back, a guard never wounds itself parrying, and a
+  // knocked-down unit only strikes back on a natural 6.
   if (e.result === 'clash' && b.outcome === 'win') {
     b.outcome = 'tie';
     a.outcome = 'tie';
     b.note =
-      e.type === 'ShotResolved' ? 'No return fire' : e.type === 'FreeHackResolved' ? "Leaving: can't strike back" : 'Down: only a 6 strikes back';
+      e.type === 'ShotResolved'
+        ? 'No return fire'
+        : e.type === 'FreeHackResolved'
+          ? "Leaving: can't strike back"
+          : e.type === 'GuardRiposte'
+            ? 'Guard is unhurt'
+            : 'Down: only a 6 strikes back';
   }
   if (e.type === 'GuardRiposte' && e.result === 'clash' && a.total > b.total) {
     a.outcome = 'tie';
     b.outcome = 'tie';
     a.note = 'Down: only a 6 strikes back';
   }
-  // A guard never wounds itself parrying: losing its riposte just lets the attack in.
-  if (e.type === 'GuardRiposte' && b.outcome === 'win') b.note = 'Guard is unhurt';
 
   return { kind: 'opposed', a, b, verdict: combatVerdict(e, a, b, after) };
 }

@@ -71,7 +71,7 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
     case 'GuardRiposte':
-      return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus, [['outnumbered', e.guardOutnumbered]])}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus, [['outnumbered', e.attackerOutnumbered]])}) → ${e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
+      return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus, [['outnumbered', e.guardOutnumbered]])}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus, [['outnumbered', e.attackerOutnumbered]])}) → ${e.result === 'clash' ? 'attack goes through' : e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `  ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'NerveCheck':

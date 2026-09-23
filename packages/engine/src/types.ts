@@ -23,9 +23,10 @@ export interface UnitTraits {
   tough: boolean;
   /**
    * Guard: this unit may take a Guard action to enter a defensive stance. While
-   * guarding, the first melee attacker it faces is met with a pre-emptive strike
-   * (a "riposte"); if the riposte kills or knocks the attacker down, the attack
-   * is prevented. The stance clears when the unit next activates.
+   * guarding, every melee attacker it faces is met with a pre-emptive strike (a
+   * "riposte"); if the riposte kills, knocks down or pushes back the attacker,
+   * that attack is prevented. The stance holds until the unit next activates,
+   * and losing a riposte never costs the guard anything.
    */
   guard: boolean;
 }

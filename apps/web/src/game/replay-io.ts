@@ -1,11 +1,12 @@
 import { REPLAY_VERSION, runReplay, type Replay } from '@fansong/engine';
-import { commandSchema } from '@fansong/protocol';
+import { commandSchema, gameConfigSchema } from '@fansong/protocol';
 
 /**
  * Save/load for replays. A replay is just `seed + command list` as JSON, so it is
  * small, portable, and reproduces the exact game via the pure engine. Loading
- * runs the untrusted file through the wire `commandSchema` and then `runReplay`,
- * so a malformed or hostile file is rejected before it reaches the viewer.
+ * runs the untrusted file through the wire `gameConfigSchema` and `commandSchema`
+ * and then `runReplay`, so a malformed or hostile file is rejected before it
+ * reaches the viewer.
  */
 
 export function replayToJson(replay: Replay): string {
@@ -47,13 +48,19 @@ export function parseReplay(text: string): Replay {
   if (typeof obj.config !== 'object' || obj.config === null) throw new Error('Replay is missing its config.');
   if (!Array.isArray(obj.commands)) throw new Error('Replay is missing its command list.');
 
+  // The config sets up the board the commands are then replayed on, so it is
+  // checked before `runReplay` ever builds a game from it — an unbounded board
+  // or Move would otherwise have the engine walking a grid that never ends.
+  const config = gameConfigSchema.safeParse(obj.config);
+  if (!config.success) throw new Error('Replay config is not a valid FanSong setup.');
+
   const commands = obj.commands.map((c, i) => {
     const parsed = commandSchema.safeParse(c);
     if (!parsed.success) throw new Error(`Command ${i} is not a valid FanSong command.`);
     return parsed.data;
   });
 
-  const replay: Replay = { version: REPLAY_VERSION, config: obj.config as Replay['config'], commands };
+  const replay: Replay = { version: REPLAY_VERSION, config: config.data, commands };
   // The ultimate validation: it must actually reproduce a game.
   try {
     runReplay(replay);

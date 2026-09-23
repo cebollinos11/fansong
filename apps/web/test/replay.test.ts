@@ -66,6 +66,22 @@ describe('replay-io', () => {
     expect(() => parseReplay(JSON.stringify({ version: 2, commands: [] }))).toThrow(/config/);
     expect(() =>
       parseReplay(JSON.stringify({ version: 2, config: {}, commands: [{ type: 'Nope' }] })),
-    ).toThrow(/command/);
+    ).toThrow(/config/);
+  });
+
+  it('rejects a config that would have the engine walk an unbounded board', () => {
+    const hostile = {
+      version: 2,
+      config: {
+        seed: 1,
+        board: { width: 1_000_000, height: 1_000_000 },
+        warbands: [
+          [{ name: 'Runner', quality: 3, combat: 3, move: 1_000_000, pos: { x: 0, y: 0 } }],
+          [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 5, y: 5 } }],
+        ],
+      },
+      commands: [{ type: 'ChooseActivation', unitId: 'p0u0', diceCount: 1 }],
+    };
+    expect(() => parseReplay(JSON.stringify(hostile))).toThrow(/config/);
   });
 });

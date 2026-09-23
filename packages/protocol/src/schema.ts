@@ -7,6 +7,7 @@ import type {
   Command,
   EndActivation,
   FlagState,
+  GameConfig,
   GameEvent,
   GameMode,
   GameState,
@@ -19,8 +20,9 @@ import type {
   ShootCommand,
   TerrainFeature,
   Unit,
+  UnitSpec,
 } from '@fansong/engine';
-import { ARMY_RULES, NAME_LIMITS, type MatchSetup, type Seat, type Warband } from '@fansong/content';
+import { ARMY_RULES, MAP_LIMITS, NAME_LIMITS, STAT_BOUNDS, type MatchSetup, type Seat, type Warband } from '@fansong/content';
 
 /**
  * Wire schemas. These are the trust boundary: a Durable Object never `reduce`s a
@@ -316,6 +318,59 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+// --- Game config (untrusted input: a replay file) -------------------------
+
+const stat = ([min, max]: readonly [number, number]) => z.number().int().min(min).max(max);
+
+/**
+ * A unit as a replay's config places it. Stats are held to {@link STAT_BOUNDS}
+ * — the same range the army builder and every preset are checked against — so a
+ * recorded game always round-trips while a hand-edited file cannot smuggle in a
+ * profile the rules could never have produced.
+ */
+export const unitSpecSchema = z
+  .object({
+    name: z.string().max(NAME_LIMITS.unit),
+    quality: stat(STAT_BOUNDS.quality),
+    combat: stat(STAT_BOUNDS.combat),
+    move: stat(STAT_BOUNDS.move).optional(),
+    pos: vecSchema,
+    ranged: stat(STAT_BOUNDS.ranged).optional(),
+    tough: z.boolean().optional(),
+    guard: z.boolean().optional(),
+    king: z.boolean().optional(),
+    look: z.string().max(64).optional(),
+  })
+  .strict();
+
+/**
+ * The starting config of a game — the trust boundary for a **replay file**,
+ * which is the one place an untrusted config reaches `createGame`. Sizes are
+ * bounded (board to {@link MAP_LIMITS}, rosters to {@link ARMY_RULES}, Move to
+ * {@link STAT_BOUNDS}) so that replaying a hostile file cannot ask the engine
+ * to walk an astronomically large board.
+ */
+export const gameConfigSchema = z
+  .object({
+    seed: z.number().int(),
+    board: z
+      .object({
+        width: z.number().int().min(MAP_LIMITS.minWidth).max(MAP_LIMITS.maxWidth),
+        height: z.number().int().min(MAP_LIMITS.minHeight).max(MAP_LIMITS.maxHeight),
+        blocked: z.array(z.string()).max(MAP_LIMITS.maxWidth * MAP_LIMITS.maxHeight).optional(),
+        terrain: z.record(z.string().regex(/^\d+,\d+$/), hexTerrainSchema).optional(),
+      })
+      .strict(),
+    warbands: z.tuple([
+      z.array(unitSpecSchema).max(ARMY_RULES.maxUnits),
+      z.array(unitSpecSchema).max(ARMY_RULES.maxUnits),
+    ]),
+    initiativeLeader: ownerSchema.optional(),
+    mode: gameModeSchema.optional(),
+    objectives: modeObjectivesSchema.optional(),
+  })
+  .strict();
+
 // --- Match setup ----------------------------------------------------------
 
 export const seatSchema: z.ZodType<Seat> = z.enum(['human', 'ai']);
@@ -369,6 +424,7 @@ export type CommandFromSchema = z.infer<typeof commandSchema>;
 export type GameEventFromSchema = z.infer<typeof gameEventSchema>;
 export type GameStateFromSchema = z.infer<typeof gameStateSchema>;
 export type MatchSetupFromSchema = z.infer<typeof matchSetupSchema>;
+export type GameConfigFromSchema = z.infer<typeof gameConfigSchema>;
 
 /** Compile-time drift guard; every entry must stay `true` (see above). */
 export type SchemaDriftChecks = [
@@ -376,6 +432,8 @@ export type SchemaDriftChecks = [
   Expect<Eq<GameEventFromSchema, GameEvent>>,
   Expect<Eq<GameStateFromSchema, GameState>>,
   Expect<Eq<MatchSetupFromSchema, MatchSetup>>,
+  Expect<Eq<GameConfigFromSchema, GameConfig>>,
+  Expect<Eq<z.infer<typeof unitSpecSchema>, UnitSpec>>,
   Expect<Eq<z.infer<typeof warbandSchema>, Warband>>,
   // Individual command variants line up too.
   Expect<Eq<z.infer<typeof chooseActivationSchema>, ChooseActivation>>,
