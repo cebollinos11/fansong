@@ -223,7 +223,11 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
   const overlays = useMemo(() => mapOverlays(map), [map]);
   const selectedInfo = selected ? describeHex(state, selected) : null;
   const selectedMarks = selected ? hexMarkings(map, selected) : [];
-  const highlight = useMemo(() => dragPreview ?? (selected ? [selected] : []), [dragPreview, selected]);
+  // The editor has no actions to spend; every highlighted hex is simply "this one".
+  const highlight = useMemo(
+    () => (dragPreview ?? (selected ? [selected] : [])).map((cell) => ({ cell, cost: 1, provokes: 0 })),
+    [dragPreview, selected],
+  );
   const validation = useMemo(() => editorValidation(map), [map]);
 
   const undo = (): void => setHistory(undoEdit);
@@ -327,7 +331,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
     <div className="game">
       <BoardCanvas
         state={state}
-        moveTargets={highlight}
+        reach={highlight}
         attackTargetIds={[]}
         selectableUnitIds={[]}
         selectedUnitId={null}

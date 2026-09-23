@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { unitById, type GameEvent, type GameState, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
+import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 
 interface Props {
   state: GameState;
-  moveTargets: Vec[];
+  /** Hexes the active unit can reach this activation, each with its action cost. */
+  reach: ReachTile[];
+  /** Enemies it can strike where it stands. */
   attackTargetIds: string[];
+  /** Enemies it could strike after walking in. */
+  approachTargetIds?: string[];
+  /**
+   * What hovering a hex would commit, for the route preview. Kept as a callback
+   * so the board can ask on each new hex without re-rendering per frame.
+   */
+  previewFor?: (cell: Vec) => PlanPreview | null;
   selectableUnitIds: string[];
   selectedUnitId: string | null;
   interactive: boolean;
@@ -163,8 +173,9 @@ export function BoardCanvas(props: Props): JSX.Element {
   useEffect(() => {
     const vm: BoardViewModel = {
       state: props.state,
-      moveTargets: props.moveTargets,
+      reach: props.reach,
       attackTargetIds: props.attackTargetIds,
+      approachTargetIds: props.approachTargetIds ?? [],
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
       interactive: props.interactive,
@@ -176,8 +187,9 @@ export function BoardCanvas(props: Props): JSX.Element {
     viewRef.current?.update(vm);
   }, [
     props.state,
-    props.moveTargets,
+    props.reach,
     props.attackTargetIds,
+    props.approachTargetIds,
     props.selectableUnitIds,
     props.selectedUnitId,
     props.interactive,
@@ -197,7 +209,14 @@ export function BoardCanvas(props: Props): JSX.Element {
     handlers.current.onEventsPlayed?.(ms);
   }, [props.events]);
 
-  const hexInfo = hover ? describeHex(props.state, hover) : null;
+  // Trace the hovered plan. `hover` changes only when the pointer crosses into a
+  // new hex (BoardView dedupes it), so this costs nothing while the pointer drifts.
+  const previewFor = props.previewFor;
+  useEffect(() => {
+    viewRef.current?.setPlanPreview(hover && previewFor ? previewFor(hover) : null);
+  }, [hover, previewFor]);
+
+  const hexInfo = hover ? describeHex(props.state, hover, previewFor?.(hover) ?? null) : null;
 
   // Stable across renders so the menu's follow loop isn't torn down each frame.
   const project = useCallback(

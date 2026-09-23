@@ -70,7 +70,7 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
     <div className="game">
       <BoardCanvas
         state={state}
-        moveTargets={[]}
+        reach={[]}
         attackTargetIds={[]}
         selectableUnitIds={[]}
         selectedUnitId={null}

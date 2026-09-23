@@ -15,16 +15,19 @@ import {
   RollOverlay,
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
+import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { hexElevation, surfaceY, TILE_TOP, tileHeight, tileSideColor, tileTopColor } from './terrain.js';
 import { DOWN_POSES, spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
 export interface BoardViewModel {
   state: GameState;
-  /** Cells the active unit may move into (Move command targets). */
-  moveTargets: Vec[];
-  /** Enemy unit ids the active unit may attack. */
+  /** Cells the active unit can reach this activation, each with what it costs. */
+  reach: ReachTile[];
+  /** Enemy unit ids the active unit may strike where it stands. */
   attackTargetIds: string[];
+  /** Enemy unit ids it could strike after walking in. */
+  approachTargetIds: string[];
   /** Own units that may be activated (awaitingActivation phase). */
   selectableUnitIds: string[];
   /** Unit the human has selected but not yet committed dice for. */
@@ -72,7 +75,29 @@ const SQRT3 = Math.sqrt(3);
 const HEX_COL_STEP = 1.5 * HEX_SIZE; // world X between adjacent columns
 const HEX_ROW_STEP = SQRT3 * HEX_SIZE; // world Z between adjacent rows
 const MOVE_COLOR = 0x3ddc84;
+const PROVOKE_COLOR = 0xffb300; // reaching this hex breaks away from an enemy
 const ATTACK_COLOR = 0xff5252;
+
+// The reach is one green field with a ring drawn where each action's range ends,
+// like a contour map: the first action's edge is brightest and thickest, and
+// each further action's is fainter, so "how far for how much" reads at a glance.
+const REACH_FILL_OPACITY = 0.22;
+const CONTOUR_OPACITY = [0.95, 0.55, 0.32];
+const CONTOUR_WIDTH = [0.08, 0.055, 0.04];
+/** Distance between the centres of two adjacent hexes. */
+const HEX_STEP = SQRT3 * HEX_SIZE;
+
+/** A flat, unlit tint laid on the board surface. */
+function fillMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
+  return new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+}
+
 const SELECT_COLOR = 0xffd54a;
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
 const CROWN_COLOR = '#ffd54a';
@@ -331,7 +356,23 @@ export class BoardView {
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
     : 1;
   private readonly highlightGroup = new THREE.Group();
+  private readonly previewGroup = new THREE.Group();
   private readonly overlayGroup = new THREE.Group();
+  /**
+   * The highlight layer is rebuilt whenever the reach changes *or* the pointer
+   * moves to a new hex, so its geometry and materials are made once and kept —
+   * building them per redraw used to leak one set per command.
+   */
+  private reachFillGeo: THREE.CircleGeometry | null = null;
+  private reachFillMat: THREE.MeshBasicMaterial | null = null;
+  private provokeFillMat: THREE.MeshBasicMaterial | null = null;
+  private readonly contourGeo: (THREE.PlaneGeometry | null)[] = [];
+  private readonly contourMat: (THREE.MeshBasicMaterial | null)[] = [];
+  private previewLineMat: THREE.LineBasicMaterial | null = null;
+  private previewDotGeo: THREE.CircleGeometry | null = null;
+  private previewDotMat: THREE.MeshBasicMaterial | null = null;
+  /** What `drawHighlights` last drew, so an unchanged reach is not rebuilt. */
+  private reachKey = '';
   private overlays: HexOverlay[] | undefined;
   private readonly markerGroup = new THREE.Group();
   private markingsKey: string | undefined;
@@ -363,7 +404,14 @@ export class BoardView {
     const ambient = new THREE.HemisphereLight(0xeef2ff, 0x5a5448, 2.6);
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(6, 14, 8);
-    this.scene.add(ambient, key, this.overlayGroup, this.highlightGroup, this.markerGroup);
+    this.scene.add(
+      ambient,
+      key,
+      this.overlayGroup,
+      this.highlightGroup,
+      this.previewGroup,
+      this.markerGroup,
+    );
 
     // Left-drag orbits, right-drag (or shift/ctrl + left) pans across the table,
     // wheel zooms. A press that barely moves is still a click (see handlePointerUp).
@@ -538,19 +586,24 @@ export class BoardView {
       const isSelected = vm.selectedUnitId === u.id;
       const isSelectable = vm.selectableUnitIds.includes(u.id);
       const isAttackTarget = vm.attackTargetIds.includes(u.id);
+      // Reachable on foot, then strikeable: the same red, held back, so "walk in
+      // and hit this" is distinguishable from "hit this now" without a new colour.
+      const isApproachTarget = !isAttackTarget && vm.approachTargetIds.includes(u.id);
       const isGuarding = u.guarding && !u.dead;
       obj.ring.visible =
-        !obj.fade && (isActive || isSelected || isSelectable || isAttackTarget || isGuarding);
-      const ringColor = isAttackTarget
-        ? ATTACK_COLOR
-        : isActive || isSelected
-          ? SELECT_COLOR
-          : isGuarding
-            ? GUARD_COLOR
-            : 0x8fa3bf;
+        !obj.fade &&
+        (isActive || isSelected || isSelectable || isAttackTarget || isApproachTarget || isGuarding);
+      const ringColor =
+        isAttackTarget || isApproachTarget
+          ? ATTACK_COLOR
+          : isActive || isSelected
+            ? SELECT_COLOR
+            : isGuarding
+              ? GUARD_COLOR
+              : 0x8fa3bf;
       obj.ring.material.color.setHex(ringColor);
       obj.ring.material.opacity =
-        isActive || isSelected || isAttackTarget ? 0.95 : isGuarding ? 0.7 : 0.4;
+        isActive || isSelected || isAttackTarget ? 0.95 : isApproachTarget ? 0.5 : isGuarding ? 0.7 : 0.4;
       obj.ringRest = { visible: obj.ring.visible, opacity: obj.ring.material.opacity };
     }
     // Remove meshes for units no longer present (shouldn't happen, but be safe).
@@ -561,7 +614,7 @@ export class BoardView {
       }
     }
 
-    this.drawHighlights(vm.moveTargets);
+    this.drawHighlights(vm.reach);
     if (vm.overlays !== this.overlays) this.drawOverlays(vm.overlays ?? []);
     if (vm.markingsKey !== this.markingsKey) this.drawMarkings(vm);
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
@@ -1036,6 +1089,15 @@ export class BoardView {
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
+    this.setPlanPreview(null);
+    this.reachFillGeo?.dispose();
+    this.reachFillMat?.dispose();
+    this.provokeFillMat?.dispose();
+    for (const g of this.contourGeo) g?.dispose();
+    for (const m of this.contourMat) m?.dispose();
+    this.previewLineMat?.dispose();
+    this.previewDotGeo?.dispose();
+    this.previewDotMat?.dispose();
     for (const t of this.badgeTextures.values()) t.dispose();
     this.starMaterial?.map?.dispose();
     this.starMaterial?.dispose();
@@ -1504,24 +1566,109 @@ export class BoardView {
     }
   }
 
-  private drawHighlights(moveTargets: Vec[]): void {
+  /**
+   * The reach, drawn as one green field with a contour ring at each action's
+   * boundary. The rings come from set membership rather than a radius, so the
+   * bites that zones of control take out of the reach are outlined correctly too.
+   */
+  private drawHighlights(reach: ReachTile[]): void {
+    const key = reach.map((t) => `${t.cost}${t.provokes > 0 ? '!' : ''}:${t.cell.x},${t.cell.y}`).join('|');
+    if (key === this.reachKey) return;
+    this.reachKey = key;
     this.highlightGroup.clear();
-    if (moveTargets.length === 0) return;
-    // A flat hexagon matching the tile footprint (a 6-gon lies flat in XZ).
-    const geo = new THREE.CircleGeometry(HEX_SIZE * 0.9, 6);
-    const mat = new THREE.MeshBasicMaterial({
-      color: MOVE_COLOR,
-      transparent: true,
-      opacity: 0.28,
-      side: THREE.DoubleSide,
-    });
-    for (const t of moveTargets) {
-      const tile = new THREE.Mesh(geo, mat);
+    if (reach.length === 0) return;
+
+    this.reachFillGeo ??= new THREE.CircleGeometry(HEX_SIZE * 0.9, 6);
+    this.reachFillMat ??= fillMaterial(MOVE_COLOR, REACH_FILL_OPACITY);
+    // Amber where getting there breaks away from an enemy: the free hack can
+    // cost the action *and* the ground, so it should not look like open field.
+    this.provokeFillMat ??= fillMaterial(PROVOKE_COLOR, REACH_FILL_OPACITY + 0.06);
+
+    for (const t of reach) {
+      const tile = new THREE.Mesh(this.reachFillGeo, t.provokes > 0 ? this.provokeFillMat : this.reachFillMat);
       tile.rotation.x = -Math.PI / 2;
-      const w = this.cellToWorld(t);
-      tile.position.set(w.x, this.surfaceAt(t) + 0.03, w.z);
+      const w = this.cellToWorld(t.cell);
+      tile.position.set(w.x, this.surfaceAt(t.cell) + 0.03, w.z);
       this.highlightGroup.add(tile);
     }
+
+    const maxCost = reach.reduce((n, t) => Math.max(n, t.cost), 0);
+    const within = new Set<string>();
+    for (let cost = 1; cost <= maxCost; cost++) {
+      for (const t of reach) if (t.cost === cost) within.add(vecKey(t.cell));
+      this.drawContour(within, cost - 1);
+    }
+  }
+
+  /** Outline `within`: a ribbon on every hex edge whose far side lies outside it. */
+  private drawContour(within: Set<string>, tier: number): void {
+    const width = CONTOUR_WIDTH[Math.min(tier, CONTOUR_WIDTH.length - 1)]!;
+    const opacity = CONTOUR_OPACITY[Math.min(tier, CONTOUR_OPACITY.length - 1)]!;
+    const geo = (this.contourGeo[tier] ??= new THREE.PlaneGeometry(HEX_SIZE, width));
+    const mat = (this.contourMat[tier] ??= fillMaterial(MOVE_COLOR, opacity));
+
+    for (const cellKey of within) {
+      const [x, y] = cellKey.split(',').map(Number) as [number, number];
+      const cell = { x, y };
+      const centre = this.cellToWorld(cell);
+      const surface = this.surfaceAt(cell) + 0.045;
+      // The six flat-top neighbours sit at 30°, 90°, … around the centre.
+      for (let i = 0; i < 6; i++) {
+        const angle = Math.PI / 6 + (i * Math.PI) / 3;
+        const dx = Math.cos(angle);
+        const dz = Math.sin(angle);
+        // Resolve the far side through the board's own pixel-to-hex, so an edge
+        // of the board (no neighbour at all) gets outlined like any other.
+        const beyond = this.worldToCell(
+          new THREE.Vector3(centre.x + HEX_STEP * dx, 0, centre.z + HEX_STEP * dz),
+        );
+        if (beyond && within.has(vecKey(beyond))) continue;
+        const edge = new THREE.Mesh(geo, mat);
+        // Lie flat, then turn the ribbon's length along the shared edge, which
+        // runs perpendicular to the line joining the two hex centres.
+        edge.rotation.set(-Math.PI / 2, 0, -(angle + Math.PI / 2));
+        edge.position.set(centre.x + (HEX_STEP / 2) * dx, surface, centre.z + (HEX_STEP / 2) * dz);
+        this.highlightGroup.add(edge);
+      }
+    }
+  }
+
+  /**
+   * Trace the walk a hovered plan would take: the route it follows, a mark on
+   * each hex where an action is actually spent, and a brighter one where it ends
+   * — which for a strike is the hex the blow is thrown from.
+   */
+  setPlanPreview(preview: PlanPreview | null): void {
+    for (const child of this.previewGroup.children) {
+      if ((child as THREE.Line).isLine) (child as THREE.Line).geometry.dispose();
+    }
+    this.previewGroup.clear();
+    if (!preview || preview.path.length < 2) return;
+
+    const lift = (v: Vec): THREE.Vector3 => {
+      const w = this.cellToWorld(v);
+      return new THREE.Vector3(w.x, this.surfaceAt(v) + 0.09, w.z);
+    };
+    this.previewLineMat ??= new THREE.LineBasicMaterial({ color: MOVE_COLOR, transparent: true, opacity: 0.95 });
+    this.previewDotGeo ??= new THREE.CircleGeometry(HEX_SIZE * 0.26, 12);
+    this.previewDotMat ??= fillMaterial(MOVE_COLOR, 0.85);
+
+    // One polyline, so the route stays continuous as it climbs over terrain.
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(preview.path.map(lift)),
+      this.previewLineMat,
+    );
+    this.previewGroup.add(line);
+
+    preview.waypoints.forEach((w, i) => {
+      const dot = new THREE.Mesh(this.previewDotGeo!, this.previewDotMat!);
+      dot.rotation.x = -Math.PI / 2;
+      const at = lift(w);
+      dot.position.set(at.x, at.y, at.z);
+      // The last mark is where the unit comes to rest, so make it read as one.
+      dot.scale.setScalar(i === preview.waypoints.length - 1 ? 1.5 : 1);
+      this.previewGroup.add(dot);
+    });
   }
 
   private drawOverlays(overlays: HexOverlay[]): void {

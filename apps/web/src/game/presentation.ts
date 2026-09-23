@@ -11,6 +11,7 @@ export class PresentationQueue<T> {
   private current: T | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  private readonly waiters: (() => void)[] = [];
 
   constructor(
     private readonly present: (item: T) => void,
@@ -31,6 +32,16 @@ export class PresentationQueue<T> {
     this.pump();
   }
 
+  /**
+   * Resolves once nothing is playing or waiting — at once if that is already so.
+   * Lets a caller sending a chain of commands hold each one until the board has
+   * finished showing the last. A disposed queue resolves rather than hanging.
+   */
+  whenIdle(): Promise<void> {
+    if (this.idle || this.disposed) return Promise.resolve();
+    return new Promise((resolve) => this.waiters.push(resolve));
+  }
+
   /** The item being presented takes `ms` to play out. */
   played(ms: number): void {
     if (this.current === null) return;
@@ -42,6 +53,13 @@ export class PresentationQueue<T> {
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
     this.queue.length = 0;
+    this.wake();
+  }
+
+  /** Release everyone waiting on {@link whenIdle}. */
+  private wake(): void {
+    const waiting = this.waiters.splice(0);
+    for (const resolve of waiting) resolve();
   }
 
   private pump(): void {
@@ -62,6 +80,9 @@ export class PresentationQueue<T> {
       this.current = null;
       this.finish(item, this.queue.length === 0);
       this.pump();
+      // After `pump`, so `idle` is settled — and as a microtask, so whoever was
+      // waiting resumes with the finished state already applied.
+      if (this.idle) this.wake();
     };
     // Anything animated gets a breather after it; an instant item settles at once.
     this.timer = setTimeout(done, ms > 0 ? ms + this.gapMs : 0);

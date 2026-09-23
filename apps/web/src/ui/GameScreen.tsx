@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { unitById, type GameEvent, type GameState, type Replay, type Vec } from '@fansong/engine';
+import { getActionPlans, unitById, vecKey, type ActionPlan, type GameEvent, type GameState, type Replay, type Vec } from '@fansong/engine';
 import type { ClientStatus, MatchClient } from '../game/client.js';
 import type { Transition } from '../game/controller.js';
 import { deriveInteraction } from '../game/interaction.js';
+import { buildPlanIndex, previewFor } from '../game/planView.js';
+import { PlanRunner } from '../game/planRunner.js';
 import { PresentationQueue } from '../game/presentation.js';
 import { downloadReplay } from '../game/replay-io.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
@@ -32,7 +34,10 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
   const [status, setStatus] = useState<ClientStatus>(client.status());
   // Open when a target was clicked with two actions in hand: attack, or press it?
   const [attackChoice, setAttackChoice] = useState<AttackChoice | null>(null);
+  // True from the click that commits a plan until its last command has played.
+  const [planning, setPlanning] = useState(false);
   const queueRef = useRef<PresentationQueue<Transition> | null>(null);
+  const runnerRef = useRef<PlanRunner | null>(null);
   // The board reports a unit click without the event, so remember where the
   // pointer last went down — that is where the attack menu opens.
   const pointer = useRef({ x: 0, y: 0 });
@@ -75,12 +80,55 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     return () => window.removeEventListener('pointerdown', onPointerDown, true);
   }, []);
 
+  // One runner per client; it reads the presentation queue through the ref the
+  // subscribe effect sets up, so a chain waits for each leg to finish playing.
+  useEffect(() => {
+    const runner = new PlanRunner({
+      client,
+      whenIdle: () => queueRef.current?.whenIdle() ?? Promise.resolve(),
+    });
+    runnerRef.current = runner;
+    return () => {
+      runner.cancel();
+      runnerRef.current = null;
+    };
+  }, [client]);
+
   const ready = status.phase === 'ready';
   // Input waits for the board to catch up, so a human never acts on a result
-  // the dice haven't shown yet (once idle, `state` is the client's state).
+  // the dice haven't shown yet (once idle, `state` is the client's state). A
+  // chain in flight locks input the same way — `planning` is set in the click
+  // handler itself, so there is no window between committing and the board
+  // going busy in which a second click could land.
   const myTurn =
-    ready && idle && state.phase !== 'gameOver' && client.controlledSeats.includes(state.active);
+    ready &&
+    idle &&
+    !planning &&
+    state.phase !== 'gameOver' &&
+    client.controlledSeats.includes(state.active);
   const interaction = useMemo(() => deriveInteraction(client.legalCommands()), [state, client]);
+  // Everything the acting unit could do with *all* its actions, not just the
+  // next one. The engine enumerates it; this only sorts it into what the board
+  // tints, rings, and resolves a click to.
+  const plans = useMemo(() => buildPlanIndex(getActionPlans(state), state), [state]);
+  const acting = myTurn && state.phase === 'acting';
+
+  /** Commit a plan: send its first command, then the rest as the board catches up. */
+  const runPlan = useCallback((plan: ActionPlan) => {
+    const runner = runnerRef.current;
+    if (!runner || runner.running) return;
+    setAttackChoice(null);
+    setPlanning(true);
+    void runner.run(plan.steps).finally(() => setPlanning(false));
+  }, []);
+
+  // A dropped connection must not leave the board locked behind a dead chain.
+  useEffect(() => {
+    if (!ready) {
+      runnerRef.current?.cancel();
+      setPlanning(false);
+    }
+  }, [ready]);
 
   // A finished local match can be replayed or exported (online play records no replay).
   const over = idle && state.phase === 'gameOver';
@@ -93,44 +141,50 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
       return;
     }
     if (state.phase !== 'acting' || !state.activeUnitId) return;
-    const melee = interaction.attackTargetIds.includes(id);
-    const ranged = !melee && interaction.shootTargetIds.includes(id);
-    if (!melee && !ranged) return;
-    // With a second action in hand the engine also offers the pressed version,
-    // so ask which one before spending anything.
-    const canPress = melee ? interaction.powerAttackTargetIds.includes(id) : interaction.aimedShotTargetIds.includes(id);
-    if (canPress) {
+    // The plan may walk in first — an enemy a move away is clickable straight off.
+    const plan = plans.byTarget.get(id);
+    if (!plan) return;
+    // With actions to spare the engine also offers the pressed version, so ask
+    // which one before spending anything.
+    const pressed = plans.pressedByTarget.get(id);
+    if (pressed) {
       setAttackChoice({
         targetId: id,
         targetName: unitById(state, id)?.name ?? id,
-        kind: melee ? 'melee' : 'ranged',
+        kind: plan.kind === 'attack' ? 'melee' : 'ranged',
+        plain: plan,
+        pressed,
+        actionsRemaining: state.actionsRemaining,
         at: { ...pointer.current },
       });
       return;
     }
-    if (melee) client.send({ type: 'Attack', attackerId: state.activeUnitId, targetId: id });
-    else client.send({ type: 'Shoot', attackerId: state.activeUnitId, targetId: id });
+    runPlan(plan);
   };
 
   const resolveAttackChoice = (pressed: boolean): void => {
     const choice = attackChoice;
     setAttackChoice(null);
-    if (!choice || !myTurn || state.phase !== 'acting' || !state.activeUnitId) return;
-    client.send(
-      choice.kind === 'melee'
-        ? { type: 'Attack', attackerId: state.activeUnitId, targetId: choice.targetId, ...(pressed ? { power: true } as const : {}) }
-        : { type: 'Shoot', attackerId: state.activeUnitId, targetId: choice.targetId, ...(pressed ? { aimed: true } as const : {}) },
-    );
+    if (!choice || !myTurn || state.phase !== 'acting') return;
+    runPlan(pressed ? choice.pressed : choice.plain);
   };
 
   const cancelAttackChoice = useCallback(() => setAttackChoice(null), []);
+
+  // What hovering a hex would commit. Recreated only when the plans or the turn
+  // change, so the board keeps the same callback while the pointer moves.
+  const hoverPreview = useCallback(
+    (cell: Vec) => (acting ? previewFor(plans, cell) : null),
+    [acting, plans],
+  );
 
   const handleCellClick = (cell: Vec): void => {
     setAttackChoice(null);
     if (!myTurn) return;
     if (state.phase === 'acting' && state.activeUnitId) {
-      const legalMove = interaction.moveTargets.some((t) => t.x === cell.x && t.y === cell.y);
-      if (legalMove) client.send({ type: 'Move', unitId: state.activeUnitId, to: cell });
+      // One click commits the whole chain, however many actions it spends.
+      const plan = plans.byCell.get(vecKey(cell));
+      if (plan) runPlan(plan);
       return;
     }
     if (state.phase === 'awaitingActivation') setSelectedUnitId(null);
@@ -145,11 +199,21 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
   // the selection; E ends the activation, which is otherwise the most-clicked
   // button on the screen. The attack menu owns Escape while it is open.
   useEffect(() => {
-    if (!myTurn) return;
+    // Also bound mid-chain, where `myTurn` is false, so Escape can stop it.
+    if (!myTurn && !planning) return;
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+
+      // A chain in flight can be called off; the unit keeps the actions the
+      // remaining legs would have spent.
+      if (e.key === 'Escape' && runnerRef.current?.running) {
+        e.preventDefault();
+        runnerRef.current.cancel();
+        return;
+      }
+      if (!myTurn) return;
 
       if (state.phase === 'acting') {
         // The attack menu is a question waiting on an answer; let it have the keyboard.
@@ -173,7 +237,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [myTurn, state.phase, selectedUnitId, interaction, attackChoice, client]);
+  }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, client]);
 
   // A menu left open when the turn moves on has nothing left to answer.
   useEffect(() => {
@@ -190,10 +254,10 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     <div className="game">
       <BoardCanvas
         state={shown.state}
-        moveTargets={myTurn && state.phase === 'acting' ? interaction.moveTargets : []}
-        attackTargetIds={
-          myTurn && state.phase === 'acting' ? [...interaction.attackTargetIds, ...interaction.shootTargetIds] : []
-        }
+        reach={acting ? plans.reach : []}
+        attackTargetIds={acting ? plans.strikeNowIds : []}
+        approachTargetIds={acting ? plans.approachIds : []}
+        previewFor={hoverPreview}
         selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
         selectedUnitId={selectedUnitId}
         interactive={myTurn}

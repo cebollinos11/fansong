@@ -49,6 +49,42 @@ describe('PresentationQueue', () => {
     expect(log).toEqual(['present a', 'finish a idle']);
   });
 
+  describe('whenIdle', () => {
+    it('resolves at once when nothing is playing', async () => {
+      const { q } = setup();
+      await expect(q.whenIdle()).resolves.toBeUndefined();
+    });
+
+    it('waits until the last item has settled', async () => {
+      const { q, log } = setup();
+      let woke = false;
+      q.push('a');
+      q.push('b');
+      void q.whenIdle().then(() => {
+        woke = true;
+      });
+
+      q.played(500);
+      await vi.advanceTimersByTimeAsync(600);
+      // 'a' is done but 'b' is now playing, so the queue is not idle yet.
+      expect(log).toContain('present b');
+      expect(woke).toBe(false);
+
+      q.played(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(woke).toBe(true);
+    });
+
+    it('resolves rather than hanging when the queue is disposed', async () => {
+      const { q } = setup();
+      q.push('a');
+      const waiting = q.whenIdle();
+      q.dispose();
+      await expect(waiting).resolves.toBeUndefined();
+      await expect(q.whenIdle()).resolves.toBeUndefined();
+    });
+  });
+
   it('ignores a report with nothing presented, and stops when disposed', () => {
     const { q, log } = setup();
     q.played(100);
