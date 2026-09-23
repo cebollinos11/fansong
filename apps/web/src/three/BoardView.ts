@@ -131,6 +131,8 @@ const CAMERA_STILL = 0.25; // a move shorter than this (world units of travel + 
 const AFTERMATH_HOLD_MS = 450; // how long a blow's result is held in close-up before pulling back out
 const RIDE_MAX_SPAN = 4; // longest shot (world units) the camera rides along with; beyond it, it holds the wide framing
 const RIDE_MIN_MS = 150; // shots that reach their target faster than this are too quick to ride
+const SELECT_PAN_STEPS = 12; // halvings used to find the shortest pan that brings a pick into frame
+const SELECT_PAN_SLACK = 0.12; // extra fraction of that pan, so the pick isn't left on the margin
 const FOCUS_LEAD_MS = 220; // how long before a camera move its units start pulsing
 const FOCUS_PULSE_MS = 700;
 const COMBAT_CARD_HOLD_MS = 600; // how long a blow's dice cards stay up after their outcome, before the strike
@@ -138,6 +140,11 @@ const COMBAT_SPAN_MARGIN = 2.2; // how much of the close-up the two combatants t
 const COMBAT_MIN_SPAN = 5; // world units kept in view (~5 hexes), however close the pair stand
 const COMBAT_MAX_ZOOM = 0.45; // never closer than this fraction of the opening framing
 const SHOT_LEAD_MS = 260; // swing to the shooter before it looses its missile
+
+// The opening shot: the camera starts on the deployed warbands rather than the
+// bare table, so the fight — not the empty ground around it — fills the view.
+const START_MIN_SPAN = 8; // world units kept in view (~8 hexes), however tightly they're deployed
+const START_FIT_STEPS = 18; // halvings used to find the closest framing that still holds every unit
 
 // Camera limits: stay above the table, and never tip over the top into a flip.
 const CAMERA_MIN_POLAR = 0.12; // radians from straight down
@@ -304,8 +311,16 @@ export class BoardView {
   private playerView: { target: THREE.Vector3; dist: number } | null = null;
   /** Whether the player could act at the last update, to spot the moment they can again. */
   private wasInteractive = false;
-  /** The distance the board was first framed at; combat never pulls further out than this. */
+  /** The selection the camera has already answered, so a pick is panned to once. */
+  private pannedTo: string | null = null;
+  /** The distance of the opening shot (see {@link positionCamera}); combat never pulls further out than this. */
   private homeDist = 0;
+  /**
+   * The opening shot and the units it was fitted to, while it still stands: a
+   * canvas that changes shape re-fits it (see {@link refitOpening}), until the
+   * player moves the camera or the first blow plays.
+   */
+  private opening: { points: THREE.Vector3[]; target: THREE.Vector3; dist: number } | null = null;
   /** Dev aid: `?animSpeed=0.25` plays animations at quarter speed. */
   private readonly animSpeed = import.meta.env.DEV
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
@@ -360,6 +375,7 @@ export class BoardView {
       this.cam = null;
       this.planned = null;
       this.restoreDist = null;
+      this.opening = null;
     });
     this.controls.addEventListener('end', () => this.rememberPlayerView());
 
@@ -421,7 +437,7 @@ export class BoardView {
     }
 
     this.buildFeatures(state.board);
-    if (resized) this.positionCamera();
+    if (resized) this.positionCamera(state);
   }
 
   /** Remove the tiles and feature meshes of a previously built board. */
@@ -543,6 +559,7 @@ export class BoardView {
     // The moment the player can act again, give them back the view they set.
     if (vm.interactive && !this.wasInteractive) this.returnToPlayerView();
     this.wasInteractive = vm.interactive;
+    this.panToSelected(vm.selectedUnitId);
   }
 
   /**
@@ -554,6 +571,7 @@ export class BoardView {
    * Returns how long (ms from now) until the batch has played out.
    */
   animateEvents(events: GameEvent[]): number {
+    this.opening = null; // the units are about to leave the deployment it was fitted to
     let t = Math.min(MAX_QUEUE_MS, Math.max(0, this.busyUntil - this.now));
     // Every camera move in this batch is planned from where the last one leaves
     // off, starting from where the camera actually is (or is already heading).
@@ -808,10 +826,15 @@ export class BoardView {
    * less of a move in).
    */
   private closeUp(span: number): number {
-    const fov = (this.camera.fov * Math.PI) / 180;
-    const fit = Math.max(span, COMBAT_MIN_SPAN) / 2 / (Math.tan(fov / 2) * Math.min(1, this.camera.aspect));
+    const fit = this.fitDistance(Math.max(span, COMBAT_MIN_SPAN));
     const nearest = Math.max(this.controls.minDistance, this.homeDist * COMBAT_MAX_ZOOM);
     return THREE.MathUtils.clamp(fit, nearest, this.homeDist);
+  }
+
+  /** The view distance at which `span` world units across the ground fill the view. */
+  private fitDistance(span: number): number {
+    const fov = (this.camera.fov * Math.PI) / 180;
+    return span / 2 / (Math.tan(fov / 2) * Math.min(1, this.camera.aspect));
   }
 
   /** Where the camera will be once everything already scheduled has played out. */
@@ -851,6 +874,42 @@ export class BoardView {
     this.planned = { target: new THREE.Vector3(target.x, 0, target.z), dist: dist ?? from.dist };
     this.at(at, () => this.moveCamera(target, dist, dur));
     return dur;
+  }
+
+  /**
+   * A unit the player has just picked to command belongs in front of them: if it
+   * isn't comfortably in view (it, and the dice card about to appear over its
+   * head), pan the pivot toward it — but only as far as it takes to clear the
+   * margin, so the rest of the board stays roughly where they left it. Only the
+   * pivot moves, so their zoom is untouched, and the pan is on their behalf: it
+   * becomes the framing they get back once the activation has played out.
+   */
+  private panToSelected(id: string | null): void {
+    if (id === this.pannedTo) return;
+    this.pannedTo = id;
+    if (id === null || this.cameraMode === 'off' || this.downPos) return;
+    const obj = this.units.get(id);
+    if (!obj || obj.fade) return;
+    const point = obj.group.position.clone();
+    const from = this.plannedCamera();
+    if (this.inView([point], from)) return;
+    // How far along the line from the pivot to the unit's own hex the pivot has
+    // to slide. The unit only comes further into frame as it goes, so halve onto
+    // the shortest one that works; 1 (the unit dead centre) always does.
+    const flat = new THREE.Vector3(point.x, 0, point.z);
+    let lo = 0; // known to leave it out of frame
+    let hi = 1;
+    for (let i = 0; i < SELECT_PAN_STEPS; i++) {
+      const mid = (lo + hi) / 2;
+      if (this.inView([point], { target: from.target.clone().lerp(flat, mid), dist: from.dist })) hi = mid;
+      else lo = mid;
+    }
+    const target = from.target.clone().lerp(flat, Math.min(1, hi + SELECT_PAN_SLACK));
+    const travel = target.distanceTo(from.target);
+    if (travel < CAMERA_STILL) return;
+    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + travel * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
+    this.playerView = { target: target.clone(), dist: from.dist };
+    this.moveCamera(target, null, dur);
   }
 
   /** Glide back to the framing the player set for themselves, if they've been moved off it. */
@@ -1755,22 +1814,89 @@ export class BoardView {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.refitOpening();
   }
 
-  private positionCamera(): void {
+  /**
+   * Set the opening shot, at the fixed viewing angle: the pivot on the middle of
+   * the deployed units and close enough in that they fill the view (see
+   * {@link startView}), falling back to the whole table when nothing is deployed
+   * (the editor). The player can still pull out past the table — that wider
+   * framing sets the zoom limit — but this is what "Reset view" gives back, and
+   * what combat close-ups zoom in from.
+   */
+  private positionCamera(state: GameState): void {
     // Frame the full hex footprint (in world units), not the cell counts.
     const spanX = HEX_COL_STEP * (this.width - 1) + 2 * HEX_SIZE;
     const spanZ = HEX_ROW_STEP * (this.height - 1 + 0.5) + 2 * HEX_SIZE;
     const span = Math.max(spanX, spanZ);
     this.camera.position.set(0, span * 0.95, spanZ * 0.62 + 3);
     this.controls.target.set(0, 0, 0);
-    const home = this.camera.position.length();
-    this.homeDist = home;
-    this.playerView = { target: new THREE.Vector3(), dist: home };
+    const table = this.camera.position.length();
     this.controls.minDistance = 3;
-    this.controls.maxDistance = home * 1.8;
+    this.controls.maxDistance = table * 1.8;
+    // Swing the same viewing angle onto the units: only the pivot and the
+    // distance move, so the board is never seen from an angle it wasn't built for.
+    const points = state.units.filter((u) => !u.dead).map((u) => this.unitWorld(u.pos));
+    const start = this.startView(points);
+    if (start) {
+      const dir = this.camera.position.clone().normalize();
+      this.controls.target.copy(start.target);
+      this.camera.position.copy(start.target).addScaledVector(dir, start.dist);
+    }
+    this.homeDist = start ? start.dist : table;
+    this.playerView = { target: this.controls.target.clone(), dist: this.homeDist };
+    this.opening = start ? { points, ...start } : null;
     this.controls.update();
     this.controls.saveState();
+  }
+
+  /**
+   * A canvas that changes shape (the window resized, a phone turned) frames a
+   * different amount of ground, so re-fit the opening shot to it — but only
+   * while that shot is still what's on screen. Once the player has moved the
+   * camera, or the fighting has started and the units have left the deployment
+   * it was fitted to, the view is no longer ours to set.
+   */
+  private refitOpening(): void {
+    const open = this.opening;
+    if (!open || this.cam || this.downPos) return;
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    if (this.controls.target.distanceTo(open.target) > 0.01 || Math.abs(dist - open.dist) > 0.01) return;
+    const start = this.startView(open.points);
+    if (!start) return;
+    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    this.controls.target.copy(start.target);
+    this.camera.position.copy(start.target).addScaledVector(dir, start.dist);
+    this.homeDist = start.dist;
+    this.playerView = { target: start.target.clone(), dist: start.dist };
+    this.opening = { points: open.points, ...start };
+    this.controls.update();
+    this.controls.saveState();
+  }
+
+  /**
+   * Where to stand so every living unit is in view: the pivot in the middle of
+   * them, and the closest distance that still holds them all — which pulls back
+   * out again when a wide deployment would otherwise run off the edges of the
+   * canvas. Null when nothing is deployed.
+   */
+  private startView(points: THREE.Vector3[]): { target: THREE.Vector3; dist: number } | null {
+    if (points.length === 0) return null;
+    const target = new THREE.Box3().setFromPoints(points).getCenter(new THREE.Vector3()).setY(0);
+    // Stand as close as the units allow, judged by the same test the follow
+    // camera uses (every unit, and the dice card over its head, comfortably
+    // inside the frame) so the opening shot isn't one the first blow has to pan
+    // away from. Fit is monotonic in the distance, so halve the range onto it.
+    let lo = Math.max(this.controls.minDistance, this.fitDistance(START_MIN_SPAN)); // may be too close
+    let hi = this.controls.maxDistance; // as far out as the player could zoom
+    if (lo >= hi || !this.inView(points, { target, dist: hi })) return { target, dist: hi };
+    for (let i = 0; i < START_FIT_STEPS; i++) {
+      const mid = (lo + hi) / 2;
+      if (this.inView(points, { target, dist: mid })) hi = mid;
+      else lo = mid;
+    }
+    return { target, dist: hi };
   }
 
   /** A unit's point `height` above its base, in container pixels (null when behind the camera). */
