@@ -18,6 +18,35 @@ describe('annihilation', () => {
   });
 });
 
+describe('guard badge', () => {
+  it('badges a guarding unit even with no game mode in play', () => {
+    const s = match(undefined);
+    const before = modeMarkingsKey(s);
+    const unit = s.units[0]!;
+    unit.guarding = true;
+    expect(unitBadges(s)).toEqual({ [unit.id]: 'guard' });
+    expect(modeMarkingsKey(s)).not.toBe(before);
+
+    unit.guarding = false;
+    expect(unitBadges(s)).toEqual({});
+  });
+
+  it('drops the badge once the unit is dead, without needing guarding cleared', () => {
+    const s = match(undefined);
+    const unit = s.units[0]!;
+    unit.guarding = true;
+    unit.dead = true;
+    expect(unitBadges(s)).toEqual({});
+  });
+
+  it('lets a King (or flag carrier) keep its own badge over Guard', () => {
+    const s = match('kill-the-king');
+    const [k0, k1] = s.mode!.kings!;
+    s.units.find((u) => u.id === k0)!.guarding = true;
+    expect(unitBadges(s)).toEqual({ [k0]: 'crown', [k1]: 'crown' });
+  });
+});
+
 describe('kill-the-king', () => {
   it('names both Kings and crowns them while alive', () => {
     const s = match('kill-the-king');

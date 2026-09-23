@@ -101,7 +101,16 @@ export function modeMarkers(state: GameState): BoardMarker[] {
   return out;
 }
 
-/** Unit badges: a crown over each living King, a flag over each carrier (the flag's owner colour). */
+/**
+ * Unit badges: a crown over each living King, a flag over each carrier (the
+ * flag's owner colour), and — regardless of game mode — a shield over any
+ * living unit currently holding a Guard stance. The ring already tints for
+ * selection/attack-target state and can't be trusted to show Guard on its own
+ * (a unit flagged as an attack target loses its guard-coloured ring), so the
+ * badge is the one indicator that survives every other highlight. King and
+ * flag take the slot first on the rare unit that is also guarding — one badge
+ * per unit — since those mark the objective itself.
+ */
 export function unitBadges(state: GameState): Record<string, UnitBadge> {
   const m = state.mode;
   const out: Record<string, UnitBadge> = {};
@@ -111,18 +120,27 @@ export function unitBadges(state: GameState): Record<string, UnitBadge> {
   m?.flags?.forEach((flag, p) => {
     if (flag.carrier) out[flag.carrier] = p === 0 ? 'flag-0' : 'flag-1';
   });
+  for (const u of state.units) {
+    if (u.guarding && !u.dead && !out[u.id]) out[u.id] = 'guard';
+  }
   return out;
 }
 
 /**
  * A string that changes exactly when the mode's board markings do, so the
- * board redraws overlays and markers only then (the state is cloned per command).
+ * board redraws overlays and markers only then (the state is cloned per
+ * command). Guarding units feed the Guard badge in every mode, not just this
+ * one's own objectives, so their ids are folded in regardless of `state.mode`.
  */
 export function modeMarkingsKey(state: GameState): string {
   const m = state.mode;
-  if (!m) return gameMode(state);
+  const guards = state.units
+    .filter((u) => u.guarding && !u.dead)
+    .map((u) => u.id)
+    .join(',');
+  if (!m) return `${gameMode(state)};${guards}`;
   const cell = (v: Vec) => `${v.x},${v.y}`;
   const flags = m.flags?.map((f) => `${cell(f.at)}:${f.carrier ?? ''}`).join('|') ?? '';
   const kings = m.kings?.map((id) => `${id}:${unitById(state, id)?.dead ? 1 : 0}`).join('|') ?? '';
-  return `${m.mode};${flags};${kings}`;
+  return `${m.mode};${flags};${kings};${guards}`;
 }

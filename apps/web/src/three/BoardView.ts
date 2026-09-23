@@ -44,8 +44,8 @@ export interface BoardViewModel {
   markingsKey?: string;
 }
 
-/** A badge over a unit: a crown (King), or player 0's / player 1's carried flag. */
-export type UnitBadge = 'crown' | 'flag-0' | 'flag-1';
+/** A badge over a unit: a crown (King), player 0's / player 1's carried flag, or a Guard stance. */
+export type UnitBadge = 'crown' | 'flag-0' | 'flag-1' | 'guard';
 
 /** A marker standing on a hex. */
 export interface BoardMarker {
@@ -1769,6 +1769,18 @@ export class BoardView {
       g.lineTo(56, 50);
       g.closePath();
       g.fillStyle = CROWN_COLOR;
+      g.fill();
+      g.stroke();
+    } else if (kind === 'guard') {
+      g.beginPath();
+      g.moveTo(32, 6);
+      g.lineTo(54, 14);
+      g.lineTo(54, 32);
+      g.quadraticCurveTo(54, 50, 32, 60);
+      g.quadraticCurveTo(10, 50, 10, 32);
+      g.lineTo(10, 14);
+      g.closePath();
+      g.fillStyle = `#${GUARD_COLOR.toString(16).padStart(6, '0')}`;
       g.fill();
       g.stroke();
     } else {
