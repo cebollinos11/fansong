@@ -209,6 +209,7 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
                   ))}
                   <th title="Tough — the first would-be kill only knocks it down">Tough</th>
                   <th title="Guard — may take a stance that ripostes the first melee attacker">Guard</th>
+                  <th title="Big — +1 in melee against smaller foes, but +1 to anyone shooting it">Big</th>
                   <th>Pts</th>
                   <th />
                 </tr>
@@ -342,6 +343,9 @@ function UnitRow({
       </td>
       <td>
         <input type="checkbox" checked={unit.guard ?? false} aria-label="Guard" onChange={(e) => onChange(withTrait(unit, 'guard', e.target.checked))} />
+      </td>
+      <td>
+        <input type="checkbox" checked={unit.big ?? false} aria-label="Big" onChange={(e) => onChange(withTrait(unit, 'big', e.target.checked))} />
       </td>
       <td className="stats">{valid ? unitCost(unit) : '—'}</td>
       <td className="army-row-actions">

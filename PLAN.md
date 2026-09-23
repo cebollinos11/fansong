@@ -274,6 +274,11 @@ no rules — remove three.js and the game still runs in the CLI.
    - **Range bands & cover** — −1 beyond short range (`ceil(ranged / 2)`), −1
      for cover (`Board.inCover`: target in a forest, or the sight line only
      just grazing a blocker, detected by rounding edge ties the other way).
+   - **Big** — a `big` trait for models that tower over the rank and file: +1
+     in every melee against a non-Big foe (blows, ripostes and free hacks; two
+     Big models cancel out, and unlike high ground it survives a knockdown), and
+     +1 to anyone shooting it. Priced in `packages/content` and weighed by the
+     AI when it picks targets and presses attacks.
    - The AI avoids disengaging (a flat cost per standing adjacent foe), prefers
      short, clear shots and a short-range standoff, and ganging up. The golden
      replay was regenerated. Preset balance shifted (small warbands suffer

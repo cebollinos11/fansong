@@ -20,10 +20,17 @@ function name(state: GameState, id: string): string {
 
 /**
  * A combat score, noting the modifiers already included in it: a high-ground
- * bonus, then any penalties (e.g. `['outnumbered', 1]` reads "−1 outnumbered").
+ * bonus, then any other bonuses (e.g. `['size', 1]` reads "+1 size"), then any
+ * penalties (e.g. `['outnumbered', 1]` reads "−1 outnumbered").
  */
-function score(total: number, bonus: number | undefined, penalties: [string, number | undefined][] = []): string {
+function score(
+  total: number,
+  bonus: number | undefined,
+  penalties: [string, number | undefined][] = [],
+  bonuses: [string, number | undefined][] = [],
+): string {
   const notes = bonus ? [`+${bonus} high ground`] : [];
+  for (const [label, n] of bonuses) if (n) notes.push(`+${n} ${label}`);
   for (const [label, n] of penalties) if (n) notes.push(`−${n} ${label}`);
   return [`${total}`, ...notes].join(', ');
 }
@@ -63,15 +70,15 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves to (${e.to.x}, ${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]])}) ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered], ['power blow', e.powerPenalty]])}) → ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]], [['size', e.attackBig]])}) ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered], ['power blow', e.powerPenalty]], [['size', e.defenseBig]])}) → ${e.result}${gore(e)}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['long range', e.rangePenalty], ['cover', e.coverPenalty]])}) ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['aimed at', e.aimPenalty]])}) → ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['long range', e.rangePenalty], ['cover', e.coverPenalty]], [['big target', e.bigTarget]])}) ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['aimed at', e.aimPenalty]])}) → ${e.result}${gore(e)}`;
     case 'FreeHackResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]])}) takes a free hack at ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered]])}) → ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]], [['size', e.attackBig]])}) takes a free hack at ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered]], [['size', e.defenseBig]])}) → ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
     case 'GuardRiposte':
-      return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus, [['outnumbered', e.guardOutnumbered]])}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus, [['outnumbered', e.attackerOutnumbered]])}) → ${e.result === 'clash' ? 'attack goes through' : e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
+      return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus, [['outnumbered', e.guardOutnumbered]], [['size', e.guardBig]])}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus, [['outnumbered', e.attackerOutnumbered]], [['size', e.attackerBig]])}) → ${e.result === 'clash' ? 'attack goes through' : e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `  ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'NerveCheck':

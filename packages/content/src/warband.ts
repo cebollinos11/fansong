@@ -125,6 +125,7 @@ export function parseWarband(raw: unknown): Warband {
     if (u.ranged !== undefined) unit.ranged = num('ranged');
     if (u.tough === true) unit.tough = true;
     if (u.guard === true) unit.guard = true;
+    if (u.big === true) unit.big = true;
     if (typeof u.look === 'string') unit.look = u.look;
     return unit;
   });

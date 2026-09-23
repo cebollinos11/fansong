@@ -1,6 +1,8 @@
 import {
   adjacentEnemies,
   aliveUnits,
+  bigMeleeBonus,
+  bigTargetBonus,
   enemiesOf,
   flagAtBase,
   getLegalCommands,
@@ -68,11 +70,17 @@ function disengageCost(state: GameState, board: Board, unitId: string): number {
 /** Score cost per point a shot loses to range or cover — worth about one point of target Combat. */
 const SHOT_PENALTY_COST = 100;
 
-/** Range and cover penalties `shooter` would take shooting `target` from where it stands. */
+/**
+ * How far a shot at `target` from where `shooter` stands is stacked against it:
+ * range and cover, less the point a Big target hands the shooter. Negative means
+ * the shot is better than an unmodified one.
+ */
 function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit): number {
   const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
   const cover = board.inCover(shooter.pos, target.pos, (v) => occupied.has(vecKey(v))) ? 1 : 0;
-  return rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) + cover;
+  return (
+    rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) + cover - bigTargetBonus(target)
+  );
 }
 
 /**
@@ -98,12 +106,13 @@ function pressedEdge(worthIt: boolean, pressed: boolean): number {
   return pressed === worthIt ? PRESSED_EDGE : -PRESSED_EDGE;
 }
 
-/** How far the melee is stacked our way: our Combat less the foe's, both after outnumbering. */
+/** How far the melee is stacked our way: our Combat less the foe's, both after size and outnumbering. */
 function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
   return (
-    attacker.combat -
+    attacker.combat +
+    bigMeleeBonus(attacker, target) -
     outnumberedPenalty(state, attacker, board) -
-    (target.combat - outnumberedPenalty(state, target, board))
+    (target.combat + bigMeleeBonus(target, attacker) - outnumberedPenalty(state, target, board))
   );
 }
 

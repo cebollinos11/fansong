@@ -59,6 +59,7 @@ export const TRAIT_HELP = {
   ranged: 'Shoots at range, taking no return damage — but not while in melee',
   tough: 'The first would-be kill is downgraded to a knockdown',
   guard: 'May take a Guard action, meeting its next melee attacker with a riposte',
+  big: 'Head and shoulders above the rest: +1 in melee against smaller foes, but +1 to anyone shooting it',
 } as const;
 
 /** One of a unit's special abilities, as the inspector shows it. */
@@ -76,6 +77,7 @@ export function traitTags(unit: Pick<Unit, 'traits'>): TraitTag[] {
   if (unit.traits.ranged > 0) tags.push({ label: `Ranged ${unit.traits.ranged}`, help: TRAIT_HELP.ranged });
   if (unit.traits.tough) tags.push({ label: 'Tough', help: TRAIT_HELP.tough });
   if (unit.traits.guard) tags.push({ label: 'Guard', help: TRAIT_HELP.guard });
+  if (unit.traits.big) tags.push({ label: 'Big', help: TRAIT_HELP.big });
   return tags;
 }
 

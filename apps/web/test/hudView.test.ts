@@ -83,8 +83,8 @@ describe('warbandStatus', () => {
 });
 
 describe('traitTags', () => {
-  const traits = (over: Partial<{ ranged: number; tough: boolean; guard: boolean }>) => ({
-    traits: { ranged: 0, tough: false, guard: false, ...over },
+  const traits = (over: Partial<{ ranged: number; tough: boolean; guard: boolean; big: boolean }>) => ({
+    traits: { ranged: 0, tough: false, guard: false, big: false, ...over },
   });
 
   it('says nothing for a plain unit', () => {
@@ -93,16 +93,17 @@ describe('traitTags', () => {
   });
 
   it('names each ability, with the range spelled out', () => {
-    expect(traitTags(traits({ ranged: 4, tough: true, guard: true })).map((t) => t.label)).toEqual([
+    expect(traitTags(traits({ ranged: 4, tough: true, guard: true, big: true })).map((t) => t.label)).toEqual([
       'Ranged 4',
       'Tough',
       'Guard',
+      'Big',
     ]);
     expect(traitLine(traits({ tough: true }))).toBe('Tough');
   });
 
   it('explains what each ability does', () => {
-    for (const tag of traitTags(traits({ ranged: 2, tough: true, guard: true }))) {
+    for (const tag of traitTags(traits({ ranged: 2, tough: true, guard: true, big: true }))) {
       expect(tag.help.length).toBeGreaterThan(0);
     }
   });

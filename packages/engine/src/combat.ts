@@ -58,6 +58,12 @@ export const POWER_BLOW_PENALTY = 1;
 /** How much worse a target defends against an aimed shot (a two-action shot). */
 export const AIMED_SHOT_PENALTY = 1;
 
+/** How much a Big model's size is worth in a melee against a smaller foe. */
+export const BIG_MELEE_BONUS = 1;
+
+/** How much easier a Big model is to hit with a shot. */
+export const BIG_TARGET_BONUS = 1;
+
 /** Shooting penalty for a target beyond short range. */
 export const LONG_RANGE_PENALTY = 1;
 
@@ -72,6 +78,25 @@ export function shortRange(ranged: number): number {
 /** Range penalty for a shot at `distance` by a unit with reach `ranged`: 0 within short range, else {@link LONG_RANGE_PENALTY}. */
 export function rangePenalty(ranged: number, distance: number): number {
   return distance > shortRange(ranged) ? LONG_RANGE_PENALTY : 0;
+}
+
+/**
+ * The Big bonus for one side of a melee: {@link BIG_MELEE_BONUS} when it is Big
+ * and its opponent is not, else 0. Unlike high ground it does not care whether
+ * the model is on its feet — a fallen giant is still a giant — and two Big
+ * models cancel out. Applies to every melee: blows, ripostes and free hacks.
+ */
+export function bigMeleeBonus(unit: Pick<Unit, 'traits'>, opponent: Pick<Unit, 'traits'>): number {
+  return unit.traits.big && !opponent.traits.big ? BIG_MELEE_BONUS : 0;
+}
+
+/**
+ * The bonus a shot gets for its target's size: {@link BIG_TARGET_BONUS} against
+ * a Big target, else 0. Size makes a model easier to hit whoever is shooting, so
+ * — unlike the melee bonus — a Big shooter gets it too.
+ */
+export function bigTargetBonus(target: Pick<Unit, 'traits'>): number {
+  return target.traits.big ? BIG_TARGET_BONUS : 0;
 }
 
 function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {

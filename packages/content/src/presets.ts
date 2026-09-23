@@ -6,7 +6,8 @@ import type { Warband } from './warband.js';
  * {@link DEFAULT_RULES} (<= 200 pts); the preset test asserts that invariant.
  *
  * Design intent (so the AI-vs-AI matchups stay interesting):
- *  - iron-wardens : slow, tough, disciplined — wins by grinding; a Tough bulwark.
+ *  - iron-wardens : slow, tough, disciplined — wins by grinding; a Big, Tough
+ *    bulwark that towers over the rank and file (and draws every arrow).
  *  - ashfang-raiders : fast and fragile — wins by reaching you first (melee only).
  *  - free-company : a balanced generalist baseline with a ranged skirmisher.
  *  - hollow-watch : a defensive garrison showcasing all three M5 traits
@@ -20,7 +21,7 @@ export const PRESETS: Record<string, Warband> = {
     units: [
       { name: 'Warden-Captain', quality: 2, combat: 4, move: 3 },
       { name: 'Ironguard', quality: 3, combat: 3, move: 3 },
-      { name: 'Bulwark', quality: 3, combat: 3, move: 3, tough: true },
+      { name: 'Bulwark', quality: 3, combat: 3, move: 3, tough: true, big: true },
       { name: 'Sentinel', quality: 3, combat: 3, move: 3 },
       { name: 'Halberdier', quality: 4, combat: 3, move: 3 },
       { name: 'Levy', quality: 4, combat: 2, move: 3 },

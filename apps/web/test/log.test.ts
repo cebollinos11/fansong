@@ -42,6 +42,45 @@ describe('objective log text', () => {
   });
 });
 
+describe('combat log modifiers', () => {
+  it('notes the size behind a score, alongside the penalties', () => {
+    const s = match(undefined);
+    const [a, d] = [s.units.find((u) => u.owner === 0)!, s.units.find((u) => u.owner === 1)!];
+    const line = formatEvent(s, {
+      type: 'AttackResolved',
+      attackerId: a.id,
+      targetId: d.id,
+      attackDie: 4,
+      defenseDie: 2,
+      attackScore: 8,
+      defenseScore: 4,
+      attackBig: 1,
+      defenseOutnumbered: 1,
+      result: 'defenderKnockedDown',
+    });
+    expect(line).toBe(
+      `  ${a.name} (8, +1 size) attacks ${d.name} (4, −1 outnumbered) → defenderKnockedDown`,
+    );
+  });
+
+  it('credits a shot at a Big target', () => {
+    const s = match(undefined);
+    const [a, d] = [s.units.find((u) => u.owner === 0)!, s.units.find((u) => u.owner === 1)!];
+    const line = formatEvent(s, {
+      type: 'ShotResolved',
+      attackerId: a.id,
+      targetId: d.id,
+      attackDie: 5,
+      defenseDie: 1,
+      attackScore: 8,
+      defenseScore: 4,
+      bigTarget: 1,
+      result: 'defenderRecoiled',
+    });
+    expect(line).toContain(`${a.name} (8, +1 big target) shoots`);
+  });
+});
+
 describe('log tones and callout', () => {
   it('emphasises scoring, flag and game-over lines only', () => {
     expect(eventTone({ type: 'ScoreChanged', player: 0, points: 1, scores: [1, 0] })).toBe('objective');

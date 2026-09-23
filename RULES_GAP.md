@@ -100,8 +100,8 @@ These are implemented, so they are not listed again below:
 3. **Target priority** *(revised, optional)*. A model touching several enemies
    must attack a standing one before a fallen one.
 4. **Other combat modifiers** *(verify)*: +1 when mounted against models on
-   foot, +1 when bigger than the opponent, −1 when unarmed, and a penalty for
-   fighting from water or difficult terrain.
+   foot, −1 when unarmed, and a penalty for fighting from water or difficult
+   terrain. The size bonus is done — see **Big** in §7.
 5. ✅ **Done — power blow.** *Implemented:* an attack may be declared as a
    **power blow**, costing 2 actions instead of 1, and the defender rolls at −1.
    It is a separate legal command (`Attack` with `power: true`), so a unit is
@@ -208,8 +208,15 @@ short paraphrase, and the exact effects should be checked before building one.
 - **Magic Weapon:** can hurt creatures that only magic can harm.
 - **Assassin:** a bonus when attacking a model that is already engaged, or from
   surprise.
-- **Big / Huge / Gargantuan:** size bonuses in melee. They are easier to shoot,
-  cannot hide, and more attackers fit around them.
+- ✅ **Done — Big.** *Implemented:* a `big` trait. A Big model scores +1 in
+  every melee against a non-Big opponent — attacking, defending, riposting and
+  hacking at a leaver alike — and two Big models cancel out. Unlike high ground
+  the bonus survives a knockdown (`attackBig` / `defenseBig` / `guardBig` /
+  `attackerBig` event fields). Anyone shooting a Big model gets +1 (`bigTarget`),
+  a Big shooter included. *Original:* size bonuses in melee; they are easier to
+  shoot, cannot hide, and more attackers fit around them.
+- **Huge / Gargantuan:** the larger sizes, and the hiding and contact-capacity
+  parts of size, are still open.
 - **Mounted:** +1 against models on foot.
 - **Rabble:** a cheap mob model that fights better next to friends of its own
   kind *(revised)*.

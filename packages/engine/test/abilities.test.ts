@@ -310,3 +310,129 @@ describe('Guard trait and riposte', () => {
     expect(sawProceed).toBe(true);
   });
 });
+
+// --- Big (size) ---------------------------------------------------------------
+
+describe('Big trait', () => {
+  /** A duel between two neighbours, either of which may be Big. */
+  function melee(attackerBig: boolean, defenderBig: boolean): GameConfig {
+    return {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Ogre', quality: 3, combat: 3, big: attackerBig, pos: { x: 1, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, big: defenderBig, pos: { x: 2, y: 1 } }],
+      ],
+    };
+  }
+
+  const resolveAttack = (config: GameConfig, attackerId: string, targetId: string) => {
+    const { events } = reduce(acting(config, attackerId), { type: 'Attack', attackerId, targetId });
+    return events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+  };
+
+  it('adds +1 to a Big attacker swinging at a smaller foe', () => {
+    const big = resolveAttack(melee(true, false), 'p0u0', 'p1u0');
+    const plain = resolveAttack(melee(false, false), 'p0u0', 'p1u0');
+    expect(big.attackBig).toBe(1);
+    expect(big.attackScore - plain.attackScore).toBe(1);
+    expect(big.defenseBig).toBeUndefined();
+    expect(big.defenseScore).toBe(plain.defenseScore);
+  });
+
+  it('adds +1 to a Big defender fighting off a smaller attacker', () => {
+    const big = resolveAttack(melee(false, true), 'p0u0', 'p1u0');
+    const plain = resolveAttack(melee(false, false), 'p0u0', 'p1u0');
+    expect(big.defenseBig).toBe(1);
+    expect(big.defenseScore - plain.defenseScore).toBe(1);
+    expect(big.attackBig).toBeUndefined();
+  });
+
+  it('cancels out when both are Big — neither towers over the other', () => {
+    const both = resolveAttack(melee(true, true), 'p0u0', 'p1u0');
+    const plain = resolveAttack(melee(false, false), 'p0u0', 'p1u0');
+    expect(both.attackBig).toBeUndefined();
+    expect(both.defenseBig).toBeUndefined();
+    expect(both.attackScore).toBe(plain.attackScore);
+    expect(both.defenseScore).toBe(plain.defenseScore);
+  });
+
+  it('still counts for a Big model that has been knocked down', () => {
+    // Size is not a stance: unlike high ground it survives going to the ground.
+    const config = melee(false, true);
+    const s = acting(config, 'p0u0');
+    s.units.find((u) => u.id === 'p1u0')!.knockedDown = true;
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const atk = events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+    expect(atk.defenseBig).toBe(1);
+  });
+
+  it("carries into a guard's riposte", () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Ogre-Guard', quality: 3, combat: 3, guard: true, big: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Raider', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const s = acting(config, 'p1u0');
+    s.units.find((u) => u.id === 'p0u0')!.guarding = true;
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+    const rip = events.find((e) => e.type === 'GuardRiposte') as Extract<GameEvent, { type: 'GuardRiposte' }>;
+    expect(rip.guardBig).toBe(1);
+    expect(rip.attackerBig).toBeUndefined();
+  });
+
+  it('carries into a free hack at a foe leaving contact', () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 6, height: 3 },
+      warbands: [
+        [{ name: 'Runner', quality: 3, combat: 3, move: 3, pos: { x: 1, y: 1 } }],
+        [{ name: 'Ogre', quality: 3, combat: 3, big: true, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const { events } = reduce(acting(config, 'p0u0'), { type: 'Move', unitId: 'p0u0', to: { x: 0, y: 1 } });
+    const hack = events.find((e) => e.type === 'FreeHackResolved') as Extract<
+      GameEvent,
+      { type: 'FreeHackResolved' }
+    >;
+    expect(hack.attackBig).toBe(1);
+    expect(hack.defenseBig).toBeUndefined();
+  });
+
+  /** A bow at range 3 against a target that may be Big. */
+  function shot(targetBig: boolean, shooterBig = false): GameConfig {
+    return {
+      seed: 5,
+      board: { width: 9, height: 3 },
+      warbands: [
+        [{ name: 'Bow', quality: 3, combat: 2, ranged: 4, big: shooterBig, pos: { x: 0, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, big: targetBig, pos: { x: 2, y: 1 } }],
+      ],
+    };
+  }
+
+  const resolveShot = (config: GameConfig) => {
+    const { events } = reduce(acting(config, 'p0u0'), { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' });
+    return events.find((e) => e.type === 'ShotResolved') as Extract<GameEvent, { type: 'ShotResolved' }>;
+  };
+
+  it('gives a shooter +1 against a Big target', () => {
+    const big = resolveShot(shot(true));
+    const plain = resolveShot(shot(false));
+    expect(big.bigTarget).toBe(1);
+    expect(big.attackScore - plain.attackScore).toBe(1);
+    expect(plain.bigTarget).toBeUndefined();
+  });
+
+  it('gives that +1 to a Big shooter too — size only cancels in melee', () => {
+    const bigOnBig = resolveShot(shot(true, true));
+    expect(bigOnBig.bigTarget).toBe(1);
+  });
+
+  it('gives a Big shooter nothing for its own size', () => {
+    expect(resolveShot(shot(false, true)).bigTarget).toBeUndefined();
+  });
+});

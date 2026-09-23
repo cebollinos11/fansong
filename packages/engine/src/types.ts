@@ -29,6 +29,14 @@ export interface UnitTraits {
    * and losing a riposte never costs the guard anything.
    */
   guard: boolean;
+  /**
+   * Big: a head taller than the rank and file. It fights every melee against a
+   * non-Big opponent at +1 — attacking, defending, riposting or hacking at a
+   * leaver alike — and, being an unmissable target, is shot at by *anyone* at
+   * +1. Two Big models fighting each other are evenly matched, so neither gets
+   * the melee bonus.
+   */
+  big: boolean;
 }
 
 export interface Unit {
@@ -189,6 +197,10 @@ export type GameEvent =
       attackOutnumbered?: number;
       /** Outnumbering penalty subtracted from the defense score; present only when non-zero. */
       defenseOutnumbered?: number;
+      /** Big bonus added to the attack score (a Big attacker facing a non-Big foe); present only when non-zero. */
+      attackBig?: number;
+      /** Big bonus added to the defense score (a Big defender facing a non-Big foe); present only when non-zero. */
+      defenseBig?: number;
       /** Power-blow penalty subtracted from the defense score; present only on a two-action attack. */
       powerPenalty?: number;
       result: CombatResult;
@@ -211,6 +223,8 @@ export type GameEvent =
       rangePenalty?: number;
       /** Cover penalty subtracted from the attack score; present only when non-zero. */
       coverPenalty?: number;
+      /** Big-target bonus added to the attack score (the target is Big); present only when non-zero. */
+      bigTarget?: number;
       /** Aimed-shot penalty subtracted from the defense score; present only on a two-action shot. */
       aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
@@ -239,6 +253,10 @@ export type GameEvent =
       attackOutnumbered?: number;
       /** Outnumbering penalty subtracted from the defense score; present only when non-zero. */
       defenseOutnumbered?: number;
+      /** Big bonus added to the hacker's score (Big, and the leaver is not); present only when non-zero. */
+      attackBig?: number;
+      /** Big bonus added to the leaver's score (Big, and the hacker is not); present only when non-zero. */
+      defenseBig?: number;
       result: CombatResult;
       /** Present when the kill tripled the leaver's score (a gruesome kill, which spreads fear). */
       gruesome?: true;
@@ -260,6 +278,10 @@ export type GameEvent =
       guardOutnumbered?: number;
       /** Outnumbering penalty subtracted from the attacker's score; present only when non-zero. */
       attackerOutnumbered?: number;
+      /** Big bonus added to the guard's score (Big, and the attacker is not); present only when non-zero. */
+      guardBig?: number;
+      /** Big bonus added to the attacker's score (Big, and the guard is not); present only when non-zero. */
+      attackerBig?: number;
       result: CombatResult;
       /** Present when the riposte's kill tripled the attacker's score (a gruesome kill). */
       gruesome?: true;

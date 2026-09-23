@@ -1,6 +1,8 @@
 import { makeHexGrid, vecKey, type Board, type Vec } from './board.js';
 import {
   AIMED_SHOT_PENALTY,
+  bigMeleeBonus,
+  bigTargetBonus,
   canStrikeBack,
   computeCombatResult,
   highGroundBonus,
@@ -303,7 +305,9 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   const defenseBonus = highGroundBonus(board, target, attacker);
   const range = rangePenalty(attacker.traits.ranged, d);
   const cover = board.inCover(attacker.pos, target.pos, (v) => occ.has(vecKey(v))) ? COVER_PENALTY : 0;
-  const attackScore = attacker.combat + attackDie + attackBonus - range - cover;
+  // A Big target is hard to miss, whoever is shooting at it.
+  const bigTarget = bigTargetBonus(target);
+  const attackScore = attacker.combat + attackDie + attackBonus + bigTarget - range - cover;
   const defenseScore = target.combat + defenseDie + defenseBonus - aimPenalty;
 
   const targetRecoil = recoilHex(s, board, target, attacker);
@@ -324,7 +328,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     defenseDie,
     attackScore,
     defenseScore,
-    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, aimPenalty }),
+    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, aimPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -363,6 +367,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     defenseBonus: attackerBonus,
     attackOutnumbered: guardOutnumbered,
     defenseOutnumbered: attackerOutnumbered,
+    attackBig: guardBig,
+    defenseBig: attackerBig,
   } = roll.mods;
   const attackerRecoil = recoilHex(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6. And a guard never
@@ -393,7 +399,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackerDie,
     guardScore,
     attackerScore,
-    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered }),
+    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered, guardBig, attackerBig }),
     result,
     ...(gruesome ? { gruesome } : {}),
     prevented,
@@ -459,6 +465,8 @@ interface MeleeMods {
   defenseBonus: number;
   attackOutnumbered: number;
   defenseOutnumbered: number;
+  attackBig: number;
+  defenseBig: number;
 }
 
 /** One opposed melee: both dice, both scores, and the modifiers behind them. */
@@ -480,8 +488,9 @@ function rollPair(s: GameState): { attackDie: number; defenseDie: number } {
 
 /**
  * Roll one opposed melee exchange (mutates `s.rngState`). Each side scores its
- * Combat plus its die and any high ground, less what it is outnumbered by;
- * `defensePenalty` (a power blow's) comes off the defender on top. Every melee
+ * Combat plus its die, any high ground and any edge its size gives it, less what
+ * it is outnumbered by; `defensePenalty` (a power blow's) comes off the defender
+ * on top. Every melee
  * in the game — an ordinary blow, a guard's riposte, a free hack — is scored
  * exactly this way, so none of them can drift from the others.
  */
@@ -498,12 +507,15 @@ function rollMelee(
     defenseBonus: highGroundBonus(board, defender, aggressor),
     attackOutnumbered: outnumberedPenalty(s, aggressor, board),
     defenseOutnumbered: outnumberedPenalty(s, defender, board),
+    attackBig: bigMeleeBonus(aggressor, defender),
+    defenseBig: bigMeleeBonus(defender, aggressor),
   };
   return {
     attackDie,
     defenseDie,
-    attackScore: aggressor.combat + attackDie + mods.attackBonus - mods.attackOutnumbered,
-    defenseScore: defender.combat + defenseDie + mods.defenseBonus - mods.defenseOutnumbered - defensePenalty,
+    attackScore: aggressor.combat + attackDie + mods.attackBonus + mods.attackBig - mods.attackOutnumbered,
+    defenseScore:
+      defender.combat + defenseDie + mods.defenseBonus + mods.defenseBig - mods.defenseOutnumbered - defensePenalty,
     mods,
   };
 }

@@ -22,6 +22,8 @@ export interface Profile {
   tough?: boolean;
   /** Guard: may riposte the first melee attacker. */
   guard?: boolean;
+  /** Big: +1 in melee against smaller foes, and +1 to anyone shooting it. */
+  big?: boolean;
 }
 
 /** Inclusive `[min, max]` legal range for each stat. */
@@ -56,6 +58,12 @@ export const COST_WEIGHTS = {
   tough: 12,
   /** Flat surcharge for the Guard trait (a defensive riposte). */
   guard: 10,
+  /**
+   * Flat surcharge for the Big trait. It is worth about a point of Combat in
+   * melee (and only against smaller foes), but it hands every shooter a point
+   * back, so it is priced well under {@link COST_WEIGHTS.perCombat}.
+   */
+  big: 3,
 };
 
 function inRange(value: number, [min, max]: readonly [number, number]): boolean {
@@ -81,7 +89,7 @@ export function statErrors(p: Profile): string[] {
  * untrusted profiles should run {@link statErrors} first. Always >= 1.
  */
 export function unitCost(p: Profile): number {
-  const { base, perQuality, perCombat, perMove, perRanged, tough, guard } = COST_WEIGHTS;
+  const { base, perQuality, perCombat, perMove, perRanged, tough, guard, big } = COST_WEIGHTS;
   const qualityMax = STAT_BOUNDS.quality[1]; // worst quality = cheapest
   const cost =
     base +
@@ -90,6 +98,7 @@ export function unitCost(p: Profile): number {
     (p.move - BASELINE_MOVE) * perMove +
     (p.ranged ?? 0) * perRanged +
     (p.tough ? tough : 0) +
-    (p.guard ? guard : 0);
+    (p.guard ? guard : 0) +
+    (p.big ? big : 0);
   return Math.max(1, cost);
 }

@@ -28,15 +28,15 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves (${e.from.x},${e.from.y}) -> (${e.to.x},${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['outnumbered', e.attackOutnumbered && -e.attackOutnumbered], ['foe outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['foe power-blown', e.powerPenalty && -e.powerPenalty]])} -> ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['outnumbered', e.attackOutnumbered && -e.attackOutnumbered], ['size', e.attackBig], ['foe outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['foe size', e.defenseBig], ['foe power-blown', e.powerPenalty && -e.powerPenalty]])} -> ${e.result}${gore(e)}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['long range', e.rangePenalty && -e.rangePenalty], ['cover', e.coverPenalty && -e.coverPenalty], ['foe aimed at', e.aimPenalty && -e.aimPenalty]])} -> ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['big target', e.bigTarget], ['long range', e.rangePenalty && -e.rangePenalty], ['cover', e.coverPenalty && -e.coverPenalty], ['foe aimed at', e.aimPenalty && -e.aimPenalty]])} -> ${e.result}${gore(e)}`;
     case 'FreeHackResolved':
-      return `  ${name(state, e.attackerId)} takes a free hack at ${name(state, e.targetId)} leaving contact: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['leaver outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered]])} -> ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} takes a free hack at ${name(state, e.targetId)} leaving contact: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['size', e.attackBig], ['leaver outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['leaver size', e.defenseBig]])} -> ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
     case 'GuardRiposte':
-      return `  ⚔ ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)}: ${e.guardScore} vs ${e.attackerScore} (d${e.guardDie}/d${e.attackerDie}) -> ${e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
+      return `  ⚔ ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)}: ${e.guardScore} vs ${e.attackerScore} (d${e.guardDie}/d${e.attackerDie})${mods([['size', e.guardBig], ['foe size', e.attackerBig]])} -> ${e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `    ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'NerveCheck':

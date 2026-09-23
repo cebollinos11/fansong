@@ -110,6 +110,33 @@ describe('opposed roll cards', () => {
     ]);
   });
 
+  it('shows size as its own modifier on both sides of a melee', () => {
+    const r = describeCombat(attack({ attackScore: 8, attackBig: 1 }));
+    expect(r.a.mods).toEqual([
+      { label: 'Combat', value: 3 },
+      { label: 'Size', value: 1 },
+    ]);
+    expect(r.b.mods).toEqual([{ label: 'Combat', value: 3 }]);
+  });
+
+  it('credits a shot with the size of a Big target', () => {
+    const shot: GameEvent = {
+      type: 'ShotResolved',
+      attackerId: 'a',
+      targetId: 'd',
+      attackDie: 5,
+      defenseDie: 1,
+      attackScore: 8,
+      defenseScore: 4,
+      bigTarget: 1,
+      result: 'defenderRecoiled',
+    };
+    expect(describeCombat(shot).a.mods).toEqual([
+      { label: 'Combat', value: 2 },
+      { label: 'Big target', value: 1 },
+    ]);
+  });
+
   it('lists long range and cover on a shot', () => {
     const shot: GameEvent = {
       type: 'ShotResolved',

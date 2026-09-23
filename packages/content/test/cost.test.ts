@@ -46,6 +46,11 @@ describe('unitCost', () => {
       COST_WEIGHTS.tough + COST_WEIGHTS.guard,
     );
   });
+
+  it('charges for Big, but under a point of Combat — it cuts both ways', () => {
+    expect(unitCost({ ...baseline, big: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.big);
+    expect(COST_WEIGHTS.big).toBeLessThan(COST_WEIGHTS.perCombat);
+  });
 });
 
 describe('statErrors', () => {

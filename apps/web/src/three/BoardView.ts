@@ -84,6 +84,7 @@ const SHOT_COLOR = 0x9fd0ff; // ranged tracer, for a shooter without a missile i
 const BASE_RADIUS = 0.36;
 const BASE_HEIGHT = 0.06;
 const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
+const BIG_SCALE = 1.3; // how much taller a Big unit's cutout stands (see the Big trait)
 const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so the steep view doesn't squash it
 
 // Knocked down: a sprite with a down pose (a frame of its death clip) holds it;
@@ -205,6 +206,8 @@ interface UnitObj {
   /** Flips the cutout to face screen-left. */
   mirror: THREE.Group;
   sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  /** Cutout size multiplier: {@link BIG_SCALE} for a Big unit, else 1. */
+  size: number;
   base: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   /** Mode badge sprite (shares a texture per badge kind); hidden when none. */
@@ -523,7 +526,7 @@ export class BoardView {
         obj = undefined;
       }
       if (!obj) {
-        obj = this.createUnit(u.id, u.owner, u.look ?? u.name);
+        obj = this.createUnit(u.id, u.owner, u.look ?? u.name, u.traits.big);
         this.units.set(u.id, obj);
         obj.group.position.copy(this.unitWorld(u.pos));
       }
@@ -1045,7 +1048,7 @@ export class BoardView {
 
   // --- internals ----------------------------------------------------------
 
-  private createUnit(id: string, owner: 0 | 1, name: string): UnitObj {
+  private createUnit(id: string, owner: 0 | 1, name: string, big = false): UnitObj {
     const group = new THREE.Group();
 
     const base = new THREE.Mesh(
@@ -1102,6 +1105,7 @@ export class BoardView {
     const downPose = DOWN_POSES[spriteName] ?? null;
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
     const obj: UnitObj = {
+      size: big ? BIG_SCALE : 1,
       owner,
       name,
       spriteName,
@@ -1146,7 +1150,9 @@ export class BoardView {
         sprite.material.map = map;
         sprite.material.needsUpdate = true;
         sprite.geometry.translate(0.5 - atlas.anchorX / atlas.cellW, atlas.anchorY / atlas.cellH - 0.5, 0);
-        sprite.scale.set(atlas.cellW * SPRITE_PX, atlas.cellH * SPRITE_PX, 1);
+        // A Big model is drawn a head taller; the cutout's anchor is its feet,
+        // so it grows upward and stays planted on its hex.
+        sprite.scale.set(atlas.cellW * SPRITE_PX * obj.size, atlas.cellH * SPRITE_PX * obj.size, 1);
         obj.shownImage = null; // force the current frame onto the new map
         sprite.visible = true;
       },
@@ -1439,7 +1445,7 @@ export class BoardView {
     if (!stars.visible || !atlas) return;
     // Ride just over the head of whatever is drawn, crouched or posed.
     const rect = atlas.frames.get(obj.shownImage ?? '') ?? atlas.frames.get(obj.animator.base);
-    const head = (atlas.anchorY - (rect?.top ?? 0)) * SPRITE_PX * obj.tilt.scale.y;
+    const head = (atlas.anchorY - (rect?.top ?? 0)) * SPRITE_PX * obj.size * obj.tilt.scale.y;
     stars.position.set(0, head * Math.cos(SPRITE_LEAN) + STAR_CLEARANCE, -head * Math.sin(SPRITE_LEAN));
     const spin = (this.now / 1000) * STAR_SPIN;
     stars.children.forEach((star, i) => {

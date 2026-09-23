@@ -39,7 +39,7 @@ export function withStat(unit: WarbandUnit, stat: EditableStat, value: number): 
 }
 
 /** A copy of `unit` with a trait switched on or off (off drops the key). */
-export function withTrait(unit: WarbandUnit, trait: 'tough' | 'guard', on: boolean): WarbandUnit {
+export function withTrait(unit: WarbandUnit, trait: 'tough' | 'guard' | 'big', on: boolean): WarbandUnit {
   const next = { ...unit };
   if (on) next[trait] = true;
   else delete next[trait];

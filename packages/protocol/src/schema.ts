@@ -125,6 +125,7 @@ export const unitTraitsSchema = z
     ranged: z.number().int().min(0),
     tough: z.boolean(),
     guard: z.boolean(),
+    big: z.boolean(),
   })
   .strict();
 
@@ -233,6 +234,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseBonus: z.number().optional(),
     attackOutnumbered: z.number().optional(),
     defenseOutnumbered: z.number().optional(),
+    attackBig: z.number().optional(),
+    defenseBig: z.number().optional(),
     powerPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -249,6 +252,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseBonus: z.number().optional(),
     rangePenalty: z.number().optional(),
     coverPenalty: z.number().optional(),
+    bigTarget: z.number().optional(),
     aimPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -265,6 +269,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseBonus: z.number().optional(),
     attackOutnumbered: z.number().optional(),
     defenseOutnumbered: z.number().optional(),
+    attackBig: z.number().optional(),
+    defenseBig: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
   }),
@@ -281,6 +287,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     attackerBonus: z.number().optional(),
     guardOutnumbered: z.number().optional(),
     attackerOutnumbered: z.number().optional(),
+    guardBig: z.number().optional(),
+    attackerBig: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
     prevented: z.boolean(),
@@ -338,6 +346,7 @@ export const unitSpecSchema = z
     ranged: stat(STAT_BOUNDS.ranged).optional(),
     tough: z.boolean().optional(),
     guard: z.boolean().optional(),
+    big: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -389,6 +398,7 @@ export const warbandUnitSchema = z
     ranged: z.number().int().optional(),
     tough: z.boolean().optional(),
     guard: z.boolean().optional(),
+    big: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

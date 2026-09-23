@@ -106,9 +106,14 @@ describe('parseWarband', () => {
     const w = parseWarband({
       name: 'X',
       extra: 1,
-      units: [{ name: 'A', quality: 3, combat: 3, move: 3, tough: false, guard: true, look: 'Longbow', hp: 9 }],
+      units: [
+        { name: 'A', quality: 3, combat: 3, move: 3, tough: false, guard: true, big: true, look: 'Longbow', hp: 9 },
+      ],
     });
-    expect(w).toEqual({ name: 'X', units: [{ name: 'A', quality: 3, combat: 3, move: 3, guard: true, look: 'Longbow' }] });
+    expect(w).toEqual({
+      name: 'X',
+      units: [{ name: 'A', quality: 3, combat: 3, move: 3, guard: true, big: true, look: 'Longbow' }],
+    });
   });
 
   it('rejects malformed input with a friendly error', () => {

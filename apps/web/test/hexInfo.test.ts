@@ -49,12 +49,14 @@ describe('describeHex', () => {
     const armed: GameState = {
       ...state,
       units: state.units.map((u) =>
-        u.id === plain.id ? { ...u, guarding: true, traits: { ranged: 4, tough: true, guard: true } } : u,
+        u.id === plain.id
+          ? { ...u, guarding: true, traits: { ranged: 4, tough: true, guard: true, big: true } }
+          : u,
       ),
     };
     const lines = describeHex(armed, plain.pos)?.lines ?? [];
     expect(lines).toContain(`${plain.name} (P${plain.owner}) · on guard`);
-    expect(lines.at(-1)).toBe('Ranged 4 · Tough · Guard');
+    expect(lines.at(-1)).toBe('Ranged 4 · Tough · Guard · Big');
   });
 
   it('is null off the board', () => {
