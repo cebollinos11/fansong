@@ -654,10 +654,12 @@ function advanceTurn(s: GameState, events: GameEvent[]): void {
 
 function endRound(s: GameState, events: GameEvent[]): void {
   if (scoreZones(s, events) || checkRoundLimit(s, events)) return;
+  // Whoever activated last this round goes second next round.
+  const lastActivated = s.active;
   s.round += 1;
   for (const u of s.units) u.activatedThisRound = false;
   s.benched = [false, false];
-  s.initiativeLeader = other(s.initiativeLeader);
+  s.initiativeLeader = other(lastActivated);
   s.active = s.initiativeLeader;
   s.phase = 'awaitingActivation';
   events.push({ type: 'RoundEnded', round: s.round, nextLeader: s.initiativeLeader });

@@ -34,17 +34,40 @@ describe('round structure and initiative', () => {
     expect(g.active).toBe(0);
   });
 
-  it('alternates the leader each round (whoever went second leads next)', () => {
+  it('keeps the leader when play simply alternates (whoever activated last goes second next)', () => {
     let s = duel();
     expect(s.initiativeLeader).toBe(0);
 
+    // P0 activates first, P1 last -> P1 goes second next round, so P0 leads again.
     s = playRound(s);
     expect(s.round).toBe(2);
-    expect(s.initiativeLeader).toBe(1);
-    expect(s.active).toBe(1);
+    expect(s.initiativeLeader).toBe(0);
+    expect(s.active).toBe(0);
 
     s = playRound(s);
     expect(s.round).toBe(3);
+    expect(s.initiativeLeader).toBe(0);
+    expect(s.active).toBe(0);
+  });
+
+  it('flips the leader when a turnover leaves the other player activating last', () => {
+    // P0 turns over immediately (guaranteed 2 failures) and is benched; P1
+    // activates solo and so is the one who activates last this round.
+    let s = createGame({
+      seed: 5,
+      board: { width: 8, height: 2 },
+      warbands: [
+        [{ name: 'Ash', quality: 7, combat: 3, pos: { x: 0, y: 0 } }],
+        [{ name: 'Bee', quality: 1, combat: 3, pos: { x: 7, y: 0 } }],
+      ],
+    });
+    s = reduce(s, { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 2 }).state;
+    expect(s.benched[0]).toBe(true);
+    s = reduce(s, { type: 'ChooseActivation', unitId: 'p1u0', diceCount: 1 }).state;
+    s = reduce(s, { type: 'EndActivation' }).state;
+
+    // P1 activated last -> P1 goes second next round, so P0 leads.
+    expect(s.round).toBe(2);
     expect(s.initiativeLeader).toBe(0);
     expect(s.active).toBe(0);
   });

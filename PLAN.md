@@ -21,7 +21,7 @@ round.
 | MVP scope | **Core loop first** — activation, the alternating turnover twist, movement, opposed combat, kill/knockdown, minimal morale |
 | AI opponent | **Heuristic only** (pure, deterministic; doubles as the test bot) |
 | Content | **Point-buy builder + a few original preset warbands** |
-| Initiative | **Alternate each round** — whoever went second last round leads next |
+| Initiative | **Alternate each round** — whoever activated last goes second next round |
 | Terrain & modes | **Sparse, optional** per-hex elevation/features and objective modes (M7) — the default flat annihilation game is unchanged |
 
 ---
@@ -99,7 +99,7 @@ decides push-back / knockdown / kill. Minimal morale in v1.
 ## 5. The activation ruleset (v1) — the twist
 
 - **Round structure:** players alternate activating **one unit per activation**.
-  Initiative **alternates each round** (whoever went second last round leads).
+  Initiative **alternates each round** (whoever activated last goes second next round).
 - **Activation:** pick an un-activated unit, commit **1–3 dice**, roll each vs
   Quality (die ≥ Q = success). Successes fuel actions (move/attack).
   *With 1 die you can never turn over* (turnover needs 2+ failures) — the safe,
@@ -110,7 +110,8 @@ decides push-back / knockdown / kill. Minimal morale in v1.
 - **Solo continuation:** if the opponent is benched or out of units, you keep
   activating one unit at a time until you turn over or run out.
 - **Round end:** when no player has a unit that is both un-activated and not
-  benched. Flags reset; initiative flips.
+  benched. Flags reset; whoever activated last this round goes second next
+  round (so the other player leads).
 
 This is isolated in one `resolveActivation` / turn-controller module so the rule
 stays swappable, and is fully covered by headless CLI + AI-vs-AI tests.

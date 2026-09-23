@@ -70,11 +70,11 @@ describe('the turnover twist', () => {
     s = reduce(s, { type: 'ChooseActivation', unitId: 'p1u1', diceCount: 1 }).state;
     const res = reduce(s, { type: 'EndActivation' });
 
-    // P1 exhausted, P0 benched -> new round, initiative flips to P1.
+    // P1 activated last (twice, solo) -> P1 goes second next round, P0 leads.
     expect(res.events.some((e) => e.type === 'RoundEnded')).toBe(true);
     expect(res.state.round).toBe(2);
-    expect(res.state.initiativeLeader).toBe(1);
-    expect(res.state.active).toBe(1);
+    expect(res.state.initiativeLeader).toBe(0);
+    expect(res.state.active).toBe(0);
     expect(res.state.benched).toEqual([false, false]);
   });
 });
