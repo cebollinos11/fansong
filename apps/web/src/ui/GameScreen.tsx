@@ -141,13 +141,31 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
   };
 
-  // Keyboard shortcut: with a unit selected, 1/2/3 commits that many dice.
+  // Keyboard: 1/2/3 commit that many dice to the selected unit and Escape drops
+  // the selection; E ends the activation, which is otherwise the most-clicked
+  // button on the screen. The attack menu owns Escape while it is open.
   useEffect(() => {
-    if (!myTurn || state.phase !== 'awaitingActivation' || !selectedUnitId) return;
+    if (!myTurn) return;
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+
+      if (state.phase === 'acting') {
+        // The attack menu is a question waiting on an answer; let it have the keyboard.
+        if (attackChoice) return;
+        if (e.key.toLowerCase() === 'e' && interaction.canEndActivation) {
+          e.preventDefault();
+          client.send({ type: 'EndActivation' });
+        }
+        return;
+      }
+      if (state.phase !== 'awaitingActivation' || !selectedUnitId) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedUnitId(null);
+        return;
+      }
       const diceCount = Number(e.key);
       if (!interaction.diceChoices.includes(diceCount)) return;
       e.preventDefault();
@@ -155,7 +173,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [myTurn, state.phase, selectedUnitId, interaction, client]);
+  }, [myTurn, state.phase, selectedUnitId, interaction, attackChoice, client]);
 
   // A menu left open when the turn moves on has nothing left to answer.
   useEffect(() => {

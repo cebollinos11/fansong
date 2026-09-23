@@ -34,10 +34,27 @@ describe('describeHex', () => {
     expect(describeHex(state, { x: 0, y: 0 })?.lines).toContain('Blocked — impassable, blocks sight');
   });
 
-  it('names a living unit standing on the hex', () => {
+  it('names a living unit standing on the hex, with its stats', () => {
     const u = state.units[0]!;
     const info = describeHex(state, u.pos);
-    expect(info?.lines.at(-1)).toBe(`${u.name} (P${u.owner})`);
+    expect(info?.lines).toContain(`${u.name} (P${u.owner})`);
+    expect(info?.lines).toContain(`Q${u.quality} · C${u.combat} · M${u.move}`);
+  });
+
+  it('spells out the abilities that change how a unit must be fought', () => {
+    const plain = state.units[0]!;
+    // A unit with no abilities says nothing extra.
+    expect(describeHex(state, plain.pos)?.lines.at(-1)).toBe(`Q${plain.quality} · C${plain.combat} · M${plain.move}`);
+
+    const armed: GameState = {
+      ...state,
+      units: state.units.map((u) =>
+        u.id === plain.id ? { ...u, guarding: true, traits: { ranged: 4, tough: true, guard: true } } : u,
+      ),
+    };
+    const lines = describeHex(armed, plain.pos)?.lines ?? [];
+    expect(lines).toContain(`${plain.name} (P${plain.owner}) · on guard`);
+    expect(lines.at(-1)).toBe('Ranged 4 · Tough · Guard');
   });
 
   it('is null off the board', () => {

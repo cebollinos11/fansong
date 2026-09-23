@@ -65,11 +65,19 @@ function fearCheck(s: GameState, events: GameEvent[], victim: Unit, board: Board
   }
 }
 
+/**
+ * The living count at or below which `owner`'s warband breaks (see
+ * {@link ROUT_FRACTION}). Exported so a UI can warn a player how close to
+ * collapse a side is without re-deriving the rule.
+ */
+export function routThreshold(state: GameState, owner: Owner): number {
+  return Math.floor(state.startCount[owner] * ROUT_FRACTION);
+}
+
 function routCheck(s: GameState, events: GameEvent[], owner: Owner): void {
   if (s.broken[owner]) return;
   const start = s.startCount[owner];
-  const threshold = Math.floor(start * ROUT_FRACTION);
-  if (start <= 0 || livingCount(s, owner) > threshold) return;
+  if (start <= 0 || livingCount(s, owner) > routThreshold(s, owner)) return;
 
   s.broken[owner] = true;
   events.push({ type: 'WarbandBroken', player: owner });

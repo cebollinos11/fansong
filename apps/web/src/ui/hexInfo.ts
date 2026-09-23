@@ -1,4 +1,5 @@
 import { vecKey, type GameState, type Vec } from '@fansong/engine';
+import { traitLine } from './hudView.js';
 
 // Pure hex-tooltip text (no DOM), so it can be unit-tested.
 
@@ -25,6 +26,13 @@ export function describeHex(state: GameState, cell: Vec): HexInfo | null {
   if (board.blocked.includes(key)) lines.push('Blocked — impassable, blocks sight');
   if (terrain?.feature) lines.push(FEATURE_TEXT[terrain.feature]);
   const unit = state.units.find((u) => !u.dead && vecKey(u.pos) === key);
-  if (unit) lines.push(`${unit.name} (P${unit.owner})${unit.knockedDown ? ' · knocked down' : ''}`);
+  if (unit) {
+    const marks = [unit.knockedDown ? 'knocked down' : null, unit.guarding ? 'on guard' : null].filter(Boolean);
+    lines.push([`${unit.name} (P${unit.owner})`, ...marks].join(' · '));
+    lines.push(`Q${unit.quality} · C${unit.combat} · M${unit.move}`);
+    // The abilities decide how the unit must be fought, so the tooltip names them.
+    const traits = traitLine(unit);
+    if (traits) lines.push(traits);
+  }
   return { title: `Hex (${cell.x}, ${cell.y})`, lines };
 }

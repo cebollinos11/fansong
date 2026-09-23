@@ -262,6 +262,24 @@ button:disabled {
   cursor: not-allowed;
 }
 
+/* Every keyboard hint on the screen looks the same. */
+kbd {
+  margin-left: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* The default focus ring all but vanishes against this palette, which leaves
+   keyboard and switch users with no idea where they are. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 button.primary {
   display: block;
   width: 100%;
@@ -783,6 +801,18 @@ button.ghost {
   font-size: 12px;
 }
 
+/* The rout is coming (amber), and it has landed (red). */
+.score .warn {
+  color: #ffc83c;
+  font-size: 12px;
+}
+
+.score .broken {
+  color: var(--p1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .turn-panel {
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -813,16 +843,6 @@ button.ghost {
 
 .dice-row .dice {
   flex: 1;
-}
-
-.dice-row .dice kbd {
-  margin-left: 4px;
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 11px;
-  color: var(--muted);
 }
 
 button.secondary {
@@ -873,9 +893,40 @@ button.secondary {
   font-variant-numeric: tabular-nums;
 }
 
+.inspector-owner {
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.inspector-owner.p0 {
+  color: var(--p0);
+}
+
+.inspector-owner.p1 {
+  color: var(--p1);
+}
+
+.inspector-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.trait {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  cursor: help;
+}
+
 .inspector-flags {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
   margin-top: 8px;
 }
 
@@ -888,6 +939,10 @@ button.secondary {
 
 .flag.down {
   background: rgba(255, 200, 60, 0.2);
+}
+
+.flag.guarding {
+  background: rgba(61, 220, 132, 0.2);
 }
 
 .flag.dead {
@@ -1088,15 +1143,6 @@ button.secondary {
 .attack-menu .ghost {
   justify-content: center;
   font-size: 12px;
-}
-
-.attack-menu .ghost kbd {
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  font-family: inherit;
-  font-size: 11px;
-  color: var(--muted);
 }
 
 .gameover-actions {

@@ -1,7 +1,8 @@
-import { aliveUnits, unitById, type GameState, type Owner } from '@fansong/engine';
+import { unitById, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
 import { isAiSeat, type MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
+import { seatLabel, traitTags, warbandStatus } from './hudView.js';
 import { latestCallout, type LogEntry } from './log.js';
 import { modeHud } from './modeView.js';
 
@@ -21,12 +22,6 @@ interface Props {
   onActivate: (diceCount: number) => void;
   onEndActivation: () => void;
   onExit: () => void;
-}
-
-function seatLabel(setup: MatchSetup, controlled: readonly Owner[], owner: Owner): string {
-  if (isAiSeat(setup, owner)) return 'AI';
-  if (controlled.includes(owner)) return 'You';
-  return 'Opponent';
 }
 
 /** A one-line connection banner for online play; null when there's nothing to say. */
@@ -64,20 +59,30 @@ export function Hud(props: Props): JSX.Element {
       {banner ? <div className="banner net">{banner}</div> : null}
 
       <div className="scoreline">
-        {([0, 1] as const).map((owner) => (
-          <div key={owner} className={`score p${owner}${state.active === owner && !gameOver ? ' active' : ''}`}>
-            <span className="score-name">
-              P{owner} · {seatLabel(setup, controlledSeats, owner)}
-            </span>
-            {mode?.scores ? (
-              <span key={mode.scores[owner]} className={`score-points${mode.scores[owner] > 0 ? ' pulse' : ''}`}>
-                {mode.scores[owner]} pts
+        {([0, 1] as const).map((owner) => {
+          const warband = warbandStatus(state, owner);
+          return (
+            <div key={owner} className={`score p${owner}${state.active === owner && !gameOver ? ' active' : ''}`}>
+              <span className="score-name">
+                P{owner} · {seatLabel(setup, controlledSeats, owner)}
               </span>
-            ) : null}
-            <span className="score-count">{aliveUnits(state, owner).length} alive</span>
-            {state.benched[owner] && !gameOver ? <span className="benched">benched</span> : null}
-          </div>
-        ))}
+              {mode?.scores ? (
+                <span key={mode.scores[owner]} className={`score-points${mode.scores[owner] > 0 ? ' pulse' : ''}`}>
+                  {mode.scores[owner]} pts
+                </span>
+              ) : null}
+              <span className="score-count">{warband.alive} alive</span>
+              {/* A rout is a sudden collapse; say it is coming, not just that it came. */}
+              {warband.breaksAt !== null && !gameOver ? (
+                <span className="warn" title={`This warband breaks when ${warband.breaksAt} or fewer are left`}>
+                  breaks at {warband.breaksAt}
+                </span>
+              ) : null}
+              {warband.broken ? <span className="broken">broken</span> : null}
+              {warband.benched && !gameOver ? <span className="benched">benched</span> : null}
+            </div>
+          );
+        })}
       </div>
 
       {callout?.tone === 'objective' ? (
@@ -135,7 +140,8 @@ export function Hud(props: Props): JSX.Element {
                     ))}
                   </div>
                   <p className="hint">
-                    More dice = more actions but higher turnover risk. One die can never turn over. Tip: press 1–3 to roll.
+                    More dice = more actions but higher turnover risk. One die can never turn over. Tip: press 1–3 to
+                    roll, <kbd>Esc</kbd> to pick a different unit.
                   </p>
                 </>
               ) : (
@@ -154,8 +160,13 @@ export function Hud(props: Props): JSX.Element {
                   ? ' With two actions in hand you can spend both on one power blow (or aimed shot) for −1 to the defender.'
                   : ''}
               </p>
-              <button className="secondary" disabled={!interaction.canEndActivation} onClick={props.onEndActivation}>
-                End activation
+              <button
+                className="secondary"
+                disabled={!interaction.canEndActivation}
+                title="Press E"
+                onClick={props.onEndActivation}
+              >
+                End activation <kbd>E</kbd>
               </button>
             </div>
           )}
@@ -181,16 +192,31 @@ export function Hud(props: Props): JSX.Element {
 function UnitInspector({ state, unitId }: { state: GameState; unitId: string | null }): JSX.Element | null {
   const u = unitId ? unitById(state, unitId) : null;
   if (!u) return null;
+  const traits = traitTags(u);
   return (
     <div className="inspector">
-      <h3>{u.name}</h3>
+      <h3>
+        {u.name} <span className={`inspector-owner p${u.owner}`}>P{u.owner}</span>
+      </h3>
       <div className="inspector-stats">
-        <span>Quality {u.quality}</span>
-        <span>Combat {u.combat}</span>
-        <span>Move {u.move}</span>
+        <span title="Activation dice succeed on this or higher — lower is better">Quality {u.quality}</span>
+        <span title="Added to the d6 in fights — higher is better">Combat {u.combat}</span>
+        <span title="Hexes per Move action">Move {u.move}</span>
       </div>
+      {/* Ranged, Tough and Guard change how a unit must be fought far more than
+          its stats do, so they are shown wherever a unit is described. */}
+      {traits.length > 0 ? (
+        <div className="inspector-traits">
+          {traits.map((t) => (
+            <span key={t.label} className="trait" title={t.help}>
+              {t.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="inspector-flags">
         {u.knockedDown ? <span className="flag down">knocked down</span> : null}
+        {u.guarding && !u.dead ? <span className="flag guarding">on guard</span> : null}
         {u.activatedThisRound ? <span className="flag">activated</span> : null}
         {u.dead ? <span className="flag dead">dead</span> : null}
       </div>
