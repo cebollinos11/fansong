@@ -58,6 +58,18 @@ export const UNIT_SPRITES: Record<string, string> = {
   'Skeleton Rider': 'undead-skeletal/rider.png',
   Deathblade: 'undead-skeletal/deathblade.png',
   'Death Knight': 'undead-skeletal/deathknight.png',
+
+  // Wild beasts and monsters — the wandering menagerie and the brute horde.
+  Falcon: 'monsters/falcon/falcon.png',
+  'Wild Wyvern': 'monsters/wyvern/wild-wyvern.png',
+  Bear: 'monsters/bear/bear.png',
+  Yeti: 'monsters/yeti.png',
+  'Giant Spider': 'monsters/spider.png',
+  'Giant Scorpion': 'monsters/scorpion/scorpion.png',
+  Wolf: 'monsters/wolf.png',
+  Boar: 'monsters/boar/woodland.png',
+  'Giant Rat': 'monsters/giant-rat.png',
+  Crocodile: 'monsters/croc/crocodile.png',
 };
 
 /**
@@ -75,6 +87,7 @@ export const DOWN_POSES: Record<string, string> = {
   'undead-skeletal/skeleton/skeleton.png': 'undead-skeletal/skeleton/skeleton-dying-2.png',
   'undead-skeletal/archer/archer.png': 'undead-skeletal/archer/archer-die2-2.png',
   'undead-skeletal/deathblade.png': 'undead-skeletal/deathblade-dying-2.png',
+  'monsters/giant-rat.png': 'monsters/giant-rat-die-1.png',
 };
 
 /** Used for any unit name without an entry above. */

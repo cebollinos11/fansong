@@ -21,6 +21,10 @@ import type { Warband } from './warband.js';
  *    by attrition: you must kill them, not just knock them over.
  *  - grave-knights : the skeletal elite — a mounted rider, a twin-blade, and a
  *    crowned commander, all Reassembling, all on the same average stat line.
+ *  - wild-menagerie : wandering beasts — a Flying falcon, a Guard-pincered
+ *    scorpion, a tough crocodile, and fast, fragile pack animals.
+ *  - monstrous-horde : the big brutes — a bear, a yeti and a giant (web-spitting)
+ *    spider, led into the sky by a Flying wyvern.
  */
 export const PRESETS: Record<string, Warband> = {
   'iron-wardens': {
@@ -100,6 +104,26 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Skeleton Rider', quality: 4, combat: 3, move: 3, reassembling: true },
       { name: 'Deathblade', quality: 4, combat: 3, move: 3, reassembling: true },
       { name: 'Death Knight', quality: 4, combat: 3, move: 3, reassembling: true },
+    ],
+  },
+  'wild-menagerie': {
+    name: 'Wild Menagerie',
+    units: [
+      { name: 'Falcon', quality: 4, combat: 2, move: 5, flying: true },
+      { name: 'Giant Scorpion', quality: 4, combat: 3, move: 4, guard: true },
+      { name: 'Crocodile', quality: 4, combat: 3, move: 4, tough: true },
+      { name: 'Wolf', quality: 4, combat: 2, move: 5 },
+      { name: 'Boar', quality: 4, combat: 3, move: 4 },
+      { name: 'Giant Rat', quality: 5, combat: 2, move: 4 },
+    ],
+  },
+  'monstrous-horde': {
+    name: 'Monstrous Horde',
+    units: [
+      { name: 'Wild Wyvern', quality: 3, combat: 4, move: 6, flying: true },
+      { name: 'Bear', quality: 4, combat: 4, move: 3, big: true },
+      { name: 'Yeti', quality: 3, combat: 5, move: 3, big: true },
+      { name: 'Giant Spider', quality: 3, combat: 3, move: 3, ranged: 2, big: true },
     ],
   },
 };

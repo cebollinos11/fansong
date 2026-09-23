@@ -2416,6 +2416,458 @@
    "hitMs": 126
   }
  },
+ "monsters/bear/bear.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/bear/bear-bite1.png",
+      150
+     ],
+     [
+      "monsters/bear/bear-bite2.png",
+      200
+     ],
+     [
+      "monsters/bear/bear-bite3.png",
+      150
+     ],
+     [
+      "monsters/bear/bear-bite4.png",
+      150
+     ],
+     [
+      "monsters/bear/bear-bite5.png",
+      170
+     ],
+     [
+      "monsters/bear/bear-bite6.png",
+      230
+     ]
+    ],
+    "hitMs": 650
+   },
+   {
+    "frames": [
+     [
+      "monsters/bear/bear-claws1.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-claws2.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-claws3.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-claws4.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-claws5.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-claws6.png",
+      100
+     ]
+    ],
+    "hitMs": 400
+   },
+   {
+    "frames": [
+     [
+      "monsters/bear/bear-2claws1.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-2claws2.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-2claws3.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-2claws4.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-2claws5.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-2claws6.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-2claws7.png",
+      100
+     ],
+     [
+      "monsters/bear/bear-2claws8.png",
+      100
+     ]
+    ],
+    "hitMs": 400
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/bear/bear-defend1.png",
+     1
+    ],
+    [
+     "monsters/bear/bear-defend2.png",
+     250
+    ],
+    [
+     "monsters/bear/bear-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/bear/bear-defend1.png",
+     1
+    ],
+    [
+     "monsters/bear/bear-defend2.png",
+     250
+    ],
+    [
+     "monsters/bear/bear-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/boar/woodland.png": {
+  "move": {
+   "frames": [
+    [
+     "monsters/boar/woodland-moving.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/boar/woodland-bite1.png",
+      60
+     ],
+     [
+      "monsters/boar/woodland-bite2.png",
+      60
+     ],
+     [
+      "monsters/boar/woodland-bite3.png",
+      60
+     ],
+     [
+      "monsters/boar/woodland-bite4.png",
+      60
+     ],
+     [
+      "monsters/boar/woodland-bite5.png",
+      60
+     ],
+     [
+      "monsters/boar/woodland-bite6.png",
+      90
+     ],
+     [
+      "monsters/boar/woodland-bite7.png",
+      120
+     ],
+     [
+      "monsters/boar/woodland.png",
+      120
+     ]
+    ],
+    "hitMs": 390
+   },
+   {
+    "frames": [
+     [
+      "monsters/boar/woodland-charge1.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge2.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge3.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge2.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge1.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge2.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge3.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge4.png",
+      110
+     ],
+     [
+      "monsters/boar/woodland-charge5.png",
+      230
+     ]
+    ],
+    "hitMs": 600
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/boar/woodland-defend.png",
+     1
+    ],
+    [
+     "monsters/boar/woodland-defend2.png",
+     250
+    ],
+    [
+     "monsters/boar/woodland-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/boar/woodland-defend.png",
+     1
+    ],
+    [
+     "monsters/boar/woodland-defend2.png",
+     250
+    ],
+    [
+     "monsters/boar/woodland-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/croc/crocodile.png": {
+  "move": {
+   "frames": [
+    [
+     "monsters/croc/crocodile.png",
+     50
+    ]
+   ]
+  },
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/croc/crocodile-defend1.png",
+     1
+    ],
+    [
+     "monsters/croc/crocodile-defend2.png",
+     250
+    ],
+    [
+     "monsters/croc/crocodile-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/croc/crocodile-defend1.png",
+     1
+    ],
+    [
+     "monsters/croc/crocodile-defend2.png",
+     250
+    ],
+    [
+     "monsters/croc/crocodile-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/falcon/falcon.png": {
+  "move": {
+   "frames": [
+    [
+     "monsters/falcon/falcon.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/falcon/falcon-shadow.png",
+      800
+     ]
+    ],
+    "hitMs": 500
+   },
+   {
+    "frames": [
+     [
+      "monsters/falcon/falcon-shadow.png",
+      700
+     ]
+    ],
+    "hitMs": 400
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/falcon/falcon-hit1.png",
+     1
+    ],
+    [
+     "monsters/falcon/falcon-hit2.png",
+     250
+    ],
+    [
+     "monsters/falcon/falcon-hit1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/falcon/falcon-hit1.png",
+     1
+    ],
+    [
+     "monsters/falcon/falcon-hit2.png",
+     250
+    ],
+    [
+     "monsters/falcon/falcon-hit1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/giant-rat.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/giant-rat-attack-1.png",
+      100
+     ],
+     [
+      "monsters/giant-rat-attack-2.png",
+      100
+     ],
+     [
+      "monsters/giant-rat-attack-3.png",
+      100
+     ],
+     [
+      "monsters/giant-rat-attack-4.png",
+      100
+     ],
+     [
+      "monsters/giant-rat-attack-5.png",
+      100
+     ],
+     [
+      "monsters/giant-rat-attack-6.png",
+      100
+     ],
+     [
+      "monsters/giant-rat-attack-7.png",
+      100
+     ]
+    ],
+    "hitMs": 500
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/giant-rat-defend-1.png",
+     1
+    ],
+    [
+     "monsters/giant-rat-defend-2.png",
+     250
+    ],
+    [
+     "monsters/giant-rat-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/giant-rat-defend-1.png",
+     1
+    ],
+    [
+     "monsters/giant-rat-defend-2.png",
+     250
+    ],
+    [
+     "monsters/giant-rat-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "monsters/giant-rat-die-1.png",
+     100
+    ],
+    [
+     "monsters/giant-rat-die-2.png",
+     100
+    ],
+    [
+     "monsters/giant-rat-die-3.png",
+     100
+    ]
+   ]
+  }
+ },
  "monsters/gryphon.png": {
   "standing": {
    "frames": [
@@ -2537,6 +2989,542 @@
     ],
     [
      "monsters/gryphon-flying-5.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/scorpion/scorpion.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/scorpion/scorpion-pincer-1.png",
+      100
+     ],
+     [
+      "monsters/scorpion/scorpion-pincer-2.png",
+      100
+     ],
+     [
+      "monsters/scorpion/scorpion-pincer-3.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-pincer-4.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-pincer-5.png",
+      120
+     ],
+     [
+      "monsters/scorpion/scorpion-pincer-6.png",
+      120
+     ],
+     [
+      "monsters/scorpion/scorpion.png",
+      1
+     ]
+    ],
+    "hitMs": 240
+   },
+   {
+    "frames": [
+     [
+      "monsters/scorpion/scorpion-stinger-1.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-2.png",
+      100
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-3.png",
+      120
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-4.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-5.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-6.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-7.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-6.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-5.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-4.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion-stinger-1.png",
+      80
+     ],
+     [
+      "monsters/scorpion/scorpion.png",
+      1
+     ]
+    ],
+    "hitMs": 620
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/scorpion/scorpion-defend1.png",
+     1
+    ],
+    [
+     "monsters/scorpion/scorpion-defend2.png",
+     250
+    ],
+    [
+     "monsters/scorpion/scorpion-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/scorpion/scorpion-defend1.png",
+     1
+    ],
+    [
+     "monsters/scorpion/scorpion-defend2.png",
+     250
+    ],
+    [
+     "monsters/scorpion/scorpion-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/spider.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/spider-melee-1.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-2.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-3.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-4.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-5.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-6.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-7.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-8.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-9.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-10.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-11.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-12.png",
+      50
+     ],
+     [
+      "monsters/spider-melee-13.png",
+      50
+     ]
+    ],
+    "hitMs": 400
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "monsters/spider-ranged-1.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-2.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-3.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-4.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-5.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-6.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-7.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-3.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-2.png",
+      75
+     ],
+     [
+      "monsters/spider-ranged-1.png",
+      75
+     ]
+    ],
+    "hitMs": 400,
+    "missile": "projectiles/web.png",
+    "missileMs": 200
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/spider-melee-1.png",
+     1
+    ],
+    [
+     "monsters/spider-melee-2.png",
+     250
+    ],
+    [
+     "monsters/spider-melee-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/spider-melee-1.png",
+     1
+    ],
+    [
+     "monsters/spider-melee-2.png",
+     250
+    ],
+    [
+     "monsters/spider-melee-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/wolf.png": {
+  "move": {
+   "frames": [
+    [
+     "monsters/wolf-moving.png",
+     150
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/wolf.png",
+      100
+     ],
+     [
+      "monsters/wolf-attack.png",
+      200
+     ],
+     [
+      "monsters/wolf-moving.png",
+      250
+     ],
+     [
+      "monsters/wolf.png",
+      50
+     ]
+    ],
+    "hitMs": 350
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/wolf-defend-1.png",
+     1
+    ],
+    [
+     "monsters/wolf-defend-2.png",
+     250
+    ],
+    [
+     "monsters/wolf-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/wolf-defend-1.png",
+     1
+    ],
+    [
+     "monsters/wolf-defend-2.png",
+     250
+    ],
+    [
+     "monsters/wolf-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/wyvern/wild-wyvern.png": {
+  "move": {
+   "frames": [
+    [
+     "monsters/wyvern/wild-wyvern-fly-shadow.png",
+     800
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/wyvern/wild-wyvern-fly5.png",
+      70
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-fly6.png",
+      70
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-fly7.png",
+      90
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-fly6.png",
+      90
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-fly5.png",
+      80
+     ]
+    ],
+    "hitMs": 200
+   },
+   {
+    "frames": [
+     [
+      "monsters/wyvern/wild-wyvern-fly4.png",
+      100
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-fly5.png",
+      100
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-fly6.png",
+      200
+     ]
+    ],
+    "hitMs": 200
+   },
+   {
+    "frames": [
+     [
+      "monsters/wyvern/wild-wyvern-slam1.png",
+      95
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-slam2.png",
+      95
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-slam3.png",
+      95
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-slam4.png",
+      95
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-slam5.png",
+      120
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-slam1.png",
+      90
+     ],
+     [
+      "monsters/wyvern/wild-wyvern.png",
+      80
+     ]
+    ],
+    "hitMs": 500
+   },
+   {
+    "frames": [
+     [
+      "monsters/wyvern/wild-wyvern-bite1.png",
+      110
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-bite2.png",
+      120
+     ],
+     [
+      "monsters/wyvern/wild-wyvern-bite3.png",
+      140
+     ],
+     [
+      "monsters/wyvern/wild-wyvern.png",
+      110
+     ]
+    ],
+    "hitMs": 320
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/wyvern/wild-wyvern-fly-defend.png",
+     1
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly-defend2.png",
+     250
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/wyvern/wild-wyvern-fly-defend.png",
+     1
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly-defend2.png",
+     250
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "monsters/yeti.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/yeti-attack1.png",
+      100
+     ],
+     [
+      "monsters/yeti-attack2.png",
+      100
+     ],
+     [
+      "monsters/yeti-attack3.png",
+      250
+     ],
+     [
+      "monsters/yeti.png",
+      100
+     ]
+    ],
+    "hitMs": 300
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/yeti.png",
+     1
+    ],
+    [
+     "monsters/yeti-defend.png",
+     250
+    ],
+    [
+     "monsters/yeti.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/yeti.png",
+     1
+    ],
+    [
+     "monsters/yeti-defend.png",
+     250
+    ],
+    [
+     "monsters/yeti.png",
      1
     ]
    ],
