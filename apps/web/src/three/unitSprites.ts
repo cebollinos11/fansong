@@ -53,6 +53,11 @@ export const UNIT_SPRITES: Record<string, string> = {
   // Bonefield Legion — Reassembling undead skeletons that refuse to stay down.
   'Skeleton Infantry': 'undead-skeletal/skeleton/skeleton.png',
   'Skeleton Archer': 'undead-skeletal/archer/archer.png',
+
+  // Grave Knights — the skeletal elite: a rider, a twin-blade, and a crowned lord.
+  'Skeleton Rider': 'undead-skeletal/rider.png',
+  Deathblade: 'undead-skeletal/deathblade.png',
+  'Death Knight': 'undead-skeletal/deathknight.png',
 };
 
 /**
@@ -69,6 +74,7 @@ export const DOWN_POSES: Record<string, string> = {
   'human-peasants/peasant.png': 'human-peasants/peasant-die3.png',
   'undead-skeletal/skeleton/skeleton.png': 'undead-skeletal/skeleton/skeleton-dying-2.png',
   'undead-skeletal/archer/archer.png': 'undead-skeletal/archer/archer-die2-2.png',
+  'undead-skeletal/deathblade.png': 'undead-skeletal/deathblade-dying-2.png',
 };
 
 /** Used for any unit name without an entry above. */

@@ -19,6 +19,8 @@ import type { Warband } from './warband.js';
  *  - bonefield-legion : a Reassembling undead host — cheap, middling foot and
  *    bows that refuse to stay down, standing back up for free every round. Wins
  *    by attrition: you must kill them, not just knock them over.
+ *  - grave-knights : the skeletal elite — a mounted rider, a twin-blade, and a
+ *    crowned commander, all Reassembling, all on the same average stat line.
  */
 export const PRESETS: Record<string, Warband> = {
   'iron-wardens': {
@@ -90,6 +92,14 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Bone-Legionary', quality: 4, combat: 3, move: 3, reassembling: true, look: 'Skeleton Infantry' },
       { name: 'Skeleton Archer', quality: 4, combat: 2, move: 3, ranged: 3, reassembling: true },
       { name: 'Bone-Fletcher', quality: 4, combat: 2, move: 3, ranged: 3, reassembling: true, look: 'Skeleton Archer' },
+    ],
+  },
+  'grave-knights': {
+    name: 'Grave Knights',
+    units: [
+      { name: 'Skeleton Rider', quality: 4, combat: 3, move: 3, reassembling: true },
+      { name: 'Deathblade', quality: 4, combat: 3, move: 3, reassembling: true },
+      { name: 'Death Knight', quality: 4, combat: 3, move: 3, reassembling: true },
     ],
   },
 };

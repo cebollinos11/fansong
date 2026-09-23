@@ -3125,6 +3125,360 @@
    ]
   }
  },
+ "undead-skeletal/deathblade.png": {
+  "idle": {
+   "frames": [
+    [
+     "undead-skeletal/deathblade-idle-1.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-4.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-5.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-4.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-5.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-4.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-idle-1.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/deathblade-attack1.png",
+      100
+     ],
+     [
+      "undead-skeletal/deathblade-attack2.png",
+      150
+     ],
+     [
+      "undead-skeletal/deathblade-attack3.png",
+      100
+     ],
+     [
+      "undead-skeletal/deathblade-defend-1.png",
+      50
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-skeletal/deathblade-defend-1.png",
+     1
+    ],
+    [
+     "undead-skeletal/deathblade-defend-2.png",
+     250
+    ],
+    [
+     "undead-skeletal/deathblade-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-skeletal/deathblade-defend-1.png",
+     1
+    ],
+    [
+     "undead-skeletal/deathblade-defend-2.png",
+     250
+    ],
+    [
+     "undead-skeletal/deathblade-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "undead-skeletal/deathblade-dying-1.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-dying-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-dying-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-dying-4.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-dying-5.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-dying-6.png",
+     100
+    ],
+    [
+     "undead-skeletal/deathblade-dying-7.png",
+     100
+    ]
+   ]
+  }
+ },
+ "undead-skeletal/deathknight.png": {
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/deathknight.png",
+      50
+     ],
+     [
+      "undead-skeletal/deathknight-melee-attack-1.png",
+      50
+     ],
+     [
+      "undead-skeletal/deathknight-melee-attack-2.png",
+      100
+     ],
+     [
+      "undead-skeletal/deathknight-melee-attack-3.png",
+      75
+     ],
+     [
+      "undead-skeletal/deathknight-melee-attack-4.png",
+      100
+     ],
+     [
+      "undead-skeletal/deathknight-melee-attack-5.png",
+      50
+     ],
+     [
+      "undead-skeletal/deathknight-melee-attack-6.png",
+      75
+     ],
+     [
+      "undead-skeletal/deathknight.png",
+      75
+     ]
+    ],
+    "hitMs": 300
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/deathknight-crossbow.png",
+      100
+     ],
+     [
+      "undead-skeletal/deathknight-crossbow-attack1.png",
+      150
+     ],
+     [
+      "undead-skeletal/deathknight-crossbow-attack2.png",
+      150
+     ]
+    ],
+    "hitMs": 400,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-skeletal/deathknight-defend-1.png",
+     1
+    ],
+    [
+     "undead-skeletal/deathknight-defend-2.png",
+     250
+    ],
+    [
+     "undead-skeletal/deathknight-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-skeletal/deathknight-crossbow.png",
+     1
+    ],
+    [
+     "undead-skeletal/deathknight-crossbow-defend.png",
+     250
+    ],
+    [
+     "undead-skeletal/deathknight-crossbow.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "leading": {
+   "frames": [
+    [
+     "undead-skeletal/deathknight-lead-1.png",
+     150
+    ],
+    [
+     "undead-skeletal/deathknight-lead-2.png",
+     450
+    ],
+    [
+     "undead-skeletal/deathknight-lead-1.png",
+     150
+    ]
+   ]
+  }
+ },
+ "undead-skeletal/rider.png": {
+  "standing": {
+   "frames": [
+    [
+     "undead-skeletal/rider-hi.png",
+     900
+    ],
+    [
+     "undead-skeletal/rider.png",
+     600
+    ],
+    [
+     "undead-skeletal/rider-lo.png",
+     400
+    ],
+    [
+     "undead-skeletal/rider-lo2.png",
+     600
+    ],
+    [
+     "undead-skeletal/rider-lo.png",
+     300
+    ],
+    [
+     "undead-skeletal/rider.png",
+     600
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "undead-skeletal/rider-moving.png",
+     250
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/rider-attack1.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider-attack2.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider-attack3.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider-attack4.png",
+      150
+     ],
+     [
+      "undead-skeletal/rider-attack5.png",
+      100
+     ],
+     [
+      "undead-skeletal/rider-attack6.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider.png",
+      50
+     ]
+    ],
+    "hitMs": 700
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-skeletal/rider-defend.png",
+     1
+    ],
+    [
+     "undead-skeletal/rider-defend2.png",
+     250
+    ],
+    [
+     "undead-skeletal/rider-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-skeletal/rider-defend.png",
+     1
+    ],
+    [
+     "undead-skeletal/rider-defend2.png",
+     250
+    ],
+    [
+     "undead-skeletal/rider-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
  "undead-skeletal/skeleton/skeleton.png": {
   "idle": {
    "frames": [
