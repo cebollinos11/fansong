@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getActionPlans, unitById, vecKey, type ActionPlan, type GameEvent, type GameState, type Replay, type Vec } from '@fansong/engine';
+import { getActionPlans, unitById, vecKey, type ActionPlan, type GameEvent, type GameState, type Owner, type Replay, type Vec } from '@fansong/engine';
 import type { ClientStatus, MatchClient } from '../game/client.js';
 import type { Transition } from '../game/controller.js';
 import { deriveInteraction } from '../game/interaction.js';
@@ -10,7 +10,11 @@ import { downloadReplay } from '../game/replay-io.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { Hud } from './Hud.js';
+import { seatLabel, turnPhrase } from './hudView.js';
 import { appendEvents, type LogEntry } from './log.js';
+
+/** How long the round-start banner stays up over the board (ms; matches the CSS animation). */
+const ROUND_ANNOUNCE_MS = 1800;
 
 interface Props {
   client: MatchClient;
@@ -36,6 +40,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
   const [attackChoice, setAttackChoice] = useState<AttackChoice | null>(null);
   // True from the click that commits a plan until its last command has played.
   const [planning, setPlanning] = useState(false);
+  // Set from a `RoundEnded` event and cleared on its own timer — a banner over
+  // the board, not something the presentation queue needs to wait on.
+  const [roundAnnounce, setRoundAnnounce] = useState<{ round: number; owner: Owner } | null>(null);
   const queueRef = useRef<PresentationQueue<Transition> | null>(null);
   const runnerRef = useRef<PlanRunner | null>(null);
   // The board reports a unit click without the event, so remember where the
@@ -52,6 +59,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         setShown({ state: t.state, events: t.events });
         setSelectedUnitId(null);
         setAttackChoice(null);
+        const roundEnded = t.events.find((e): e is Extract<GameEvent, { type: 'RoundEnded' }> => e.type === 'RoundEnded');
+        if (roundEnded) setRoundAnnounce({ round: roundEnded.round, owner: roundEnded.nextLeader });
       },
       (t, nowIdle) => {
         setState(t.state);
@@ -121,6 +130,13 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     setPlanning(true);
     void runner.run(plan.steps).finally(() => setPlanning(false));
   }, []);
+
+  // The banner clears itself; a new one (its object identity changes) restarts the clock.
+  useEffect(() => {
+    if (!roundAnnounce) return;
+    const id = setTimeout(() => setRoundAnnounce(null), ROUND_ANNOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [roundAnnounce]);
 
   // A dropped connection must not leave the board locked behind a dead chain.
   useEffect(() => {
@@ -250,6 +266,14 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     client.send({ type: 'EndActivation' });
   };
 
+  const announcement = roundAnnounce
+    ? {
+        round: roundAnnounce.round,
+        owner: roundAnnounce.owner,
+        turnLabel: turnPhrase(seatLabel(client.setup, client.controlledSeats, roundAnnounce.owner)),
+      }
+    : null;
+
   return (
     <div className="game">
       <BoardCanvas
@@ -263,6 +287,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         interactive={myTurn}
         events={shown.events}
         onEventsPlayed={(ms) => queueRef.current?.played(ms)}
+        announcement={announcement}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
         diceChoices={myTurn && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}

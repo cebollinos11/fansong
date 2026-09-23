@@ -393,6 +393,59 @@ button.ghost {
     inset 0 0 40px color-mix(in srgb, var(--p1) 35%, transparent);
 }
 
+/* A new round, announced over the board itself so it lands where the eye already is. */
+.round-announce {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(13, 17, 23, 0.4);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+  animation: round-announce-fade 1.8s ease-out forwards;
+}
+
+.round-announce-round {
+  font-size: 15px;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.round-announce-turn {
+  font-size: 44px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.round-announce.p0 .round-announce-turn {
+  color: var(--p0);
+}
+
+.round-announce.p1 .round-announce-turn {
+  color: var(--p1);
+}
+
+@keyframes round-announce-fade {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .hex-tooltip {
   position: absolute;
   /* Under the camera buttons: the bottom band belongs to the combat cards. */

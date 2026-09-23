@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { ROUT_FRACTION, type GameState, type Owner } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { armyName, seatLabel, traitLine, traitTags, warbandStatus } from '../src/ui/hudView.js';
+import { armyName, seatLabel, traitLine, traitTags, turnPhrase, warbandStatus } from '../src/ui/hudView.js';
 
 const VS_AI: MatchSetup = {
   presets: ['iron-wardens', 'ashfang-raiders'],
@@ -50,6 +50,18 @@ describe('seatLabel', () => {
     // An unresolvable preset with no roster still gives the seat a label.
     expect(armyName({ ...HOTSEAT, presets: ['nope', 'nope'] }, 0)).toBeNull();
     expect(seatLabel({ ...HOTSEAT, presets: ['nope', 'nope'] }, [0, 1], 0)).toBe('Seat 0');
+  });
+});
+
+describe('turnPhrase', () => {
+  it('special-cases "You" into "Your turn"', () => {
+    expect(turnPhrase('You')).toBe('Your turn');
+  });
+
+  it("possessive-s's everything else", () => {
+    expect(turnPhrase('Opponent')).toBe("Opponent's turn");
+    expect(turnPhrase('AI')).toBe("AI's turn");
+    expect(turnPhrase('Iron Wardens')).toBe("Iron Wardens's turn");
   });
 });
 

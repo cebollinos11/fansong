@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { unitById, type GameEvent, type GameState, type Vec } from '@fansong/engine';
+import { unitById, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
@@ -53,6 +53,8 @@ interface Props {
    */
   diceChoices?: readonly number[];
   onChooseDice?: (dice: number) => void;
+  /** Shown briefly over the board when a new round begins; null the rest of the time. */
+  announcement?: { round: number; owner: Owner; turnLabel: string } | null;
 }
 
 const CAMERA_KEY = 'fansong.cameraMode';
@@ -231,6 +233,12 @@ export function BoardCanvas(props: Props): JSX.Element {
   return (
     <div className="board-wrap">
       <div ref={containerRef} className="board-canvas" />
+      {props.announcement ? (
+        <div key={props.announcement.round} className={`round-announce p${props.announcement.owner}`}>
+          <div className="round-announce-round">Round {props.announcement.round}</div>
+          <div className="round-announce-turn">{props.announcement.turnLabel}</div>
+        </div>
+      ) : null}
       {props.playing && props.state.phase !== 'gameOver' ? (
         // Whose turn it is, around the board itself: a camera move that arrives
         // with the other side's colour reads as "they are doing something".

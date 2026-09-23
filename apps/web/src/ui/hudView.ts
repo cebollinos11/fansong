@@ -22,6 +22,11 @@ export function seatLabel(setup: MatchSetup, controlled: readonly Owner[], owner
   return controlled.includes(owner) ? 'You' : 'Opponent';
 }
 
+/** A seat label turned into a phrase: "You" becomes "Your turn", everything else "<label>'s turn". */
+export function turnPhrase(label: string): string {
+  return label === 'You' ? 'Your turn' : `${label}'s turn`;
+}
+
 /** How a warband is doing, for its line in the scoreline. */
 export interface WarbandStatus {
   alive: number;
