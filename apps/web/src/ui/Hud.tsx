@@ -18,6 +18,8 @@ interface Props {
   humanTurn: boolean;
   /** True while the board is still playing out the latest dice and blows. */
   resolving: boolean;
+  /** True while the round-start banner covers the board — nobody's turn text is accurate yet. */
+  roundStarting: boolean;
   log: LogEntry[];
   onActivate: (diceCount: number) => void;
   onEndActivation: () => void;
@@ -117,7 +119,9 @@ export function Hud(props: Props): JSX.Element {
         </div>
       ) : (
         <div className="turn-panel">
-          {!humanTurn ? (
+          {props.roundStarting ? (
+            <p className="thinking">Starting the round…</p>
+          ) : !humanTurn ? (
             <p className="thinking">
               {props.resolving && controlledSeats.includes(state.active)
                 ? 'Resolving…'

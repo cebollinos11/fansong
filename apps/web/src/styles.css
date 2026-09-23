@@ -403,9 +403,9 @@ button.ghost {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: rgba(13, 17, 23, 0.4);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(13, 17, 23, 0.25);
+  backdrop-filter: blur(2.5px);
+  -webkit-backdrop-filter: blur(2.5px);
   pointer-events: none;
   animation: round-announce-fade 1.8s ease-out forwards;
 }

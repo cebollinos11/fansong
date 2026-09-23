@@ -85,6 +85,45 @@ describe('PresentationQueue', () => {
     });
   });
 
+  describe('hold', () => {
+    it('delays the next item beyond the gap once the current one has played', () => {
+      const { q, log } = setup();
+      q.push('a');
+      q.push('b');
+      q.played(0);
+      q.hold(500);
+      vi.advanceTimersByTime(100); // past the usual 100ms gap
+      expect(log).toEqual(['present a', 'finish a']);
+      vi.advanceTimersByTime(400);
+      expect(log).toEqual(['present a', 'finish a', 'present b']);
+    });
+
+    it('only holds up the item finishing when it was called, not the one after', () => {
+      const { q, log } = setup();
+      q.push('a');
+      q.hold(500);
+      q.played(0);
+      vi.advanceTimersByTime(500);
+      expect(log).toEqual(['present a', 'finish a idle']);
+
+      q.push('b');
+      q.played(0);
+      vi.advanceTimersByTime(100);
+      expect(log).toContain('finish b idle'); // no lingering hold from 'a'
+    });
+
+    it('reports not idle while holding, even though nothing is playing', () => {
+      const { q } = setup();
+      q.push('a');
+      q.hold(500);
+      q.played(0);
+      vi.advanceTimersByTime(100);
+      expect(q.idle).toBe(false);
+      vi.advanceTimersByTime(400);
+      expect(q.idle).toBe(true);
+    });
+  });
+
   it('ignores a report with nothing presented, and stops when disposed', () => {
     const { q, log } = setup();
     q.played(100);

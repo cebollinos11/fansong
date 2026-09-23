@@ -12,6 +12,10 @@ export class PresentationQueue<T> {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly waiters: (() => void)[] = [];
+  /** Set by {@link hold}; consumed the next time the current item finishes. */
+  private pendingHoldMs = 0;
+  /** True from that finish until the held delay elapses — {@link idle} stays false throughout. */
+  private holding = false;
 
   constructor(
     private readonly present: (item: T) => void,
@@ -22,9 +26,9 @@ export class PresentationQueue<T> {
     private readonly fallbackMs = 6000,
   ) {}
 
-  /** Whether nothing is playing or waiting. */
+  /** Whether nothing is playing, waiting, or deliberately held back. */
   get idle(): boolean {
-    return this.current === null && this.queue.length === 0;
+    return this.current === null && this.queue.length === 0 && !this.holding;
   }
 
   push(item: T): void {
@@ -48,10 +52,23 @@ export class PresentationQueue<T> {
     this.wait(ms);
   }
 
+  /**
+   * Once the item now finishing has settled, wait at least `ms` more before
+   * presenting the next one — for a banner or callout that covers the view and
+   * must not be undercut by whatever plays next. Calls from `finish` (this
+   * item's own settling) still land in time, since `finish` runs before this is
+   * consulted.
+   */
+  hold(ms: number): void {
+    this.pendingHoldMs = Math.max(this.pendingHoldMs, ms);
+  }
+
   dispose(): void {
     this.disposed = true;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = null;
+    this.pendingHoldMs = 0;
+    this.holding = false;
     this.queue.length = 0;
     this.wake();
   }
@@ -79,10 +96,21 @@ export class PresentationQueue<T> {
       if (item === null || this.disposed) return;
       this.current = null;
       this.finish(item, this.queue.length === 0);
-      this.pump();
-      // After `pump`, so `idle` is settled — and as a microtask, so whoever was
-      // waiting resumes with the finished state already applied.
-      if (this.idle) this.wake();
+      const advance = (): void => {
+        this.holding = false;
+        this.pump();
+        // After `pump`, so `idle` is settled — and as a microtask, so whoever was
+        // waiting resumes with the finished state already applied.
+        if (this.idle) this.wake();
+      };
+      const holdMs = this.pendingHoldMs;
+      this.pendingHoldMs = 0;
+      if (holdMs > 0) {
+        this.holding = true;
+        this.timer = setTimeout(() => { this.timer = null; advance(); }, holdMs);
+      } else {
+        advance();
+      }
     };
     // Anything animated gets a breather after it; an instant item settles at once.
     this.timer = setTimeout(done, ms > 0 ? ms + this.gapMs : 0);

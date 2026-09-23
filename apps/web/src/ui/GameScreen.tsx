@@ -40,8 +40,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
   const [attackChoice, setAttackChoice] = useState<AttackChoice | null>(null);
   // True from the click that commits a plan until its last command has played.
   const [planning, setPlanning] = useState(false);
-  // Set from a `RoundEnded` event and cleared on its own timer — a banner over
-  // the board, not something the presentation queue needs to wait on.
+  // Set from a `RoundEnded` event once it has finished animating, cleared on its
+  // own timer. Also gates `myTurn` and holds the presentation queue (see the
+  // subscribe effect), so nothing next round is clickable or shown until it clears.
   const [roundAnnounce, setRoundAnnounce] = useState<{ round: number; owner: Owner } | null>(null);
   const queueRef = useRef<PresentationQueue<Transition> | null>(null);
   const runnerRef = useRef<PlanRunner | null>(null);
@@ -59,13 +60,19 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         setShown({ state: t.state, events: t.events });
         setSelectedUnitId(null);
         setAttackChoice(null);
-        const roundEnded = t.events.find((e): e is Extract<GameEvent, { type: 'RoundEnded' }> => e.type === 'RoundEnded');
-        if (roundEnded) setRoundAnnounce({ round: roundEnded.round, owner: roundEnded.nextLeader });
       },
       (t, nowIdle) => {
         setState(t.state);
         setLog((prev) => appendEvents(prev, t.state, t.events));
         setIdle(nowIdle);
+        // Only once this transition's own animations (a round-ending blow, say)
+        // have played out — never while they're still on screen. Held back from
+        // the queue too, so whatever plays next stays hidden until it clears.
+        const roundEnded = t.events.find((e): e is Extract<GameEvent, { type: 'RoundEnded' }> => e.type === 'RoundEnded');
+        if (roundEnded) {
+          setRoundAnnounce({ round: roundEnded.round, owner: roundEnded.nextLeader });
+          queue.hold(ROUND_ANNOUNCE_MS);
+        }
       },
     );
     queueRef.current = queue;
@@ -113,6 +120,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
     ready &&
     idle &&
     !planning &&
+    !roundAnnounce &&
     state.phase !== 'gameOver' &&
     client.controlledSeats.includes(state.active);
   const interaction = useMemo(() => deriveInteraction(client.legalCommands()), [state, client]);
@@ -303,6 +311,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         selectedUnitId={selectedUnitId}
         humanTurn={myTurn}
         resolving={!idle}
+        roundStarting={roundAnnounce !== null}
         log={log}
         onActivate={handleActivate}
         onEndActivation={handleEndActivation}
