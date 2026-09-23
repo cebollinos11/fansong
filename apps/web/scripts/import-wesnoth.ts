@@ -116,20 +116,29 @@ const facesFront = (n: Node): boolean => {
 /** An image-bearing frame tag: the plain `[frame]` or a unit's custom `[foo_frame]`. */
 const isImageFrame = (tag: string): boolean =>
   tag === 'frame' || (tag.endsWith('_frame') && tag !== 'missile_frame');
+
 /**
- * The unit's own art within a frame. A custom `[foo_frame]` (e.g. the wyvern's
- * `[wyvern_frame]`), or a plain `[frame]` marked `primary=yes`. When a node has
- * one, its plain secondary `[frame]`s are separate layers (a ground shadow, a
- * halo) we skip — else a flyer's move animation would be just its shadow.
+ * Wesnoth composites several frame containers in one animation at once — a body
+ * plus a ground shadow, or a body plus a dust cloud — but we can keep only one
+ * as the clip's frame sequence. Pick the unit's own art:
+ *   1. whatever is flagged `primary=yes` (the falcon's `[bird_frame]`, the
+ *      wyvern's `[wyvern_frame]`) — else its shadow would become the animation;
+ *   2. with none flagged, the plain `[frame]` over a custom effect layer (the
+ *      boar's body charge is a plain `[frame]`, its `[dust_frame]` is spray);
+ *   3. failing both, whatever image frames remain.
  */
-const isPrimaryFrame = (k: Node): boolean =>
-  (k.tag !== 'frame' && isImageFrame(k.tag)) || (k.tag === 'frame' && k.attrs.primary === 'yes');
+function keepPredicate(kids: Node[]): (k: Node) => boolean {
+  const imageFrames = kids.filter((k) => isImageFrame(k.tag) && k.attrs.image);
+  const hasPrimaryYes = imageFrames.some((k) => k.attrs.primary === 'yes');
+  const hasPlain = imageFrames.some((k) => k.tag === 'frame');
+  return (k: Node): boolean => (hasPrimaryYes ? k.attrs.primary === 'yes' : hasPlain ? k.tag === 'frame' : true);
+}
 
 /** Body frames of an animation: front-facing branches only, the first of any hit/miss pair. */
 function collectFrames(node: Node): { frames: [string, number][]; missiles: string[] } {
   const frames: [string, number][] = [];
   const missiles: string[] = [];
-  const hasPrimary = node.kids.some(isPrimaryFrame);
+  const keep = keepPredicate(node.kids);
   let ifTaken = false;
   for (const k of node.kids) {
     if (k.tag === 'if' || k.tag === 'else') {
@@ -143,8 +152,8 @@ function collectFrames(node: Node): { frames: [string, number][]; missiles: stri
       missiles.push(...sub.missiles);
       if (k.tag === 'if') ifTaken = true;
     } else if (isImageFrame(k.tag) && k.attrs.image) {
-      // With a primary frame present, skip plain secondary layers (e.g. shadows).
-      if (hasPrimary && !isPrimaryFrame(k)) continue;
+      // Keep the unit's own art; skip co-timed layers (shadow, dust, halo).
+      if (!keep(k)) continue;
       frames.push(...expandImage(k.attrs.image));
     } else if (k.tag === 'missile_frame' && k.attrs.image) {
       missiles.push(k.attrs.image.replace(/[:~].*$/, ''));

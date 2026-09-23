@@ -475,6 +475,30 @@
     ]
    ],
    "hitMs": 126
+  },
+  "leading": {
+   "frames": [
+    [
+     "human-loyalists/general-leading1.png",
+     75
+    ],
+    [
+     "human-loyalists/general-leading2.png",
+     75
+    ],
+    [
+     "human-loyalists/general-leading3.png",
+     200
+    ],
+    [
+     "human-loyalists/general-leading2.png",
+     75
+    ],
+    [
+     "human-loyalists/general-leading1.png",
+     75
+    ]
+   ]
   }
  },
  "human-loyalists/halberdier.png": {
@@ -2575,27 +2599,43 @@
    {
     "frames": [
      [
-      "monsters/boar/woodland-dust1.png",
-      null
+      "monsters/boar/woodland-charge1.png",
+      70
      ],
      [
-      "monsters/boar/woodland-dust2.png",
-      null
+      "monsters/boar/woodland-charge2.png",
+      70
      ],
      [
-      "monsters/boar/woodland-dust3.png",
-      null
+      "monsters/boar/woodland-charge3.png",
+      70
      ],
      [
-      "monsters/boar/woodland-dust4.png",
-      null
+      "monsters/boar/woodland-charge2.png",
+      70
      ],
      [
-      "monsters/boar/woodland-dust5.png",
-      null
+      "monsters/boar/woodland-charge1.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge2.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge3.png",
+      70
+     ],
+     [
+      "monsters/boar/woodland-charge4.png",
+      110
+     ],
+     [
+      "monsters/boar/woodland-charge5.png",
+      230
      ]
     ],
-    "hitMs": null
+    "hitMs": 600
    }
   ],
   "defendMelee": {
@@ -3800,8 +3840,36 @@
   "death": {
    "frames": [
     [
-     "orcs/grunt-die-sword.png",
-     880
+     "orcs/grunt-die-1.png",
+     120
+    ],
+    [
+     "orcs/grunt-die-2.png",
+     120
+    ],
+    [
+     "orcs/grunt-die-3.png",
+     120
+    ],
+    [
+     "orcs/grunt-die-4.png",
+     100
+    ],
+    [
+     "orcs/grunt-die-5.png",
+     100
+    ],
+    [
+     "orcs/grunt-die-6.png",
+     80
+    ],
+    [
+     "orcs/grunt-die-7.png",
+     70
+    ],
+    [
+     "orcs/grunt-die-8.png",
+     170
     ]
    ]
   }
@@ -4517,6 +4585,41 @@
     ]
    ]
   },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/rider-attack1.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider-attack2.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider-attack3.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider-attack4.png",
+      150
+     ],
+     [
+      "undead-skeletal/rider-attack5.png",
+      100
+     ],
+     [
+      "undead-skeletal/rider-attack6.png",
+      200
+     ],
+     [
+      "undead-skeletal/rider.png",
+      50
+     ]
+    ],
+    "hitMs": 700
+   }
+  ],
   "defendMelee": {
    "frames": [
     [
