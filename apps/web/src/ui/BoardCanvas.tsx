@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { GameEvent, GameState, Vec } from '@fansong/engine';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { unitById, type GameEvent, type GameState, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
 import { describeHex } from './hexInfo.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
+import { UnitDiceMenu } from './UnitDiceMenu.js';
 
 interface Props {
   state: GameState;
@@ -36,6 +37,12 @@ interface Props {
   playing?: boolean;
   /** Watching a recording: there is no "your turn", so the turn edge stays quiet. */
   spectating?: boolean;
+  /**
+   * Dice counts the selected unit may commit. When there are any, the choice
+   * floats over that unit so it can be answered where the click was made.
+   */
+  diceChoices?: readonly number[];
+  onChooseDice?: (dice: number) => void;
 }
 
 const CAMERA_KEY = 'fansong.cameraMode';
@@ -192,6 +199,16 @@ export function BoardCanvas(props: Props): JSX.Element {
 
   const hexInfo = hover ? describeHex(props.state, hover) : null;
 
+  // Stable across renders so the menu's follow loop isn't torn down each frame.
+  const project = useCallback(
+    (id: string, height: number) => viewRef.current?.projectUnit(id, height) ?? null,
+    [],
+  );
+  const diceMenuUnit =
+    props.selectedUnitId && props.diceChoices && props.diceChoices.length > 0 && props.onChooseDice
+      ? unitById(props.state, props.selectedUnitId)
+      : null;
+
   return (
     <div className="board-wrap">
       <div ref={containerRef} className="board-canvas" />
@@ -200,6 +217,17 @@ export function BoardCanvas(props: Props): JSX.Element {
         // with the other side's colour reads as "they are doing something".
         <div
           className={`board-edge p${props.state.active}${props.interactive || props.spectating ? '' : ' waiting'}`}
+        />
+      ) : null}
+      {diceMenuUnit ? (
+        <UnitDiceMenu
+          unitId={diceMenuUnit.id}
+          unitName={diceMenuUnit.name}
+          owner={diceMenuUnit.owner}
+          quality={diceMenuUnit.quality}
+          choices={props.diceChoices ?? []}
+          project={project}
+          onPick={(n) => props.onChooseDice?.(n)}
         />
       ) : null}
       {hexInfo ? (

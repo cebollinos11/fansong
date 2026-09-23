@@ -201,6 +201,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         onEventsPlayed={(ms) => queueRef.current?.played(ms)}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
+        diceChoices={myTurn && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}
+        onChooseDice={handleActivate}
         playing
       />
       <Hud

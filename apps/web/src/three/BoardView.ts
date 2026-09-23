@@ -1899,8 +1899,11 @@ export class BoardView {
     return { target, dist: hi };
   }
 
-  /** A unit's point `height` above its base, in container pixels (null when behind the camera). */
-  private projectUnit = (id: string, height: number): { x: number; y: number } | null => {
+  /**
+   * A unit's point `height` above its base, in container pixels (null when
+   * behind the camera) — how anything drawn in DOM over the board finds a unit.
+   */
+  projectUnit = (id: string, height: number): { x: number; y: number } | null => {
     const obj = this.units.get(id);
     if (!obj) return null;
     const p = obj.group.position.clone();
