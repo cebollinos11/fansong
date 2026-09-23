@@ -562,6 +562,7 @@ function hitDefender(
 
 function knockDown(events: GameEvent[], unit: Unit): void {
   unit.knockedDown = true;
+  unit.guarding = false; // flat on the ground is no stance to hold
   events.push({ type: 'UnitKnockedDown', unitId: unit.id });
 }
 
@@ -581,6 +582,7 @@ function recoilHex(s: GameState, board: Board, unit: Unit, by: Unit): Vec | null
 function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {
   const from = { ...unit.pos };
   unit.pos = { x: to.x, y: to.y };
+  unit.guarding = false; // shoved out of position, stance broken
   carryFlags(s, unit);
   events.push({ type: 'UnitRecoiled', unitId: unit.id, from, to: { x: to.x, y: to.y } });
 }

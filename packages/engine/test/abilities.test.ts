@@ -309,6 +309,30 @@ describe('Guard trait and riposte', () => {
     }
     expect(sawProceed).toBe(true);
   });
+
+  it('a knockdown or a shove breaks the stance, even after a failed riposte', () => {
+    let sawKnockdown = false;
+    let sawRecoil = false;
+    for (let seed = 1; seed <= 500 && !(sawKnockdown && sawRecoil); seed++) {
+      const s = acting({ ...base, seed }, 'p1u0');
+      s.units.find((u) => u.id === 'p0u0')!.guarding = true;
+      const { state, events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+      const atk = events.find((e) => e.type === 'AttackResolved') as
+        | Extract<GameEvent, { type: 'AttackResolved' }>
+        | undefined;
+      if (!atk) continue;
+      const sentry = state.units.find((u) => u.id === 'p0u0')!;
+      if (atk.result === 'defenderKnockedDown') {
+        sawKnockdown = true;
+        expect(sentry.guarding).toBe(false);
+      } else if (atk.result === 'defenderRecoiled') {
+        sawRecoil = true;
+        expect(sentry.guarding).toBe(false);
+      }
+    }
+    expect(sawKnockdown).toBe(true);
+    expect(sawRecoil).toBe(true);
+  });
 });
 
 // --- Big (size) ---------------------------------------------------------------

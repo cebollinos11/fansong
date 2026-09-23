@@ -26,7 +26,8 @@ export interface UnitTraits {
    * guarding, every melee attacker it faces is met with a pre-emptive strike (a
    * "riposte"); if the riposte kills, knocks down or pushes back the attacker,
    * that attack is prevented. The stance holds until the unit next activates,
-   * and losing a riposte never costs the guard anything.
+   * gets knocked down, or is pushed back — and losing a riposte never costs the
+   * guard anything.
    */
   guard: boolean;
   /**
