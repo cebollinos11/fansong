@@ -91,6 +91,11 @@ describe('deriveInteraction', () => {
     expect(interaction.aimedShotTargetIds).toEqual(['far']);
   });
 
+  it('flags Guard as available only when the engine offers it', () => {
+    expect(deriveInteraction([{ type: 'EndActivation' }]).canGuard).toBe(false);
+    expect(deriveInteraction([{ type: 'EndActivation' }, { type: 'Guard', unitId: 'a' }]).canGuard).toBe(true);
+  });
+
   it('projects moves and end-activation once a unit is acting', () => {
     const controller = new MatchController(createMatchFromPresets(SETUP));
     // Activate the first unit until we land in the 'acting' phase.

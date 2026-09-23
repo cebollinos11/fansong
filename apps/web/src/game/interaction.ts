@@ -22,6 +22,8 @@ export interface Interaction {
   aimedShotTargetIds: string[];
   /** Whether EndActivation is currently legal. */
   canEndActivation: boolean;
+  /** Whether the active unit may enter its Guard stance right now. */
+  canGuard: boolean;
 }
 
 export function deriveInteraction(legal: Command[]): Interaction {
@@ -33,6 +35,7 @@ export function deriveInteraction(legal: Command[]): Interaction {
   const powerAttackTargetIds: string[] = [];
   const aimedShotTargetIds: string[] = [];
   let canEndActivation = false;
+  let canGuard = false;
 
   for (const c of legal) {
     switch (c.type) {
@@ -54,6 +57,9 @@ export function deriveInteraction(legal: Command[]): Interaction {
       case 'EndActivation':
         canEndActivation = true;
         break;
+      case 'Guard':
+        canGuard = true;
+        break;
     }
   }
 
@@ -66,5 +72,6 @@ export function deriveInteraction(legal: Command[]): Interaction {
     powerAttackTargetIds,
     aimedShotTargetIds,
     canEndActivation,
+    canGuard,
   };
 }

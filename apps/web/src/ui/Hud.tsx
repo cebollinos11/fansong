@@ -23,6 +23,7 @@ interface Props {
   log: LogEntry[];
   onActivate: (diceCount: number) => void;
   onEndActivation: () => void;
+  onGuard: () => void;
   onExit: () => void;
 }
 
@@ -163,14 +164,25 @@ export function Hud(props: Props): JSX.Element {
                   ? 'The green field covers everything it can reach with all its actions — the rings mark where each one ends. Hover to see the route and the price; one click spends the lot.'
                   : 'Click a green tile to move, a highlighted enemy to attack.'}
               </p>
-              <button
-                className="secondary"
-                disabled={!interaction.canEndActivation}
-                title="Press E"
-                onClick={props.onEndActivation}
-              >
-                End activation <kbd>E</kbd>
-              </button>
+              <div className="action-row">
+                {interaction.canGuard ? (
+                  <button
+                    className="secondary"
+                    title="Press G — stand ready to riposte the next melee attacker, until this unit next activates"
+                    onClick={props.onGuard}
+                  >
+                    Guard <kbd>G</kbd>
+                  </button>
+                ) : null}
+                <button
+                  className="secondary"
+                  disabled={!interaction.canEndActivation}
+                  title="Press E"
+                  onClick={props.onEndActivation}
+                >
+                  End activation <kbd>E</kbd>
+                </button>
+              </div>
             </div>
           )}
         </div>
