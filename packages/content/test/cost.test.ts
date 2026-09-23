@@ -51,6 +51,10 @@ describe('unitCost', () => {
     expect(unitCost({ ...baseline, big: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.big);
     expect(COST_WEIGHTS.big).toBeLessThan(COST_WEIGHTS.perCombat);
   });
+
+  it('charges a flat surcharge for Flying', () => {
+    expect(unitCost({ ...baseline, flying: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.flying);
+  });
 });
 
 describe('statErrors', () => {

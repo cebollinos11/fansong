@@ -112,6 +112,12 @@ const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex 
 const BIG_SCALE = 1.3; // how much taller a Big unit's cutout stands (see the Big trait)
 const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so the steep view doesn't squash it
 
+// Flying: the cutout floats above its hex (its base ring stays on the ground as a
+// shadow) with a slow bob — unless it is knocked down or dying, when it comes to earth.
+const FLY_HOVER = 0.85; // world height a flyer floats above its base
+const FLY_BOB = 0.07; // amplitude of the hovering bob
+const FLY_BOB_MS = 1600; // period of the bob
+
 // Knocked down: a sprite with a down pose (a frame of its death clip) holds it;
 // one without crouches, squashed at the feet and leaning a little. Either way
 // dizzy stars circle its head.
@@ -233,6 +239,10 @@ interface UnitObj {
   sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   /** Cutout size multiplier: {@link BIG_SCALE} for a Big unit, else 1. */
   size: number;
+  /** Whether this unit is a flyer (floats above its hex unless downed). */
+  flying: boolean;
+  /** Current hover height, lerped toward {@link FLY_HOVER} while airborne (0 on the ground). */
+  hover: number;
   base: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   /** Mode badge sprite (shares a texture per badge kind); hidden when none. */
@@ -574,7 +584,7 @@ export class BoardView {
         obj = undefined;
       }
       if (!obj) {
-        obj = this.createUnit(u.id, u.owner, u.look ?? u.name, u.traits.big);
+        obj = this.createUnit(u.id, u.owner, u.look ?? u.name, u.traits.big, u.traits.flying);
         this.units.set(u.id, obj);
         obj.group.position.copy(this.unitWorld(u.pos));
       }
@@ -1110,7 +1120,7 @@ export class BoardView {
 
   // --- internals ----------------------------------------------------------
 
-  private createUnit(id: string, owner: 0 | 1, name: string, big = false): UnitObj {
+  private createUnit(id: string, owner: 0 | 1, name: string, big = false, flying = false): UnitObj {
     const group = new THREE.Group();
 
     const base = new THREE.Mesh(
@@ -1168,6 +1178,8 @@ export class BoardView {
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
     const obj: UnitObj = {
       size: big ? BIG_SCALE : 1,
+      flying,
+      hover: 0,
       owner,
       name,
       spriteName,
@@ -1491,7 +1503,13 @@ export class BoardView {
       obj.base.material.opacity = 1 - f;
       obj.group.visible = f < 1;
     }
-    obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT, off.z);
+    // A flyer floats above its hex with a slow bob, and settles to earth when
+    // knocked down or dying; its base ring stays put on the ground as a shadow.
+    const airborne = obj.flying && !obj.shown.knocked && !obj.fade;
+    obj.hover += ((airborne ? FLY_HOVER : 0) - obj.hover) * lerp;
+    const lift = obj.hover + (airborne ? Math.sin((this.now / FLY_BOB_MS) * Math.PI * 2) * FLY_BOB : 0);
+    obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT + lift, off.z);
+    obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
 
     if (obj.flash > 0) {
       obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);

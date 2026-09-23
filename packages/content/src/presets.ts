@@ -14,6 +14,8 @@ import type { Warband } from './warband.js';
  *    (Ranged bows, a Tough shield-warden, and a Guard captain).
  *  - thorn-patrol : a minimum-size (3-unit) band — one bow, two foot — for
  *    quick games and small boards.
+ *  - sky-talons : a pair of Flying gryphons that vault terrain and gang up in
+ *    melee, screened by a bow and two foot — fast, but wary of enemy archery.
  */
 export const PRESETS: Record<string, Warband> = {
   'iron-wardens': {
@@ -65,6 +67,16 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Thorn-Bow', quality: 3, combat: 2, move: 3, ranged: 4 },
       { name: 'Thorn-Blade', quality: 3, combat: 4, move: 3 },
       { name: 'Thorn-Spear', quality: 3, combat: 3, move: 3 },
+    ],
+  },
+  'sky-talons': {
+    name: 'Sky Talons',
+    units: [
+      { name: 'Sky-Talon', quality: 3, combat: 3, move: 5, flying: true },
+      { name: 'Storm-Talon', quality: 3, combat: 3, move: 5, flying: true },
+      { name: 'Talon-Falconer', quality: 3, combat: 2, move: 3, ranged: 3 },
+      { name: 'Skywatch', quality: 3, combat: 3, move: 3 },
+      { name: 'Fledgling', quality: 4, combat: 2, move: 4 },
     ],
   },
 };

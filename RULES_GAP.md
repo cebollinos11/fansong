@@ -183,14 +183,22 @@ objective and are not leaders.
 
 ## 7. Special rules (traits)
 
-FanSong has 3 traits: Ranged, Tough and Guard. Guard has no direct equivalent in
-the original. The original core rules have roughly 50 more. Each line below is a
+FanSong implements Ranged, Tough, Guard, Big and Flying (see the ✅ entries
+below). Guard has no direct equivalent in the original. The original core rules
+have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
 **Movement:**
 - **Long Move / Short Move / Slow:** change the move category. Our `move` stat
   already covers these.
-- **Flying:** ignores terrain and can move over other models.
+- ✅ **Done — Flying.** *Implemented:* a `flying` trait. A flyer's move phases
+  through every hex — terrain, friends and foes alike — and is bound only by
+  where it may *land* (a legal, empty hex); leaving contact draws no free hack.
+  Airborne it scores +1 swooping into melee against a non-flying foe (`attackFly`
+  / `guardFly` event fields, aggressor-only), and anyone shooting an airborne
+  flyer gets +1 (`flyingTarget`). Both edges lapse while it is knocked down —
+  unlike Big, flight is a stance. It floats above its hex in the client. *Original:*
+  ignores terrain and can move over other models.
 - **Forester:** moves normally through woods.
 - **Amphibious:** moves normally through water.
 - **Mountaineer:** moves normally over rough and uphill ground.

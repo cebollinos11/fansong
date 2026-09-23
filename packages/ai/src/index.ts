@@ -4,6 +4,8 @@ import {
   bigMeleeBonus,
   bigTargetBonus,
   enemiesOf,
+  flyingMeleeBonus,
+  flyingTargetBonus,
   flagAtBase,
   getLegalCommands,
   kingOf,
@@ -64,6 +66,8 @@ const DISENGAGE_COST = 30_000;
 
 function disengageCost(state: GameState, board: Board, unitId: string): number {
   const mover = unitById(state, unitId)!;
+  // A flyer lifts away without drawing a hack, so leaving contact costs it nothing.
+  if (mover.traits.flying) return 0;
   return adjacentEnemies(state, mover, board).filter((e) => !e.knockedDown).length * DISENGAGE_COST;
 }
 
@@ -79,7 +83,10 @@ function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit
   const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
   const cover = board.inCover(shooter.pos, target.pos, (v) => occupied.has(vecKey(v))) ? 1 : 0;
   return (
-    rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) + cover - bigTargetBonus(target)
+    rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) +
+    cover -
+    bigTargetBonus(target) -
+    flyingTargetBonus(target)
   );
 }
 
@@ -110,7 +117,8 @@ function pressedEdge(worthIt: boolean, pressed: boolean): number {
 function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
   return (
     attacker.combat +
-    bigMeleeBonus(attacker, target) -
+    bigMeleeBonus(attacker, target) +
+    flyingMeleeBonus(attacker, target) -
     outnumberedPenalty(state, attacker, board) -
     (target.combat + bigMeleeBonus(target, attacker) - outnumberedPenalty(state, target, board))
   );

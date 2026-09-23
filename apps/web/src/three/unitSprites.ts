@@ -42,6 +42,13 @@ export const UNIT_SPRITES: Record<string, string> = {
   'Thorn-Bow': 'human-loyalists/longbowman.png',
   'Thorn-Blade': 'human-loyalists/swordsman.png',
   'Thorn-Spear': 'human-loyalists/spearman.png',
+
+  // Sky Talons — a pair of flying gryphons screened by foot and a bow.
+  'Sky-Talon': 'monsters/gryphon.png',
+  'Storm-Talon': 'monsters/gryphon.png',
+  'Talon-Falconer': 'human-loyalists/longbowman.png',
+  Skywatch: 'human-loyalists/spearman.png',
+  Fledgling: 'human-peasants/ruffian.png',
 };
 
 /**

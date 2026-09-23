@@ -17,6 +17,8 @@ export interface UnitSpec {
   guard?: boolean;
   /** Big: +1 in melee against smaller foes, and +1 to anyone shooting it. */
   big?: boolean;
+  /** Flying: moves over terrain and units (lands on a legal hex), draws no free hacks, +1 swooping into melee — but +1 to anyone shooting it airborne. */
+  flying?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -62,6 +64,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       tough: spec.tough ?? false,
       guard: spec.guard ?? false,
       big: spec.big ?? false,
+      flying: spec.flying ?? false,
     },
     guarding: false,
   };

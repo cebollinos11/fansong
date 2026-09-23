@@ -51,7 +51,7 @@ describe('describeHex', () => {
       ...state,
       units: state.units.map((u) =>
         u.id === plain.id
-          ? { ...u, guarding: true, traits: { ranged: 4, tough: true, guard: true, big: true } }
+          ? { ...u, guarding: true, traits: { ranged: 4, tough: true, guard: true, big: true, flying: false } }
           : u,
       ),
     };

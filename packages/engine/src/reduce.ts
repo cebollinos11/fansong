@@ -5,6 +5,8 @@ import {
   bigTargetBonus,
   canStrikeBack,
   computeCombatResult,
+  flyingMeleeBonus,
+  flyingTargetBonus,
   highGroundBonus,
   COVER_PENALTY,
   isGruesome,
@@ -307,7 +309,9 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   const cover = board.inCover(attacker.pos, target.pos, (v) => occ.has(vecKey(v))) ? COVER_PENALTY : 0;
   // A Big target is hard to miss, whoever is shooting at it.
   const bigTarget = bigTargetBonus(target);
-  const attackScore = attacker.combat + attackDie + attackBonus + bigTarget - range - cover;
+  // An airborne flyer has no cover in the open sky — easy to shoot down.
+  const flyingTarget = flyingTargetBonus(target);
+  const attackScore = attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget - range - cover;
   const defenseScore = target.combat + defenseDie + defenseBonus - aimPenalty;
 
   const targetRecoil = recoilHex(s, board, target, attacker);
@@ -328,7 +332,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     defenseDie,
     attackScore,
     defenseScore,
-    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, aimPenalty }),
+    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, aimPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -369,6 +373,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     defenseOutnumbered: attackerOutnumbered,
     attackBig: guardBig,
     defenseBig: attackerBig,
+    attackFly: guardFly,
   } = roll.mods;
   const attackerRecoil = recoilHex(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6. And a guard never
@@ -399,7 +404,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackerDie,
     guardScore,
     attackerScore,
-    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered, guardBig, attackerBig }),
+    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered, guardBig, attackerBig, guardFly }),
     result,
     ...(gruesome ? { gruesome } : {}),
     prevented,
@@ -419,6 +424,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
  * just lets it slip away. Returns whether the leaver may carry on moving.
  */
 function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board: Board): boolean {
+  // A flyer lifts straight up out of contact — no ground blade can catch it.
+  if (mover.traits.flying) return true;
   for (const hacker of adjacentEnemies(s, mover, board)) {
     if (hacker.knockedDown) continue;
     const roll = rollMelee(s, board, hacker, mover);
@@ -467,6 +474,8 @@ interface MeleeMods {
   defenseOutnumbered: number;
   attackBig: number;
   defenseBig: number;
+  /** The aggressor's flying swoop (a flyer striking a grounded foe). Only ever the aggressor's — flying is pressed, not defended with. */
+  attackFly: number;
 }
 
 /** One opposed melee: both dice, both scores, and the modifiers behind them. */
@@ -509,11 +518,13 @@ function rollMelee(
     defenseOutnumbered: outnumberedPenalty(s, defender, board),
     attackBig: bigMeleeBonus(aggressor, defender),
     defenseBig: bigMeleeBonus(defender, aggressor),
+    attackFly: flyingMeleeBonus(aggressor, defender),
   };
   return {
     attackDie,
     defenseDie,
-    attackScore: aggressor.combat + attackDie + mods.attackBonus + mods.attackBig - mods.attackOutnumbered,
+    attackScore:
+      aggressor.combat + attackDie + mods.attackBonus + mods.attackBig + mods.attackFly - mods.attackOutnumbered,
     defenseScore:
       defender.combat + defenseDie + mods.defenseBonus + mods.defenseBig - mods.defenseOutnumbered - defensePenalty,
     mods,

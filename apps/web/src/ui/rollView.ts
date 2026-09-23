@@ -104,17 +104,17 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
   let b: RollSide;
   if (e.type === 'GuardRiposte') {
     const [oa, ob] = outcomes(e.guardScore, e.attackerScore);
-    a = side(e.guardId, 'Riposte', e.guardDie, e.guardScore, [['High ground', e.guardBonus], ['Size', e.guardBig], ['Outnumbered', minus(e.guardOutnumbered)]], oa);
+    a = side(e.guardId, 'Riposte', e.guardDie, e.guardScore, [['High ground', e.guardBonus], ['Size', e.guardBig], ['Swoop', e.guardFly], ['Outnumbered', minus(e.guardOutnumbered)]], oa);
     b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Size', e.attackerBig], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
   } else if (e.type === 'ShotResolved') {
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
+    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Flying target', e.flyingTarget], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
     b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Aimed at', minus(e.aimPenalty)]], ob);
   } else {
     const hack = e.type === 'FreeHackResolved';
     const power = e.type === 'AttackResolved' ? e.powerPenalty : undefined;
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Size', e.attackBig], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
+    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Size', e.attackBig], ['Swoop', e.attackFly], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
     b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Size', e.defenseBig], ['Outnumbered', minus(e.defenseOutnumbered)], ['Power blow', minus(power)]], ob);
   }
 

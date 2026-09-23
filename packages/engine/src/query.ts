@@ -71,6 +71,10 @@ export function outnumberedPenalty(state: GameState, unit: Unit, board: Board): 
  * start hex is allowed (it provokes free hacks — see `reduce`).
  */
 export function walkRules(state: GameState, unit: Unit, board: Board): WalkRules {
+  // A flyer moves over everything — terrain and friend and foe — and is only
+  // bound by where it may *land* (the caller's occupancy/terrain check on the
+  // destination). So no hex bars it and none halts it; it phases through.
+  if (unit.traits.flying) return { phaseThrough: true };
   const enemyHexes = new Set<string>();
   const contact = new Set<string>();
   for (const e of state.units) {

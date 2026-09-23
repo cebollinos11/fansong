@@ -82,11 +82,14 @@ export interface ActionPlan {
 export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp: number): Map<string, ReachNode> {
   const rules = walkRules(state, unit, board);
   // Hexes from which leaving contact draws a free hack. Only *standing* enemies
-  // swing (see `resolveFreeHacks`), so a knocked-down foe holds nobody in place.
+  // swing (see `resolveFreeHacks`), so a knocked-down foe holds nobody in place —
+  // and a flyer lifts away untouched, so nothing provokes one.
   const provoking = new Set<string>();
-  for (const e of state.units) {
-    if (e.dead || e.knockedDown || e.owner === unit.owner) continue;
-    for (const n of board.neighbors(e.pos)) provoking.add(vecKey(n));
+  if (!unit.traits.flying) {
+    for (const e of state.units) {
+      if (e.dead || e.knockedDown || e.owner === unit.owner) continue;
+      for (const n of board.neighbors(e.pos)) provoking.add(vecKey(n));
+    }
   }
 
   const startKey = vecKey(unit.pos);
@@ -139,7 +142,9 @@ export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp
           waypoints,
           path,
           provokes,
-          standable: !isOccupied(state, to, unit.id),
+          // A flyer's reach includes hexes it merely phased over; it can only
+          // finish on a legal, empty one. (A walker never reaches a blocked hex.)
+          standable: !isOccupied(state, to, unit.id) && !board.isBlocked(to),
         };
         best.set(key, child);
         // Only an empty hex can be a waypoint, so only those expand further.

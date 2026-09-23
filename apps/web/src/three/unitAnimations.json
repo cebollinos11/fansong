@@ -2416,6 +2416,133 @@
    "hitMs": 126
   }
  },
+ "monsters/gryphon.png": {
+  "standing": {
+   "frames": [
+    [
+     "monsters/gryphon-flying-1.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-2.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-3.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-4.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-5.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-6.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-7.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-8.png",
+     150
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "monsters/gryphon-flying-1.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-2.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-3.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-4.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-5.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-6.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-7.png",
+     150
+    ],
+    [
+     "monsters/gryphon-flying-8.png",
+     150
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/gryphon-flying-5.png",
+      100
+     ],
+     [
+      "monsters/gryphon-flying-4.png",
+      200
+     ],
+     [
+      "monsters/gryphon-flying-5.png",
+      100
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/gryphon-flying-5.png",
+     1
+    ],
+    [
+     "monsters/gryphon-flying-4.png",
+     250
+    ],
+    [
+     "monsters/gryphon-flying-5.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/gryphon-flying-5.png",
+     1
+    ],
+    [
+     "monsters/gryphon-flying-4.png",
+     250
+    ],
+    [
+     "monsters/gryphon-flying-5.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
  "orcs/grunt.png": {
   "standing": {
    "frames": [

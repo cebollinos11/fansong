@@ -62,6 +62,7 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     tough: unit.tough,
     guard: unit.guard,
     big: unit.big,
+    flying: unit.flying,
   };
   if (unit.look !== undefined) spec.look = unit.look;
   return spec;

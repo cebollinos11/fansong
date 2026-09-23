@@ -24,6 +24,8 @@ export interface Profile {
   guard?: boolean;
   /** Big: +1 in melee against smaller foes, and +1 to anyone shooting it. */
   big?: boolean;
+  /** Flying: ignores terrain and units, draws no free hacks, +1 swooping into melee — but +1 to anyone shooting it airborne. */
+  flying?: boolean;
 }
 
 /** Inclusive `[min, max]` legal range for each stat. */
@@ -64,6 +66,13 @@ export const COST_WEIGHTS = {
    * back, so it is priced well under {@link COST_WEIGHTS.perCombat}.
    */
   big: 3,
+  /**
+   * Flat surcharge for the Flying trait. Free rein over terrain and units, immunity
+   * to free hacks, and a swoop that hits grounded foes at +1 add up to a potent
+   * package — priced near a Guard's, shaded down because every shooter aims at an
+   * airborne flyer at +1.
+   */
+  flying: 9,
 };
 
 function inRange(value: number, [min, max]: readonly [number, number]): boolean {
@@ -89,7 +98,7 @@ export function statErrors(p: Profile): string[] {
  * untrusted profiles should run {@link statErrors} first. Always >= 1.
  */
 export function unitCost(p: Profile): number {
-  const { base, perQuality, perCombat, perMove, perRanged, tough, guard, big } = COST_WEIGHTS;
+  const { base, perQuality, perCombat, perMove, perRanged, tough, guard, big, flying } = COST_WEIGHTS;
   const qualityMax = STAT_BOUNDS.quality[1]; // worst quality = cheapest
   const cost =
     base +
@@ -99,6 +108,7 @@ export function unitCost(p: Profile): number {
     (p.ranged ?? 0) * perRanged +
     (p.tough ? tough : 0) +
     (p.guard ? guard : 0) +
-    (p.big ? big : 0);
+    (p.big ? big : 0) +
+    (p.flying ? flying : 0);
   return Math.max(1, cost);
 }

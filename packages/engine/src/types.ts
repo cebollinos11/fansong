@@ -38,6 +38,15 @@ export interface UnitTraits {
    * the melee bonus.
    */
   big: boolean;
+  /**
+   * Flying: it moves through every hex — terrain and units alike — and only has
+   * to *land* on a legal, empty one, so nothing on the ground can block or slow
+   * it; leaving contact never draws a free hack. Airborne it swoops: +1 in melee
+   * when it strikes a grounded (non-flying) foe. That same open air is its
+   * weakness — anyone shooting an airborne flyer aims at +1. Both edges lapse
+   * while it is knocked down: a grounded flyer neither swoops nor floats.
+   */
+  flying: boolean;
 }
 
 export interface Unit {
@@ -202,6 +211,8 @@ export type GameEvent =
       attackBig?: number;
       /** Big bonus added to the defense score (a Big defender facing a non-Big foe); present only when non-zero. */
       defenseBig?: number;
+      /** Flying bonus added to the attack score (an airborne flyer striking a grounded foe); present only when non-zero. */
+      attackFly?: number;
       /** Power-blow penalty subtracted from the defense score; present only on a two-action attack. */
       powerPenalty?: number;
       result: CombatResult;
@@ -226,6 +237,8 @@ export type GameEvent =
       coverPenalty?: number;
       /** Big-target bonus added to the attack score (the target is Big); present only when non-zero. */
       bigTarget?: number;
+      /** Flying-target bonus added to the attack score (the target is an airborne flyer); present only when non-zero. */
+      flyingTarget?: number;
       /** Aimed-shot penalty subtracted from the defense score; present only on a two-action shot. */
       aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
@@ -258,6 +271,8 @@ export type GameEvent =
       attackBig?: number;
       /** Big bonus added to the leaver's score (Big, and the hacker is not); present only when non-zero. */
       defenseBig?: number;
+      /** Flying bonus added to the hacker's score (an airborne flyer hacking a grounded leaver); present only when non-zero. */
+      attackFly?: number;
       result: CombatResult;
       /** Present when the kill tripled the leaver's score (a gruesome kill, which spreads fear). */
       gruesome?: true;
@@ -283,6 +298,8 @@ export type GameEvent =
       guardBig?: number;
       /** Big bonus added to the attacker's score (Big, and the guard is not); present only when non-zero. */
       attackerBig?: number;
+      /** Flying bonus added to the guard's score (an airborne flyer riposting a grounded attacker); present only when non-zero. */
+      guardFly?: number;
       result: CombatResult;
       /** Present when the riposte's kill tripled the attacker's score (a gruesome kill). */
       gruesome?: true;

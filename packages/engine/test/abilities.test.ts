@@ -460,3 +460,163 @@ describe('Big trait', () => {
     expect(resolveShot(shot(false, true)).bigTarget).toBeUndefined();
   });
 });
+
+// --- Flying -------------------------------------------------------------------
+
+describe('Flying trait', () => {
+  /** A duel between two neighbours, either of which may fly. */
+  function melee(attackerFly: boolean, defenderFly: boolean): GameConfig {
+    return {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Talon', quality: 3, combat: 3, flying: attackerFly, pos: { x: 1, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, flying: defenderFly, pos: { x: 2, y: 1 } }],
+      ],
+    };
+  }
+
+  const resolveAttack = (config: GameConfig, attackerId: string, targetId: string) => {
+    const { events } = reduce(acting(config, attackerId), { type: 'Attack', attackerId, targetId });
+    return events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+  };
+
+  it('adds +1 to a flyer swooping at a grounded foe', () => {
+    const fly = resolveAttack(melee(true, false), 'p0u0', 'p1u0');
+    const plain = resolveAttack(melee(false, false), 'p0u0', 'p1u0');
+    expect(fly.attackFly).toBe(1);
+    expect(fly.attackScore - plain.attackScore).toBe(1);
+    expect(fly.defenseScore).toBe(plain.defenseScore);
+  });
+
+  it('gives a flyer nothing on defence — flying is pressed, not defended with', () => {
+    const fly = resolveAttack(melee(false, true), 'p0u0', 'p1u0');
+    const plain = resolveAttack(melee(false, false), 'p0u0', 'p1u0');
+    expect(fly.attackFly).toBeUndefined();
+    expect(fly.defenseScore).toBe(plain.defenseScore);
+  });
+
+  it('cancels out when both fly — neither swoops on the other', () => {
+    const both = resolveAttack(melee(true, true), 'p0u0', 'p1u0');
+    const plain = resolveAttack(melee(false, false), 'p0u0', 'p1u0');
+    expect(both.attackFly).toBeUndefined();
+    expect(both.attackScore).toBe(plain.attackScore);
+  });
+
+  it('lapses for a flyer brought down to earth — unlike size, flight is a stance', () => {
+    const s = acting(melee(true, false), 'p0u0');
+    s.units.find((u) => u.id === 'p0u0')!.knockedDown = true;
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const atk = events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+    expect(atk.attackFly).toBeUndefined();
+  });
+
+  it("carries into a flying guard's riposte", () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Sky-Guard', quality: 3, combat: 3, guard: true, flying: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Raider', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const s = acting(config, 'p1u0');
+    s.units.find((u) => u.id === 'p0u0')!.guarding = true;
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+    const rip = events.find((e) => e.type === 'GuardRiposte') as Extract<GameEvent, { type: 'GuardRiposte' }>;
+    expect(rip.guardFly).toBe(1);
+  });
+
+  it('carries into a flyer hacking a grounded foe that leaves contact', () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 6, height: 3 },
+      warbands: [
+        [{ name: 'Runner', quality: 3, combat: 3, move: 3, pos: { x: 1, y: 1 } }],
+        [{ name: 'Talon', quality: 3, combat: 3, flying: true, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const { events } = reduce(acting(config, 'p0u0'), { type: 'Move', unitId: 'p0u0', to: { x: 0, y: 1 } });
+    const hack = events.find((e) => e.type === 'FreeHackResolved') as Extract<GameEvent, { type: 'FreeHackResolved' }>;
+    expect(hack.attackFly).toBe(1);
+  });
+
+  it('draws no free hack of its own when it leaves contact', () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 6, height: 3 },
+      warbands: [
+        [{ name: 'Talon', quality: 3, combat: 3, move: 3, flying: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const { state, events } = reduce(acting(config, 'p0u0'), { type: 'Move', unitId: 'p0u0', to: { x: 0, y: 1 } });
+    expect(events.some((e) => e.type === 'FreeHackResolved')).toBe(false);
+    expect(events.some((e) => e.type === 'UnitMoved')).toBe(true);
+    expect(state.units.find((u) => u.id === 'p0u0')!.pos).toEqual({ x: 0, y: 1 });
+  });
+
+  /** A bow at range 3 against a target that may fly. */
+  function shot(targetFly: boolean): GameConfig {
+    return {
+      seed: 5,
+      board: { width: 9, height: 3 },
+      warbands: [
+        [{ name: 'Bow', quality: 3, combat: 2, ranged: 4, pos: { x: 0, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, flying: targetFly, pos: { x: 2, y: 1 } }],
+      ],
+    };
+  }
+
+  const resolveShot = (config: GameConfig, prep?: (s: GameState) => void) => {
+    const s = acting(config, 'p0u0');
+    prep?.(s);
+    const { events } = reduce(s, { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' });
+    return events.find((e) => e.type === 'ShotResolved') as Extract<GameEvent, { type: 'ShotResolved' }>;
+  };
+
+  it('gives a shooter +1 against an airborne flyer', () => {
+    const fly = resolveShot(shot(true));
+    const plain = resolveShot(shot(false));
+    expect(fly.flyingTarget).toBe(1);
+    expect(fly.attackScore - plain.attackScore).toBe(1);
+    expect(plain.flyingTarget).toBeUndefined();
+  });
+
+  it('gives the shooter nothing once the flyer is knocked down to the ground', () => {
+    const downed = resolveShot(shot(true), (s) => {
+      s.units.find((u) => u.id === 'p1u0')!.knockedDown = true;
+    });
+    expect(downed.flyingTarget).toBeUndefined();
+  });
+
+  it('moves over an enemy line to land beyond it, where a walker is barred', () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 6, height: 3 },
+      warbands: [
+        [{ name: 'Talon', quality: 3, combat: 3, move: 3, flying: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Wall', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const legal = getLegalCommands(acting(config, 'p0u0'));
+    // (4,1) sits three hexes off, straight through the enemy at (2,1).
+    expect(has(legal, (c) => c.type === 'Move' && c.to.x === 4 && c.to.y === 1)).toBe(true);
+    // It may pass over the enemy but never finish on it.
+    expect(has(legal, (c) => c.type === 'Move' && c.to.x === 2 && c.to.y === 1)).toBe(false);
+  });
+
+  it('phases over impassable terrain but may not land on it', () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 6, height: 3, blocked: ['2,1'] },
+      warbands: [
+        [{ name: 'Talon', quality: 3, combat: 3, move: 3, flying: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 5, y: 0 } }],
+      ],
+    };
+    const legal = getLegalCommands(acting(config, 'p0u0'));
+    expect(has(legal, (c) => c.type === 'Move' && c.to.x === 3 && c.to.y === 1)).toBe(true);
+    expect(has(legal, (c) => c.type === 'Move' && c.to.x === 2 && c.to.y === 1)).toBe(false);
+  });
+});

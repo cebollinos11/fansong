@@ -64,6 +64,12 @@ export const BIG_MELEE_BONUS = 1;
 /** How much easier a Big model is to hit with a shot. */
 export const BIG_TARGET_BONUS = 1;
 
+/** How much a flyer's swoop is worth in a melee it presses against a grounded foe. */
+export const FLYING_MELEE_BONUS = 1;
+
+/** How much easier an airborne flyer is to shoot: a target with no cover in the open sky. */
+export const FLYING_TARGET_BONUS = 1;
+
 /** Shooting penalty for a target beyond short range. */
 export const LONG_RANGE_PENALTY = 1;
 
@@ -97,6 +103,31 @@ export function bigMeleeBonus(unit: Pick<Unit, 'traits'>, opponent: Pick<Unit, '
  */
 export function bigTargetBonus(target: Pick<Unit, 'traits'>): number {
   return target.traits.big ? BIG_TARGET_BONUS : 0;
+}
+
+/**
+ * A flyer's swoop: {@link FLYING_MELEE_BONUS} when `unit` is a flyer striking a
+ * grounded (non-flying) opponent, else 0. Only the aggressor of a melee ever
+ * gets it — flying is an edge you press, not one you defend with. And unlike
+ * size, the edge is the flight itself, so — like high ground — a knocked-down
+ * flyer, brought to earth, loses it.
+ */
+export function flyingMeleeBonus(
+  unit: Pick<Unit, 'traits' | 'knockedDown'>,
+  opponent: Pick<Unit, 'traits'>,
+): number {
+  if (unit.knockedDown) return 0;
+  return unit.traits.flying && !opponent.traits.flying ? FLYING_MELEE_BONUS : 0;
+}
+
+/**
+ * The bonus a shot gets for its target being an airborne flyer:
+ * {@link FLYING_TARGET_BONUS} against a flyer that is not knocked down, else 0.
+ * A flyer in the open sky has nowhere to take cover, so it is easy to hit whoever
+ * is shooting; brought down to the ground it is an ordinary target again.
+ */
+export function flyingTargetBonus(target: Pick<Unit, 'traits' | 'knockedDown'>): number {
+  return target.traits.flying && !target.knockedDown ? FLYING_TARGET_BONUS : 0;
 }
 
 function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {

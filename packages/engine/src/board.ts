@@ -79,6 +79,13 @@ export interface WalkRules {
   passable?(v: Vec): boolean;
   /** Does a walk that enters this hex have to stop there? The start hex never stops. (Default: no.) */
   stops?(v: Vec): boolean;
+  /**
+   * Phasing (a flyer): the walk passes *through* otherwise-impassable terrain —
+   * rocks, buildings and legacy blocked cells — so movement is pure hex distance
+   * around nothing. It still may not *land* on such a hex; that is the caller's
+   * check on the destination, not the board's. (Default: no.)
+   */
+  phaseThrough?: boolean;
 }
 
 export interface Board {
@@ -222,7 +229,7 @@ export function makeHexGrid(data: BoardData): Board {
   /** The hexes a walk may step to from `cell` under `rules` (none out of a stopping hex). */
   const walkSteps = (cell: Vec, isStart: boolean, rules?: WalkRules): Vec[] => {
     if (!isStart && rules?.stops?.(cell)) return [];
-    const ns = neighbors(cell);
+    const ns = rules?.phaseThrough ? phaseNeighbors(cell) : neighbors(cell);
     return rules?.passable ? ns.filter((n) => rules.passable!(n)) : ns;
   };
 
@@ -232,6 +239,17 @@ export function makeHexGrid(data: BoardData): Board {
     for (const d of CUBE_DIRS) {
       const n = cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s });
       if (inBounds(n) && !isBlocked(n)) result.push(n);
+    }
+    return result;
+  };
+
+  /** In-bounds adjacent cells, blocked ones included — a flyer phases through terrain. */
+  const phaseNeighbors = (v: Vec): Vec[] => {
+    const c = offsetToCube(v);
+    const result: Vec[] = [];
+    for (const d of CUBE_DIRS) {
+      const n = cubeToOffset({ q: c.q + d.q, r: c.r + d.r, s: c.s + d.s });
+      if (inBounds(n)) result.push(n);
     }
     return result;
   };

@@ -126,6 +126,7 @@ export const unitTraitsSchema = z
     tough: z.boolean(),
     guard: z.boolean(),
     big: z.boolean(),
+    flying: z.boolean(),
   })
   .strict();
 
@@ -236,6 +237,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseOutnumbered: z.number().optional(),
     attackBig: z.number().optional(),
     defenseBig: z.number().optional(),
+    attackFly: z.number().optional(),
     powerPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -253,6 +255,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     rangePenalty: z.number().optional(),
     coverPenalty: z.number().optional(),
     bigTarget: z.number().optional(),
+    flyingTarget: z.number().optional(),
     aimPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -271,6 +274,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseOutnumbered: z.number().optional(),
     attackBig: z.number().optional(),
     defenseBig: z.number().optional(),
+    attackFly: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
   }),
@@ -289,6 +293,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     attackerOutnumbered: z.number().optional(),
     guardBig: z.number().optional(),
     attackerBig: z.number().optional(),
+    guardFly: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
     prevented: z.boolean(),
@@ -347,6 +352,7 @@ export const unitSpecSchema = z
     tough: z.boolean().optional(),
     guard: z.boolean().optional(),
     big: z.boolean().optional(),
+    flying: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -399,6 +405,7 @@ export const warbandUnitSchema = z
     tough: z.boolean().optional(),
     guard: z.boolean().optional(),
     big: z.boolean().optional(),
+    flying: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

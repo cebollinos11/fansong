@@ -71,7 +71,9 @@ export function getLegalCommands(state: GameState): Command[] {
   const reach = moveReach(state, unit, board);
   for (const to of board.cellsWithin(unit.pos, unit.move)) {
     if (!reach.has(vecKey(to))) continue;
-    if (isOccupied(state, to)) continue;
+    // A flyer's reach includes hexes it only phased over; it still may not land
+    // on impassable terrain (or an occupied hex). For a walker these never occur.
+    if (board.isBlocked(to) || isOccupied(state, to)) continue;
     commands.push({ type: 'Move', unitId: unit.id, to });
   }
 
