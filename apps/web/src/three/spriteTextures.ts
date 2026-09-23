@@ -89,6 +89,7 @@ export interface SpriteAtlas {
 }
 
 const PAD = 4; // gap between cells so mipmaps don't bleed neighbouring frames
+const SHADOW_ALPHA = 153; // Wesnoth's baked drop-shadow alpha (0x99); stripped from every cutout
 
 const images = new Map<string, Promise<HTMLImageElement>>();
 const atlases = new Map<string, Promise<SpriteAtlas>>();
@@ -204,9 +205,11 @@ function recolor(
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
-      // Wesnoth's only partial alpha is the flat drop shadow under the feet;
-      // it would read as a smear on an upright cutout, so drop it.
-      if (px[i + 3]! < 255) {
+      // Wesnoth bakes a flat drop shadow under the feet at alpha 153; it would
+      // read as a smear on an upright cutout, so drop it (and anything fainter).
+      // Not every sprite's body is a perfect 255, though — some monster art (the
+      // boar) is drawn a hair under, so keep everything above the shadow alpha.
+      if (px[i + 3]! <= SHADOW_ALPHA) {
         px[i + 3] = 0;
         continue;
       }

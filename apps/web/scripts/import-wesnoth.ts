@@ -113,10 +113,23 @@ const facesFront = (n: Node): boolean => {
   return d === undefined || d.split(',').some((x) => FRONT.has(x.trim()));
 };
 
+/** An image-bearing frame tag: the plain `[frame]` or a unit's custom `[foo_frame]`. */
+const isImageFrame = (tag: string): boolean =>
+  tag === 'frame' || (tag.endsWith('_frame') && tag !== 'missile_frame');
+/**
+ * The unit's own art within a frame. A custom `[foo_frame]` (e.g. the wyvern's
+ * `[wyvern_frame]`), or a plain `[frame]` marked `primary=yes`. When a node has
+ * one, its plain secondary `[frame]`s are separate layers (a ground shadow, a
+ * halo) we skip — else a flyer's move animation would be just its shadow.
+ */
+const isPrimaryFrame = (k: Node): boolean =>
+  (k.tag !== 'frame' && isImageFrame(k.tag)) || (k.tag === 'frame' && k.attrs.primary === 'yes');
+
 /** Body frames of an animation: front-facing branches only, the first of any hit/miss pair. */
 function collectFrames(node: Node): { frames: [string, number][]; missiles: string[] } {
   const frames: [string, number][] = [];
   const missiles: string[] = [];
+  const hasPrimary = node.kids.some(isPrimaryFrame);
   let ifTaken = false;
   for (const k of node.kids) {
     if (k.tag === 'if' || k.tag === 'else') {
@@ -129,7 +142,9 @@ function collectFrames(node: Node): { frames: [string, number][]; missiles: stri
       frames.push(...sub.frames);
       missiles.push(...sub.missiles);
       if (k.tag === 'if') ifTaken = true;
-    } else if (k.tag === 'frame' && k.attrs.image) {
+    } else if (isImageFrame(k.tag) && k.attrs.image) {
+      // With a primary frame present, skip plain secondary layers (e.g. shadows).
+      if (hasPrimary && !isPrimaryFrame(k)) continue;
       frames.push(...expandImage(k.attrs.image));
     } else if (k.tag === 'missile_frame' && k.attrs.image) {
       missiles.push(k.attrs.image.replace(/[:~].*$/, ''));

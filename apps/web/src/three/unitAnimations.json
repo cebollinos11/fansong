@@ -475,30 +475,6 @@
     ]
    ],
    "hitMs": 126
-  },
-  "leading": {
-   "frames": [
-    [
-     "human-loyalists/general-leading1.png",
-     75
-    ],
-    [
-     "human-loyalists/general-leading2.png",
-     75
-    ],
-    [
-     "human-loyalists/general-leading3.png",
-     200
-    ],
-    [
-     "human-loyalists/general-leading2.png",
-     75
-    ],
-    [
-     "human-loyalists/general-leading1.png",
-     75
-    ]
-   ]
   }
  },
  "human-loyalists/halberdier.png": {
@@ -2599,43 +2575,27 @@
    {
     "frames": [
      [
-      "monsters/boar/woodland-charge1.png",
-      70
+      "monsters/boar/woodland-dust1.png",
+      null
      ],
      [
-      "monsters/boar/woodland-charge2.png",
-      70
+      "monsters/boar/woodland-dust2.png",
+      null
      ],
      [
-      "monsters/boar/woodland-charge3.png",
-      70
+      "monsters/boar/woodland-dust3.png",
+      null
      ],
      [
-      "monsters/boar/woodland-charge2.png",
-      70
+      "monsters/boar/woodland-dust4.png",
+      null
      ],
      [
-      "monsters/boar/woodland-charge1.png",
-      70
-     ],
-     [
-      "monsters/boar/woodland-charge2.png",
-      70
-     ],
-     [
-      "monsters/boar/woodland-charge3.png",
-      70
-     ],
-     [
-      "monsters/boar/woodland-charge4.png",
-      110
-     ],
-     [
-      "monsters/boar/woodland-charge5.png",
-      230
+      "monsters/boar/woodland-dust5.png",
+      null
      ]
     ],
-    "hitMs": 600
+    "hitMs": null
    }
   ],
   "defendMelee": {
@@ -2718,6 +2678,74 @@
   }
  },
  "monsters/falcon/falcon.png": {
+  "standing": {
+   "frames": [
+    [
+     "monsters/falcon/falcon-soar1.png",
+     200
+    ],
+    [
+     "monsters/falcon/falcon-soar2.png",
+     200
+    ],
+    [
+     "monsters/falcon/falcon-soar3.png",
+     200
+    ],
+    [
+     "monsters/falcon/falcon-soar4.png",
+     200
+    ],
+    [
+     "monsters/falcon/falcon-soar5.png",
+     200
+    ],
+    [
+     "monsters/falcon/falcon-soar4.png",
+     300
+    ],
+    [
+     "monsters/falcon/falcon-soar3.png",
+     400
+    ],
+    [
+     "monsters/falcon/falcon-soar2.png",
+     500
+    ],
+    [
+     "monsters/falcon/falcon-soar1.png",
+     300
+    ],
+    [
+     "monsters/falcon/falcon-soar2.png",
+     300
+    ],
+    [
+     "monsters/falcon/falcon-soar3.png",
+     300
+    ],
+    [
+     "monsters/falcon/falcon-soar4.png",
+     300
+    ],
+    [
+     "monsters/falcon/falcon-soar5.png",
+     300
+    ],
+    [
+     "monsters/falcon/falcon-soar4.png",
+     400
+    ],
+    [
+     "monsters/falcon/falcon-soar3.png",
+     400
+    ],
+    [
+     "monsters/falcon/falcon-soar2.png",
+     300
+    ]
+   ]
+  },
   "move": {
    "frames": [
     [
@@ -2730,8 +2758,20 @@
    {
     "frames": [
      [
-      "monsters/falcon/falcon-shadow.png",
-      800
+      "monsters/falcon/falcon-attack-1.png",
+      100
+     ],
+     [
+      "monsters/falcon/falcon-attack-2.png",
+      100
+     ],
+     [
+      "monsters/falcon/falcon-attack-beak.png",
+      250
+     ],
+     [
+      "monsters/falcon/falcon-attack-end.png",
+      350
      ]
     ],
     "hitMs": 500
@@ -2739,8 +2779,20 @@
    {
     "frames": [
      [
-      "monsters/falcon/falcon-shadow.png",
-      700
+      "monsters/falcon/falcon-attack-1.png",
+      100
+     ],
+     [
+      "monsters/falcon/falcon-attack-2.png",
+      100
+     ],
+     [
+      "monsters/falcon/falcon-attack-claws.png",
+      200
+     ],
+     [
+      "monsters/falcon/falcon-attack-end.png",
+      300
      ]
     ],
     "hitMs": 400
@@ -3331,11 +3383,107 @@
   }
  },
  "monsters/wyvern/wild-wyvern.png": {
+  "standing": {
+   "frames": [
+    [
+     "monsters/wyvern/wild-wyvern-fly1.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly2.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly3.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly4.png",
+     120
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly5.png",
+     130
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly6.png",
+     140
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly7.png",
+     110
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly1.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly2.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly3.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly4.png",
+     120
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly5.png",
+     130
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly6.png",
+     140
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly7.png",
+     110
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly6.png",
+     150
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly5.png",
+     150
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly6.png",
+     100
+    ]
+   ]
+  },
   "move": {
    "frames": [
     [
-     "monsters/wyvern/wild-wyvern-fly-shadow.png",
-     800
+     "monsters/wyvern/wild-wyvern-fly1.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly2.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly3.png",
+     100
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly4.png",
+     120
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly5.png",
+     130
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly6.png",
+     140
+    ],
+    [
+     "monsters/wyvern/wild-wyvern-fly7.png",
+     110
     ]
    ]
   },
@@ -3652,36 +3800,8 @@
   "death": {
    "frames": [
     [
-     "orcs/grunt-die-1.png",
-     120
-    ],
-    [
-     "orcs/grunt-die-2.png",
-     120
-    ],
-    [
-     "orcs/grunt-die-3.png",
-     120
-    ],
-    [
-     "orcs/grunt-die-4.png",
-     100
-    ],
-    [
-     "orcs/grunt-die-5.png",
-     100
-    ],
-    [
-     "orcs/grunt-die-6.png",
-     80
-    ],
-    [
-     "orcs/grunt-die-7.png",
-     70
-    ],
-    [
-     "orcs/grunt-die-8.png",
-     170
+     "orcs/grunt-die-sword.png",
+     880
     ]
    ]
   }
@@ -4397,41 +4517,6 @@
     ]
    ]
   },
-  "melee": [
-   {
-    "frames": [
-     [
-      "undead-skeletal/rider-attack1.png",
-      200
-     ],
-     [
-      "undead-skeletal/rider-attack2.png",
-      200
-     ],
-     [
-      "undead-skeletal/rider-attack3.png",
-      200
-     ],
-     [
-      "undead-skeletal/rider-attack4.png",
-      150
-     ],
-     [
-      "undead-skeletal/rider-attack5.png",
-      100
-     ],
-     [
-      "undead-skeletal/rider-attack6.png",
-      200
-     ],
-     [
-      "undead-skeletal/rider.png",
-      50
-     ]
-    ],
-    "hitMs": 700
-   }
-  ],
   "defendMelee": {
    "frames": [
     [
