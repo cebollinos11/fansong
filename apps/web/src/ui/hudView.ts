@@ -66,6 +66,7 @@ export const TRAIT_HELP = {
   guard: 'May take a Guard action, meeting its next melee attacker with a riposte',
   big: 'Head and shoulders above the rest: +1 in melee against smaller foes, but +1 to anyone shooting it',
   flying: 'Soars over terrain and units and draws no free hacks; +1 swooping into melee, but +1 to anyone shooting it airborne',
+  reassembling: 'Stands back up for free at the start of each round if knocked down',
 } as const;
 
 /** One of a unit's special abilities, as the inspector shows it. */
@@ -85,6 +86,7 @@ export function traitTags(unit: Pick<Unit, 'traits'>): TraitTag[] {
   if (unit.traits.guard) tags.push({ label: 'Guard', help: TRAIT_HELP.guard });
   if (unit.traits.big) tags.push({ label: 'Big', help: TRAIT_HELP.big });
   if (unit.traits.flying) tags.push({ label: 'Flying', help: TRAIT_HELP.flying });
+  if (unit.traits.reassembling) tags.push({ label: 'Reassembling', help: TRAIT_HELP.reassembling });
   return tags;
 }
 

@@ -49,6 +49,10 @@ export const UNIT_SPRITES: Record<string, string> = {
   'Talon-Falconer': 'human-loyalists/longbowman.png',
   Skywatch: 'human-loyalists/spearman.png',
   Fledgling: 'human-peasants/ruffian.png',
+
+  // Bonefield Legion — Reassembling undead skeletons that refuse to stay down.
+  'Skeleton Infantry': 'undead-skeletal/skeleton/skeleton.png',
+  'Skeleton Archer': 'undead-skeletal/archer/archer.png',
 };
 
 /**
@@ -63,6 +67,8 @@ export const DOWN_POSES: Record<string, string> = {
   'human-loyalists/spearman.png': 'human-loyalists/spearman-death3.png',
   'human-loyalists/lieutenant-crossbow.png': 'human-loyalists/lieutenant-die-3.png',
   'human-peasants/peasant.png': 'human-peasants/peasant-die3.png',
+  'undead-skeletal/skeleton/skeleton.png': 'undead-skeletal/skeleton/skeleton-dying-2.png',
+  'undead-skeletal/archer/archer.png': 'undead-skeletal/archer/archer-die2-2.png',
 };
 
 /** Used for any unit name without an entry above. */

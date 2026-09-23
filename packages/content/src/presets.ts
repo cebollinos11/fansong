@@ -16,6 +16,9 @@ import type { Warband } from './warband.js';
  *    quick games and small boards.
  *  - sky-talons : a pair of Flying gryphons that vault terrain and gang up in
  *    melee, screened by a bow and two foot — fast, but wary of enemy archery.
+ *  - bonefield-legion : a Reassembling undead host — cheap, middling foot and
+ *    bows that refuse to stay down, standing back up for free every round. Wins
+ *    by attrition: you must kill them, not just knock them over.
  */
 export const PRESETS: Record<string, Warband> = {
   'iron-wardens': {
@@ -77,6 +80,16 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Talon-Falconer', quality: 3, combat: 2, move: 3, ranged: 3 },
       { name: 'Skywatch', quality: 3, combat: 3, move: 3 },
       { name: 'Fledgling', quality: 4, combat: 2, move: 4 },
+    ],
+  },
+  'bonefield-legion': {
+    name: 'Bonefield Legion',
+    units: [
+      { name: 'Bone-Sergeant', quality: 3, combat: 3, move: 3, reassembling: true, look: 'Skeleton Infantry' },
+      { name: 'Skeleton Infantry', quality: 4, combat: 3, move: 3, reassembling: true },
+      { name: 'Bone-Legionary', quality: 4, combat: 3, move: 3, reassembling: true, look: 'Skeleton Infantry' },
+      { name: 'Skeleton Archer', quality: 4, combat: 2, move: 3, ranged: 3, reassembling: true },
+      { name: 'Bone-Fletcher', quality: 4, combat: 2, move: 3, ranged: 3, reassembling: true, look: 'Skeleton Archer' },
     ],
   },
 };

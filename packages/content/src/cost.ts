@@ -26,6 +26,8 @@ export interface Profile {
   big?: boolean;
   /** Flying: ignores terrain and units, draws no free hacks, +1 swooping into melee — but +1 to anyone shooting it airborne. */
   flying?: boolean;
+  /** Reassembling: a knocked-down unit stands back up for free at the start of each round. */
+  reassembling?: boolean;
 }
 
 /** Inclusive `[min, max]` legal range for each stat. */
@@ -73,6 +75,13 @@ export const COST_WEIGHTS = {
    * airborne flyer at +1.
    */
   flying: 9,
+  /**
+   * Flat surcharge for the Reassembling trait. It saves no lives — a lethal blow
+   * still kills — but it turns every knockdown into a mere stumble, refunding the
+   * action a downed unit would otherwise spend standing up. Worth about half a
+   * Tough save: it recovers only from knockdowns, and only once the round turns.
+   */
+  reassembling: 6,
 };
 
 function inRange(value: number, [min, max]: readonly [number, number]): boolean {
@@ -98,7 +107,7 @@ export function statErrors(p: Profile): string[] {
  * untrusted profiles should run {@link statErrors} first. Always >= 1.
  */
 export function unitCost(p: Profile): number {
-  const { base, perQuality, perCombat, perMove, perRanged, tough, guard, big, flying } = COST_WEIGHTS;
+  const { base, perQuality, perCombat, perMove, perRanged, tough, guard, big, flying, reassembling } = COST_WEIGHTS;
   const qualityMax = STAT_BOUNDS.quality[1]; // worst quality = cheapest
   const cost =
     base +
@@ -109,6 +118,7 @@ export function unitCost(p: Profile): number {
     (p.tough ? tough : 0) +
     (p.guard ? guard : 0) +
     (p.big ? big : 0) +
-    (p.flying ? flying : 0);
+    (p.flying ? flying : 0) +
+    (p.reassembling ? reassembling : 0);
   return Math.max(1, cost);
 }

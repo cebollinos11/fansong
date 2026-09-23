@@ -183,9 +183,9 @@ objective and are not leaders.
 
 ## 7. Special rules (traits)
 
-FanSong implements Ranged, Tough, Guard, Big and Flying (see the ✅ entries
-below). Guard has no direct equivalent in the original. The original core rules
-have roughly 50 more. Each line below is a
+FanSong implements Ranged, Tough, Guard, Big, Flying and Reassembling (see the
+✅ entries below). Guard and Reassembling have no direct equivalent in the
+original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
 **Movement:**
@@ -246,6 +246,14 @@ short paraphrase, and the exact effects should be checked before building one.
 - **Coward:** the opposite of Steadfast.
 - **Undead:** immune to poison and to many morale effects, but vulnerable to
   Clerics.
+- ✅ **Done — Reassembling** *(FanSong-original)*. *Implemented:* a
+  `reassembling` trait. At the start of every round, before either player acts,
+  a knocked-down reassembling unit stands back up for free — no action spent, no
+  die rolled (a `UnitStoodUp` event with `reassembled: true`, emitted just after
+  `RoundEnded`). It saves nothing against a killing blow — a lethal result still
+  kills — it only refuses to lie there once merely knocked over. Fits undead that
+  keep pulling their bones back together; the bonefield-legion preset fields
+  Skeleton Infantry and Skeleton Archer that carry it.
 - **Demon:** similar in kind to Undead.
 
 **Behaviour:**

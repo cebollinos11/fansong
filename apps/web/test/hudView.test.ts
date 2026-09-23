@@ -95,8 +95,8 @@ describe('warbandStatus', () => {
 });
 
 describe('traitTags', () => {
-  const traits = (over: Partial<{ ranged: number; tough: boolean; guard: boolean; big: boolean; flying: boolean }>) => ({
-    traits: { ranged: 0, tough: false, guard: false, big: false, flying: false, ...over },
+  const traits = (over: Partial<{ ranged: number; tough: boolean; guard: boolean; big: boolean; flying: boolean; reassembling: boolean }>) => ({
+    traits: { ranged: 0, tough: false, guard: false, big: false, flying: false, reassembling: false, ...over },
   });
 
   it('says nothing for a plain unit', () => {

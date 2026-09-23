@@ -47,6 +47,14 @@ export interface UnitTraits {
    * while it is knocked down: a grounded flyer neither swoops nor floats.
    */
   flying: boolean;
+  /**
+   * Reassembling: bones that will not stay down. At the start of every round,
+   * before either player acts, a reassembling unit that is knocked down stands
+   * back up for free — no action spent, no die rolled. It saves nothing against
+   * a killing blow (see {@link tough} for that); it only refuses to lie there
+   * once it has merely been knocked over.
+   */
+  reassembling: boolean;
 }
 
 export interface Unit {
@@ -182,7 +190,7 @@ export type GameEvent =
   | { type: 'ActivationChosen'; player: Owner; unitId: string; diceCount: number }
   | { type: 'DiceRolled'; unitId: string; quality: number; dice: number[]; successes: number; failures: number }
   | { type: 'Turnover'; player: Owner; unitId: string }
-  | { type: 'UnitStoodUp'; unitId: string }
+  | { type: 'UnitStoodUp'; unitId: string; /** Stood for free at round start via the Reassembling trait, not by spending an action. */ reassembled?: boolean }
   | {
       type: 'UnitMoved';
       unitId: string;

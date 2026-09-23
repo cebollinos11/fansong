@@ -55,6 +55,11 @@ describe('unitCost', () => {
   it('charges a flat surcharge for Flying', () => {
     expect(unitCost({ ...baseline, flying: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.flying);
   });
+
+  it('charges a flat surcharge for Reassembling, under a Tough save', () => {
+    expect(unitCost({ ...baseline, reassembling: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.reassembling);
+    expect(COST_WEIGHTS.reassembling).toBeLessThan(COST_WEIGHTS.tough);
+  });
 });
 
 describe('statErrors', () => {

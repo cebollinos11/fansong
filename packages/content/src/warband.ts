@@ -127,6 +127,7 @@ export function parseWarband(raw: unknown): Warband {
     if (u.guard === true) unit.guard = true;
     if (u.big === true) unit.big = true;
     if (u.flying === true) unit.flying = true;
+    if (u.reassembling === true) unit.reassembling = true;
     if (typeof u.look === 'string') unit.look = u.look;
     return unit;
   });

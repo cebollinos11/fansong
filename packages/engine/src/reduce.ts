@@ -676,6 +676,13 @@ function endRound(s: GameState, events: GameEvent[]): void {
   s.active = s.initiativeLeader;
   s.phase = 'awaitingActivation';
   events.push({ type: 'RoundEnded', round: s.round, nextLeader: s.initiativeLeader });
+  // Reassembling bones haul themselves up before anyone acts: a free stand-up at
+  // the top of the round, no action and no die spent.
+  for (const u of s.units) {
+    if (u.dead || !u.knockedDown || !u.traits.reassembling) continue;
+    u.knockedDown = false;
+    events.push({ type: 'UnitStoodUp', unitId: u.id, reassembled: true });
+  }
 }
 
 function checkGameOver(s: GameState, events: GameEvent[]): boolean {

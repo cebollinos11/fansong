@@ -127,6 +127,7 @@ export const unitTraitsSchema = z
     guard: z.boolean(),
     big: z.boolean(),
     flying: z.boolean(),
+    reassembling: z.boolean(),
   })
   .strict();
 
@@ -215,7 +216,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     failures: z.number(),
   }),
   z.object({ type: z.literal('Turnover'), player: ownerSchema, unitId: z.string() }),
-  z.object({ type: z.literal('UnitStoodUp'), unitId: z.string() }),
+  z.object({ type: z.literal('UnitStoodUp'), unitId: z.string(), reassembled: z.boolean().optional() }),
   z.object({
     type: z.literal('UnitMoved'),
     unitId: z.string(),
@@ -353,6 +354,7 @@ export const unitSpecSchema = z
     guard: z.boolean().optional(),
     big: z.boolean().optional(),
     flying: z.boolean().optional(),
+    reassembling: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -406,6 +408,7 @@ export const warbandUnitSchema = z
     guard: z.boolean().optional(),
     big: z.boolean().optional(),
     flying: z.boolean().optional(),
+    reassembling: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

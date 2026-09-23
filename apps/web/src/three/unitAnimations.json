@@ -2908,5 +2908,333 @@
    ],
    "hitMs": 126
   }
+ },
+ "undead-skeletal/archer/archer.png": {
+  "standing": {
+   "frames": [
+    [
+     "undead-skeletal/archer/archer-bob-1.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-bob-2.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-bob-3.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-bob-4.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-bob-5.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-bob-6.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-bob-7.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-bob-8.png",
+     200
+    ]
+   ]
+  },
+  "idle": {
+   "frames": [
+    [
+     "undead-skeletal/archer/archer-idle-1.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-4.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-5.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-6.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-7.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-8.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-9.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-10.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-11.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-12.png",
+     200
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-13.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-idle-14.png",
+     100
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/archer/archer.png",
+      100
+     ],
+     [
+      "undead-skeletal/archer/archer-attack.png",
+      200
+     ],
+     [
+      "undead-skeletal/archer/archer.png",
+      100
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/archer/archer-bow.png",
+      65
+     ],
+     [
+      "undead-skeletal/archer/archer-bow-attack-1.png",
+      75
+     ],
+     [
+      "undead-skeletal/archer/archer-bow-attack-2.png",
+      75
+     ],
+     [
+      "undead-skeletal/archer/archer-bow-attack-3.png",
+      100
+     ],
+     [
+      "undead-skeletal/archer/archer-bow-attack-4.png",
+      130
+     ],
+     [
+      "undead-skeletal/archer/archer-bow.png",
+      65
+     ]
+    ],
+    "hitMs": 445,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-skeletal/archer/archer.png",
+     1
+    ],
+    [
+     "undead-skeletal/archer/archer-defend.png",
+     250
+    ],
+    [
+     "undead-skeletal/archer/archer.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-skeletal/archer/archer-bow.png",
+     1
+    ],
+    [
+     "undead-skeletal/archer/archer-bow-defend.png",
+     250
+    ],
+    [
+     "undead-skeletal/archer/archer-bow.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "undead-skeletal/archer/archer-die2-1.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-die2-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-die2-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-die2-4.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-die2-5.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-die2-6.png",
+     100
+    ],
+    [
+     "undead-skeletal/archer/archer-die2-7.png",
+     100
+    ]
+   ]
+  }
+ },
+ "undead-skeletal/skeleton/skeleton.png": {
+  "idle": {
+   "frames": [
+    [
+     "undead-skeletal/skeleton/skeleton-idle-1.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-idle-2.png",
+     100
+    ]
+   ]
+  },
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-skeletal/skeleton/skeleton-se-defend1.png",
+     1
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-defend2.png",
+     250
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-skeletal/skeleton/skeleton-se-defend1.png",
+     1
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-defend2.png",
+     250
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "death": {
+   "frames": [
+    [
+     "undead-skeletal/skeleton/skeleton-dying-1.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-dying-2.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-dying-3.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-dying-4.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-dying-5.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-dying-6.png",
+     100
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-dying-7.png",
+     100
+    ]
+   ]
+  }
  }
 }

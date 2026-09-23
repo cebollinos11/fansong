@@ -24,7 +24,9 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'Turnover':
       return `  ✗ TURNOVER — P${e.player} benched for the round`;
     case 'UnitStoodUp':
-      return `  ${name(state, e.unitId)} stands up`;
+      return e.reassembled
+        ? `  ${name(state, e.unitId)} reassembles and stands up`
+        : `  ${name(state, e.unitId)} stands up`;
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves (${e.from.x},${e.from.y}) -> (${e.to.x},${e.to.y})`;
     case 'AttackResolved':
