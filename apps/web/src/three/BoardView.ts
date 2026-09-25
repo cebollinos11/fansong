@@ -8,6 +8,7 @@ import {
   type BoardData,
   type GameEvent,
   type GameState,
+  type Owner,
   type Vec,
 } from '@fansong/engine';
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
@@ -55,6 +56,11 @@ export interface BoardViewModel {
   selectedUnitId: string | null;
   /** Whether the local human may currently interact. */
   interactive: boolean;
+  /**
+   * Seats this screen commands. Any other side's unit traces its route on the
+   * board before it walks; left unset (a replay), every move does.
+   */
+  localSeats?: readonly Owner[];
   /** Tinted hex sets under the move highlights (editor zones and objectives). */
   overlays?: HexOverlay[];
   /** Game-mode markers standing on hexes (flags at base or dropped). */
@@ -280,6 +286,8 @@ const LUNGE = 0.3; // how far (world units) a melee strike leans into its target
 const WALK_MS_PER_HEX = 300; // a move walks its path hex by hex at this steady pace
 const WALK_HOP = 0.12; // world units a walking mini hops up on each hex step
 const WALK_SWAY = 0.12; // radians it rocks side to side, alternating each step (Wesnoth foot units have no walk frames)
+const ROUTE_LEAD_MS = 450; // an opponent's route is traced this long before the unit sets off along it
+const ROUTE_FADE_MS = 250; // and fades out this long once the unit arrives
 const DEFEND_LEAD_MS = 126; // Wesnoth's defend reaction starts this long before impact
 // A sprite with no defend art reacts by moving instead: it gives ground as the
 // blow arrives, further when it turns the blow aside than when it takes it.
@@ -366,6 +374,18 @@ interface Tracer {
   line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
   life: number;
   max: number;
+}
+
+/** An opponent's move traced on the board: the route ahead of the walker and a mark on each hex still to come. */
+interface Route {
+  group: THREE.Group;
+  line: THREE.Line<THREE.BufferGeometry, THREE.LineBasicMaterial>;
+  /** One per hex after the origin; the last is the destination. */
+  dots: THREE.Mesh<THREE.CircleGeometry, THREE.MeshBasicMaterial>[];
+  /** Hex centres on the board surface, origin first. */
+  points: THREE.Vector3[];
+  /** Board time the walk sets off. */
+  start: number;
 }
 
 interface Missile {
@@ -515,6 +535,11 @@ export class BoardView {
   /** Dice cards and verdicts over the units. */
   private readonly rolls: RollOverlay;
   private readonly tracers: Tracer[] = [];
+  private readonly routes: Route[] = [];
+  private readonly routeGroup = new THREE.Group();
+  private routeDotGeo: THREE.CircleGeometry | null = null;
+  /** See {@link BoardViewModel.localSeats}; null traces every move. */
+  private localSeats: readonly Owner[] | null = null;
   private readonly missiles: Missile[] = [];
   private readonly effects = new Effects();
   /** Wall-clock time (ms, at animation speed): unlike {@link now} it runs on through a hit-stop. */
@@ -631,6 +656,7 @@ export class BoardView {
       this.overlayGroup,
       this.highlightGroup,
       this.previewGroup,
+      this.routeGroup,
       this.markerGroup,
       this.effects.group,
     );
@@ -787,6 +813,7 @@ export class BoardView {
   /** Reconcile unit meshes and highlights with the given view model. */
   update(vm: BoardViewModel): void {
     const { state } = vm;
+    this.localSeats = vm.localSeats ?? null;
 
     // Sync unit meshes (create/move/kill).
     const seen = new Set<string>();
@@ -895,8 +922,15 @@ export class BoardView {
         if (obj) {
           // A runner breaks once its nerve check (and any hack at its back) has shown.
           if (e.type === 'UnitFled') t = Math.max(t, settle);
+          const cells = e.path ?? this.walkCells(e.from, e.to);
+          // An opponent's route shows first, so the eye knows where it is headed.
+          if (e.type === 'UnitMoved' && this.localSeats?.includes(obj.owner) !== true) {
+            const start = this.now + t + ROUTE_LEAD_MS;
+            this.at(t, () => this.traceRoute(obj.owner, cells, start));
+            t += ROUTE_LEAD_MS;
+          }
           // Walk hex by hex at a steady pace, so a longer move takes proportionally longer.
-          const path = e.path ? e.path.map((c) => this.unitWorld(c)) : this.walkPath(e.from, e.to);
+          const path = cells.map((c) => this.unitWorld(c));
           const dur = (path.length - 1) * WALK_MS_PER_HEX;
           obj.walk = { path, start: this.now + t };
           this.at(t, () => {
@@ -1359,6 +1393,7 @@ export class BoardView {
     this.rolls.clear();
     this.effects.clear();
     this.effects.clearMarks();
+    this.clearRoutes();
     this.shakes = [];
     this.freezeUntil = 0;
     for (const obj of this.units.values()) {
@@ -1397,6 +1432,8 @@ export class BoardView {
     this.previewLineMat?.dispose();
     this.previewDotGeo?.dispose();
     this.previewDotMat?.dispose();
+    this.clearRoutes();
+    this.routeDotGeo?.dispose();
     for (const t of this.badgeTextures.values()) t.dispose();
     this.starMaterial?.map?.dispose();
     this.starMaterial?.dispose();
@@ -1964,10 +2001,79 @@ export class BoardView {
     if (f >= 0 && !walk.backward) this.setHeading(obj, to.clone().sub(from));
   }
 
-  /** World points of the hexes a move walks through, origin and destination included. */
-  private walkPath(from: Vec, to: Vec): THREE.Vector3[] {
+  /** The hexes a move walks through, origin and destination included. */
+  private walkCells(from: Vec, to: Vec): Vec[] {
     const cells = this.board ? makeHexGrid(this.board).pathWithin(from, to, this.width * this.height) : null;
-    return (cells ?? [from, to]).map((c) => this.unitWorld(c));
+    return cells ?? [from, to];
+  }
+
+  /** Lay an opponent's route on the board; {@link animateRoutes} eats it up as the unit walks it. */
+  private traceRoute(owner: Owner, cells: Vec[], start: number): void {
+    if (cells.length < 2) return;
+    const points = cells.map((c) => {
+      const w = this.cellToWorld(c);
+      return new THREE.Vector3(w.x, this.surfaceAt(c) + 0.09, w.z);
+    });
+    const color = OWNER_COLORS[owner];
+    const group = new THREE.Group();
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(points),
+      new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.95 }),
+    );
+    this.routeDotGeo ??= new THREE.CircleGeometry(HEX_SIZE * 0.26, 12);
+    const dotMat = fillMaterial(color, 0.85);
+    const dots = points.slice(1).map((at, i) => {
+      const dot = new THREE.Mesh(this.routeDotGeo!, dotMat);
+      dot.rotation.x = -Math.PI / 2;
+      dot.position.copy(at);
+      // Small steps along the way, and a mark that reads as where it will stand.
+      dot.scale.setScalar(i === points.length - 2 ? 1.5 : 0.6);
+      return dot;
+    });
+    group.add(line, ...dots);
+    this.routeGroup.add(group);
+    this.routes.push({ group, line, dots, points, start });
+  }
+
+  /** Trim each route to what lies ahead of its walker; fade it out once it has arrived. */
+  private animateRoutes(): void {
+    for (let r = this.routes.length - 1; r >= 0; r--) {
+      const route = this.routes[r]!;
+      const { points, line, dots } = route;
+      const f = Math.max(0, (this.now - route.start) / WALK_MS_PER_HEX);
+      const last = points.length - 1;
+      if (f >= last) {
+        const fade = 1 - ((f - last) * WALK_MS_PER_HEX) / ROUTE_FADE_MS;
+        if (fade <= 0) {
+          this.removeRoute(r);
+          continue;
+        }
+        line.visible = false;
+        dots[dots.length - 1]!.material.opacity = 0.85 * fade;
+        continue;
+      }
+      const i = Math.floor(f);
+      // The line starts under the walker: move its first live vertex there.
+      const pos = line.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const here = points[i]!.clone().lerp(points[i + 1]!, f - i);
+      pos.setXYZ(i, here.x, here.y, here.z);
+      pos.needsUpdate = true;
+      line.geometry.setDrawRange(i, points.length - i);
+      dots.forEach((dot, j) => (dot.visible = j + 1 > f));
+    }
+  }
+
+  private removeRoute(index: number): void {
+    const route = this.routes[index]!;
+    this.routeGroup.remove(route.group);
+    route.line.geometry.dispose();
+    route.line.material.dispose();
+    route.dots[0]?.material.dispose(); // one material, shared by every dot of the route
+    this.routes.splice(index, 1);
+  }
+
+  private clearRoutes(): void {
+    for (let r = this.routes.length - 1; r >= 0; r--) this.removeRoute(r);
   }
 
   private animateMissiles(): void {
@@ -2747,6 +2853,7 @@ export class BoardView {
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
     this.animateMissiles();
+    this.animateRoutes();
     this.effects.update(dtMs);
     this.rolls.update(this.now, this.projectUnit);
 

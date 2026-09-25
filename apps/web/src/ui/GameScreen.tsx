@@ -323,6 +323,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
         selectedUnitId={selectedUnitId ?? sandbox?.selectedUnitId ?? null}
         interactive={myTurn || sandbox !== undefined}
+        localSeats={client.controlledSeats}
         liveTerrain={sandbox !== undefined}
         events={shown.events}
         onEventsPlayed={(ms) => queueRef.current?.played(ms)}

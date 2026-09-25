@@ -24,6 +24,8 @@ interface Props {
   selectableUnitIds: string[];
   selectedUnitId: string | null;
   interactive: boolean;
+  /** Seats this screen commands; other sides' moves trace their route first (unset: every move). */
+  localSeats?: readonly Owner[];
   /** The most recent batch of engine events, for transient FX. A new empty batch cuts pending FX short. */
   events: GameEvent[];
   /** Called once per new `events` batch with how long (ms) its animations take to play out. */
@@ -177,6 +179,10 @@ export function BoardCanvas(props: Props): JSX.Element {
     [markingsKey],
   );
   const overlays = props.overlays ?? markings.overlays;
+  // A client may hand over a fresh array each render; only a change of seats matters.
+  const seatsKey = props.localSeats?.join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const localSeats = useMemo(() => props.localSeats, [seatsKey]);
 
   // Reconcile visuals on every relevant change.
   useEffect(() => {
@@ -189,6 +195,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
       interactive: props.interactive,
+      localSeats,
       overlays,
       markers: markings.markers,
       badges: markings.badges,
@@ -204,6 +211,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.selectableUnitIds,
     props.selectedUnitId,
     props.interactive,
+    localSeats,
     overlays,
     markings,
     markingsKey,
