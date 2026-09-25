@@ -61,7 +61,6 @@ export type FxTexture =
   | 'skull'
   | 'blades'
   | 'arc'
-  | 'crack'
   | 'fallen';
 
 interface Fx {
@@ -361,28 +360,6 @@ export class Effects {
     }, () => mat.dispose());
   }
 
-  /** An image lying flat on the ground (a crack), fading over the last half of its life. */
-  decal(tex: FxTexture, at: THREE.Vector3, size: number, env: Envelope & { color?: number; rotation?: number }): void {
-    const mat = new THREE.MeshBasicMaterial({
-      map: this.texture(tex),
-      color: env.color ?? 0xffffff,
-      transparent: true,
-      depthWrite: false,
-      polygonOffset: true,
-      polygonOffsetFactor: -2,
-    });
-    const mesh = new THREE.Mesh(this.plane, mat);
-    mesh.rotation.set(-Math.PI / 2, 0, env.rotation ?? Math.random() * Math.PI * 2);
-    mesh.position.copy(at);
-    mesh.renderOrder = 1;
-    const peak = env.opacity ?? 1;
-    this.add(mesh, env.life, (k) => {
-      // Spreads out fast, like a crack running through stone.
-      mesh.scale.setScalar(size * Math.min(1, 0.3 + k * 8));
-      mat.opacity = peak * Math.min(1, (1 - k) / 0.5);
-    }, () => mat.dispose());
-  }
-
   /** A bright bar joining two points, flaring then fading. */
   beam(a: THREE.Vector3, b: THREE.Vector3, color: number, width: number, env: Envelope): void {
     const mat = new THREE.MeshBasicMaterial({
@@ -649,33 +626,6 @@ function drawTexture(g: CanvasRenderingContext2D, kind: FxTexture): void {
       g.arc(c, 96, 70, Math.PI * 1.15, Math.PI * 1.85);
       g.arc(c, 116, 80, Math.PI * 1.8, Math.PI * 1.2, true);
       g.closePath();
-      g.fill();
-      return;
-    }
-    case 'crack': {
-      // Jagged cracks running out from a centre, darkest at the core.
-      g.strokeStyle = 'rgba(10,10,14,0.85)';
-      let seed = 7;
-      const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-      for (let i = 0; i < 7; i++) {
-        let a = (i / 7) * Math.PI * 2 + rnd() * 0.5;
-        let x = c;
-        let y = c;
-        g.beginPath();
-        g.moveTo(x, y);
-        for (let s = 0; s < 5; s++) {
-          a += (rnd() - 0.5) * 0.9;
-          const len = 8 + rnd() * 6;
-          x += Math.cos(a) * len;
-          y += Math.sin(a) * len;
-          g.lineTo(x, y);
-        }
-        g.lineWidth = 3 + rnd() * 3;
-        g.stroke();
-      }
-      g.fillStyle = 'rgba(10,10,14,0.6)';
-      g.beginPath();
-      g.arc(c, c, 10, 0, Math.PI * 2);
       g.fill();
       return;
     }

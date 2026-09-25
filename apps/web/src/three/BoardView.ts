@@ -312,6 +312,8 @@ const FEAR_WAVE_MS = 800; // time for a gruesome kill's fear to reach the edge o
 const SHATTER_FADE_MS = 200; // a unit that shatters into motes is gone this fast
 const PUSH_OFF_MS = 900; // a unit shoved off the table slides, topples and drops for this long
 const STICK_MS = 500; // an arrow that lands stays in its target this long
+const BLINKS = 3; // a knocked-down unit blinks this many times as it lands
+const BLINK_MS = 160; // one blink: hidden for the first half, shown for the second
 
 // Following the action: a batch whose units sit outside this part of the view
 // (normalised device coords, ±1 = the edges) pans the camera to them first.
@@ -452,6 +454,8 @@ interface UnitObj {
   jolt: { dir: THREE.Vector3; start: number; end: number; shake: boolean } | null;
   /** A rim glow traced around the figure (a Tough save), when no click cue is showing. */
   glow: { color: number; start: number; end: number } | null;
+  /** Board times a knocked-down unit blinks between (see {@link BLINKS}). */
+  blink: { start: number; end: number } | null;
   /** A shove the cutout rides out and recovers from: a strike's lunge in, or a dodge back. */
   lunge: { dir: THREE.Vector3; start: number; hit: number; end: number } | null;
   /** A move in progress: hex centres from origin to destination, walked from board time `start`. `backward` keeps the facing (a recoil). */
@@ -518,7 +522,7 @@ export class BoardView {
   /** Board time stands still until the wall clock reaches this (a hit-stop). */
   private freezeUntil = 0;
   /** Camera shakes in progress, on the wall clock. */
-  private shakes: { start: number; end: number; amp: number; kind: 'nudge' | 'thump' | 'rumble'; dir: THREE.Vector3 }[] = [];
+  private shakes: { start: number; end: number; amp: number; kind: 'nudge' | 'rumble'; dir: THREE.Vector3 }[] = [];
   /** Deferred animation steps, run once board time reaches `at` (ms). */
   private readonly timeline: { at: number; fn: () => void }[] = [];
   /** Board time (ms) since the view was created; drives all animation. */
@@ -1013,7 +1017,7 @@ export class BoardView {
         const obj = this.units.get(e.unitId);
         if (obj) {
           const fall = this.deathClip(obj, 'fall');
-          this.at(at + (fall ? clipDuration(fall) : 200), () => this.slamFx(obj));
+          this.at(at + (fall ? clipDuration(fall) : 200), () => this.blinkUnit(obj));
         }
       } else if (e.type === 'UnitKilled') {
         hold(e.unitId, settle);
@@ -1338,6 +1342,8 @@ export class BoardView {
       obj.holdUntil = 0;
       obj.pulse = null;
       obj.jolt = null;
+      obj.blink = null;
+      obj.facing.visible = true;
     }
     this.busyUntil = this.now;
     return true;
@@ -1361,6 +1367,8 @@ export class BoardView {
       obj.walk = null;
       obj.jolt = null;
       obj.glow = null;
+      obj.blink = null;
+      obj.facing.visible = true;
       obj.mirror.rotation.z = 0;
       obj.animator.moveFor(0, { reset: true });
     }
@@ -1501,6 +1509,7 @@ export class BoardView {
       pushedOff: null,
       jolt: null,
       glow: null,
+      blink: null,
       lunge: null,
       walk: null,
       flash: 0,
@@ -1905,6 +1914,8 @@ export class BoardView {
     obj.hover += ((airborne ? FLY_HOVER : 0) - obj.hover) * lerp;
     const lift = obj.hover + (airborne ? Math.sin((this.now / FLY_BOB_MS) * Math.PI * 2) * FLY_BOB : 0);
     obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT + lift - sink, off.z);
+    if (obj.blink && this.now >= obj.blink.end) obj.blink = null;
+    obj.facing.visible = !obj.blink || ((this.now - obj.blink.start) % BLINK_MS) >= BLINK_MS / 2;
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
 
     if (obj.flash > 0) {
@@ -2302,11 +2313,11 @@ export class BoardView {
   }
 
   /**
-   * Shake the camera: a `nudge` shoves it once along `dir`, a `thump` bounces
-   * it vertically, a `rumble` jitters it. Never with the camera off or in hand.
+   * Shake the camera: a `nudge` shoves it once along `dir`, a `rumble` jitters
+   * it. Never with the camera off or in hand.
    */
   private shakeCamera(
-    kind: 'nudge' | 'thump' | 'rumble',
+    kind: 'nudge' | 'rumble',
     amp: number,
     ms: number,
     dir = new THREE.Vector3(0, 1, 0),
@@ -2322,7 +2333,6 @@ export class BoardView {
       const k = (this.wallNow - sh.start) / (sh.end - sh.start);
       const decay = (1 - k) * (1 - k);
       if (sh.kind === 'nudge') out.addScaledVector(sh.dir, sh.amp * Math.sin(Math.PI * k));
-      else if (sh.kind === 'thump') out.y -= sh.amp * Math.sin(k * Math.PI * 5) * decay;
       else {
         const jitter = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
         out.addScaledVector(jitter, 2 * sh.amp * decay);
@@ -2425,33 +2435,10 @@ export class BoardView {
     this.joltUnit(friend, friend.group.position.clone().sub(obj.group.position), 0.1);
   }
 
-  /** 5a–5c. Hitting the ground: a ring of dust, bouncing pebbles, a crack in the hex and a thump. */
-  private slamFx(obj: UnitObj): void {
+  /** Knocked down: the unit blinks out and back {@link BLINKS} times as it hits the ground. */
+  private blinkUnit(obj: UnitObj): void {
     if (obj.state.dead) return; // finished off before it landed; the death has its own
-    const ground = obj.group.position.clone().setY(this.groundY(obj));
-    const colors = this.dustColors(ground);
-    this.effects.ring(ground.clone().setY(ground.y + 0.03), colors[0]!, 0.2, 0.8 * obj.size, {
-      life: 0.55,
-      opacity: 0.6,
-      thick: true,
-    });
-    this.dust(ground, 12);
-    this.effects.burst({
-      at: ground.clone().setY(ground.y + 0.05),
-      count: 8,
-      colors: CHIP_COLORS,
-      speed: [0.6, 1.3],
-      up: 1.4,
-      gravity: 9,
-      life: [0.6, 0.9],
-      size: [0.035, 0.06],
-      shape: 'square',
-      floor: ground.y + 0.02,
-      bounce: 0.4,
-      jitter: 0.1,
-    });
-    this.effects.decal('crack', ground.clone().setY(ground.y + 0.012), HEX_SIZE * 1.3, { life: 1.4, opacity: 0.8 });
-    this.shakeCamera('thump', obj.size > 1 ? 0.09 : 0.05, 280);
+    obj.blink = { start: this.now, end: this.now + BLINKS * BLINK_MS };
   }
 
   /** 6d, 7a–7c. A killing blow: a shockwave — and for a gruesome one, a hit-stop, ash, a skull and a wave of fear. */
