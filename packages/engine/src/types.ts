@@ -68,6 +68,12 @@ export interface UnitTraits {
    * flight — it lapses while the rider is knocked down.
    */
   mounted: boolean;
+  /**
+   * Opportunist: quick to strike a foe who is down. It scores +1 in every melee
+   * against a knocked-down opponent — attacking, defending, riposting or hacking
+   * at a leaver alike — and +1 shooting a knocked-down target.
+   */
+  opportunist: boolean;
 }
 
 export interface Unit {
@@ -236,6 +242,10 @@ export type GameEvent =
       attackMounted?: number;
       /** Mounted bonus added to the defense score (a standing rider facing a foe on foot); present only when non-zero. */
       defenseMounted?: number;
+      /** Opportunist bonus added to the attack score (an Opportunist striking a knocked-down foe); present only when non-zero. */
+      attackOpportunist?: number;
+      /** Opportunist bonus added to the defense score (an Opportunist facing a knocked-down attacker); present only when non-zero. */
+      defenseOpportunist?: number;
       /** Power-blow penalty subtracted from the defense score; present only on a two-action attack. */
       powerPenalty?: number;
       result: CombatResult;
@@ -262,6 +272,8 @@ export type GameEvent =
       bigTarget?: number;
       /** Flying-target bonus added to the attack score (the target is an airborne flyer); present only when non-zero. */
       flyingTarget?: number;
+      /** Opportunist bonus added to the attack score (an Opportunist shooting a knocked-down target); present only when non-zero. */
+      attackOpportunist?: number;
       /** Aimed-shot penalty subtracted from the defense score; present only on a two-action shot. */
       aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
@@ -300,6 +312,10 @@ export type GameEvent =
       attackMounted?: number;
       /** Mounted bonus added to the leaver's score (a standing rider, and the hacker is on foot); present only when non-zero. */
       defenseMounted?: number;
+      /** Opportunist bonus added to the hacker's score (an Opportunist hacking a knocked-down leaver); present only when non-zero. */
+      attackOpportunist?: number;
+      /** Opportunist bonus added to the leaver's score (never in practice: a knocked-down hacker draws no hack); present only when non-zero. */
+      defenseOpportunist?: number;
       result: CombatResult;
       /** Present when the kill tripled the leaver's score (a gruesome kill, which spreads fear). */
       gruesome?: true;
@@ -331,6 +347,10 @@ export type GameEvent =
       guardMounted?: number;
       /** Mounted bonus added to the attacker's score (a standing rider, and the guard is on foot); present only when non-zero. */
       attackerMounted?: number;
+      /** Opportunist bonus added to the guard's score (an Opportunist riposting a knocked-down attacker); present only when non-zero. */
+      guardOpportunist?: number;
+      /** Opportunist bonus added to the attacker's score (an Opportunist attacking a knocked-down guard); present only when non-zero. */
+      attackerOpportunist?: number;
       result: CombatResult;
       /** Present when the riposte's kill tripled the attacker's score (a gruesome kill). */
       gruesome?: true;

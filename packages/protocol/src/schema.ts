@@ -131,6 +131,7 @@ export const unitTraitsSchema = z
     flying: z.boolean(),
     reassembling: z.boolean(),
     mounted: z.boolean(),
+    opportunist: z.boolean(),
   })
   .strict();
 
@@ -243,6 +244,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     attackFly: z.number().optional(),
     attackMounted: z.number().optional(),
     defenseMounted: z.number().optional(),
+    attackOpportunist: z.number().optional(),
+    defenseOpportunist: z.number().optional(),
     powerPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -261,6 +264,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     coverPenalty: z.number().optional(),
     bigTarget: z.number().optional(),
     flyingTarget: z.number().optional(),
+    attackOpportunist: z.number().optional(),
     aimPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -282,6 +286,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     attackFly: z.number().optional(),
     attackMounted: z.number().optional(),
     defenseMounted: z.number().optional(),
+    attackOpportunist: z.number().optional(),
+    defenseOpportunist: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
   }),
@@ -303,6 +309,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     guardFly: z.number().optional(),
     guardMounted: z.number().optional(),
     attackerMounted: z.number().optional(),
+    guardOpportunist: z.number().optional(),
+    attackerOpportunist: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
     prevented: z.boolean(),
@@ -377,6 +385,7 @@ export const unitSpecSchema = z
     flying: z.boolean().optional(),
     reassembling: z.boolean().optional(),
     mounted: z.boolean().optional(),
+    opportunist: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -434,6 +443,7 @@ export const warbandUnitSchema = z
     flying: z.boolean().optional(),
     reassembling: z.boolean().optional(),
     mounted: z.boolean().optional(),
+    opportunist: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

@@ -136,6 +136,7 @@ export function parseWarband(raw: unknown): Warband {
     if (u.flying === true) unit.flying = true;
     if (u.reassembling === true) unit.reassembling = true;
     if (u.mounted === true) unit.mounted = true;
+    if (u.opportunist === true) unit.opportunist = true;
     if (typeof u.look === 'string') unit.look = u.look;
     return unit;
   });

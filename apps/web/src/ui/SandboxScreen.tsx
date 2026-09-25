@@ -356,7 +356,7 @@ function NumberField({
   );
 }
 
-const TRAITS = ['slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted'] as const;
+const TRAITS = ['slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist'] as const;
 
 /** Stat and trait fields shared by the spawn template and the unit inspector. */
 function ProfileFields({

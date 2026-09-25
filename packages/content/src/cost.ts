@@ -33,6 +33,8 @@ export interface Profile {
   reassembling?: boolean;
   /** Mounted: +1 in melee against foes on foot, while not knocked down. */
   mounted?: boolean;
+  /** Opportunist: +1 in melee or shooting against a knocked-down foe. */
+  opportunist?: boolean;
 }
 
 /** The kinds of Shooter trait: short range, plain Shooter, and long range. */
@@ -84,7 +86,7 @@ export const COST_WEIGHTS = {
   perCombat: 5,
   /**
    * Each favorable trait adds this much, before the Quality multiplier: Fast,
-   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling and Mounted.
+   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Mounted and Opportunist.
    */
   favorable: 3,
   /** Each unfavorable trait adds this much (a rebate), before the Quality multiplier: Slow. */
@@ -95,7 +97,7 @@ export const COST_WEIGHTS = {
 
 /** How many of a profile's traits are favorable and how many unfavorable. */
 export function traitCounts(p: Profile): { favorable: number; unfavorable: number } {
-  const favorable = [p.fast, p.shooter !== undefined, p.tough, p.guard, p.big, p.flying, p.reassembling, p.mounted].filter(
+  const favorable = [p.fast, p.shooter !== undefined, p.tough, p.guard, p.big, p.flying, p.reassembling, p.mounted, p.opportunist].filter(
     Boolean,
   ).length;
   const unfavorable = p.slow ? 1 : 0;

@@ -11,6 +11,7 @@ import {
   kingOf,
   makeHexGrid,
   mountedMeleeBonus,
+  opportunistBonus,
   outnumberedPenalty,
   rangePenalty,
   scoringZones,
@@ -77,7 +78,7 @@ const SHOT_PENALTY_COST = 100;
 
 /**
  * How far a shot at `target` from where `shooter` stands is stacked against it:
- * range and cover, less the point a Big target hands the shooter. Negative means
+ * range and cover, less the points a Big, airborne or (to an Opportunist) downed target hands the shooter. Negative means
  * the shot is better than an unmodified one.
  */
 function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit): number {
@@ -87,7 +88,8 @@ function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit
     rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) +
     cover -
     bigTargetBonus(target) -
-    flyingTargetBonus(target)
+    flyingTargetBonus(target) -
+    opportunistBonus(shooter, target)
   );
 }
 
@@ -114,17 +116,19 @@ function pressedEdge(worthIt: boolean, pressed: boolean): number {
   return pressed === worthIt ? PRESSED_EDGE : -PRESSED_EDGE;
 }
 
-/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, mounts and outnumbering. */
+/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, mounts, opportunism and outnumbering. */
 function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
   return (
     attacker.combat +
     bigMeleeBonus(attacker, target) +
     flyingMeleeBonus(attacker, target) +
-    mountedMeleeBonus(attacker, target) -
+    mountedMeleeBonus(attacker, target) +
+    opportunistBonus(attacker, target) -
     outnumberedPenalty(state, attacker, board) -
     (target.combat +
       bigMeleeBonus(target, attacker) +
-      mountedMeleeBonus(target, attacker) -
+      mountedMeleeBonus(target, attacker) +
+      opportunistBonus(target, attacker) -
       outnumberedPenalty(state, target, board))
   );
 }

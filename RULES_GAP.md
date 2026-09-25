@@ -195,8 +195,8 @@ objective and are not leaders.
 
 ## 7. Special rules (traits)
 
-FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling and Mounted (see the
-✅ entries below). Guard and Reassembling have no direct equivalent in the
+FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted and
+Opportunist (see the ✅ entries below). Guard, Reassembling and Opportunist have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
@@ -244,6 +244,13 @@ short paraphrase, and the exact effects should be checked before building one.
   out (`attackMounted` / `defenseMounted` / `guardMounted` / `attackerMounted`
   event fields). Like flight, and unlike size, the edge lapses while the rider is
   knocked down. It does not touch shooting. *Original:* +1 against models on foot.
+- ✅ **Done — Opportunist** *(FanSong's own)*. *Implemented:* an `opportunist`
+  trait. It scores +1 in every melee against a knocked-down opponent —
+  attacking, defending, riposting and hacking at a leaver alike
+  (`attackOpportunist` / `defenseOpportunist` / `guardOpportunist` /
+  `attackerOpportunist` event fields) — and +1 shooting a knocked-down target
+  (`attackOpportunist` on `ShotResolved`). It works whether or not the
+  Opportunist is itself on its feet.
 - **Rabble:** a cheap mob model that fights better next to friends of its own
   kind *(revised)*.
 - **Swarm:** a mob that is hard to kill outright.

@@ -11,6 +11,7 @@ import {
   COVER_PENALTY,
   isGruesome,
   mountedMeleeBonus,
+  opportunistBonus,
   POWER_BLOW_PENALTY,
   PRESSED_COST,
   rangePenalty,
@@ -320,7 +321,9 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   const bigTarget = bigTargetBonus(target);
   // An airborne flyer has no cover in the open sky — easy to shoot down.
   const flyingTarget = flyingTargetBonus(target);
-  const attackScore = attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget - range - cover;
+  const attackOpportunist = opportunistBonus(attacker, target);
+  const attackScore =
+    attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget + attackOpportunist - range - cover;
   const defenseScore = target.combat + defenseDie + defenseBonus - aimPenalty;
 
   const targetPush = pushOutcome(s, board, target, attacker);
@@ -341,7 +344,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     defenseDie,
     attackScore,
     defenseScore,
-    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, aimPenalty }),
+    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, attackOpportunist, aimPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -385,6 +388,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackFly: guardFly,
     attackMounted: guardMounted,
     defenseMounted: attackerMounted,
+    attackOpportunist: guardOpportunist,
+    defenseOpportunist: attackerOpportunist,
   } = roll.mods;
   const attackerPush = pushOutcome(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6. And a guard never
@@ -416,7 +421,19 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackerDie,
     guardScore,
     attackerScore,
-    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered, guardBig, attackerBig, guardFly, guardMounted, attackerMounted }),
+    ...shown({
+      guardBonus,
+      attackerBonus,
+      guardOutnumbered,
+      attackerOutnumbered,
+      guardBig,
+      attackerBig,
+      guardFly,
+      guardMounted,
+      attackerMounted,
+      guardOpportunist,
+      attackerOpportunist,
+    }),
     result,
     ...(gruesome ? { gruesome } : {}),
     prevented,
@@ -490,6 +507,8 @@ interface MeleeMods {
   attackFly: number;
   attackMounted: number;
   defenseMounted: number;
+  attackOpportunist: number;
+  defenseOpportunist: number;
 }
 
 /** One opposed melee: both dice, both scores, and the modifiers behind them. */
@@ -511,7 +530,7 @@ function rollPair(s: GameState): { attackDie: number; defenseDie: number } {
 
 /**
  * Roll one opposed melee exchange (mutates `s.rngState`). Each side scores its
- * Combat plus its die, any high ground and any edge its size, flight or mount gives it, less what
+ * Combat plus its die, any high ground and any edge its size, flight, mount or opportunism gives it, less what
  * it is outnumbered by; `defensePenalty` (a power blow's) comes off the defender
  * on top. Every melee
  * in the game — an ordinary blow, a guard's riposte, a free hack — is scored
@@ -535,6 +554,8 @@ function rollMelee(
     attackFly: flyingMeleeBonus(aggressor, defender),
     attackMounted: mountedMeleeBonus(aggressor, defender),
     defenseMounted: mountedMeleeBonus(defender, aggressor),
+    attackOpportunist: opportunistBonus(aggressor, defender),
+    defenseOpportunist: opportunistBonus(defender, aggressor),
   };
   return {
     attackDie,
@@ -545,14 +566,16 @@ function rollMelee(
       mods.attackBonus +
       mods.attackBig +
       mods.attackFly +
-      mods.attackMounted -
+      mods.attackMounted +
+      mods.attackOpportunist -
       mods.attackOutnumbered,
     defenseScore:
       defender.combat +
       defenseDie +
       mods.defenseBonus +
       mods.defenseBig +
-      mods.defenseMounted -
+      mods.defenseMounted +
+      mods.defenseOpportunist -
       mods.defenseOutnumbered -
       defensePenalty,
     mods,

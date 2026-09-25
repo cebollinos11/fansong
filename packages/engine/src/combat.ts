@@ -75,6 +75,9 @@ export const FLYING_MELEE_BONUS = 1;
 /** How much a standing rider's horse is worth in a melee against a foe on foot. */
 export const MOUNTED_MELEE_BONUS = 1;
 
+/** How much an opportunist gains fighting or shooting a knocked-down foe. */
+export const OPPORTUNIST_BONUS = 1;
+
 /** How much easier an airborne flyer is to shoot: a target with no cover in the open sky. */
 export const FLYING_TARGET_BONUS = 1;
 
@@ -150,6 +153,16 @@ export function mountedMeleeBonus(
 ): number {
   if (unit.knockedDown) return 0;
   return unit.traits.mounted && !opponent.traits.mounted ? MOUNTED_MELEE_BONUS : 0;
+}
+
+/**
+ * The Opportunist bonus: {@link OPPORTUNIST_BONUS} when `unit` is an
+ * Opportunist and `opponent` is knocked down, else 0. It counts on either side
+ * of every melee — blows, ripostes and free hacks — and on the shooter's side
+ * of a shot.
+ */
+export function opportunistBonus(unit: Pick<Unit, 'traits'>, opponent: Pick<Unit, 'knockedDown'>): number {
+  return unit.traits.opportunist && opponent.knockedDown ? OPPORTUNIST_BONUS : 0;
 }
 
 function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {

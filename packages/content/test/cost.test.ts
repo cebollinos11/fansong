@@ -45,7 +45,7 @@ describe('unitCost', () => {
 
   it('adds 3 per favorable trait, scaled by Quality', () => {
     // (3*5 + 3) * (7-3) / 2 = 36
-    for (const trait of ['fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted'] as const) {
+    for (const trait of ['fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist'] as const) {
       expect(unitCost({ ...baseline, [trait]: true })).toBe(36);
     }
     for (const shooter of SHOOTER_KINDS) expect(unitCost({ ...baseline, shooter })).toBe(36);

@@ -729,3 +729,113 @@ describe('Mounted trait', () => {
     expect(shoot(config(true)).attackScore).toBe(shoot(config(false)).attackScore);
   });
 });
+
+// --- Opportunist --------------------------------------------------------------
+
+describe('Opportunist trait', () => {
+  /** A duel between two neighbours, either of which may be an Opportunist. */
+  function melee(attackerOpp: boolean, defenderOpp: boolean): GameConfig {
+    return {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Striker', quality: 3, combat: 3, opportunist: attackerOpp, pos: { x: 1, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, opportunist: defenderOpp, pos: { x: 2, y: 1 } }],
+      ],
+    };
+  }
+
+  const down = (id: string) => (s: GameState) => {
+    s.units.find((u) => u.id === id)!.knockedDown = true;
+  };
+
+  const resolveAttack = (config: GameConfig, prep?: (s: GameState) => void) => {
+    const s = acting(config, 'p0u0');
+    prep?.(s);
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    return events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+  };
+
+  it('adds +1 to an Opportunist attacking a knocked-down foe', () => {
+    const opp = resolveAttack(melee(true, false), down('p1u0'));
+    const plain = resolveAttack(melee(false, false), down('p1u0'));
+    expect(opp.attackOpportunist).toBe(1);
+    expect(opp.attackScore - plain.attackScore).toBe(1);
+    expect(opp.defenseScore).toBe(plain.defenseScore);
+  });
+
+  it('gives nothing against a standing foe', () => {
+    const opp = resolveAttack(melee(true, false));
+    const plain = resolveAttack(melee(false, false));
+    expect(opp.attackOpportunist).toBeUndefined();
+    expect(opp.attackScore).toBe(plain.attackScore);
+  });
+
+  it('adds +1 to an Opportunist defending against a knocked-down attacker', () => {
+    const opp = resolveAttack(melee(false, true), down('p0u0'));
+    const plain = resolveAttack(melee(false, false), down('p0u0'));
+    expect(opp.defenseOpportunist).toBe(1);
+    expect(opp.defenseScore - plain.defenseScore).toBe(1);
+  });
+
+  it("carries into an Opportunist attacker's blow against a knocked-down guard's riposte", () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Sentry', quality: 3, combat: 3, guard: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Cutthroat', quality: 3, combat: 3, opportunist: true, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const s = acting(config, 'p1u0');
+    const guard = s.units.find((u) => u.id === 'p0u0')!;
+    guard.guarding = true;
+    guard.knockedDown = true;
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+    const rip = events.find((e) => e.type === 'GuardRiposte') as Extract<GameEvent, { type: 'GuardRiposte' }>;
+    expect(rip.attackerOpportunist).toBe(1);
+    expect(rip.guardOpportunist).toBeUndefined();
+  });
+
+  it('carries into free hacks at a knocked-down leaver', () => {
+    const config = (hackerOpp: boolean): GameConfig => ({
+      seed: 5,
+      board: { width: 6, height: 3 },
+      warbands: [
+        [{ name: 'Runner', quality: 3, combat: 3, slow: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Cutthroat', quality: 3, combat: 3, opportunist: hackerOpp, pos: { x: 2, y: 1 } }],
+      ],
+    });
+    const hackOf = (c: GameConfig) => {
+      const s = acting(c, 'p0u0');
+      s.units.find((u) => u.id === 'p0u0')!.knockedDown = true;
+      const { events } = reduce(s, { type: 'Move', unitId: 'p0u0', to: { x: 0, y: 1 } });
+      return events.find((e) => e.type === 'FreeHackResolved') as Extract<GameEvent, { type: 'FreeHackResolved' }> | undefined;
+    };
+    const opp = hackOf(config(true));
+    const plain = hackOf(config(false));
+    expect(opp?.attackOpportunist).toBe(1);
+    expect(opp!.attackScore - plain!.attackScore).toBe(1);
+  });
+
+  it('adds +1 to an Opportunist shooting a knocked-down target', () => {
+    const config = (opportunist: boolean): GameConfig => ({
+      seed: 5,
+      board: { width: 9, height: 3 },
+      warbands: [
+        [{ name: 'Sniper', quality: 3, combat: 2, ranged: 4, opportunist, pos: { x: 0, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    });
+    const shoot = (c: GameConfig, targetDown: boolean) => {
+      const s = acting(c, 'p0u0');
+      if (targetDown) down('p1u0')(s);
+      const { events } = reduce(s, { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' });
+      return events.find((e) => e.type === 'ShotResolved') as Extract<GameEvent, { type: 'ShotResolved' }>;
+    };
+    const opp = shoot(config(true), true);
+    expect(opp.attackOpportunist).toBe(1);
+    expect(opp.attackScore - shoot(config(false), true).attackScore).toBe(1);
+    expect(shoot(config(true), false).attackOpportunist).toBeUndefined();
+  });
+});

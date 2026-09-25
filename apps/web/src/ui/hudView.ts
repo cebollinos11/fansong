@@ -70,6 +70,7 @@ export const TRAIT_HELP = {
   flying: 'Soars over terrain and units and draws no free hacks; +1 swooping into melee, but +1 to anyone shooting it airborne',
   reassembling: 'Stands back up for free at the start of each round if knocked down',
   mounted: 'Rides into battle: +1 in melee against foes on foot, lost while knocked down',
+  opportunist: 'Strikes when a foe is down: +1 in melee or shooting against a knocked-down foe',
 } as const;
 
 /** One of a unit's special abilities, as the inspector shows it. */
@@ -93,6 +94,7 @@ export function traitTags(unit: Pick<Unit, 'traits'>): TraitTag[] {
   if (unit.traits.flying) tags.push({ label: 'Flying', help: TRAIT_HELP.flying });
   if (unit.traits.reassembling) tags.push({ label: 'Reassembling', help: TRAIT_HELP.reassembling });
   if (unit.traits.mounted) tags.push({ label: 'Mounted', help: TRAIT_HELP.mounted });
+  if (unit.traits.opportunist) tags.push({ label: 'Opportunist', help: TRAIT_HELP.opportunist });
   return tags;
 }
 
