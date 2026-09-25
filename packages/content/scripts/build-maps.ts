@@ -278,8 +278,165 @@ function crossroads(): MapDef {
 }
 
 // ---------------------------------------------------------------------------
+// The Stone Crown — a 40×40 set-piece that uses every kind of ground and hosts
+// every mode. At its heart a sheer mesa rises to level 3, ringed by standing
+// stones with four gates: its summit is the king-of-the-hill zone and the
+// middle conquest zone. Each side deploys before its own walled keep, whose
+// open courtyard (level 3, behind a ring of towers with three gates) holds the
+// flag. North and south, a hamlet crowds round a raised square — the outer
+// conquest zones. A mountain massif of crags and pine-clad foothills fills one
+// corner of each side, an ancient forest the other, and a wooded spur topped
+// by a watchtower runs from each massif towards the Crown. Rolling farmland
+// with copses and farmsteads fills the fields between.
+function stoneCrown(): MapDef {
+  const W = 40;
+  const H = 40;
+  const grid = makeHexGrid({ width: W, height: H, blocked: [] });
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  const pair = (v: Vec): Vec[] => [v, mirror(v)];
+  const dist = (cs: Vec[], v: Vec) => Math.min(...cs.map((c) => grid.distance(c, v)));
+  const at = (v: Vec, u: Vec) => v.x === u.x && v.y === u.y;
 
-const MAPS: MapDef[] = [rollingHills(), oldForest(), ruinedVillage(), rockyPass(), twinTowers(), crossroads()];
+  /** Smooth, point-symmetric value noise in [0, 1): `scale` hexes per lattice cell. */
+  const smooth = (v: Vec, scale: number, seed: number): number => {
+    const sample = (p: Vec) => {
+      const fx = p.x / scale;
+      const fy = p.y / scale;
+      const ix = Math.floor(fx);
+      const iy = Math.floor(fy);
+      const s = (t: number) => t * t * (3 - 2 * t);
+      const tx = s(fx - ix);
+      const ty = s(fy - iy);
+      const top = noise(ix, iy, seed) * (1 - tx) + noise(ix + 1, iy, seed) * tx;
+      const bottom = noise(ix, iy + 1, seed) * (1 - tx) + noise(ix + 1, iy + 1, seed) * tx;
+      return top * (1 - ty) + bottom * ty;
+    };
+    return (sample(v) + sample(mirror(v))) / 2;
+  };
+
+  // The Crown: two adjacent centre hexes that are each other's mirror image.
+  const crown = [{ x: 19, y: 19 }, { x: 20, y: 20 }];
+  const crownGate = (v: Vec) => Math.abs(v.x - 19.5) <= 1 || Math.abs(v.y - 19.5) <= 1.5;
+  // Keeps: the flag sits in the courtyard; towers ring it, gated north, south and east.
+  const keep0 = { x: 4, y: 19 };
+  const keeps = pair(keep0);
+  const keepGate = (v: Vec, k: Vec) => v.x === k.x || (v.y === k.y && (v.x - k.x) * (W / 2 - k.x) > 0);
+  // Hamlets on a rise, with a square at the centre and two streets through it.
+  const hamlets = pair({ x: 20, y: 6 });
+  const street = (v: Vec, c: Vec) => v.x === c.x || v.y === c.y;
+  // Mountain massif: overlapping peaks [centre, height, summit radius] that fall
+  // one level per hex, so their flanks step down in terraces.
+  const peaks = (
+    [
+      [{ x: 4, y: 4 }, 3, 2],
+      [{ x: 11, y: 2 }, 3, 1],
+      [{ x: 2, y: 11 }, 3, 1],
+      [{ x: 8, y: 7 }, 2, 1],
+      [{ x: 16, y: 1 }, 2, 0],
+    ] as const
+  ).flatMap(([c, h, r]) => pair(c).map((p) => [p, h, r] as const));
+  const forests = pair({ x: 31, y: 6 });
+  // The spur: a wooded ridge running from the massif towards the Crown, a
+  // watchtower at its tip.
+  const spur = [{ x: 8, y: 8 }, { x: 10, y: 10 }, { x: 12, y: 12 }].flatMap(pair);
+  const towers = pair({ x: 13, y: 13 });
+  // A ruined chapel on a low rise on each side's flank.
+  const chapels = pair({ x: 12, y: 27 });
+  const deploy0 = (v: Vec) => v.x >= 7 && v.x <= 10 && v.y >= 11 && v.y <= 28;
+  const deploys = (v: Vec) => deploy0(v) || deploy0(mirror(v));
+
+  const map = build('stone-crown', 'The Stone Crown', W, H, (v) => {
+    const n = symNoise(v, W, H, 0x5701e);
+    const dK = dist(keeps, v);
+    const keep = keeps.find((k) => grid.distance(k, v) === dK)!;
+    if (dK <= 1) return { elevation: 3 };
+    if (dK === 2) return keepGate(v, keep) ? { elevation: 2 } : { elevation: 2, feature: 'building' };
+    if (dK === 3) return { elevation: 1 };
+
+    const dC = dist(crown, v);
+    if (dC <= 3) return { elevation: 3 };
+    if (dC === 4) return !crownGate(v) && n < 0.8 ? { elevation: 3, feature: 'rock' } : { elevation: 3 };
+    if (dC === 5) return { elevation: 2 };
+    if (dC === 6) return { elevation: 1 };
+
+    const dH = dist(hamlets, v);
+    const hamlet = hamlets.find((c) => grid.distance(c, v) === dH)!;
+    if (dH <= 1) return { elevation: 2 };
+    if (dH <= 3) {
+      if (street(v, hamlet)) return { elevation: 1 };
+      if (n < 0.62) return { elevation: 1, feature: 'building' };
+      if (n < 0.72) return { elevation: 1, feature: 'rock' };
+      if (n < 0.84) return { elevation: 1, feature: 'forest' };
+      return { elevation: 1 };
+    }
+    if (dH === 4) return { elevation: 1 };
+
+    if (deploys(v)) return { elevation: 0 };
+
+    // Everything else: ground from the massif, spur and rolling farmland; then
+    // features by region.
+    const massif = Math.max(0, ...peaks.map(([c, h, r]) => h - Math.max(0, grid.distance(c, v) - r)));
+    const dM = dist(peaks.map(([c]) => c), v);
+    const dS = dist(spur, v);
+    const dCh = dist(chapels, v);
+    const rolling = smooth(v, 5, 0x6011) > 0.68 ? 1 : 0;
+    const elevation = Math.max(
+      massif,
+      dS <= 1 ? 2 : dS <= 3 ? 1 : 0,
+      dCh <= 2 ? 1 : 0,
+      rolling,
+    );
+    if (towers.some((t) => at(t, v))) return { elevation, feature: 'building' };
+    // Crags on the summits, pines and scree on the terraces below.
+    if (massif === 3) return n < 0.5 ? { elevation, feature: 'rock' } : { elevation };
+    if (massif === 2) return n < 0.2 ? { elevation, feature: 'rock' } : n < 0.5 ? { elevation, feature: 'forest' } : { elevation };
+    if (massif === 1) return n < 0.08 ? { elevation, feature: 'rock' } : n < 0.5 ? { elevation, feature: 'forest' } : { elevation };
+    if (dM <= 5 && n < 0.3) return { elevation, feature: 'forest' };
+    if (dS <= 2 && dS >= 1 && n < 0.45) return { elevation, feature: 'forest' };
+    if (dCh === 0) return { elevation, feature: 'building' };
+    if (dCh === 1) return n < 0.5 ? { elevation, feature: 'building' } : n < 0.7 ? { elevation, feature: 'rock' } : { elevation };
+    if (dCh === 2 && n < 0.35) return { elevation, feature: 'forest' };
+
+    const dF = dist(forests, v);
+    if (dF <= 1) return { elevation }; // a glade at the forest's heart
+    if (dF === 2 && n < 0.15) return { elevation, feature: 'rock' };
+    if (dF <= 6 && n < 0.8) return { elevation: Math.max(elevation, smooth(v, 3, 0xf0) > 0.55 ? 1 : 0), feature: 'forest' };
+    if (dF <= 8 && n < 0.4) return { elevation, feature: 'forest' };
+
+    // The fields: copses where the smooth noise runs high, the odd farmstead and boulder.
+    const copse = smooth(v, 3, 0xc095e);
+    if (copse > 0.66 && n < 0.8) return { elevation, feature: 'forest' };
+    if (n < 0.025) return { elevation, feature: 'building' };
+    if (n < 0.045) return { elevation, feature: 'rock' };
+    return { elevation };
+  });
+
+  const hexes = (pred: (v: Vec) => boolean) =>
+    map.hexes
+      .map((_, i) => ({ x: i % W, y: Math.floor(i / W) }))
+      .filter(pred)
+      .sort((a, b) => a.y - b.y || a.x - b.x);
+  map.deployZones = [hexes(deploy0), hexes((v) => deploy0(mirror(v)))];
+  const summit = hexes((v) => dist(crown, v) <= 1);
+  map.objectives = {
+    flags: [keeps[0]!, keeps[1]!],
+    hill: summit,
+    conquest: [hexes((v) => grid.distance(hamlets[0]!, v) <= 1), summit, hexes((v) => grid.distance(hamlets[1]!, v) <= 1)],
+  };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
+
+const MAPS: MapDef[] = [
+  rollingHills(),
+  oldForest(),
+  ruinedVillage(),
+  rockyPass(),
+  twinTowers(),
+  crossroads(),
+  stoneCrown(),
+];
 
 for (const map of MAPS) {
   const { ok, errors } = validateMap(map);

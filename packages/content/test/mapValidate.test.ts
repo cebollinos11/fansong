@@ -51,11 +51,11 @@ describe('validateMap', () => {
   it('enforces size limits', () => {
     const small = baseMap();
     small.width = MAP_LIMITS.minWidth - 1;
-    expect(validateMap(small).errors.join()).toMatch(/width 5 outside 6–24/);
+    expect(validateMap(small).errors.join()).toMatch(/width 5 outside 6–40/);
 
     const tall = baseMap();
     tall.height = MAP_LIMITS.maxHeight + 1;
-    expect(validateMap(tall).errors.join()).toMatch(/height 25 outside/);
+    expect(validateMap(tall).errors.join()).toMatch(/height 41 outside/);
   });
 
   it('requires exactly width × height hexes', () => {

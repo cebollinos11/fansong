@@ -22,9 +22,9 @@ export interface MapLimits {
 
 export const MAP_LIMITS: MapLimits = {
   minWidth: 6,
-  maxWidth: 24,
+  maxWidth: 40,
   minHeight: 6,
-  maxHeight: 24,
+  maxHeight: 40,
   minDeployHexes: DEFAULT_RULES.maxUnits,
 };
 

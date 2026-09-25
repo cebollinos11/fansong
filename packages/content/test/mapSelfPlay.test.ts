@@ -6,6 +6,7 @@ import {
   makeHexGrid,
   reduce,
   gameMode,
+  GAME_MODES,
   MODE_RULES,
   type GameEvent,
   type GameMode,
@@ -227,6 +228,25 @@ describe('premade map character', () => {
     expect(sortVecs(map.objectives.hill!)).toEqual(sortVecs(b));
     expect(count(map, (h) => h.feature === 'building')).toBeGreaterThanOrEqual(10);
     expect(supportedModes(map)).toEqual(expect.arrayContaining(['conquest', 'king-of-the-hill']));
+  });
+
+  it('The Stone Crown is a 40×40 showcase of every elevation and feature, hosting every mode', () => {
+    const map = getMap('stone-crown')!;
+    expect([map.width, map.height]).toEqual([40, 40]);
+    for (const e of [0, 1, 2, 3]) expect(count(map, (h) => h.elevation === e)).toBeGreaterThan(100);
+    expect(count(map, (h) => h.feature === 'rock')).toBeGreaterThanOrEqual(60);
+    expect(count(map, (h) => h.feature === 'building')).toBeGreaterThanOrEqual(30);
+    expect(count(map, (h) => h.feature === 'forest')).toBeGreaterThanOrEqual(200);
+    // The Crown's summit is level 3, and is both the hill and the middle conquest zone.
+    for (const v of map.objectives.hill!) expect(mapHexAt(map, v)?.elevation).toBe(3);
+    expect(sortVecs(map.objectives.conquest![1])).toEqual(sortVecs(map.objectives.hill!));
+    // Each flag stands in its keep's level-3 courtyard, nearer its own deployment.
+    const grid = makeHexGrid({ width: map.width, height: map.height, blocked: [] });
+    const [home0] = map.objectives.flags!;
+    expect(mapHexAt(map, home0)?.elevation).toBe(3);
+    const nearest = (zone: Vec[]) => Math.min(...zone.map((v) => grid.distance(home0, v)));
+    expect(nearest(map.deployZones[0])).toBeLessThan(nearest(map.deployZones[1]));
+    expect(supportedModes(map)).toEqual(GAME_MODES);
   });
 });
 
