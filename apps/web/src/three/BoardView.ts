@@ -143,12 +143,19 @@ function outlineMaterial(): THREE.ShaderMaterial {
       uniform vec3 uColor;
       uniform float uOpacity;
       varying vec2 vUv;
+      // Mip gradients, taken once before any branch: implicit ones are undefined
+      // in divergent flow, and some mobile GPUs then read the smallest mip (the
+      // whole atlas blurred), tracing the quad's edges.
+      vec2 gradX;
+      vec2 gradY;
       // Alpha of the shown frame at a point in its cell; nothing outside the cell.
       float alphaAt(vec2 p) {
-        if (p.x < 0.0 || p.y < 0.0 || p.x > 1.0 || p.y > 1.0) return 0.0;
-        return texture2D(map, uOffset + p * uRepeat).a;
+        vec2 inside = step(vec2(0.0), p) * step(p, vec2(1.0));
+        return textureGrad(map, uOffset + clamp(p, 0.0, 1.0) * uRepeat, gradX, gradY).a * inside.x * inside.y;
       }
       void main() {
+        gradX = dFdx(vUv * uRepeat);
+        gradY = dFdy(vUv * uRepeat);
         if (alphaAt(vUv) > 0.5) discard;
         float near = 0.0;
         float far = 0.0;
