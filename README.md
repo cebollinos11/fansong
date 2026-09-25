@@ -188,11 +188,14 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
   `hollow-watch` preset fields all three.
 
 - **Morale depth** — beyond the activation turnover:
-  - **Fear** — when a unit is killed in combat, living friends within two cells
-    take a nerve check (d6 ≥ Quality) or are knocked down.
+  - **Fear** — when a unit suffers a gruesome kill in combat, standing friends
+    within four hexes take a nerve check (d6 ≥ Quality) or flee.
   - **Rout** — the first time a warband is ground to a third of its starting
-    strength it *breaks*: every survivor tests nerve, and each that fails flees
-    the field. It happens once per side and only ever removes units.
+    strength it *breaks*: every survivor tests nerve, and each that fails flees.
+    It happens once per side.
+  - **Fleeing** — a unit that fails runs back to its own edge of the map,
+    taking free hacks from any foe it turns its back on; one already on its
+    edge leaves the field. A failed check never knocks a unit down.
 
 - **Replays** — a `Replay` is just `GameConfig + command list`. `runReplay`
   reproduces the whole game from it; `hashGameState` + a committed golden fixture

@@ -467,8 +467,65 @@
         "type": "Attack",
         "attackerId": "p1u0",
         "targetId": "p0u1"
+      },
+      {
+        "type": "Move",
+        "unitId": "p1u0",
+        "to": {
+          "x": 0,
+          "y": 1
+        }
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u1",
+        "diceCount": 2
+      },
+      {
+        "type": "Move",
+        "unitId": "p1u1",
+        "to": {
+          "x": 0,
+          "y": 2
+        }
+      },
+      {
+        "type": "Move",
+        "unitId": "p1u1",
+        "to": {
+          "x": 1,
+          "y": 1
+        }
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u2",
+        "diceCount": 1
+      },
+      {
+        "type": "Move",
+        "unitId": "p1u2",
+        "to": {
+          "x": 3,
+          "y": 3
+        }
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p0u0",
+        "diceCount": 1
+      },
+      {
+        "type": "ChooseActivation",
+        "unitId": "p1u0",
+        "diceCount": 2
+      },
+      {
+        "type": "Attack",
+        "attackerId": "p1u0",
+        "targetId": "p0u0"
       }
     ]
   },
-  "finalHash": "62d62cae"
+  "finalHash": "a9cf5b43"
 }

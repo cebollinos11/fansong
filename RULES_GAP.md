@@ -162,10 +162,19 @@ The original morale model is very different from FanSong's:
    - With 3 failures the model **routs** and is removed.
    - A fleeing model that leaves the table is lost.
 
-   FanSong uses a single die, and a failure means a knockdown (from fear) or
-   removal (from a rout).
-3. **Fleeing models** turn away from the enemy, and moving away from contact
-   provokes free hacks (§2.2). They can be caught and cut down.
+   FanSong uses a single die. A failure never knocks the model down: it flees
+   (see 3), whether the test came from fear or from a rout.
+3. ✅ **Done — fleeing models.** *Implemented:* a failed nerve check sends the
+   model running for its own edge of the map (player 0's is the left column,
+   player 1's the right, where they deploy), all the way there in one go, to
+   the nearest free hex by the shortest route. It gives enemies a wide berth
+   and never passes through a hex touching one; a flyer goes over everything.
+   Leaving contact provokes free hacks first, and one that kills or floors the
+   runner stops it where it stands. A model already on its edge leaves the
+   field (`UnitRouted`). A hemmed-in model with nowhere nearer to go holds. A
+   knocked-down model caught in a rout gets up to run. *Original:* Fleeing
+   models turn away from the enemy, and moving away from contact provokes free
+   hacks (§2.2). They can be caught and cut down.
 4. **Optional** *(revised)*: a model that fails a morale test before it has
    activated this turn cannot activate this turn.
 
@@ -320,8 +329,8 @@ the engine is built today:
 5. **Difficult terrain** (§2.4). The terrain map can take a new `feature` value.
 6. **Leader and group activation** (§6). This is the biggest change to the
    activation twist, and it needs design work.
-7. **3-dice morale with fleeing** (§5.2–5.3). It needs a flee-movement
-   algorithm.
+7. **3-dice morale** (§5.2). Fleeing (§5.3) is done; the three dice and
+   the flee distance per failure are not.
 8. Traits in batches, then magic, then campaigns.
 
 Every item needs a replay-version bump if it changes an outcome the golden

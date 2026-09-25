@@ -671,9 +671,11 @@ export class BoardView {
     events.forEach((e, i) => {
       const after = events.slice(i + 1);
       if (e.type !== 'NerveCheck') nerveAt = null;
-      if (e.type === 'UnitMoved') {
+      if (e.type === 'UnitMoved' || e.type === 'UnitFled') {
         const obj = this.units.get(e.unitId);
         if (obj) {
+          // A runner breaks once its nerve check (and any hack at its back) has shown.
+          if (e.type === 'UnitFled') t = Math.max(t, settle);
           // Walk hex by hex at a steady pace, so a longer move takes proportionally longer.
           const path = e.path ? e.path.map((c) => this.unitWorld(c)) : this.walkPath(e.from, e.to);
           const dur = (path.length - 1) * WALK_MS_PER_HEX;

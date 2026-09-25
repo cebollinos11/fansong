@@ -23,7 +23,7 @@ import {
   flagsAfterMove,
   scoreZones,
 } from './mode.js';
-import { resolveCombatMorale } from './morale.js';
+import { resolveCombatMorale, type FreeHacks } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import {
   adjacentEnemies,
@@ -635,11 +635,14 @@ function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {
 /**
  * A killing blow from combat: apply it (honouring Tough), and if the unit
  * actually dies, resolve the morale fallout — after a `gruesome` kill nearby
- * friends test nerve, and the warband may rout. Tough saves that downgrade the
- * blow to a knockdown are not a death, so they raise no morale check.
+ * friends test nerve, and the warband may rout; those that break and run take
+ * free hacks like any leaver. Tough saves that downgrade the blow to a
+ * knockdown are not a death, so they raise no morale check.
  */
 function strike(s: GameState, unit: Unit, byId: string | null, events: GameEvent[], board: Board, gruesome: boolean): void {
-  if (resolveKill(unit, byId, events)) resolveCombatMorale(s, events, unit, board, gruesome);
+  if (!resolveKill(unit, byId, events)) return;
+  const hacks: FreeHacks = (runner) => resolveFreeHacks(s, events, runner, board);
+  resolveCombatMorale(s, events, unit, board, gruesome, hacks);
 }
 
 /**

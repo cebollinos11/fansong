@@ -317,7 +317,10 @@ export type GameEvent =
   | { type: 'ToughnessSaved'; unitId: string }
   | { type: 'NerveCheck'; unitId: string; quality: number; die: number; passed: boolean }
   | { type: 'WarbandBroken'; player: Owner }
+  /** Fled off its own edge of the map after failing a nerve check: out of the game. */
   | { type: 'UnitRouted'; unitId: string }
+  /** Ran for its own edge after failing a nerve check, along `path` (both ends included). */
+  | { type: 'UnitFled'; unitId: string; from: Vec; to: Vec; path: Vec[] }
   | { type: 'UnitKnockedDown'; unitId: string }
   /** Pushed one hex directly away from the opponent that beat it. */
   | { type: 'UnitRecoiled'; unitId: string; from: Vec; to: Vec }

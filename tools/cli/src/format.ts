@@ -46,7 +46,9 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'WarbandBroken':
       return `  ‼ P${e.player}'s warband BREAKS`;
     case 'UnitRouted':
-      return `    ⚑ ${name(state, e.unitId)} routs and flees the field`;
+      return `    ⚑ ${name(state, e.unitId)} flees the field`;
+    case 'UnitFled':
+      return `    ${name(state, e.unitId)} runs for the edge -> (${e.to.x},${e.to.y})`;
     case 'UnitKnockedDown':
       return `    ${name(state, e.unitId)} is knocked down`;
     case 'UnitRecoiled':

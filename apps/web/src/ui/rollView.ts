@@ -214,13 +214,13 @@ export function describeActivation(
   return { kind: 'activation', unitId: e.unitId, quality: e.quality, dice, summary, turnover, verdict };
 }
 
-/** Describe a nerve check; `after` tells a rout (flees) from fear (knocked down). */
+/** Describe a nerve check; `after` tells a runner leaving the field from one running for its edge. */
 export function describeNerve(
   e: Extract<GameEvent, { type: 'NerveCheck' }>,
   after: readonly GameEvent[] = [],
 ): NerveRoll {
-  const fled = after.some((x) => x.type === 'UnitRouted' && x.unitId === e.unitId);
-  const summary = e.passed ? 'Holds firm' : fled ? 'Flees!' : 'Shaken — knocked down';
+  const gone = after.some((x) => x.type === 'UnitRouted' && x.unitId === e.unitId);
+  const summary = e.passed ? 'Holds firm' : gone ? 'Flees the field!' : 'Flees!';
   return { kind: 'nerve', unitId: e.unitId, quality: e.quality, die: e.die, passed: e.passed, summary };
 }
 

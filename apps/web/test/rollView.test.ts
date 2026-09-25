@@ -255,10 +255,10 @@ describe('activation roll cards', () => {
 });
 
 describe('nerve roll cards', () => {
-  it('tells fear from a rout', () => {
+  it('tells running for the edge from leaving the field', () => {
     const e = { type: 'NerveCheck', unitId: 'u', quality: 4, die: 2, passed: false } as const;
-    expect(describeNerve(e).summary).toBe('Shaken — knocked down');
-    expect(describeNerve(e, [{ type: 'UnitRouted', unitId: 'u' }]).summary).toBe('Flees!');
+    expect(describeNerve(e).summary).toBe('Flees!');
+    expect(describeNerve(e, [{ type: 'UnitRouted', unitId: 'u' }]).summary).toBe('Flees the field!');
     expect(describeNerve({ ...e, die: 5, passed: true }).summary).toBe('Holds firm');
   });
 });
