@@ -669,8 +669,10 @@ function DiceSection({
   say: (text: string, error?: boolean) => void;
 }) {
   const [pattern, setPattern] = useState('');
-  const [ruleId, setRuleId] = useState(OUTCOME_RULES[0]!.id);
-  const [sticky, setSticky] = useState(false);
+  // Picking a result arms it at once; "Off" disarms.
+  const armedId = info.armed?.ruleId ?? '';
+  const sticky = info.armed?.sticky ?? false;
+  const [stickyPref, setStickyPref] = useState(false);
   const upcoming = peekDice(state, 8);
   const groups = [...new Set(OUTCOME_RULES.map((r) => r.group))];
 
@@ -718,7 +720,12 @@ function DiceSection({
 
       <div className="sb-label">Force the next result</div>
       <div className="sb-row">
-        <select className="sb-grow" value={ruleId} onChange={(e) => setRuleId(e.target.value)}>
+        <select
+          className={`sb-grow${armedId ? ' armed' : ''}`}
+          value={armedId}
+          onChange={(e) => client.arm(e.target.value ? { ruleId: e.target.value, sticky: stickyPref } : null)}
+        >
+          <option value="">Off — roll normally</option>
           {groups.map((g) => (
             <optgroup key={g} label={g}>
               {OUTCOME_RULES.filter((r) => r.group === g).map((r) => (
@@ -731,29 +738,28 @@ function DiceSection({
         </select>
       </div>
       <div className="sb-row">
-        <label>
-          <input type="checkbox" checked={sticky} onChange={(e) => setSticky(e.target.checked)} />
-          every time
+        <label title="Keep forcing it on every roll it applies to, instead of only the next one">
+          <input
+            type="checkbox"
+            checked={info.armed ? sticky : stickyPref}
+            onChange={(e) => {
+              setStickyPref(e.target.checked);
+              if (info.armed) client.arm({ ...info.armed, sticky: e.target.checked });
+            }}
+          />
+          every time (otherwise just the next roll)
         </label>
-        <button type="button" onClick={() => client.arm({ ruleId, sticky })}>
-          Arm
-        </button>
-        {info.armed ? (
-          <button type="button" onClick={() => client.arm(null)}>
-            Disarm
-          </button>
-        ) : null}
       </div>
       {info.armed ? (
         <p className="sb-msg armed">
           Armed: {outcomeRule(info.armed.ruleId)?.label}
-          {info.armed.sticky ? ' (every time)' : ' (next time only)'}
+          {info.armed.sticky ? ' (every time)' : ' (next roll only)'}. Now make the roll.
         </p>
       ) : null}
       {last && lastRule ? (
         <p className={last.status.kind === 'impossible' ? 'sb-msg error' : 'sb-msg'}>
           {last.status.kind === 'impossible'
-            ? `Couldn't force "${lastRule.label}" — not possible with these modifiers; it rolled normally.`
+            ? `Couldn't force "${lastRule.label}": impossible here (e.g. a shot can't hurt the shooter, Tough survives its first kill, or the scores can't reach a double). It rolled normally.`
             : last.status.kind === 'forced'
               ? `Forced "${lastRule.label}"${last.status.tries === 0 ? ' (it came up anyway)' : ` after ${last.status.tries} ${last.status.tries === 1 ? 'try' : 'tries'}`}.`
               : ''}

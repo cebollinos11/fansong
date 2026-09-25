@@ -1917,3 +1917,7 @@ button.army-item.active {
   justify-content: space-between;
   gap: 6px;
 }
+
+.sandbox select.armed {
+  border-color: var(--p0);
+}

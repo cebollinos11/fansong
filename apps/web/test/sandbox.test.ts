@@ -173,6 +173,13 @@ describe('sandbox forced outcomes', () => {
     expect(status).toEqual({ kind: 'impossible', tries: 500 });
   });
 
+  it("doesn't count a kill that Tough turns into a knockdown", () => {
+    const s = patchUnit(activateUnit(duel().state, 'p0u0', 2), 'p0u0', { traits: { tough: true } });
+    const { result, status } = forceOutcome(s, attack, outcomeRule('combat-attackerKilled')!, 2000);
+    expect(status.kind).toBe('impossible');
+    expect(result.state.units[0]!.dead).toBe(false);
+  });
+
   it('waits out commands the rule is not about', () => {
     const s = activateUnit(duel().state, 'p0u0', 2);
     const { status } = forceOutcome(s, { type: 'EndActivation' }, outcomeRule('combat-defenderKilled')!);

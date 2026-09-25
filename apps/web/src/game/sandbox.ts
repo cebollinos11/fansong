@@ -404,7 +404,13 @@ export const OUTCOME_RULES: readonly OutcomeRule[] = [
       group: 'Attack, shot or free hack',
       label: COMBAT_LABELS[result],
       applies: (ev) => firstClash(ev) !== undefined,
-      matches: (ev) => firstClash(ev)?.result === result,
+      matches: (ev) => {
+        const clash = firstClash(ev);
+        if (clash?.result !== result) return false;
+        // A kill only counts if the unit really dies — not if Tough saves it.
+        const victim = result === 'defenderKilled' ? clash.targetId : result === 'attackerKilled' ? clash.attackerId : null;
+        return victim === null || ev.some((e) => e.type === 'UnitKilled' && e.unitId === victim);
+      },
     }),
   ),
   {
