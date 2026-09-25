@@ -247,10 +247,16 @@ describe('activation roll cards', () => {
   });
 
   it('announces a turnover', () => {
-    const r = describeActivation(rolled([1, 2, 6]), [{ type: 'Turnover', player: 0, unitId: 'u' }]);
+    const r = describeActivation(rolled([1, 2]), [{ type: 'Turnover', player: 0, unitId: 'u' }]);
     expect(r.turnover).toBe(true);
     expect(r.summary).toBe('2 fails — turnover');
-    expect(r.verdict).toMatchObject({ text: 'Turnover!', on: ['u'] });
+    expect(r.verdict).toMatchObject({ text: 'Turnover!', detail: 'benched for the round', on: ['u'] });
+  });
+
+  it('keeps the earned action on a turnover with a success', () => {
+    const r = describeActivation(rolled([1, 2, 6]), [{ type: 'Turnover', player: 0, unitId: 'u' }]);
+    expect(r.summary).toBe('2 fails — turnover · 1 action');
+    expect(r.verdict).toMatchObject({ text: 'Turnover!', detail: 'benched after this activation' });
   });
 });
 

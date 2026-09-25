@@ -210,12 +210,13 @@ function targetZone(board: Board, zones: ZoneView[], unit: Unit): ZoneView | und
 
 /**
  * Dice policy: normally 2 dice (enough output, modest turnover risk). When this
- * is the player's last available unit, take the safe 1 die that can never turn
- * over, to preserve tempo.
+ * is the player's last available unit, a turnover benches nothing, and a unit
+ * that turns over still takes the actions its successes earned — so 3 dice is
+ * strictly best.
  */
 function diceScore(state: GameState, player: Owner, diceCount: number): number {
   const availableCount = aliveUnits(state, player).filter((u) => !u.activatedThisRound).length;
-  if (availableCount <= 1) return diceCount === 1 ? 3 : diceCount === 2 ? 2 : 1;
+  if (availableCount <= 1) return diceCount;
   return diceCount === 2 ? 3 : diceCount === 3 ? 2 : 1;
 }
 

@@ -22,7 +22,8 @@ rulebook before they are built.
 These are implemented, so they are not listed again below:
 
 - Activation with 1 to 3 dice against Quality, where each success is one action
-  and 2 or more failures cause a turnover.
+  and 2 or more failures cause a turnover (the model still takes the actions
+  its successes earned, and the turn passes afterwards).
 - An opposed d6 + Combat roll. A tie does nothing, doubling the loser kills it,
   and a plain win makes the loser **recoil** on the winner's odd die or **fall**
   on an even one. A loser pushed into a standing friend is **supported** and
@@ -49,7 +50,6 @@ These are implemented, so they are not listed again below:
 | Original | FanSong | Note |
 |---|---|---|
 | A player activates models one after another until a turnover or until they choose to stop, and then the whole turn passes to the opponent. | Players alternate **one unit at a time**, and a turnover benches the player for the round. | This is the project's core twist. |
-| On a turnover the model **still takes the actions its successes earned**, and the turn passes afterwards. | The activation ends immediately and any successes are lost. | Decided in PLAN §5. It could become a config flag for an "original" mode. |
 | Whoever goes first is decided by a roll, and players then alternate turns. | Initiative flips each round. | Part of the twist. |
 | An attack against a fallen model gets **+2**, and any win kills it. | A fallen defender only hurts its attacker on a natural 6, and any win against it kills. | This is a different mechanism with a similar feel. The original's +2 also makes a double, and so a kill, much easier. |
 | Points use a *multiplicative* formula: Combat and trait costs, scaled by a Quality multiplier. | Points use an original *additive* formula. | Intentional (IP note). Nothing to copy. |

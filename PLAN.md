@@ -104,9 +104,9 @@ decides push-back / knockdown / kill. Minimal morale in v1.
   Quality (die ≥ Q = success). Successes fuel actions (move/attack).
   *With 1 die you can never turn over* (turnover needs 2+ failures) — the safe,
   low-output option.
-- **Turnover (2+ failures):** the activation ends immediately (untaken actions
-  lost) **and the player is benched for the rest of the round** — no more
-  activations until next round.
+- **Turnover (2+ failures):** the player is **benched for the rest of the
+  round** — no more activations until next round. The unit still takes the
+  actions its successes earned (3 dice with 1 success) before the turn passes.
 - **Solo continuation:** if the opponent is benched or out of units, you keep
   activating one unit at a time until you turn over or run out.
 - **Round end:** when no player has a unit that is both un-activated and not

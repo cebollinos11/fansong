@@ -121,19 +121,22 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   const failures = diceCount - successes;
   events.push({ type: 'DiceRolled', unitId, quality: unit.quality, dice, successes, failures });
 
-  // The twist: 2+ failures = turnover. The activation ends immediately and the
-  // player is benched for the rest of the round. (With 1 die you can never
-  // reach 2 failures, so a single die can never turn over.)
+  // The twist: 2+ failures = turnover. The player is benched for the rest of the
+  // round, but the unit still takes the actions its successes earned first (3
+  // dice with 1 success). (With 1 die you can never reach 2 failures, so a
+  // single die can never turn over.)
   if (failures >= TURNOVER_FAILURES) {
     s.benched[s.active] = true;
     events.push({ type: 'Turnover', player: s.active, unitId });
-    s.activeUnitId = null;
-    s.actionsRemaining = 0;
-    advanceTurn(s, events);
-    return;
+    if (successes === 0) {
+      s.activeUnitId = null;
+      s.actionsRemaining = 0;
+      advanceTurn(s, events);
+      return;
+    }
   }
 
-  // Successful activation: successes become action points.
+  // Successes become action points.
   let actions = successes;
   if (unit.knockedDown && actions > 0) {
     // Standing up costs one action.

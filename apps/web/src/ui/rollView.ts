@@ -201,15 +201,20 @@ export function describeActivation(
   const dice = e.dice.map((value) => ({ value, success: value >= e.quality }));
   const turnover = after.some((x) => x.type === 'Turnover' && x.unitId === e.unitId);
   const stood = after.some((x) => x.type === 'UnitStoodUp' && x.unitId === e.unitId);
+  const actions = e.successes - (stood ? 1 : 0);
+  const plural = actions === 1 ? 'action' : 'actions';
+  const earned = stood ? `Stands up (−1) · ${actions} ${plural}` : actions > 0 ? `${actions} ${plural}` : 'No actions';
+  // A turnover with a success still acts first (3 dice, 1 success).
   let summary: string;
-  if (turnover) summary = `${e.failures} fails — turnover`;
-  else {
-    const actions = e.successes - (stood ? 1 : 0);
-    const plural = actions === 1 ? 'action' : 'actions';
-    summary = stood ? `Stands up (−1) · ${actions} ${plural}` : actions > 0 ? `${actions} ${plural}` : 'No actions';
-  }
+  if (turnover) summary = e.successes > 0 ? `${e.failures} fails — turnover · ${earned}` : `${e.failures} fails — turnover`;
+  else summary = earned;
   const verdict: RollVerdict | null = turnover
-    ? { text: 'Turnover!', detail: 'benched for the round', on: [e.unitId], tone: 'kill' }
+    ? {
+        text: 'Turnover!',
+        detail: e.successes > 0 ? 'benched after this activation' : 'benched for the round',
+        on: [e.unitId],
+        tone: 'kill',
+      }
     : null;
   return { kind: 'activation', unitId: e.unitId, quality: e.quality, dice, summary, turnover, verdict };
 }

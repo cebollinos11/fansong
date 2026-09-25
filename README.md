@@ -64,8 +64,9 @@ action; the AI, the tests, and any future UI all pick from that list.
 - Players alternate **one unit per activation**; initiative flips each round.
 - An activation commits **1–3 dice** rolled vs the unit's Quality; successes
   become action points (move/attack).
-- **2+ failures = turnover:** the activation ends and that player is **benched
-  for the rest of the round**. With a single die you can never turn over.
+- **2+ failures = turnover:** that player is **benched for the rest of the
+  round** — though the unit still spends any action its successes earned first.
+  With a single die you can never turn over.
 - The other player then continues **solo** until they turn over or run out.
 - Combat is an opposed roll. Doubling the loser kills; a plain win pushes the
   loser back a hex on the winner's odd die or knocks it down on an even one
