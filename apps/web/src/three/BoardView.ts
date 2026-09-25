@@ -5,7 +5,7 @@ import { makeHexGrid, vecKey, type BoardData, type GameEvent, type GameState, ty
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
-import { featureLayout, type FeaturePiece } from './features.js';
+import { featureLayout } from './features.js';
 import {
   activationResolveMs,
   activationRollMs,
@@ -17,7 +17,15 @@ import {
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
-import { hexElevation, surfaceY, TILE_TOP, tileHeight, tileSideColor, tileTopColor } from './terrain.js';
+import { BoardChunks } from './chunks.js';
+import {
+  hexElevation,
+  surfaceY,
+  TILE_TOP,
+  tileHeight,
+  tileSideColor,
+  tileTopColor,
+} from './terrain.js';
 import { DOWN_POSES, spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
@@ -99,6 +107,53 @@ function fillMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
     side: THREE.DoubleSide,
     depthWrite: false,
   });
+}
+
+/** Cells per side of a square block of the board merged into one mesh (see {@link BoardChunks}). */
+const CHUNK_CELLS = 8;
+/** How far a legacy blocked cell stands above its elevation. */
+const BLOCKED_RISE = 0.4;
+
+/**
+ * One draw call for many copies of a mesh: each `place` positions a scratch
+ * object whose transform becomes that copy's. The geometry and material are
+ * shared, not owned (see {@link clearInstances}).
+ */
+function instanced(
+  geometry: THREE.BufferGeometry,
+  material: THREE.Material,
+  place: ((o: THREE.Object3D) => void)[],
+): THREE.InstancedMesh {
+  const mesh = new THREE.InstancedMesh(geometry, material, place.length);
+  const o = new THREE.Object3D();
+  place.forEach((fn, i) => {
+    fn(o);
+    o.updateMatrix();
+    mesh.setMatrixAt(i, o.matrix);
+  });
+  // Its bounds span every copy, for culling (the default is the one geometry's).
+  mesh.computeBoundingSphere();
+  return mesh;
+}
+
+/** Empty a group of {@link instanced} meshes, freeing their per-copy buffers. */
+function clearInstances(group: THREE.Group): void {
+  for (const child of group.children) (child as THREE.InstancedMesh).dispose();
+  group.clear();
+}
+
+/** One material group of a geometry, as a geometry of its own (non-indexed). */
+function geometryGroup(geometry: THREE.BufferGeometry, group: number): THREE.BufferGeometry {
+  const flat = geometry.toNonIndexed();
+  const { start, count } = flat.groups[group]!;
+  const part = new THREE.BufferGeometry();
+  for (const name of ['position', 'normal']) {
+    const attr = flat.getAttribute(name);
+    const size = attr.itemSize;
+    part.setAttribute(name, new THREE.BufferAttribute(attr.array.slice(start * size, (start + count) * size), size));
+  }
+  flat.dispose();
+  return part;
 }
 
 /** A ring broken into dashes: an enemy the click walks up to before striking. */
@@ -494,7 +549,7 @@ export class BoardView {
   private markingsKey: string | undefined;
   private readonly badgeTextures = new Map<string, THREE.Texture>();
   private starMaterial: THREE.SpriteMaterial | null = null;
-  /** Board tiles and feature meshes, raycast for cell picking (each carries `userData.cell`). */
+  /** Board tile and feature chunks, raycast for cell picking (`userData.cells` maps each triangle to its cell). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
   private width = 0;
@@ -585,36 +640,47 @@ export class BoardView {
     // A flat-top hex prism: a 6-sided cylinder, whose default orientation already
     // points its vertices along ±X (columns) and its flat edges along ±Z (rows).
     // Every prism stands on the same floor and rises to its hex's elevation; its
-    // side faces (the cylinder's first material group) are shaded darker than the top.
-    const geos = new Map<number, THREE.CylinderGeometry>();
-    const tileGeo = (height: number) => {
-      let geo = geos.get(height);
-      if (!geo) {
-        geo = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, height, 6);
-        geos.set(height, geo);
-      }
-      return geo;
-    };
+    // side faces (the cylinder's first group) are shaded darker than the top.
+    // No bottom cap: the camera never sees under the table.
+    const board = state.board;
+    const cylinder = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, 1, 6);
+    const prism = geometryGroup(cylinder, 0);
+    const top = geometryGroup(cylinder, 1);
+    cylinder.dispose();
+    const chunks = new BoardChunks(CHUNK_CELLS);
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const cell = { x, y };
         const isBlocked = blocked.has(vecKey(cell));
-        const elev = hexElevation(state.board, cell);
-        const top = new THREE.MeshStandardMaterial({ color: isBlocked ? BLOCKED_COLOR : tileTopColor(cell, elev) });
-        const side = isBlocked ? top : new THREE.MeshStandardMaterial({ color: tileSideColor(cell, elev) });
+        const elev = hexElevation(board, cell);
+        const topColor = isBlocked ? BLOCKED_COLOR : tileTopColor(cell, elev);
+        const sideColor = isBlocked ? topColor : tileSideColor(cell, elev);
         // Legacy blocked cells stay a tall pillar above whatever their elevation is.
-        const height = tileHeight(elev) + (isBlocked ? 0.4 : 0);
-        const tile = new THREE.Mesh(tileGeo(height), [side, top, top]);
+        const height = tileHeight(elev) + (isBlocked ? BLOCKED_RISE : 0);
         const w = this.cellToWorld(cell);
-        tile.position.set(w.x, surfaceY(elev) + (isBlocked ? 0.4 : 0) - height / 2, w.z);
-        tile.userData.cell = cell;
-        this.tiles.push(tile);
-        this.scene.add(tile);
+        const matrix = new THREE.Matrix4().compose(
+          new THREE.Vector3(w.x, surfaceY(elev) + (isBlocked ? BLOCKED_RISE : 0) - height / 2, w.z),
+          new THREE.Quaternion(),
+          new THREE.Vector3(1, height, 1),
+        );
+        chunks.geometry(cell, prism, matrix, sideColor);
+        chunks.geometry(cell, top, matrix, topColor);
       }
     }
+    this.addChunks(chunks, new THREE.MeshStandardMaterial({ vertexColors: true }));
+    prism.dispose();
+    top.dispose();
 
-    this.buildFeatures(state.board);
+    this.buildFeatures(board);
     if (resized) this.positionCamera(state);
+  }
+
+  /** Add a board's merged chunks to the scene and to the pickable tiles (see {@link pickCell}). */
+  private addChunks(chunks: BoardChunks, material: THREE.Material): void {
+    for (const mesh of chunks.meshes(material)) {
+      this.tiles.push(mesh);
+      this.scene.add(mesh);
+    }
   }
 
   /** Remove the tiles and feature meshes of a previously built board. */
@@ -633,48 +699,29 @@ export class BoardView {
 
   /** Low-poly rocks, buildings and trees; pickable as the hex they stand on. */
   private buildFeatures(board: BoardData): void {
-    const materials = new Map<number, THREE.MeshStandardMaterial>();
-    const material = (color: number) => {
-      let m = materials.get(color);
-      if (!m) {
-        m = new THREE.MeshStandardMaterial({ color, flatShading: true });
-        materials.set(color, m);
-      }
-      return m;
-    };
+    // Non-indexed, so every triangle keeps its own vertices and flat shading holds.
     const rockGeo = new THREE.DodecahedronGeometry(1, 0);
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    const coneGeo = new THREE.ConeGeometry(1, 1, 7);
-    const trunkGeo = new THREE.CylinderGeometry(1, 1, 1, 5);
-    const meshFor = (p: FeaturePiece): THREE.Mesh => {
-      switch (p.kind) {
-        case 'rock': {
-          const m = new THREE.Mesh(rockGeo, material(p.color));
-          m.scale.set(p.radius, p.radius * p.squash, p.radius);
-          m.rotation.y = p.rotY;
-          return m;
-        }
-        case 'box': {
-          const m = new THREE.Mesh(boxGeo, material(p.color));
-          m.scale.set(p.w, p.h, p.d);
-          m.rotation.y = p.rotY;
-          return m;
-        }
-        case 'cone':
-        case 'trunk': {
-          const m = new THREE.Mesh(p.kind === 'cone' ? coneGeo : trunkGeo, material(p.color));
-          m.scale.set(p.radius, p.h, p.radius);
-          return m;
-        }
-      }
-    };
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+    const coneGeo = new THREE.ConeGeometry(1, 1, 7).toNonIndexed();
+    const trunkGeo = new THREE.CylinderGeometry(1, 1, 1, 5).toNonIndexed();
+    const up = new THREE.Vector3(0, 1, 0);
+    const chunks = new BoardChunks(CHUNK_CELLS);
     for (const p of featureLayout(board, (v) => this.cellToWorld(v), HEX_SIZE)) {
-      const mesh = meshFor(p);
-      mesh.position.set(p.x, p.y, p.z);
-      mesh.userData.cell = p.cell;
-      this.tiles.push(mesh);
-      this.scene.add(mesh);
+      const [geometry, scale, rotY] =
+        p.kind === 'rock'
+          ? [rockGeo, new THREE.Vector3(p.radius, p.radius * p.squash, p.radius), p.rotY]
+          : p.kind === 'box'
+            ? [boxGeo, new THREE.Vector3(p.w, p.h, p.d), p.rotY]
+            : [p.kind === 'cone' ? coneGeo : trunkGeo, new THREE.Vector3(p.radius, p.h, p.radius), 0];
+      const matrix = new THREE.Matrix4().compose(
+        new THREE.Vector3(p.x, p.y, p.z),
+        new THREE.Quaternion().setFromAxisAngle(up, rotY),
+        scale,
+      );
+      chunks.geometry(p.cell, geometry, matrix, p.color);
     }
+    this.addChunks(chunks, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true }));
+    for (const g of [rockGeo, boxGeo, coneGeo, trunkGeo]) g.dispose();
   }
 
   /** Reconcile unit meshes and highlights with the given view model. */
@@ -1750,7 +1797,7 @@ export class BoardView {
     const key = reach.map((t) => `${t.cost}${t.provokes > 0 ? '!' : ''}:${t.cell.x},${t.cell.y}`).join('|');
     if (key === this.reachKey) return;
     this.reachKey = key;
-    this.highlightGroup.clear();
+    clearInstances(this.highlightGroup);
     if (reach.length === 0) return;
 
     this.reachFillGeo ??= new THREE.CircleGeometry(HEX_SIZE * 0.9, 6);
@@ -1759,13 +1806,16 @@ export class BoardView {
     // cost the action *and* the ground, so it should not look like open field.
     this.provokeFillMat ??= fillMaterial(PROVOKE_COLOR, REACH_FILL_OPACITY + 0.06);
 
-    for (const t of reach) {
-      const tile = new THREE.Mesh(this.reachFillGeo, t.provokes > 0 ? this.provokeFillMat : this.reachFillMat);
-      tile.rotation.x = -Math.PI / 2;
+    const place = (t: ReachTile) => (o: THREE.Object3D) => {
+      o.rotation.set(-Math.PI / 2, 0, 0);
       const w = this.cellToWorld(t.cell);
-      tile.position.set(w.x, this.surfaceAt(t.cell) + 0.03, w.z);
-      this.highlightGroup.add(tile);
-    }
+      o.position.set(w.x, this.surfaceAt(t.cell) + 0.03, w.z);
+    };
+    const [provoked, open] = [reach.filter((t) => t.provokes > 0), reach.filter((t) => t.provokes <= 0)];
+    this.highlightGroup.add(
+      instanced(this.reachFillGeo, this.reachFillMat, open.map(place)),
+      instanced(this.reachFillGeo, this.provokeFillMat, provoked.map(place)),
+    );
 
     const maxCost = reach.reduce((n, t) => Math.max(n, t.cost), 0);
     const within = new Set<string>();
@@ -1782,6 +1832,7 @@ export class BoardView {
     const geo = (this.contourGeo[tier] ??= new THREE.PlaneGeometry(HEX_SIZE, width));
     const mat = (this.contourMat[tier] ??= fillMaterial(MOVE_COLOR, opacity));
 
+    const edges: ((o: THREE.Object3D) => void)[] = [];
     for (const cellKey of within) {
       const [x, y] = cellKey.split(',').map(Number) as [number, number];
       const cell = { x, y };
@@ -1798,14 +1849,15 @@ export class BoardView {
           new THREE.Vector3(centre.x + HEX_STEP * dx, 0, centre.z + HEX_STEP * dz),
         );
         if (beyond && within.has(vecKey(beyond))) continue;
-        const edge = new THREE.Mesh(geo, mat);
-        // Lie flat, then turn the ribbon's length along the shared edge, which
-        // runs perpendicular to the line joining the two hex centres.
-        edge.rotation.set(-Math.PI / 2, 0, -(angle + Math.PI / 2));
-        edge.position.set(centre.x + (HEX_STEP / 2) * dx, surface, centre.z + (HEX_STEP / 2) * dz);
-        this.highlightGroup.add(edge);
+        edges.push((edge) => {
+          // Lie flat, then turn the ribbon's length along the shared edge, which
+          // runs perpendicular to the line joining the two hex centres.
+          edge.rotation.set(-Math.PI / 2, 0, -(angle + Math.PI / 2));
+          edge.position.set(centre.x + (HEX_STEP / 2) * dx, surface, centre.z + (HEX_STEP / 2) * dz);
+        });
       }
     }
+    this.highlightGroup.add(instanced(geo, mat, edges));
   }
 
   /**
@@ -1849,11 +1901,11 @@ export class BoardView {
   private drawOverlays(overlays: HexOverlay[]): void {
     this.overlays = overlays;
     for (const child of this.overlayGroup.children) {
-      const mesh = child as THREE.Mesh;
+      const mesh = child as THREE.InstancedMesh;
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
     }
-    this.overlayGroup.clear();
+    clearInstances(this.overlayGroup);
     // Later overlays sit a hair higher so small markers (flags) stay on top.
     overlays.forEach((o, i) => {
       const geo = new THREE.CircleGeometry(HEX_SIZE * (o.scale ?? 0.9), 6);
@@ -1864,13 +1916,12 @@ export class BoardView {
         side: THREE.DoubleSide,
         depthWrite: false,
       });
-      for (const c of o.cells) {
-        const tile = new THREE.Mesh(geo, mat);
-        tile.rotation.x = -Math.PI / 2;
+      const tiles = o.cells.map((c) => (tile: THREE.Object3D) => {
+        tile.rotation.set(-Math.PI / 2, 0, 0);
         const w = this.cellToWorld(c);
         tile.position.set(w.x, this.surfaceAt(c) + 0.012 + i * 0.002, w.z);
-        this.overlayGroup.add(tile);
-      }
+      });
+      this.overlayGroup.add(instanced(geo, mat, tiles));
     });
   }
 
@@ -2148,7 +2199,8 @@ export class BoardView {
   /** The board cell under the current ray: nearest tile/feature hit, else the ground plane. */
   private pickCell(): Vec | null {
     // The nearest tile or feature hit resolves raised hexes by their top or side faces.
-    const tileCell = this.raycaster.intersectObjects(this.tiles, false)[0]?.object.userData.cell as Vec | undefined;
+    const hit = this.raycaster.intersectObjects(this.tiles, false)[0];
+    const tileCell = hit?.faceIndex != null ? (hit.object.userData.cells as Vec[])[hit.faceIndex] : undefined;
     if (tileCell) return tileCell;
     const point = new THREE.Vector3();
     if (this.raycaster.ray.intersectPlane(this.groundPlane, point)) return this.worldToCell(point);
