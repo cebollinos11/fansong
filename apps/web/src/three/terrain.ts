@@ -49,3 +49,8 @@ export function tileTopColor(v: Vec, elevation: number): number {
 export function tileSideColor(v: Vec, elevation: number): number {
   return scale(tileTopColor(v, elevation), elevation <= 0 ? 0.85 : 0.55);
 }
+
+/** Rim colour around a hex top: a darker shade of it, so the grid reads where tiles meet. */
+export function tileRimColor(top: number): number {
+  return scale(top, 0.6);
+}

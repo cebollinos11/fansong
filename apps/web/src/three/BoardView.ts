@@ -21,8 +21,9 @@ import { BoardChunks } from './chunks.js';
 import {
   hexElevation,
   surfaceY,
+  TILE_BOTTOM,
   TILE_TOP,
-  tileHeight,
+  tileRimColor,
   tileSideColor,
   tileTopColor,
 } from './terrain.js';
@@ -111,6 +112,8 @@ function fillMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
 
 /** Cells per side of a square block of the board merged into one mesh (see {@link BoardChunks}). */
 const CHUNK_CELLS = 8;
+/** How far a hex top reaches before its darker rim, as a fraction of its radius. */
+const TILE_RIM_START = 0.94;
 /** How far a legacy blocked cell stands above its elevation. */
 const BLOCKED_RISE = 0.4;
 
@@ -140,20 +143,6 @@ function instanced(
 function clearInstances(group: THREE.Group): void {
   for (const child of group.children) (child as THREE.InstancedMesh).dispose();
   group.clear();
-}
-
-/** One material group of a geometry, as a geometry of its own (non-indexed). */
-function geometryGroup(geometry: THREE.BufferGeometry, group: number): THREE.BufferGeometry {
-  const flat = geometry.toNonIndexed();
-  const { start, count } = flat.groups[group]!;
-  const part = new THREE.BufferGeometry();
-  for (const name of ['position', 'normal']) {
-    const attr = flat.getAttribute(name);
-    const size = attr.itemSize;
-    part.setAttribute(name, new THREE.BufferAttribute(attr.array.slice(start * size, (start + count) * size), size));
-  }
-  flat.dispose();
-  return part;
 }
 
 /** A ring broken into dashes: an enemy the click walks up to before striking. */
@@ -637,16 +626,15 @@ export class BoardView {
     this.height = state.board.height;
     const blocked = new Set(state.board.blocked);
 
-    // A flat-top hex prism: a 6-sided cylinder, whose default orientation already
-    // points its vertices along ±X (columns) and its flat edges along ±Z (rows).
-    // Every prism stands on the same floor and rises to its hex's elevation; its
-    // side faces (the cylinder's first group) are shaded darker than the top.
-    // No bottom cap: the camera never sees under the table.
+    // Seamless flat-top hexes, a vertex on ±X (the columns) and a flat edge on ±Z
+    // (the rows), each top ringed by a darker rim so the grid still reads. A top
+    // only needs a wall where it drops to a lower neighbour or off the board, and
+    // only as tall as that drop: the rest would be hidden against its neighbours.
     const board = state.board;
-    const cylinder = new THREE.CylinderGeometry(HEX_SIZE * 0.94, HEX_SIZE * 0.94, 1, 6);
-    const prism = geometryGroup(cylinder, 0);
-    const top = geometryGroup(cylinder, 1);
-    cylinder.dispose();
+    const topOf = (v: Vec) => surfaceY(hexElevation(board, v)) + (blocked.has(vecKey(v)) ? BLOCKED_RISE : 0);
+    const up = new THREE.Vector3(0, 1, 0);
+    const corner = (c: { x: number; z: number }, i: number, r: number, y: number) =>
+      new THREE.Vector3(c.x + r * Math.cos((i * Math.PI) / 3), y, c.z + r * Math.sin((i * Math.PI) / 3));
     const chunks = new BoardChunks(CHUNK_CELLS);
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
@@ -655,21 +643,35 @@ export class BoardView {
         const elev = hexElevation(board, cell);
         const topColor = isBlocked ? BLOCKED_COLOR : tileTopColor(cell, elev);
         const sideColor = isBlocked ? topColor : tileSideColor(cell, elev);
-        // Legacy blocked cells stay a tall pillar above whatever their elevation is.
-        const height = tileHeight(elev) + (isBlocked ? BLOCKED_RISE : 0);
-        const w = this.cellToWorld(cell);
-        const matrix = new THREE.Matrix4().compose(
-          new THREE.Vector3(w.x, surfaceY(elev) + (isBlocked ? BLOCKED_RISE : 0) - height / 2, w.z),
-          new THREE.Quaternion(),
-          new THREE.Vector3(1, height, 1),
-        );
-        chunks.geometry(cell, prism, matrix, sideColor);
-        chunks.geometry(cell, top, matrix, topColor);
+        const rimColor = tileRimColor(topColor);
+        const c = this.cellToWorld(cell);
+        const top = topOf(cell);
+        const centre = new THREE.Vector3(c.x, top, c.z);
+        for (let i = 0; i < 6; i++) {
+          // Corners i and i + 1 run counter-clockwise seen from above, so each
+          // triangle lists them in the opposite order to face up.
+          const inner0 = corner(c, i, HEX_SIZE * TILE_RIM_START, top);
+          const inner1 = corner(c, i + 1, HEX_SIZE * TILE_RIM_START, top);
+          const outer0 = corner(c, i, HEX_SIZE, top);
+          const outer1 = corner(c, i + 1, HEX_SIZE, top);
+          chunks.triangle(cell, centre, inner1, inner0, up, topColor);
+          chunks.triangle(cell, inner0, outer1, outer0, up, rimColor);
+          chunks.triangle(cell, inner0, inner1, outer1, up, rimColor);
+
+          // The edge between those corners faces the neighbour at its midpoint's angle.
+          const angle = ((i + 0.5) * Math.PI) / 3;
+          const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
+          const beyond = this.worldToCell(new THREE.Vector3(c.x + HEX_STEP * out.x, 0, c.z + HEX_STEP * out.z));
+          const floor = beyond ? topOf(beyond) : TILE_BOTTOM;
+          if (floor >= top - 1e-6) continue;
+          const low0 = outer0.clone().setY(floor);
+          const low1 = outer1.clone().setY(floor);
+          chunks.triangle(cell, outer0, low1, low0, out, sideColor);
+          chunks.triangle(cell, outer0, outer1, low1, out, sideColor);
+        }
       }
     }
     this.addChunks(chunks, new THREE.MeshStandardMaterial({ vertexColors: true }));
-    prism.dispose();
-    top.dispose();
 
     this.buildFeatures(board);
     if (resized) this.positionCamera(state);

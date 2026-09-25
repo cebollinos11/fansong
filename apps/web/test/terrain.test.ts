@@ -7,6 +7,7 @@ import {
   TILE_BOTTOM,
   TILE_TOP,
   tileHeight,
+  tileRimColor,
   tileSideColor,
   tileTopColor,
 } from '../src/three/terrain.js';
@@ -48,6 +49,13 @@ describe('board terrain layout', () => {
       const v = { x: 1, y: 1 };
       expect(luma(tileSideColor(v, e))).toBeLessThan(luma(tileTopColor(v, e)));
       if (e > 0) expect(luma(tileTopColor(v, e))).toBeGreaterThan(luma(tileTopColor(v, e - 1)));
+    }
+  });
+
+  it('rims each top in a darker shade of it, so the seamless grid still reads', () => {
+    for (const e of [0, 1, 2, 3]) {
+      const top = tileTopColor({ x: 2, y: 1 }, e);
+      expect(luma(tileRimColor(top))).toBeLessThan(luma(top));
     }
   });
 });
