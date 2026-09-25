@@ -11,13 +11,12 @@ import { signed, type ActivationRoll, type NerveRoll, type OpposedRoll, type Rol
 // Card stages, in ms from the card's start.
 const TUMBLE_MS = 650; // dice spin, then land
 const FACE_SWAP_MS = 75; // a tumbling die shows a new random face this often
-const MODS_AT = 820; // first modifier chip
-const MOD_STEP_MS = 180; // each further chip
-const TOTAL_AT = 1180; // the total appears
-const OUTCOME_AT = 1400; // winner glows, loser dims
 
-/** Opposed roll: when the blow may begin (the card has shown who won). */
-export const OPPOSED_ROLL_MS = 1600;
+/**
+ * Opposed roll: when the blow may begin. Combat cards skip the tumble and show
+ * their result at once, so this is only a beat to take the numbers in.
+ */
+export const OPPOSED_ROLL_MS = 350;
 
 // Activation dice land one after another.
 const ACTIVATION_STAGGER_MS = 140;
@@ -133,9 +132,17 @@ export class RollOverlay {
   /**
    * An attack, shot or riposte: one card in each bottom corner — aggressor on
    * the left, defender on the right — so the blow itself stays in the clear.
+   * The dice arrive already settled: combat is frequent, and waiting on a
+   * tumble before every blow drags.
    */
   addOpposed(roll: OpposedRoll, now: number, lifeMs: number): void {
     this.now = now;
+    // A new fight replaces the last one's cards, however long they had left.
+    this.cards = this.cards.filter((c) => {
+      if (!c.pin) return true;
+      c.el.remove();
+      return false;
+    });
     for (const [s, other] of [
       [roll.a, roll.b],
       [roll.b, roll.a],
@@ -152,25 +159,25 @@ export class RollOverlay {
       // Parked away from its unit, the card has to say whose roll it is.
       card.el.append(this.header(s.role, s.unitId, true));
       const line = h('div', 'roll-line');
-      const die = this.die(s.unitId, s.die, now + TUMBLE_MS);
+      const die = this.die(s.unitId, s.die, now);
       card.dice.push(die);
       line.append(die.el);
-      s.mods.forEach((m, i) => {
+      s.mods.forEach((m) => {
         const chip = h('span', `roll-mod${m.value === 0 ? ' zero' : ''}`);
         chip.append(h('b', '', signed(m.value)), document.createTextNode(` ${m.label}`));
         line.append(chip);
-        this.reveal(card, chip, now + MODS_AT + i * MOD_STEP_MS);
+        this.reveal(card, chip, now);
       });
       card.el.append(line);
       const total = h('div', 'roll-total', `= ${s.total}`);
       card.el.append(total);
-      this.reveal(card, total, now + TOTAL_AT);
+      this.reveal(card, total, now);
       if (s.note) {
         const note = h('div', 'roll-note', s.note);
         card.el.append(note);
-        this.reveal(card, note, now + OUTCOME_AT);
+        this.reveal(card, note, now);
       }
-      this.reveal(card, card.el, now + OUTCOME_AT, outcomeClass(s));
+      this.reveal(card, card.el, now, outcomeClass(s));
     }
   }
 
@@ -226,9 +233,13 @@ export class RollOverlay {
     this.verdicts.push({ el, on: v.on, pin, start: now, endAt: now + VERDICT_MS });
   }
 
-  /** Fade out every card still up (the rolls that follow are about something else). */
+  /**
+   * Fade out every card still up over a unit (the rolls that follow are about
+   * something else). Combat cards sit in the corners, out of the way, and keep
+   * their time: only the next fight replaces them.
+   */
   retireAll(): void {
-    for (const c of this.cards) c.endAt = Math.min(c.endAt, this.now + LEAVE_MS);
+    for (const c of this.cards) if (!c.pin) c.endAt = Math.min(c.endAt, this.now + LEAVE_MS);
   }
 
   /** Drop everything at once (a replay jump). */

@@ -167,7 +167,8 @@ const SELECT_PAN_STEPS = 12; // halvings used to find the shortest pan that brin
 const SELECT_PAN_SLACK = 0.12; // extra fraction of that pan, so the pick isn't left on the margin
 const FOCUS_LEAD_MS = 220; // how long before a camera move its units start pulsing
 const FOCUS_PULSE_MS = 700;
-const COMBAT_CARD_HOLD_MS = 600; // how long a blow's dice cards stay up after their outcome, before the strike
+const COMBAT_CARD_HOLD_MS = 600; // how long a blow's dice cards stay up after it lands
+const COMBAT_CARD_LINGER_MS = 3000; // a blow's dice cards stay up at least this long, unless the next fight replaces them
 const COMBAT_SPAN_MARGIN = 2.2; // how much of the close-up the two combatants take up
 const COMBAT_MIN_SPAN = 5; // world units kept in view (~5 hexes), however close the pair stand
 const COMBAT_MAX_ZOOM = 0.45; // never closer than this fraction of the opening framing
@@ -703,11 +704,11 @@ export class BoardView {
         const roll = describeCombat(e, after);
         const pair: [string, string] =
           e.type === 'GuardRiposte' ? [e.guardId, e.attackerId] : [e.attackerId, e.targetId];
-        // A blow plays in three beats: frame the pair, roll their dice, then —
-        // once the cards have gone — strike.
+        // A blow plays in three beats: frame the pair, show their dice, then
+        // strike while the cards are still up in the corners.
         t += this.pause(this.frameCombat(pair, t));
         const start = t;
-        const cards = OPPOSED_ROLL_MS + COMBAT_CARD_HOLD_MS; // shows the outcome, holds, fades
+        const cards = OPPOSED_ROLL_MS; // the cards show their outcome at once; a beat to read it
         // Whoever pair[0] is — attacker, shooter, hacker, riposting guard — the
         // blow only reaches pair[1] on a defender-side result. Anything else is
         // a miss, a getaway, a clash, or a parry the guard didn't land, and
@@ -720,7 +721,8 @@ export class BoardView {
           e.type === 'AttackResolved' && this.answered(e)
             ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') })
             : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land });
-        this.at(start, () => this.rolls.addOpposed(roll, this.now, cards));
+        const life = Math.max(COMBAT_CARD_LINGER_MS, s.hit - start + COMBAT_CARD_HOLD_MS);
+        this.at(start, () => this.rolls.addOpposed(roll, this.now, life));
         // The conclusion lands along the bottom centre, between the two dice cards.
         this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now, 'bottom'));
         lastHit = s.hit;
