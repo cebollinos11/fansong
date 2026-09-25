@@ -64,6 +64,7 @@ describe('buildPlanIndex', () => {
 
     expect(idx.strikeNowIds).toEqual(['p1u0']);
     expect(idx.approachIds).toEqual(['p1u1']);
+    expect(idx.shootIds).toEqual([]);
     expect(idx.byTarget.get('p1u0')!.cost).toBe(1);
     expect(idx.byTarget.get('p1u1')!.cost).toBe(3);
     expect(idx.byTarget.get('p1u1')!.provokes).toBe(1);
@@ -95,6 +96,7 @@ describe('buildPlanIndex', () => {
     expect(offer.kind).toBe('shoot');
     expect(offer.waypoints).toEqual([]);
     expect(idx.strikeNowIds).toEqual(['p1u0']);
+    expect(idx.shootIds).toEqual(['p1u0']);
   });
 
   it('puts the enemy hex in reach of a click, so aiming at it works', () => {

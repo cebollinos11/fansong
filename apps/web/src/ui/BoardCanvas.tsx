@@ -14,6 +14,8 @@ interface Props {
   attackTargetIds: string[];
   /** Enemies it could strike after walking in. */
   approachTargetIds?: string[];
+  /** Of those targets, the ones it would shoot rather than strike in melee. */
+  shootTargetIds?: string[];
   /**
    * What hovering a hex would commit, for the route preview. Kept as a callback
    * so the board can ask on each new hex without re-rendering per frame.
@@ -183,6 +185,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       reach: props.reach,
       attackTargetIds: props.attackTargetIds,
       approachTargetIds: props.approachTargetIds ?? [],
+      shootTargetIds: props.shootTargetIds ?? [],
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
       interactive: props.interactive,
@@ -197,6 +200,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.reach,
     props.attackTargetIds,
     props.approachTargetIds,
+    props.shootTargetIds,
     props.selectableUnitIds,
     props.selectedUnitId,
     props.interactive,

@@ -318,6 +318,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         reach={acting ? plans.reach : []}
         attackTargetIds={acting ? plans.strikeNowIds : []}
         approachTargetIds={acting ? plans.approachIds : []}
+        shootTargetIds={acting ? plans.shootIds : []}
         previewFor={hoverPreview}
         selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
         selectedUnitId={selectedUnitId ?? sandbox?.selectedUnitId ?? null}

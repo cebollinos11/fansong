@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { makeHexGrid, vecKey, type BoardData, type GameEvent, type GameState, type Vec } from '@fansong/engine';
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
@@ -28,6 +29,8 @@ export interface BoardViewModel {
   attackTargetIds: string[];
   /** Enemy unit ids it could strike after walking in. */
   approachTargetIds: string[];
+  /** Of the targets above, those it would shoot rather than strike in melee. */
+  shootTargetIds?: string[];
   /** Own units that may be activated (awaitingActivation phase). */
   selectableUnitIds: string[];
   /** Unit the human has selected but not yet committed dice for. */
@@ -98,12 +101,93 @@ function fillMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
   });
 }
 
+/** A ring broken into dashes: an enemy the click walks up to before striking. */
+function dashedRing(): THREE.BufferGeometry {
+  const arc = (Math.PI * 2) / RING_DASHES;
+  const dashes = Array.from(
+    { length: RING_DASHES },
+    (_, i) => new THREE.RingGeometry(RING_INNER, RING_OUTER, 6, 1, i * arc, arc * 0.6),
+  );
+  const merged = mergeGeometries(dashes)!;
+  for (const d of dashes) d.dispose();
+  return merged;
+}
+
+/**
+ * Glow around a cutout's figure: lights the clear pixels within `uWidth` sprite
+ * pixels of an opaque one, reading the same atlas cell the cutout shows.
+ */
+function outlineMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      map: { value: null },
+      uOffset: { value: new THREE.Vector2() },
+      uRepeat: { value: new THREE.Vector2(1, 1) },
+      uPixel: { value: new THREE.Vector2(1 / 72, 1 / 72) },
+      uWidth: { value: OUTLINE_PX },
+      uColor: { value: new THREE.Color() },
+      uOpacity: { value: 1 },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D map;
+      uniform vec2 uOffset;
+      uniform vec2 uRepeat;
+      uniform vec2 uPixel;
+      uniform float uWidth;
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying vec2 vUv;
+      // Alpha of the shown frame at a point in its cell; nothing outside the cell.
+      float alphaAt(vec2 p) {
+        if (p.x < 0.0 || p.y < 0.0 || p.x > 1.0 || p.y > 1.0) return 0.0;
+        return texture2D(map, uOffset + p * uRepeat).a;
+      }
+      void main() {
+        if (alphaAt(vUv) > 0.5) discard;
+        float near = 0.0;
+        float far = 0.0;
+        for (int i = 0; i < 12; i++) {
+          float t = float(i) * 0.5235988;
+          vec2 d = vec2(cos(t), sin(t)) * uPixel;
+          near = max(near, max(alphaAt(vUv + d * uWidth * 0.5), alphaAt(vUv + d * uWidth)));
+          far = max(far, alphaAt(vUv + d * uWidth * 2.0));
+        }
+        float glow = max(near, far * 0.4);
+        if (glow < 0.02) discard;
+        gl_FragColor = vec4(uColor, glow * uOpacity);
+        #include <colorspace_fragment>
+      }`,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+}
+
 const SELECT_COLOR = 0xffd54a;
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
 const CROWN_COLOR = '#ffd54a';
 const BADGE_SIZE = 0.42; // world size of a badge sprite
 const BADGE_HEIGHT = 1.55; // badge centre above the unit's base
 const SHOT_COLOR = 0x9fd0ff; // ranged tracer, for a shooter without a missile image
+
+// Units waiting on a click wear a breathing ring and a glowing outline in the
+// colour of what the click does: gold to activate, red to strike, blue to shoot.
+// An enemy only reachable by walking in first gets a dashed, fainter version.
+const RING_INNER = 0.41;
+const RING_OUTER = 0.55;
+const RING_DASHES = 12;
+const CUE_SLOW_MS = 1600; // breath period for a unit to activate
+const CUE_FAST_MS = 900; // breath period for a target
+const CUE_SWELL = 0.06; // how much a breathing ring grows at its peak
+const CUE_HOVER_SCALE = 1.12; // the ring under the pointer, held open
+const OUTLINE_PX = 2; // outline width in sprite pixels, widened under the pointer
+const OUTLINE_HOVER_PX = 3;
 
 // Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
 const BASE_RADIUS = 0.36;
@@ -225,6 +309,7 @@ interface UnitFlags {
 }
 
 interface UnitObj {
+  id: string;
   owner: 0 | 1;
   /** The unit's name from the state, for cards that sit away from it. */
   name: string;
@@ -280,6 +365,19 @@ interface UnitObj {
   pulse: { start: number; end: number } | null;
   /** The ring as the view model wants it, which a finished pulse goes back to. */
   ringRest: { visible: boolean; opacity: number };
+  /** Glow traced around the cutout's figure while {@link cue} is set. */
+  outline: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
+  /** How this unit is flagged as a click the player can make, or null. */
+  cue: UnitCue | null;
+}
+
+/** A unit marked as something to click: the colour says what the click does. */
+interface UnitCue {
+  color: number;
+  /** Breath period in ms, or 0 to hold steady (the unit already picked). */
+  period: number;
+  /** Reached only by walking in first: dashed ring, dimmer glow. */
+  far: boolean;
 }
 
 /** How much the camera helps: not at all, panning to off-screen action, or framing every blow. */
@@ -397,6 +495,10 @@ export class BoardView {
   private disposed = false;
   private downPos: { x: number; y: number } | null = null;
   private hoverKey: string | null = null;
+  /** The unit figure under the pointer, so a clickable one can answer it. */
+  private hoverUnitId: string | null = null;
+  private readonly ringGeo = new THREE.RingGeometry(RING_INNER, RING_OUTER, 40);
+  private readonly dashedRingGeo = dashedRing();
   private clock = new THREE.Clock();
 
   constructor(private readonly container: HTMLElement) {
@@ -608,20 +710,19 @@ export class BoardView {
       // and hit this" is distinguishable from "hit this now" without a new colour.
       const isApproachTarget = !isAttackTarget && vm.approachTargetIds.includes(u.id);
       const isGuarding = u.guarding && !u.dead;
-      obj.ring.visible =
-        !obj.fade &&
-        (isActive || isSelected || isSelectable || isAttackTarget || isApproachTarget || isGuarding);
-      const ringColor =
+      const isShot = vm.shootTargetIds?.includes(u.id) ?? false;
+      obj.cue =
         isAttackTarget || isApproachTarget
-          ? ATTACK_COLOR
-          : isActive || isSelected
-            ? SELECT_COLOR
-            : isGuarding
-              ? GUARD_COLOR
-              : 0x8fa3bf;
-      obj.ring.material.color.setHex(ringColor);
-      obj.ring.material.opacity =
-        isActive || isSelected || isAttackTarget ? 0.95 : isApproachTarget ? 0.5 : isGuarding ? 0.7 : 0.4;
+          ? { color: isShot ? SHOT_COLOR : ATTACK_COLOR, period: CUE_FAST_MS, far: isApproachTarget }
+          : isSelected
+            ? { color: SELECT_COLOR, period: 0, far: false }
+            : isSelectable
+              ? { color: SELECT_COLOR, period: CUE_SLOW_MS, far: false }
+              : null;
+      obj.ring.geometry = obj.cue?.far ? this.dashedRingGeo : this.ringGeo;
+      obj.ring.visible = !obj.fade && (isActive || isGuarding || obj.cue !== null);
+      obj.ring.material.color.setHex(obj.cue ? obj.cue.color : isActive ? SELECT_COLOR : GUARD_COLOR);
+      obj.ring.material.opacity = isActive || obj.cue ? 0.95 : 0.7;
       obj.ringRest = { visible: obj.ring.visible, opacity: obj.ring.material.opacity };
     }
     // Remove meshes for units no longer present (shouldn't happen, but be safe).
@@ -1128,6 +1229,9 @@ export class BoardView {
     this.starMaterial?.map?.dispose();
     this.starMaterial?.dispose();
     this.rolls.dispose();
+    this.ringGeo.dispose();
+    this.dashedRingGeo.dispose();
+    for (const obj of this.units.values()) obj.outline.material.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentElement === this.container) {
       this.container.removeChild(this.renderer.domElement);
@@ -1146,9 +1250,8 @@ export class BoardView {
     base.position.y = TILE_TOP + BASE_HEIGHT / 2;
     base.userData.unitId = id;
 
-    const ringGeo = new THREE.RingGeometry(0.42, 0.52, 28);
     const ring = new THREE.Mesh(
-      ringGeo,
+      this.ringGeo,
       new THREE.MeshBasicMaterial({ color: SELECT_COLOR, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
     );
     ring.rotation.x = -Math.PI / 2;
@@ -1166,8 +1269,14 @@ export class BoardView {
     sprite.userData.isCutout = true;
     sprite.visible = false;
 
+    // Shares the cutout's quad (and, once loaded, its texture window); never picked.
+    const outline = new THREE.Mesh(sprite.geometry, outlineMaterial());
+    outline.position.z = -0.002;
+    outline.visible = false;
+    outline.raycast = () => {};
+
     const mirror = new THREE.Group();
-    mirror.add(sprite);
+    mirror.add(outline, sprite);
     const tilt = new THREE.Group();
     tilt.rotation.x = -SPRITE_LEAN;
     tilt.add(mirror);
@@ -1193,6 +1302,7 @@ export class BoardView {
     const downPose = DOWN_POSES[spriteName] ?? null;
     const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
     const obj: UnitObj = {
+      id,
       size: big ? BIG_SCALE : 1,
       flying,
       hover: 0,
@@ -1228,6 +1338,8 @@ export class BoardView {
       flash: 0,
       pulse: null,
       ringRest: { visible: false, opacity: 0 },
+      outline,
+      cue: null,
     };
 
     loadSpriteAtlas(spriteName, framesOf(spriteName), owner).then(
@@ -1243,6 +1355,12 @@ export class BoardView {
         // A Big model is drawn a head taller; the cutout's anchor is its feet,
         // so it grows upward and stays planted on its hex.
         sprite.scale.set(atlas.cellW * SPRITE_PX * obj.size, atlas.cellH * SPRITE_PX * obj.size, 1);
+        const u = outline.material.uniforms;
+        u.map!.value = map;
+        u.uOffset!.value = map.offset; // the same vector the frame animation moves
+        u.uRepeat!.value = map.repeat;
+        u.uPixel!.value.set(1 / atlas.cellW, 1 / atlas.cellH);
+        outline.scale.copy(sprite.scale);
         obj.shownImage = null; // force the current frame onto the new map
         sprite.visible = true;
       },
@@ -1483,16 +1601,32 @@ export class BoardView {
     );
     // A ring pulse marks what the camera is about to move to.
     if (obj.pulse && this.now >= obj.pulse.end) obj.pulse = null;
+    const cue = obj.fade ? null : obj.cue;
+    const hovered = cue !== null && cue.period > 0 && this.hoverUnitId === obj.id;
+    // 0..1 breath of a clickable unit; one held steady (or pointed at) sits at its top.
+    const breath =
+      cue && cue.period > 0 && !hovered ? 0.5 - 0.5 * Math.cos((this.now / cue.period) * Math.PI * 2) : 1;
     if (obj.pulse && this.now >= obj.pulse.start && !obj.fade) {
       const wave = Math.sin(Math.PI * ((this.now - obj.pulse.start) / (obj.pulse.end - obj.pulse.start)));
       obj.ring.visible = true;
       obj.ring.material.opacity = Math.max(obj.ringRest.opacity, 0.3 + 0.7 * wave);
       obj.ring.scale.setScalar(1 + 0.4 * wave);
-    } else if (obj.ring.scale.x !== 1) {
+    } else if (cue) {
+      obj.ring.visible = true;
+      obj.ring.material.opacity = cue.far ? 0.3 + 0.35 * breath : 0.45 + 0.55 * breath;
+      obj.ring.scale.setScalar(hovered ? CUE_HOVER_SCALE : 1 + CUE_SWELL * breath);
+    } else if (obj.ring.scale.x !== 1 || obj.ring.material.opacity !== obj.ringRest.opacity) {
       // Back to the ring the view model asked for.
       obj.ring.scale.setScalar(1);
       obj.ring.visible = obj.ringRest.visible;
       obj.ring.material.opacity = obj.ringRest.opacity;
+    }
+    obj.outline.visible = cue !== null && obj.atlas !== null;
+    if (cue && obj.atlas) {
+      const u = obj.outline.material.uniforms;
+      u.uColor!.value.setHex(cue.color);
+      u.uOpacity!.value = cue.far ? 0.35 + 0.3 * breath : 0.55 + 0.45 * breath;
+      u.uWidth!.value = hovered ? OUTLINE_HOVER_PX : OUTLINE_PX;
     }
 
     obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
@@ -1960,16 +2094,23 @@ export class BoardView {
       }
     }
     if (!this.onCellHover) return;
-    if (ev.buttons !== 0) return this.setHover(null); // orbiting/panning: hide the tooltip
+    if (ev.buttons !== 0) {
+      this.hoverUnitId = null;
+      return this.setHover(null); // orbiting/panning: hide the tooltip
+    }
     this.aimRay(ev);
     // A figure stands over its own hex; report that rather than the tile behind it.
     const unitId = this.pickUnit();
+    this.hoverUnitId = unitId ?? null;
     const target = unitId ? this.units.get(unitId)?.targetPos : undefined;
     const unitCell = target ? this.worldToCell(target) : null;
     this.setHover(unitCell ?? this.pickCell());
   };
 
-  private handlePointerLeave = (): void => this.setHover(null);
+  private handlePointerLeave = (): void => {
+    this.hoverUnitId = null;
+    this.setHover(null);
+  };
 
   private inBoard(cell: Vec): boolean {
     return cell.x >= 0 && cell.y >= 0 && cell.x < this.width && cell.y < this.height;
