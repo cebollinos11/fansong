@@ -1686,6 +1686,104 @@ button.army-item.active {
   flex: 1;
 }
 
+/* --- Dev preset editor (reuses the army builder's layout) --------------- */
+.army.preset-editor {
+  max-width: 1760px;
+}
+
+.preset-editor .army-table select {
+  width: 112px;
+}
+
+.preset-editor input.army-unit-name {
+  width: 118px;
+}
+
+.preset-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  color: var(--muted);
+}
+
+.preset-meta label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.army input.preset-id {
+  width: 200px;
+  font-family: ui-monospace, monospace;
+}
+
+.preset-order {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.preset-order button {
+  padding: 3px 9px;
+}
+
+.preset-matchup {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.preset-changes ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.preset-changes summary {
+  cursor: pointer;
+}
+
+.preset-note {
+  margin: 10px 0 0;
+  font-size: 13px;
+}
+
+.preset-pane-title {
+  margin: 0;
+  font-size: 20px;
+}
+
+.army input.preset-filter {
+  flex: 1 1 200px;
+}
+
+.army-table td.preset-used {
+  min-width: 72px;
+  max-width: 200px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.preset-used button.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--p0);
+  font-size: inherit;
+}
+
+.preset-used button.link:hover {
+  text-decoration: underline;
+}
+
+.army-list > button.army-item {
+  margin-bottom: 8px;
+}
+
 .setup-links {
   display: flex;
   gap: 8px;

@@ -122,8 +122,8 @@ export function armyFromPreset(id: string): Warband {
   return { name: `${preset.name} (copy)`, units: preset.units.map((u) => ({ ...u, look: u.look ?? u.name })) };
 }
 
-/** A copy of `units` with the unit at `i` moved by `delta` places (clamped). */
-export function moveUnit(units: readonly WarbandUnit[], i: number, delta: number): WarbandUnit[] {
+/** A copy of `units` with the unit at `i` moved by `delta` places (clamped). Works on any list. */
+export function moveUnit<T>(units: readonly T[], i: number, delta: number): T[] {
   const j = Math.min(units.length - 1, Math.max(0, i + delta));
   const next = [...units];
   const [u] = next.splice(i, 1);

@@ -8,6 +8,7 @@ import { ArmyBuilderScreen } from './ui/ArmyBuilderScreen.js';
 import { LobbyScreen } from './ui/LobbyScreen.js';
 import { createMatchFromPresets, DEFAULT_BOARD, DEFAULT_SETUP, type MatchSetup } from '@fansong/content';
 import { SandboxScreen } from './ui/SandboxScreen.js';
+import { PresetEditorScreen } from './ui/PresetEditorScreen.js';
 import { loadAutosave } from './game/sandboxStore.js';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
@@ -20,6 +21,7 @@ type View =
   | { kind: 'setup' }
   | { kind: 'editor' }
   | { kind: 'armies' }
+  | { kind: 'presets' }
   | { kind: 'match'; id: number; launch: Launch }
   | { kind: 'replay'; id: number; replay: Replay }
   | { kind: 'sandbox'; id: number; initial: GameState; setup: MatchSetup };
@@ -45,12 +47,17 @@ export function App(): JSX.Element {
             ? (setup) => setView({ kind: 'sandbox', id: Date.now(), initial: sandboxStart(setup), setup })
             : undefined
         }
+        onOpenPresets={devTools() ? () => setView({ kind: 'presets' }) : undefined}
       />
     );
   }
 
   if (view.kind === 'armies') {
     return <ArmyBuilderScreen onExit={() => setView({ kind: 'setup' })} />;
+  }
+
+  if (view.kind === 'presets') {
+    return <PresetEditorScreen onExit={() => setView({ kind: 'setup' })} />;
   }
 
   if (view.kind === 'editor') {
@@ -227,7 +234,7 @@ function sandboxStart(setup: MatchSetup): GameState {
   }
 }
 
-/** Dev tools (the sandbox) are on in any build whose URL carries `?dev=1`. */
+/** Dev tools (the sandbox, the preset editor) are on in any build whose URL carries `?dev=1`. */
 function devTools(): boolean {
   return new URLSearchParams(window.location.search).get('dev') === '1';
 }

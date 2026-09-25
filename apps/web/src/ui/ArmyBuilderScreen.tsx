@@ -202,28 +202,7 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
 
           <div className="army-table-wrap">
             <table className="army-table">
-              <thead>
-                <tr>
-                  <th />
-                  <th>Name</th>
-                  <th>Looks like</th>
-                  {EDITABLE_STATS.map((s) => (
-                    <th key={s} title={STAT_LABELS[s].title}>
-                      {STAT_LABELS[s].short}
-                    </th>
-                  ))}
-                  <th title={SHOOTER_TITLE}>Shooter</th>
-                  <th title={SPEED_TITLES.slow}>Slow</th>
-                  <th title={SPEED_TITLES.fast}>Fast</th>
-                  <th title="Tough — the first would-be kill only knocks it down">Tough</th>
-                  <th title="Guard — may take a stance that ripostes the first melee attacker">Guard</th>
-                  <th title="Big — +1 in melee against smaller foes, but +1 to anyone shooting it">Big</th>
-                  <th title="Flying — soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne">Fly</th>
-                  <th title="Reassembling — stands back up for free at the start of each round if knocked down">Bones</th>
-                  <th>Pts</th>
-                  <th />
-                </tr>
-              </thead>
+              <UnitTableHead />
               <tbody>
                 {warband.units.map((u, i) => (
                   <UnitRow
@@ -290,10 +269,43 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
   );
 }
 
-function UnitRow({
+/** The header row of a roster table, matching {@link UnitRow}'s columns (plus any `extra` ones). */
+export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Element {
+  return (
+    <thead>
+      <tr>
+        <th />
+        <th>Name</th>
+        <th>Looks like</th>
+        {EDITABLE_STATS.map((s) => (
+          <th key={s} title={STAT_LABELS[s].title}>
+            {STAT_LABELS[s].short}
+          </th>
+        ))}
+        <th title={SHOOTER_TITLE}>Shooter</th>
+        <th title={SPEED_TITLES.slow}>Slow</th>
+        <th title={SPEED_TITLES.fast}>Fast</th>
+        <th title="Tough — the first would-be kill only knocks it down">Tough</th>
+        <th title="Guard — may take a stance that ripostes the first melee attacker">Guard</th>
+        <th title="Big — +1 in melee against smaller foes, but +1 to anyone shooting it">Big</th>
+        <th title="Flying — soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne">Fly</th>
+        <th title="Reassembling — stands back up for free at the start of each round if knocked down">Bones</th>
+        <th>Pts</th>
+        {extra}
+        <th />
+      </tr>
+    </thead>
+  );
+}
+
+/** One editable unit in a roster table (shared with the dev preset editor). */
+export function UnitRow({
   unit,
   first,
   last,
+  rename = (u, name) => ({ ...u, name }),
+  extra,
+  titles = {},
   onChange,
   onMove,
   onCopy,
@@ -302,6 +314,12 @@ function UnitRow({
   unit: WarbandUnit;
   first: boolean;
   last: boolean;
+  /** How a typed name is applied to the unit (the default just sets it). */
+  rename?: (unit: WarbandUnit, name: string) => WarbandUnit;
+  /** Extra cells after Pts, matching {@link UnitTableHead}'s `extra`. */
+  extra?: React.ReactNode;
+  /** Tooltips for the copy and remove buttons, where they mean something more specific. */
+  titles?: { copy?: string; remove?: string };
   onChange: (unit: WarbandUnit) => void;
   onMove: (delta: number) => void;
   onCopy: () => void;
@@ -319,7 +337,7 @@ function UnitRow({
           value={unit.name}
           maxLength={NAME_LIMITS.unit}
           aria-label="Unit name"
-          onChange={(e) => onChange({ ...unit, name: e.target.value })}
+          onChange={(e) => onChange(rename(unit, e.target.value))}
         />
       </td>
       <td>
@@ -383,6 +401,7 @@ function UnitRow({
         <input type="checkbox" checked={unit.reassembling ?? false} aria-label="Reassembling" onChange={(e) => onChange(withTrait(unit, 'reassembling', e.target.checked))} />
       </td>
       <td className="stats">{valid ? unitCost(unit) : '—'}</td>
+      {extra}
       <td className="army-row-actions">
         <button title="Move up" disabled={first} onClick={() => onMove(-1)}>
           ↑
@@ -390,10 +409,10 @@ function UnitRow({
         <button title="Move down" disabled={last} onClick={() => onMove(1)}>
           ↓
         </button>
-        <button title="Duplicate" onClick={onCopy}>
+        <button title={titles.copy ?? 'Duplicate'} onClick={onCopy}>
           ⧉
         </button>
-        <button title="Remove" onClick={onRemove}>
+        <button title={titles.remove ?? 'Remove'} onClick={onRemove}>
           ✕
         </button>
       </td>

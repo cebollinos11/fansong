@@ -1,4 +1,4 @@
-import type { Warband } from './warband.js';
+import type { Warband, WarbandUnit } from './warband.js';
 
 /**
  * Original preset warbands. Names, themes, and stat lines are FanSong's own —
@@ -26,107 +26,231 @@ import type { Warband } from './warband.js';
  *  - monstrous-horde : the big brutes — a bear, a yeti and a giant (web-spitting)
  *    spider, led into the sky by a Flying wyvern.
  */
-export const PRESETS: Record<string, Warband> = {
+
+/** A preset unit's profile. Its name is its key in {@link PRESET_UNITS}. */
+export type PresetUnit = Omit<WarbandUnit, 'name'>;
+
+/** One line of a preset roster: a unit from {@link PRESET_UNITS}, and how many of it (default 1). */
+export interface RosterSlot {
+  unit: string;
+  count?: number;
+}
+
+/** A preset warband as written: a name plus lines naming shared units. */
+export interface PresetRoster {
+  name: string;
+  units: RosterSlot[];
+}
+
+/**
+ * Every preset unit, defined once by name. A warband takes a unit by naming it
+ * in its roster, so a unit several warbands share is changed in one place.
+ */
+export const PRESET_UNITS: Record<string, PresetUnit> = {
+  // Iron Wardens
+  'Warden-Captain': { quality: 2, combat: 4 },
+  Ironguard: { quality: 3, combat: 3 },
+  Bulwark: { quality: 3, combat: 3, slow: true, tough: true, big: true },
+  Sentinel: { quality: 3, combat: 3 },
+  Halberdier: { quality: 4, combat: 3 },
+  Levy: { quality: 4, combat: 2 },
+
+  // Ashfang Raiders
+  'Raid-Leader': { quality: 2, combat: 4, fast: true },
+  Marauder: { quality: 3, combat: 3 },
+  Reaver: { quality: 3, combat: 3 },
+  'Wolf-Prowler': { quality: 3, combat: 3, fast: true },
+  Outrider: { quality: 3, combat: 3, fast: true },
+  Whelp: { quality: 4, combat: 2 },
+
+  // Free Company
+  Sergeant: { quality: 3, combat: 4 },
+  Swordsman: { quality: 3, combat: 3 },
+  Pikeman: { quality: 3, combat: 3 },
+  Slinger: { quality: 3, combat: 2, fast: true, shooter: 'short' },
+  'Halberd-Recruit': { quality: 4, combat: 3 },
+  Recruit: { quality: 4, combat: 3 },
+
+  // Hollow Watch
+  'Watch-Captain': { quality: 2, combat: 4, guard: true },
+  'Shield-Warden': { quality: 3, combat: 3, tough: true },
+  Longbow: { quality: 3, combat: 2, shooter: 'long' },
+  Crossbow: { quality: 4, combat: 3, shooter: 'short' },
+  Sentry: { quality: 3, combat: 3 },
+
+  // Thorn Patrol
+  'Thorn-Bow': { quality: 3, combat: 2, shooter: 'normal' },
+  'Thorn-Blade': { quality: 3, combat: 4 },
+  'Thorn-Spear': { quality: 3, combat: 3 },
+
+  // Sky Talons
+  'Sky-Talon': { quality: 3, combat: 3, fast: true, flying: true },
+  'Storm-Talon': { quality: 3, combat: 3, fast: true, flying: true },
+  'Talon-Falconer': { quality: 3, combat: 2, shooter: 'short' },
+  Skywatch: { quality: 3, combat: 3 },
+  Fledgling: { quality: 4, combat: 2, fast: true },
+
+  // Bonefield Legion
+  'Bone-Sergeant': { quality: 3, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
+  'Skeleton Infantry': { quality: 4, combat: 3, reassembling: true },
+  'Bone-Legionary': { quality: 4, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
+  'Skeleton Archer': { quality: 4, combat: 2, shooter: 'short', reassembling: true },
+  'Bone-Fletcher': { quality: 4, combat: 2, shooter: 'short', reassembling: true, look: 'Skeleton Archer' },
+
+  // Grave Knights
+  'Skeleton Rider': { quality: 4, combat: 3, reassembling: true },
+  Deathblade: { quality: 4, combat: 3, reassembling: true },
+  'Death Knight': { quality: 4, combat: 3, reassembling: true },
+
+  // Wild Menagerie
+  Falcon: { quality: 4, combat: 2, fast: true, flying: true },
+  'Giant Scorpion': { quality: 4, combat: 3, fast: true, guard: true },
+  Crocodile: { quality: 4, combat: 3, fast: true, tough: true },
+  Wolf: { quality: 4, combat: 2, fast: true },
+  Boar: { quality: 4, combat: 3, fast: true },
+  'Giant Rat': { quality: 5, combat: 2, fast: true },
+
+  // Monstrous Horde
+  'Wild Wyvern': { quality: 3, combat: 4, fast: true, flying: true },
+  Bear: { quality: 4, combat: 4, big: true },
+  Yeti: { quality: 3, combat: 5, big: true },
+  'Giant Spider': { quality: 3, combat: 3, shooter: 'short', big: true },
+};
+
+/** Which units each preset warband fields, in menu order. */
+export const PRESET_ROSTERS: Record<string, PresetRoster> = {
   'iron-wardens': {
     name: 'Iron Wardens',
     units: [
-      { name: 'Warden-Captain', quality: 2, combat: 4 },
-      { name: 'Ironguard', quality: 3, combat: 3 },
-      { name: 'Bulwark', quality: 3, combat: 3, slow: true, tough: true, big: true },
-      { name: 'Sentinel', quality: 3, combat: 3 },
-      { name: 'Halberdier', quality: 4, combat: 3 },
-      { name: 'Levy', quality: 4, combat: 2 },
+      { unit: 'Warden-Captain' },
+      { unit: 'Ironguard' },
+      { unit: 'Bulwark' },
+      { unit: 'Sentinel' },
+      { unit: 'Halberdier' },
+      { unit: 'Levy' },
     ],
   },
   'ashfang-raiders': {
     name: 'Ashfang Raiders',
     units: [
-      { name: 'Raid-Leader', quality: 2, combat: 4, fast: true },
-      { name: 'Marauder', quality: 3, combat: 3 },
-      { name: 'Reaver', quality: 3, combat: 3 },
-      { name: 'Wolf-Prowler', quality: 3, combat: 3, fast: true },
-      { name: 'Outrider', quality: 3, combat: 3, fast: true },
-      { name: 'Whelp', quality: 4, combat: 2 },
+      { unit: 'Raid-Leader' },
+      { unit: 'Marauder' },
+      { unit: 'Reaver' },
+      { unit: 'Wolf-Prowler' },
+      { unit: 'Outrider' },
+      { unit: 'Whelp' },
     ],
   },
   'free-company': {
     name: 'Free Company',
     units: [
-      { name: 'Sergeant', quality: 3, combat: 4 },
-      { name: 'Swordsman', quality: 3, combat: 3 },
-      { name: 'Pikeman', quality: 3, combat: 3 },
-      { name: 'Slinger', quality: 3, combat: 2, fast: true, shooter: 'short' },
-      { name: 'Halberd-Recruit', quality: 4, combat: 3 },
-      { name: 'Recruit', quality: 4, combat: 3 },
+      { unit: 'Sergeant' },
+      { unit: 'Swordsman' },
+      { unit: 'Pikeman' },
+      { unit: 'Slinger' },
+      { unit: 'Halberd-Recruit' },
+      { unit: 'Recruit' },
     ],
   },
   'hollow-watch': {
     name: 'Hollow Watch',
     units: [
-      { name: 'Watch-Captain', quality: 2, combat: 4, guard: true },
-      { name: 'Shield-Warden', quality: 3, combat: 3, tough: true },
-      { name: 'Longbow', quality: 3, combat: 2, shooter: 'long' },
-      { name: 'Crossbow', quality: 4, combat: 3, shooter: 'short' },
-      { name: 'Sentry', quality: 3, combat: 3 },
+      { unit: 'Watch-Captain' },
+      { unit: 'Shield-Warden' },
+      { unit: 'Longbow' },
+      { unit: 'Crossbow' },
+      { unit: 'Sentry' },
     ],
   },
   'thorn-patrol': {
     name: 'Thorn Patrol',
     units: [
-      { name: 'Thorn-Bow', quality: 3, combat: 2, shooter: 'normal' },
-      { name: 'Thorn-Blade', quality: 3, combat: 4 },
-      { name: 'Thorn-Spear', quality: 3, combat: 3 },
+      { unit: 'Thorn-Bow' },
+      { unit: 'Thorn-Blade' },
+      { unit: 'Thorn-Spear' },
     ],
   },
   'sky-talons': {
     name: 'Sky Talons',
     units: [
-      { name: 'Sky-Talon', quality: 3, combat: 3, fast: true, flying: true },
-      { name: 'Storm-Talon', quality: 3, combat: 3, fast: true, flying: true },
-      { name: 'Talon-Falconer', quality: 3, combat: 2, shooter: 'short' },
-      { name: 'Skywatch', quality: 3, combat: 3 },
-      { name: 'Fledgling', quality: 4, combat: 2, fast: true },
+      { unit: 'Sky-Talon' },
+      { unit: 'Storm-Talon' },
+      { unit: 'Talon-Falconer' },
+      { unit: 'Skywatch' },
+      { unit: 'Fledgling' },
     ],
   },
   'bonefield-legion': {
     name: 'Bonefield Legion',
     units: [
-      { name: 'Bone-Sergeant', quality: 3, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
-      { name: 'Skeleton Infantry', quality: 4, combat: 3, reassembling: true },
-      { name: 'Bone-Legionary', quality: 4, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
-      { name: 'Skeleton Archer', quality: 4, combat: 2, shooter: 'short', reassembling: true },
-      { name: 'Bone-Fletcher', quality: 4, combat: 2, shooter: 'short', reassembling: true, look: 'Skeleton Archer' },
+      { unit: 'Bone-Sergeant' },
+      { unit: 'Skeleton Infantry' },
+      { unit: 'Bone-Legionary' },
+      { unit: 'Skeleton Archer' },
+      { unit: 'Bone-Fletcher' },
     ],
   },
   'grave-knights': {
     name: 'Grave Knights',
     units: [
-      { name: 'Skeleton Rider', quality: 4, combat: 3, reassembling: true },
-      { name: 'Deathblade', quality: 4, combat: 3, reassembling: true },
-      { name: 'Death Knight', quality: 4, combat: 3, reassembling: true },
+      { unit: 'Skeleton Rider' },
+      { unit: 'Deathblade' },
+      { unit: 'Death Knight' },
     ],
   },
   'wild-menagerie': {
     name: 'Wild Menagerie',
     units: [
-      { name: 'Falcon', quality: 4, combat: 2, fast: true, flying: true },
-      { name: 'Giant Scorpion', quality: 4, combat: 3, fast: true, guard: true },
-      { name: 'Crocodile', quality: 4, combat: 3, fast: true, tough: true },
-      { name: 'Wolf', quality: 4, combat: 2, fast: true },
-      { name: 'Boar', quality: 4, combat: 3, fast: true },
-      { name: 'Giant Rat', quality: 5, combat: 2, fast: true },
+      { unit: 'Falcon' },
+      { unit: 'Giant Scorpion' },
+      { unit: 'Crocodile' },
+      { unit: 'Wolf' },
+      { unit: 'Boar' },
+      { unit: 'Giant Rat' },
     ],
   },
   'monstrous-horde': {
     name: 'Monstrous Horde',
     units: [
-      { name: 'Wild Wyvern', quality: 3, combat: 4, fast: true, flying: true },
-      { name: 'Bear', quality: 4, combat: 4, big: true },
-      { name: 'Yeti', quality: 3, combat: 5, big: true },
-      { name: 'Giant Spider', quality: 3, combat: 3, shooter: 'short', big: true },
+      { unit: 'Wild Wyvern' },
+      { unit: 'Bear' },
+      { unit: 'Yeti' },
+      { unit: 'Giant Spider' },
     ],
   },
 };
+
+/**
+ * Expand a roster into a playable warband, looking each line's unit up by
+ * reference. A line with a count of `n` fields `n` copies: the first keeps the
+ * unit's name, the rest are numbered (`Wolf 2`, `Wolf 3`, …) and drawn as it.
+ * Throws if a line names a unit `lookup` doesn't know.
+ */
+export function expandRoster(
+  roster: PresetRoster,
+  lookup: (ref: string) => WarbandUnit | undefined,
+): Warband {
+  const units: WarbandUnit[] = [];
+  for (const slot of roster.units) {
+    const unit = lookup(slot.unit);
+    if (!unit) throw new Error(`${roster.name}: no unit "${slot.unit}"`);
+    for (let k = 1; k <= (slot.count ?? 1); k++) {
+      units.push(k === 1 ? { ...unit } : { ...unit, name: `${unit.name} ${k}`, look: unit.look ?? unit.name });
+    }
+  }
+  return { name: roster.name, units };
+}
+
+/** A preset unit as a warband unit, or `undefined` if there is none by that name. */
+export function presetUnit(name: string): WarbandUnit | undefined {
+  const profile = PRESET_UNITS[name];
+  return profile && { name, ...profile };
+}
+
+/** Every preset warband, expanded from {@link PRESET_ROSTERS}. */
+export const PRESETS: Record<string, Warband> = Object.fromEntries(
+  Object.entries(PRESET_ROSTERS).map(([id, roster]) => [id, expandRoster(roster, presetUnit)]),
+);
 
 /** Stable list of preset ids, for CLI help and menus. */
 export const PRESET_IDS = Object.keys(PRESETS);

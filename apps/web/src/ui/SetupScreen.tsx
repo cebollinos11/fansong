@@ -35,6 +35,8 @@ interface Props {
   onOpenArmies: () => void;
   /** With `?dev=1` in the URL: open the sandbox, starting from the chosen warbands and map. */
   onOpenSandbox?: (setup: MatchSetup) => void;
+  /** With `?dev=1` in the URL: open the preset unit editor. */
+  onOpenPresets?: () => void;
 }
 
 export type Mode = 'vsAI' | 'hotseat' | 'online';
@@ -112,7 +114,7 @@ export function modeFor(map: MapDef, wanted: GameMode): GameMode {
   return supportedModes(map).includes(wanted) ? wanted : 'annihilation';
 }
 
-export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOpenArmies, onOpenSandbox }: Props): JSX.Element {
+export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOpenArmies, onOpenSandbox, onOpenPresets }: Props): JSX.Element {
   const [mode, setMode] = useState<Mode>(initial.seats[1] === 'ai' ? 'vsAI' : 'hotseat');
   const [p0, setP0] = useState(initial.presets[0]);
   const [p1, setP1] = useState(initial.presets[1]);
@@ -213,6 +215,11 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
           {onOpenSandbox && launch.kind === 'local' && problem === null ? (
             <button className="ghost" title="Dev tool: set up and test any situation" onClick={() => onOpenSandbox(launch.setup)}>
               Sandbox…
+            </button>
+          ) : null}
+          {onOpenPresets ? (
+            <button className="ghost" title="Dev tool: edit the preset warbands and export them" onClick={onOpenPresets}>
+              Preset units…
             </button>
           ) : null}
         </div>
