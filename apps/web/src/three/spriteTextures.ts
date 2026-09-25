@@ -86,6 +86,8 @@ export interface SpriteAtlas {
   anchorY: number;
   /** Alpha (0-255) at a texture UV, for pixel-accurate picking. */
   alphaAt(u: number, v: number): number;
+  /** Colour (0xRRGGBB) at a texture UV, or null where the pixel is clear. */
+  colorAt(u: number, v: number): number | null;
 }
 
 const PAD = 4; // gap between cells so mipmaps don't bleed neighbouring frames
@@ -159,12 +161,21 @@ function buildAtlas(
     rects.set(path, { u: cx / atlasW, v: 1 - (cy + cellH) / atlasH, top: bounds ? bounds.minY - cy : 0 });
   });
 
-  const alpha = ctx.getImageData(0, 0, atlasW, atlasH).data;
-  const alphaAt = (u: number, v: number): number => {
+  const pixels = ctx.getImageData(0, 0, atlasW, atlasH).data;
+  const indexAt = (u: number, v: number): number => {
     const x = Math.floor(u * atlasW);
     const y = Math.floor((1 - v) * atlasH);
-    if (x < 0 || y < 0 || x >= atlasW || y >= atlasH) return 0;
-    return alpha[(y * atlasW + x) * 4 + 3]!;
+    if (x < 0 || y < 0 || x >= atlasW || y >= atlasH) return -1;
+    return (y * atlasW + x) * 4;
+  };
+  const alphaAt = (u: number, v: number): number => {
+    const i = indexAt(u, v);
+    return i < 0 ? 0 : pixels[i + 3]!;
+  };
+  const colorAt = (u: number, v: number): number | null => {
+    const i = indexAt(u, v);
+    if (i < 0 || pixels[i + 3]! < 128) return null;
+    return (pixels[i]! << 16) | (pixels[i + 1]! << 8) | pixels[i + 2]!;
   };
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -181,6 +192,7 @@ function buildAtlas(
     anchorX,
     anchorY,
     alphaAt,
+    colorAt,
   };
 }
 

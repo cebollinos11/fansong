@@ -1,10 +1,19 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { makeHexGrid, vecKey, type BoardData, type GameEvent, type GameState, type Vec } from '@fansong/engine';
+import {
+  makeHexGrid,
+  MORALE_RADIUS,
+  vecKey,
+  type BoardData,
+  type GameEvent,
+  type GameState,
+  type Vec,
+} from '@fansong/engine';
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
+import { Effects } from './effects.js';
 import { featureLayout } from './features.js';
 import {
   activationResolveMs,
@@ -284,6 +293,26 @@ const ROUT_MS = 700; // a routed unit flees toward its own board edge while fadi
 const MAX_QUEUE_MS = 4000; // most a new batch waits behind the previous one's animations
 const NERVE_LEAD_MS = 900; // pause between a killing blow (its verdict) and the nerve checks it causes
 
+// Combat effects (see effects.ts). No red anywhere: impacts are white and gold,
+// dust takes the ground's colour, and a gruesome kill leaves ash, not blood.
+const SPARK_COLORS = [0xffffff, 0xfff3c4, 0xffd98a];
+const GOLD = 0xffcf4a;
+const GOLD_COLORS = [0xffe28a, 0xffcf4a, 0xfff6d0];
+const ASH_COLORS = [0x34313a, 0x57525e, 0x807a88];
+const CHIP_COLORS = [0x8a8074, 0x6b635a, 0xb0a594];
+const DUST_TINT = 0xb8a888; // what the ground's colour is lightened toward for dust
+const WISP_COLOR = 0xcfe6ff;
+const FEAR_COLOR = 0x6a3a9a;
+const DEFLECT = 0.08; // how far a clash throws the two combatants apart
+const JOLT_MS = 220;
+const TOUGH_HITCH_MS = 320; // a Tough unit freezes mid-death this long before it drops to the ground instead
+const GLOW_MS = 1200; // gold rim glow on a Tough save
+const HIT_STOP_MS = 90; // a gruesome kill freezes the action this long on impact
+const FEAR_WAVE_MS = 800; // time for a gruesome kill's fear to reach the edge of its radius
+const SHATTER_FADE_MS = 200; // a unit that shatters into motes is gone this fast
+const PUSH_OFF_MS = 900; // a unit shoved off the table slides, topples and drops for this long
+const STICK_MS = 500; // an arrow that lands stays in its target this long
+
 // Following the action: a batch whose units sit outside this part of the view
 // (normalised device coords, ±1 = the edges) pans the camera to them first.
 const FOLLOW_MARGIN_X = 0.8;
@@ -345,7 +374,14 @@ interface Missile {
   end: number;
   /** Lobbed projectiles (stones, spears) arc; arrows and bolts fly flat. */
   arc: number;
+  /** What happens where it ends: it sticks in its target, or kicks up the ground or the cover it hit. */
+  ending: ShotEnding;
+  /** Its landing effect has played. */
+  landed: boolean;
 }
+
+/** Where a shot ends: in its target, in the ground past it, or in the cover in front of it. */
+type ShotEnding = 'hit' | 'miss' | 'cover';
 
 /** The middle of a set of points. */
 function middle(points: THREE.Vector3[]): THREE.Vector3 {
@@ -404,8 +440,18 @@ interface UnitObj {
   holdUntil: number;
   /** Set by a UnitRouted event: leave by fleeing, not by dying. */
   routed: boolean;
-  /** Board times the fade-out starts / ends, while dying or fleeing. */
-  fade: { start: number; end: number; flee: THREE.Vector3 | null } | null;
+  /**
+   * Board times the fade-out starts / ends, while dying or fleeing. `drop` is
+   * the push that shoved it off the table (it slides that way, topples by
+   * `tilt` and sinks).
+   */
+  fade: { start: number; end: number; flee: THREE.Vector3 | null; drop?: THREE.Vector3; tilt?: number } | null;
+  /** Set by a UnitPushedOff event: the direction it is shoved off the table. */
+  pushedOff: THREE.Vector3 | null;
+  /** A knock the cutout takes and springs back from (a clash, a brace, a shudder of fear); `shake` wobbles instead. */
+  jolt: { dir: THREE.Vector3; start: number; end: number; shake: boolean } | null;
+  /** A rim glow traced around the figure (a Tough save), when no click cue is showing. */
+  glow: { color: number; start: number; end: number } | null;
   /** A shove the cutout rides out and recovers from: a strike's lunge in, or a dodge back. */
   lunge: { dir: THREE.Vector3; start: number; hit: number; end: number } | null;
   /** A move in progress: hex centres from origin to destination, walked from board time `start`. `backward` keeps the facing (a recoil). */
@@ -466,6 +512,13 @@ export class BoardView {
   private readonly rolls: RollOverlay;
   private readonly tracers: Tracer[] = [];
   private readonly missiles: Missile[] = [];
+  private readonly effects = new Effects();
+  /** Wall-clock time (ms, at animation speed): unlike {@link now} it runs on through a hit-stop. */
+  private wallNow = 0;
+  /** Board time stands still until the wall clock reaches this (a hit-stop). */
+  private freezeUntil = 0;
+  /** Camera shakes in progress, on the wall clock. */
+  private shakes: { start: number; end: number; amp: number; kind: 'nudge' | 'thump' | 'rumble'; dir: THREE.Vector3 }[] = [];
   /** Deferred animation steps, run once board time reaches `at` (ms). */
   private readonly timeline: { at: number; fn: () => void }[] = [];
   /** Board time (ms) since the view was created; drives all animation. */
@@ -575,6 +628,7 @@ export class BoardView {
       this.highlightGroup,
       this.previewGroup,
       this.markerGroup,
+      this.effects.group,
     );
 
     // Left-drag orbits, right-drag (or shift/ctrl + left) pans across the table,
@@ -785,6 +839,7 @@ export class BoardView {
     for (const [id, obj] of this.units) {
       if (!seen.has(id)) {
         this.scene.remove(obj.group);
+        this.effects.unmark(id);
         this.units.delete(id);
       }
     }
@@ -820,6 +875,9 @@ export class BoardView {
     let lastHit = t; // when the most recent blow lands, for its consequences
     let settle = t; // when state changes caused by the latest roll or blow are shown
     let nerveAt: number | null = null; // start of the current run of nerve checks
+    let pair: [string, string] | null = null; // the two sides of the latest blow
+    let gruesome = false; // whether the latest blow was a gruesome kill
+    const toughSaved = new Set<string>(); // units whose killing blow Tough turned into a knockdown
     const hold = (id: string, until: number) => {
       const obj = this.units.get(id);
       if (obj) obj.holdUntil = Math.max(obj.holdUntil, this.now + until);
@@ -868,8 +926,8 @@ export class BoardView {
         e.type === 'FreeHackResolved'
       ) {
         const roll = describeCombat(e, after);
-        const pair: [string, string] =
-          e.type === 'GuardRiposte' ? [e.guardId, e.attackerId] : [e.attackerId, e.targetId];
+        pair = e.type === 'GuardRiposte' ? [e.guardId, e.attackerId] : [e.attackerId, e.targetId];
+        gruesome = e.gruesome === true;
         // A blow plays in three beats: frame the pair, show their dice, then
         // strike while the cards are still up in the corners.
         t += this.pause(this.frameCombat(pair, t));
@@ -883,10 +941,17 @@ export class BoardView {
         // Melee the defender answers plays as an exchange, so the swing goes in
         // and is turned aside before the answer comes back — landing when the
         // attacker lost the roll, turned aside in its turn when they clashed.
+        const cover = e.type === 'ShotResolved' && (e.coverPenalty ?? 0) > 0;
         const s =
           e.type === 'AttackResolved' && this.answered(e)
             ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') })
-            : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land });
+            : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land, cover });
+        const [first, second] = pair;
+        if (e.result === 'clash' && e.type !== 'ShotResolved') this.at(s.hit, () => this.clashFx(first, second));
+        if (e.type === 'GuardRiposte') {
+          this.at(start + cards, () => this.guardFx(e.guardId));
+          if (e.prevented) this.at(s.hit, () => this.parryFx(e.guardId, e.attackerId));
+        }
         const life = Math.max(COMBAT_CARD_LINGER_MS, s.hit - start + COMBAT_CARD_HOLD_MS);
         this.at(start, () => this.rolls.addOpposed(roll, this.now, life));
         // The conclusion lands along the bottom centre, between the two dice cards.
@@ -917,21 +982,51 @@ export class BoardView {
         );
         settle = at;
       } else if (e.type === 'ToughnessSaved') {
-        this.at(lastHit, () => this.flashUnit(e.unitId, 0.7));
+        toughSaved.add(e.unitId);
+        this.at(lastHit, () => this.toughFx(e.unitId));
       } else if (e.type === 'UnitRecoiled') {
         const obj = this.units.get(e.unitId);
         if (obj) {
           // Shoved back one hex on the blow's hit frame, still facing its opponent.
           obj.walk = { path: [this.unitWorld(e.from), this.unitWorld(e.to)], start: this.now + lastHit, backward: true };
+          this.recoilFx(obj, this.unitWorld(e.from), this.unitWorld(e.to), lastHit);
           t = Math.max(t, lastHit + WALK_MS_PER_HEX);
         }
       } else if (e.type === 'UnitSupported') {
         // The friend behind braces the pushed unit on the blow's hit frame.
-        this.at(lastHit, () =>
-          this.rolls.addVerdict({ text: 'Supported', on: [e.supporterId], tone: 'save' }, this.now),
-        );
-      } else if (e.type === 'UnitKnockedDown' || e.type === 'UnitKilled') {
+        this.at(lastHit, () => {
+          this.rolls.addVerdict({ text: 'Supported', on: [e.supporterId], tone: 'save' }, this.now);
+          this.braceFx(e.unitId, e.supporterId);
+        });
+      } else if (e.type === 'UnitPushedOff') {
+        // Only a push that kills slides off the table; a Tough save stays on the edge.
+        const fate = after.find((x) => (x.type === 'UnitKilled' || x.type === 'ToughnessSaved') && x.unitId === e.unitId);
+        const obj = this.units.get(e.unitId);
+        const by = pair && this.units.get(pair[0] === e.unitId ? pair[1] : pair[0]);
+        if (obj && by && fate?.type === 'UnitKilled') {
+          obj.pushedOff = obj.targetPos.clone().sub(by.targetPos).setY(0).normalize();
+        }
+      } else if (e.type === 'UnitKnockedDown') {
+        // A Tough unit freezes mid-death for a beat before it drops.
+        const at = settle + (toughSaved.has(e.unitId) ? TOUGH_HITCH_MS : 0);
+        hold(e.unitId, at);
+        const obj = this.units.get(e.unitId);
+        if (obj) {
+          const fall = this.deathClip(obj, 'fall');
+          this.at(at + (fall ? clipDuration(fall) : 200), () => this.slamFx(obj));
+        }
+      } else if (e.type === 'UnitKilled') {
         hold(e.unitId, settle);
+        const obj = this.units.get(e.unitId);
+        if (obj) {
+          const fearful = gruesome && !obj.pushedOff;
+          // The fear checks a gruesome kill causes follow straight after it.
+          const next = after.findIndex((x) => x.type !== 'NerveCheck');
+          const shaken = (next < 0 ? after : after.slice(0, next)).flatMap((x) =>
+            x.type === 'NerveCheck' ? [x.unitId] : [],
+          );
+          this.at(lastHit, () => this.killFx(obj, fearful, shaken));
+        }
       } else if (e.type === 'UnitRouted') {
         const obj = this.units.get(e.unitId);
         if (obj) obj.routed = true;
@@ -944,6 +1039,9 @@ export class BoardView {
       ) {
         // An objective decides games; show where it happened (free when already framed).
         t += this.pause(this.frameUnits([e.unitId], t));
+      } else if (e.type === 'RoundEnded') {
+        // The marks where units fell last only for the round they fell in.
+        this.at(t, () => this.effects.clearMarks());
       } else if (e.type === 'GameOver') {
         this.at(t + 400, () => {
           for (const obj of this.units.values()) {
@@ -1233,9 +1331,13 @@ export class BoardView {
       this.stepCamera();
     }
     this.rolls.clear();
+    this.effects.clear();
+    this.shakes = [];
+    this.freezeUntil = 0;
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
       obj.pulse = null;
+      obj.jolt = null;
     }
     this.busyUntil = this.now;
     return true;
@@ -1249,10 +1351,16 @@ export class BoardView {
     this.restoreDist = null;
     this.busyUntil = this.now;
     this.rolls.clear();
+    this.effects.clear();
+    this.effects.clearMarks();
+    this.shakes = [];
+    this.freezeUntil = 0;
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
       obj.pulse = null;
       obj.walk = null;
+      obj.jolt = null;
+      obj.glow = null;
       obj.mirror.rotation.z = 0;
       obj.animator.moveFor(0, { reset: true });
     }
@@ -1285,6 +1393,7 @@ export class BoardView {
     this.starMaterial?.map?.dispose();
     this.starMaterial?.dispose();
     this.rolls.dispose();
+    this.effects.dispose();
     this.ringGeo.dispose();
     this.dashedRingGeo.dispose();
     for (const obj of this.units.values()) obj.outline.material.dispose();
@@ -1389,6 +1498,9 @@ export class BoardView {
       holdUntil: 0,
       routed: false,
       fade: null,
+      pushedOff: null,
+      jolt: null,
+      glow: null,
       lunge: null,
       walk: null,
       flash: 0,
@@ -1444,14 +1556,15 @@ export class BoardView {
    * Lay out one strike starting `at` ms from now: the attacker's clip, its
    * lunge or missile, and the target's reaction timed to the clip's hit frame.
    * `land` is false for a blow the target turns aside — it still defends, but
-   * nothing connects. Returns the hit and end times, relative to now.
+   * nothing connects; a shot that misses with `cover` hits the cover instead.
+   * Returns the hit and end times, relative to now.
    */
   private strike(
     attackerId: string,
     targetId: string,
     range: 'melee' | 'ranged',
     at: number,
-    opts: { land?: boolean } = {},
+    opts: { land?: boolean; cover?: boolean } = {},
   ): { hit: number; end: number } {
     const a = this.units.get(attackerId);
     const d = this.units.get(targetId);
@@ -1460,6 +1573,8 @@ export class BoardView {
     const clip = options?.[Math.floor(Math.random() * options.length)];
     const dur = clip ? clipDuration(clip) : 400;
     const hit = clip?.hitMs ?? dur / 2;
+    const land = opts.land ?? true;
+    const ending: ShotEnding = land ? 'hit' : opts.cover ? 'cover' : 'miss';
 
     this.at(at, () => {
       const toTarget = d.group.position.clone().sub(a.group.position).setY(0);
@@ -1470,12 +1585,15 @@ export class BoardView {
         const dir = toTarget.normalize().multiplyScalar(LUNGE);
         a.lunge = { dir, start: this.now, hit: this.now + hit, end: this.now + dur };
       } else if (clip?.missile) {
-        this.launchMissile(a, d, clip.missile, hit - (clip.missileMs ?? 150), hit);
+        this.launchMissile(a, d, clip.missile, hit - (clip.missileMs ?? 150), hit, ending);
       } else {
-        this.at(hit, () => this.addTracer(attackerId, targetId, SHOT_COLOR));
+        this.at(hit, () => {
+          const to = this.shotEnd(a, d, ending);
+          this.addTracer(a.group.position.clone().setY(a.targetPos.y + 0.7), to, SHOT_COLOR);
+          this.shotFx(to, ending);
+        });
       }
     });
-    const land = opts.land ?? true;
     const defend: Clip | undefined =
       range === 'melee'
         ? (d.anims.defendMelee ?? d.anims.defendRanged)
@@ -1489,7 +1607,12 @@ export class BoardView {
       // reacting to it rather than a unit standing perfectly still.
       this.at(at + hit - DODGE_MS, () => this.giveGround(d, a, land ? FLINCH : DODGE));
     }
-    if (land) this.at(at + hit, () => this.flashUnit(targetId, 0.8));
+    if (land) {
+      this.at(at + hit, () => {
+        this.flashUnit(targetId, 0.8);
+        if (range === 'melee') this.impactFx(a, d);
+      });
+    }
     if (range === 'ranged' && this.cameraMode === 'cinematic' && !this.downPos) {
       // Swing to the shooter as it draws, then ride the shot in to its target —
       // but only for a shot short and slow enough to follow. A long one would
@@ -1549,7 +1672,14 @@ export class BoardView {
     };
   }
 
-  private launchMissile(from: UnitObj, to: UnitObj, image: string, startIn: number, hitIn: number): void {
+  private launchMissile(
+    from: UnitObj,
+    to: UnitObj,
+    image: string,
+    startIn: number,
+    hitIn: number,
+    ending: ShotEnding,
+  ): void {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: projectileTexture(image), alphaTest: 0.5 }));
     sprite.scale.setScalar(72 * SPRITE_PX * 0.8);
     sprite.visible = false;
@@ -1558,11 +1688,25 @@ export class BoardView {
     this.missiles.push({
       sprite,
       from: from.group.position.clone().setY(from.targetPos.y + lift),
-      to: to.group.position.clone().setY(to.targetPos.y + lift),
+      to: this.shotEnd(from, to, ending),
       start: this.now + Math.max(0, startIn),
       end: this.now + Math.max(1, hitIn),
       arc: /stone|spear|pitchfork/.test(image) ? 0.35 : 0.08,
+      ending,
+      landed: false,
     });
+  }
+
+  /**
+   * Where a shot ends: in the target's chest, in the ground just past it (a
+   * miss), or low in front of it, where the cover it hid behind stands.
+   */
+  private shotEnd(from: UnitObj, to: UnitObj, ending: ShotEnding): THREE.Vector3 {
+    const dir = to.group.position.clone().sub(from.group.position).setY(0).normalize();
+    const ground = to.targetPos.y + TILE_TOP;
+    if (ending === 'miss') return to.group.position.clone().addScaledVector(dir, HEX_SIZE * 0.8).setY(ground + 0.02);
+    if (ending === 'cover') return to.group.position.clone().addScaledVector(dir, -HEX_SIZE * 0.55).setY(ground + 0.3);
+    return to.group.position.clone().setY(to.targetPos.y + TILE_TOP + BASE_HEIGHT + 0.55 + to.hover);
   }
 
   /** Apply held-back state changes (knockdown, death, guard) once their blow has landed. */
@@ -1577,7 +1721,7 @@ export class BoardView {
       else if (fall) obj.animator.play({ frames: [...fall.frames].reverse() });
     }
     obj.shown = { ...state };
-    obj.targetTilt = state.knocked && !obj.downPose ? DOWN_LEAN : 0;
+    obj.targetTilt = obj.fade?.tilt ?? (state.knocked && !obj.downPose ? DOWN_LEAN : 0);
   }
 
   /**
@@ -1600,13 +1744,32 @@ export class BoardView {
       flee = new THREE.Vector3(obj.owner === 0 ? -1 : 1, 0, 0);
       this.setHeading(obj, flee.clone());
       obj.animator.moveFor(ROUT_MS);
+      obj.fade = { start: this.now, end: this.now + ROUT_MS, flee };
+    } else if (obj.pushedOff) {
+      // Shoved off the table: it slides over the edge, topples the way it was
+      // pushed and drops out of sight, kicking up dust at the lip.
+      const drop = obj.pushedOff;
+      const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+      const tilt = drop.dot(camRight) >= 0 ? -1.2 : 1.2;
+      obj.fade = { start: this.now, end: this.now + PUSH_OFF_MS, flee: null, drop, tilt };
+      const lip = obj.group.position.clone().addScaledVector(drop, HEX_SIZE * 0.9).setY(this.groundY(obj));
+      this.at(PUSH_OFF_MS * 0.3, () => this.dust(lip, 14, 0.9));
+      this.at(PUSH_OFF_MS * 0.25, () => this.releaseWisp(obj));
+      this.at(PUSH_OFF_MS, () => this.markFallen(obj));
     } else {
       // Wesnoth plays the death clip, then fades; without one it just fades.
-      // A downed unit finishes its fall from the down pose.
+      // A downed unit finishes its fall from the down pose. As the fade begins
+      // the body breaks up into motes of its own colours and its soul rises.
       const clip = obj.shown.knocked ? this.deathClip(obj, 'rest') : obj.anims.death;
       fadeIn = obj.animator.play(clip, { hold: true });
+      const shatters = obj.atlas !== null;
+      obj.fade = { start: this.now + fadeIn, end: this.now + fadeIn + (shatters ? SHATTER_FADE_MS : DEATH_FADE_MS), flee };
+      this.at(fadeIn, () => {
+        this.shatter(obj);
+        this.releaseWisp(obj);
+        this.markFallen(obj);
+      });
     }
-    obj.fade = { start: this.now + fadeIn, end: this.now + fadeIn + (flee ? ROUT_MS : DEATH_FADE_MS), flee };
     // Blend while fading; a low alpha test still drops the cleared background.
     obj.sprite.material.alphaTest = 0.01;
     for (const m of [obj.sprite.material, obj.base.material]) {
@@ -1618,6 +1781,8 @@ export class BoardView {
   private revive(obj: UnitObj): void {
     obj.fade = null;
     obj.routed = false;
+    obj.pushedOff = null;
+    this.effects.unmark(obj.id);
     obj.animator.stop();
     obj.group.visible = true;
     obj.sprite.material.alphaTest = 0.5;
@@ -1677,12 +1842,20 @@ export class BoardView {
       obj.ring.visible = obj.ringRest.visible;
       obj.ring.material.opacity = obj.ringRest.opacity;
     }
-    obj.outline.visible = cue !== null && obj.atlas !== null;
+    if (obj.glow && this.now >= obj.glow.end) obj.glow = null;
+    const glow = !cue && obj.glow && this.now >= obj.glow.start ? obj.glow : null;
+    obj.outline.visible = (cue !== null || glow !== null) && obj.atlas !== null;
     if (cue && obj.atlas) {
       const u = obj.outline.material.uniforms;
       u.uColor!.value.setHex(cue.color);
       u.uOpacity!.value = cue.far ? 0.35 + 0.3 * breath : 0.55 + 0.45 * breath;
       u.uWidth!.value = hovered ? OUTLINE_HOVER_PX : OUTLINE_PX;
+    } else if (glow && obj.atlas) {
+      const u = obj.outline.material.uniforms;
+      const k = (this.now - glow.start) / (glow.end - glow.start);
+      u.uColor!.value.setHex(glow.color);
+      u.uOpacity!.value = Math.min(1, k * 8) * (1 - k * k);
+      u.uWidth!.value = OUTLINE_HOVER_PX;
     }
 
     obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
@@ -1701,12 +1874,29 @@ export class BoardView {
         off.addScaledVector(dir, THREE.MathUtils.clamp(k, 0, 1));
       }
     }
+    if (obj.jolt) {
+      const { dir, start, end, shake } = obj.jolt;
+      if (this.now >= end) obj.jolt = null;
+      else if (this.now >= start) {
+        const k = (this.now - start) / (end - start);
+        // A knock springs out and back; a shudder wobbles, dying away.
+        off.addScaledVector(dir, shake ? Math.sin(k * Math.PI * 6) * (1 - k) : Math.sin(k * Math.PI));
+      }
+    }
 
+    let sink = 0;
     if (obj.fade) {
       const f = THREE.MathUtils.clamp((this.now - obj.fade.start) / (obj.fade.end - obj.fade.start), 0, 1);
       if (obj.fade.flee) off.addScaledVector(obj.fade.flee, f * HEX_COL_STEP);
-      obj.sprite.material.opacity = 1 - f;
-      obj.base.material.opacity = 1 - f;
+      if (obj.fade.drop) {
+        // Slide to the lip, then over it and down.
+        off.addScaledVector(obj.fade.drop, Math.min(1, f * 1.8) * HEX_SIZE * 1.1);
+        sink = Math.max(0, f - 0.4) ** 2 * 3;
+      }
+      // Pushed off, it stays solid until it is well over the edge.
+      const gone = obj.fade.drop ? Math.max(0, f - 0.5) * 2 : f;
+      obj.sprite.material.opacity = 1 - gone;
+      obj.base.material.opacity = 1 - (obj.fade.drop ? f : gone);
       obj.group.visible = f < 1;
     }
     // A flyer floats above its hex with a slow bob, and settles to earth when
@@ -1714,7 +1904,7 @@ export class BoardView {
     const airborne = obj.flying && !obj.shown.knocked && !obj.fade;
     obj.hover += ((airborne ? FLY_HOVER : 0) - obj.hover) * lerp;
     const lift = obj.hover + (airborne ? Math.sin((this.now / FLY_BOB_MS) * Math.PI * 2) * FLY_BOB : 0);
-    obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT + lift, off.z);
+    obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT + lift - sink, off.z);
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
 
     if (obj.flash > 0) {
@@ -1773,10 +1963,26 @@ export class BoardView {
     for (let i = this.missiles.length - 1; i >= 0; i--) {
       const m = this.missiles[i]!;
       const f = (this.now - m.start) / (m.end - m.start);
-      if (f >= 1) {
+      if (f >= 1 && !m.landed) {
+        m.landed = true;
+        this.shotFx(m.to, m.ending);
+        // An arrow that lands stays stuck in its target (or the ground) for a moment.
+        if (m.ending !== 'cover') {
+          m.sprite.position.copy(m.to);
+          m.sprite.material.alphaTest = 0.01;
+          m.sprite.material.transparent = true;
+          m.sprite.material.needsUpdate = true;
+        }
+      }
+      const gone = m.ending === 'cover' ? f >= 1 : this.now >= m.end + STICK_MS;
+      if (gone) {
         this.scene.remove(m.sprite);
         m.sprite.material.dispose();
         this.missiles.splice(i, 1);
+        continue;
+      }
+      if (f >= 1) {
+        m.sprite.material.opacity = 1 - (this.now - m.end) / STICK_MS;
         continue;
       }
       m.sprite.visible = f >= 0;
@@ -2031,18 +2237,494 @@ export class BoardView {
     return t;
   }
 
+  // --- combat effects (see effects.ts) --------------------------------------
+
+  /** World Y of the ground a unit stands on. */
+  private groundY(obj: UnitObj): number {
+    return obj.targetPos.y + TILE_TOP;
+  }
+
+  /** Mid-body of a unit: where blows land and sparks fly from. */
+  private chest(obj: UnitObj): THREE.Vector3 {
+    return obj.group.position
+      .clone()
+      .add(obj.facing.position)
+      .setY(obj.group.position.y + TILE_TOP + BASE_HEIGHT + obj.hover + 0.45 * obj.size);
+  }
+
+  /** Where two combatants' weapons meet. */
+  private contact(a: UnitObj, b: UnitObj): THREE.Vector3 {
+    return this.chest(a).lerp(this.chest(b), 0.5);
+  }
+
+  /** Dust in the colour of the ground at `at`: the tile's own colour, lightened. */
+  private dustColors(at: THREE.Vector3): number[] {
+    const cell = this.worldToCell(at);
+    const top = new THREE.Color(cell ? tileTopColor(cell, this.board ? hexElevation(this.board, cell) : 0) : 0x2a3140);
+    const dust = top.lerp(new THREE.Color(DUST_TINT), 0.55);
+    return [
+      dust.getHex(),
+      dust.clone().multiplyScalar(0.78).getHex(),
+      dust.clone().lerp(new THREE.Color(0xffffff), 0.25).getHex(),
+    ];
+  }
+
+  /** A puff of ground-coloured dust at `at` (on the ground). */
+  private dust(at: THREE.Vector3, count: number, strength = 1): void {
+    this.effects.burst({
+      at: at.clone().setY(at.y + 0.04),
+      count,
+      colors: this.dustColors(at),
+      speed: [0.3 * strength, 0.9 * strength],
+      flat: true,
+      up: 0.25,
+      drag: 2.5,
+      life: [0.45, 0.8],
+      size: [0.1, 0.18],
+      grow: 2.2,
+      opacity: 0.75,
+      jitter: 0.12,
+    });
+  }
+
+  /** The angle that turns an upward-pointing screen image to point from `a` to `b` on screen. */
+  private screenAngle(a: THREE.Vector3, b: THREE.Vector3): number {
+    const p = a.clone().project(this.camera);
+    const q = b.clone().project(this.camera);
+    return Math.atan2(q.y - p.y, (q.x - p.x) * this.camera.aspect) - Math.PI / 2;
+  }
+
+  /** Knock a cutout `dist` along `dir` and let it spring back (or wobble, with `shake`). */
+  private joltUnit(obj: UnitObj, dir: THREE.Vector3, dist: number, shake = false, ms = JOLT_MS): void {
+    const d = dir.clone().setY(0);
+    if (d.lengthSq() < 1e-6) return;
+    obj.jolt = { dir: d.normalize().multiplyScalar(dist), start: this.now, end: this.now + ms, shake };
+  }
+
+  /**
+   * Shake the camera: a `nudge` shoves it once along `dir`, a `thump` bounces
+   * it vertically, a `rumble` jitters it. Never with the camera off or in hand.
+   */
+  private shakeCamera(
+    kind: 'nudge' | 'thump' | 'rumble',
+    amp: number,
+    ms: number,
+    dir = new THREE.Vector3(0, 1, 0),
+  ): void {
+    if (this.cameraMode === 'off' || this.downPos) return;
+    this.shakes.push({ start: this.wallNow, end: this.wallNow + ms, amp, kind, dir: dir.clone().normalize() });
+  }
+
+  private shakeOffset(): THREE.Vector3 {
+    const out = new THREE.Vector3();
+    this.shakes = this.shakes.filter((sh) => this.wallNow < sh.end);
+    for (const sh of this.shakes) {
+      const k = (this.wallNow - sh.start) / (sh.end - sh.start);
+      const decay = (1 - k) * (1 - k);
+      if (sh.kind === 'nudge') out.addScaledVector(sh.dir, sh.amp * Math.sin(Math.PI * k));
+      else if (sh.kind === 'thump') out.y -= sh.amp * Math.sin(k * Math.PI * 5) * decay;
+      else {
+        const jitter = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5);
+        out.addScaledVector(jitter, 2 * sh.amp * decay);
+      }
+    }
+    return out;
+  }
+
+  /** Freeze the action for `ms` (wall clock), for the weight of a blow. */
+  private hitStop(ms: number): void {
+    this.freezeUntil = Math.max(this.freezeUntil, this.wallNow + ms);
+  }
+
+  /** A blow that connects: a small white spark where it lands. */
+  private impactFx(a: UnitObj, d: UnitObj): void {
+    this.effects.burst({
+      at: this.chest(d).lerp(this.chest(a), 0.25),
+      count: 10,
+      colors: SPARK_COLORS,
+      speed: [1.2, 2.4],
+      dir: d.group.position.clone().sub(a.group.position).setY(0.3),
+      cone: 0.7,
+      gravity: 3,
+      drag: 3,
+      life: [0.15, 0.3],
+      size: [0.035, 0.06],
+      blend: 'add',
+    });
+  }
+
+  /** 1a–1c. A clash: sparks and a glint where the blades meet, both thrown apart, the defender's ward rippling out. */
+  private clashFx(aId: string, dId: string): void {
+    const a = this.units.get(aId);
+    const d = this.units.get(dId);
+    if (!a || !d) return;
+    const at = this.contact(a, d);
+    const across = d.group.position.clone().sub(a.group.position).setY(0);
+    // 1a: a burst of white-gold sparks and a four-point glint.
+    this.effects.burst({
+      at,
+      count: 22,
+      colors: SPARK_COLORS,
+      speed: [1.5, 3.2],
+      up: 0.6,
+      gravity: 5,
+      drag: 2,
+      life: [0.2, 0.45],
+      size: [0.035, 0.07],
+      blend: 'add',
+    });
+    this.effects.icon('ting', at, 0.55, { life: 0.35, spin: 0.6, additive: true });
+    // 1b: a pale arc where the blades turned, and both knocked back a step.
+    this.effects.icon('arc', at, 0.7, {
+      life: 0.3,
+      opacity: 0.8,
+      color: 0xe8f0ff,
+      rotation: this.screenAngle(a.group.position, d.group.position),
+      additive: true,
+    });
+    this.joltUnit(a, across.clone().negate(), DEFLECT);
+    this.joltUnit(d, across, DEFLECT);
+    // 1c: the defender held — a ripple in its side's colour.
+    this.effects.ring(d.group.position.clone().setY(this.groundY(d) + 0.03), OWNER_COLORS[d.owner], 0.3, 0.75, {
+      life: 0.5,
+      opacity: 0.8,
+      additive: true,
+    });
+  }
+
+  /** 2a–2c. Pushed back: dust kicked up along the skid, chevrons streaking through, a nudge of the camera. */
+  private recoilFx(obj: UnitObj, from: THREE.Vector3, to: THREE.Vector3, at: number): void {
+    const push = to.clone().sub(from).setY(0);
+    // 2a: dust at its feet all along the skid (sampled as it slides).
+    for (let i = 0; i < 4; i++) {
+      this.at(at + (i * WALK_MS_PER_HEX) / 4, () => this.dust(obj.group.position.clone().setY(this.groundY(obj)), 5, 0.7));
+    }
+    this.at(at, () => {
+      // 2b: chevrons pointing the way it is shoved.
+      this.effects.icon('chevron', this.chest(obj), 0.42, {
+        life: 0.35,
+        rotation: this.screenAngle(from, to),
+        drift: push.clone().multiplyScalar(0.8),
+      });
+      // 2c: the camera gives a little with it (close-ups only).
+      if (this.cameraMode === 'cinematic') this.shakeCamera('nudge', 0.06, 200, push);
+    });
+  }
+
+  /** 3a–3b. Braced by a friend: a bar of light between them with a shield on it, and the friend takes the weight. */
+  private braceFx(unitId: string, supporterId: string): void {
+    const obj = this.units.get(unitId);
+    const friend = this.units.get(supporterId);
+    if (!obj || !friend) return;
+    const a = this.chest(obj);
+    const b = this.chest(friend);
+    // The teal the "Supported" verdict is written in (a team colour would paint red through P1's units).
+    const color = GUARD_COLOR;
+    this.effects.beam(a, b, color, 0.035, { life: 0.7 });
+    this.effects.icon('shield', a.clone().lerp(b, 0.5).setY(Math.max(a.y, b.y) + 0.25), 0.36, { life: 0.9, color });
+    this.joltUnit(friend, friend.group.position.clone().sub(obj.group.position), 0.1);
+  }
+
+  /** 5a–5c. Hitting the ground: a ring of dust, bouncing pebbles, a crack in the hex and a thump. */
+  private slamFx(obj: UnitObj): void {
+    if (obj.state.dead) return; // finished off before it landed; the death has its own
+    const ground = obj.group.position.clone().setY(this.groundY(obj));
+    const colors = this.dustColors(ground);
+    this.effects.ring(ground.clone().setY(ground.y + 0.03), colors[0]!, 0.2, 0.8 * obj.size, {
+      life: 0.55,
+      opacity: 0.6,
+      thick: true,
+    });
+    this.dust(ground, 12);
+    this.effects.burst({
+      at: ground.clone().setY(ground.y + 0.05),
+      count: 8,
+      colors: CHIP_COLORS,
+      speed: [0.6, 1.3],
+      up: 1.4,
+      gravity: 9,
+      life: [0.6, 0.9],
+      size: [0.035, 0.06],
+      shape: 'square',
+      floor: ground.y + 0.02,
+      bounce: 0.4,
+      jitter: 0.1,
+    });
+    this.effects.decal('crack', ground.clone().setY(ground.y + 0.012), HEX_SIZE * 1.3, { life: 1.4, opacity: 0.8 });
+    this.shakeCamera('thump', obj.size > 1 ? 0.09 : 0.05, 280);
+  }
+
+  /** 6d, 7a–7c. A killing blow: a shockwave — and for a gruesome one, a hit-stop, ash, a skull and a wave of fear. */
+  private killFx(obj: UnitObj, gruesome: boolean, shakenIds: string[]): void {
+    const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.035);
+    this.effects.ring(ground, 0xffffff, 0.2, 1.1, { life: 0.5, opacity: 0.85, additive: true });
+    if (!gruesome) return;
+    // 7a: the heavy version — a freeze on impact, a bigger double shockwave,
+    // a hard shake and a burst of ash and dark shards.
+    this.hitStop(HIT_STOP_MS);
+    this.effects.ring(ground, 0xffffff, 0.3, 2.2, { life: 0.7, opacity: 0.9, additive: true });
+    this.shakeCamera('rumble', 0.1, 380);
+    const chest = this.chest(obj);
+    this.effects.burst({
+      at: chest,
+      count: 36,
+      colors: ASH_COLORS,
+      speed: [0.8, 2.2],
+      up: 0.5,
+      gravity: 1.5,
+      drag: 1.8,
+      life: [0.6, 1.2],
+      size: [0.07, 0.14],
+      grow: 1.6,
+      opacity: 0.85,
+      jitter: 0.1,
+    });
+    this.effects.burst({
+      at: chest,
+      count: 14,
+      colors: ASH_COLORS,
+      speed: [1.8, 3.2],
+      up: 1,
+      gravity: 8,
+      life: [0.5, 0.8],
+      size: [0.04, 0.07],
+      shape: 'square',
+      floor: ground.y,
+    });
+    // 7c: a pale skull blooms over the hex.
+    this.effects.icon('skull', chest.clone().setY(chest.y + 0.55), 0.75, { life: 1.1, rise: 0.3, opacity: 0.92 });
+    // 7b: fear spreads out to the edge of its reach, and every friend it
+    // reaches — each about to test its nerve — shudders as it passes.
+    const reach = MORALE_RADIUS * HEX_STEP;
+    this.effects.ring(ground, FEAR_COLOR, 0.2, reach, { life: FEAR_WAVE_MS / 1000, opacity: 0.55, thick: true });
+    this.effects.ring(ground, FEAR_COLOR, 0.1, reach, { life: FEAR_WAVE_MS / 1000, opacity: 0.9 });
+    for (const id of shakenIds) {
+      const friend = this.units.get(id);
+      if (!friend) continue;
+      // The ring spreads as 1 - (1 - k)³, so it reaches distance d at k = 1 - ∛(1 - d/reach).
+      const d = Math.min(1, friend.group.position.distanceTo(obj.group.position) / reach);
+      const when = (1 - Math.cbrt(1 - d)) * FEAR_WAVE_MS;
+      this.at(when, () => {
+        const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+        this.joltUnit(friend, camRight, 0.05, true, 420);
+      });
+    }
+  }
+
+  /** 6b. Break a dying unit into motes sampled from its own pixels, which drift up and away. */
+  private shatter(obj: UnitObj): void {
+    const atlas = obj.atlas;
+    const rect = atlas && (atlas.frames.get(obj.shownImage ?? '') ?? atlas.frames.get(obj.animator.base));
+    if (!atlas || !rect) return;
+    const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
+    const toCam = this.camera.position.clone().sub(obj.group.position).setY(0).normalize();
+    const flip = obj.faceRight ? 1 : -1;
+    const px = SPRITE_PX * obj.size;
+    const stride = Math.max(2, Math.round(atlas.cellW / 26));
+    const origin = obj.group.position.clone().add(obj.facing.position);
+    for (let y = 0; y < atlas.cellH; y += stride) {
+      for (let x = 0; x < atlas.cellW; x += stride) {
+        const u = rect.u + ((x + stride / 2) / atlas.cellW) * atlas.repeatU;
+        const v = rect.v + (1 - (y + stride / 2) / atlas.cellH) * atlas.repeatV;
+        const color = atlas.colorAt(u, v);
+        if (color === null) continue;
+        const lx = (x + stride / 2 - atlas.anchorX) * px * flip;
+        const ly = (atlas.anchorY - y - stride / 2) * px;
+        const at = origin
+          .clone()
+          .addScaledVector(camRight, lx)
+          .addScaledVector(toCam, -ly * Math.sin(SPRITE_LEAN))
+          .setY(origin.y + ly * Math.cos(SPRITE_LEAN));
+        this.effects.burst({
+          at,
+          count: 1,
+          colors: [color],
+          speed: [0.1, 0.45],
+          up: 0.35 + Math.random() * 0.3,
+          gravity: -0.4, // they drift upward
+          drag: 0.6,
+          life: [0.7, 1.4],
+          size: [stride * px * 0.9, stride * px * 1.1],
+          grow: 0.3,
+          shape: 'square',
+        });
+      }
+    }
+  }
+
+  /** 6a. A pale ghost of the fallen unit, standing as it did in life, rises and fades. */
+  private releaseWisp(obj: UnitObj): void {
+    const atlas = obj.atlas;
+    const rect = atlas?.frames.get(obj.animator.base);
+    const source = obj.sprite.material.map;
+    if (!atlas || !rect || !source) return;
+    const map = source.clone(); // shares the uploaded image; its own UV window
+    map.offset.set(rect.u, rect.v);
+    map.needsUpdate = true;
+    const mat = new THREE.MeshBasicMaterial({
+      map,
+      color: WISP_COLOR,
+      transparent: true,
+      opacity: 0,
+      alphaTest: 0.02,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const mesh = new THREE.Mesh(obj.sprite.geometry, mat); // the shared quad, not owned
+    const mirror = new THREE.Group();
+    mirror.scale.x = obj.mirror.scale.x;
+    mirror.add(mesh);
+    const tilt = new THREE.Group();
+    tilt.rotation.x = -SPRITE_LEAN;
+    tilt.add(mirror);
+    const root = new THREE.Group();
+    root.add(tilt);
+    // From wherever the body is now (a unit shoved off the table has slid away from its hex).
+    root.position.set(
+      obj.group.position.x + obj.facing.position.x,
+      obj.group.position.y + TILE_TOP + BASE_HEIGHT,
+      obj.group.position.z + obj.facing.position.z,
+    );
+    root.rotation.y = obj.facing.rotation.y;
+    const y0 = root.position.y;
+    const { x: sx, y: sy } = obj.sprite.scale;
+    this.effects.add(
+      root,
+      1.5,
+      (k) => {
+        root.position.y = y0 + k * 1.1;
+        // Thins and stretches as it goes up.
+        mesh.scale.set(sx * (1 - 0.35 * k), sy * (1 + 0.2 * k), 1);
+        mat.opacity = 0.55 * Math.min(1, k * 5) * (1 - k);
+      },
+      () => {
+        mat.dispose();
+        map.dispose();
+      },
+    );
+  }
+
+  /** 6c. Leave a faint token where a unit fell, until the round ends. */
+  private markFallen(obj: UnitObj): void {
+    const cell = this.worldToCell(obj.targetPos);
+    const y = cell ? this.surfaceAt(cell) : this.groundY(obj);
+    this.effects.mark(obj.id, 'fallen', obj.targetPos.clone().setY(y + 0.015), HEX_SIZE * 0.75, 0.5);
+  }
+
+  /** 8a–8b. A Tough save: a gold ward flares and shatters, and the unit freezes mid-death with a gold rim. */
+  private toughFx(id: string): void {
+    const obj = this.units.get(id);
+    if (!obj) return;
+    this.flashUnit(id, 0.5);
+    const chest = this.chest(obj);
+    const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
+    this.effects.ring(ground, GOLD, 0.6, 0.35, { life: 0.35, opacity: 0.95, additive: true });
+    this.effects.icon('shield', chest, 0.55, { life: 0.35, color: GOLD });
+    this.at(300, () =>
+      this.effects.burst({
+        at: chest,
+        count: 26,
+        colors: GOLD_COLORS,
+        speed: [1, 2.4],
+        up: 0.4,
+        gravity: 4,
+        drag: 1.5,
+        life: [0.4, 0.8],
+        size: [0.04, 0.08],
+        shape: 'square',
+        blend: 'add',
+      }),
+    );
+    obj.glow = { color: GOLD, start: this.now, end: this.now + GLOW_MS };
+    // Caught in the first frame of its death until the save lets it drop.
+    const first = obj.anims.death?.frames[0];
+    if (first) obj.animator.play({ frames: [[first[0], TOUGH_HITCH_MS]] });
+  }
+
+  /** 9a–9b. Where a shot ends: a spark in its target, a flick of dust past it, or chips off the cover. */
+  private shotFx(at: THREE.Vector3, ending: ShotEnding): void {
+    if (ending === 'hit') {
+      this.effects.burst({
+        at,
+        count: 12,
+        colors: SPARK_COLORS,
+        speed: [1, 2.2],
+        gravity: 3,
+        drag: 3,
+        life: [0.15, 0.3],
+        size: [0.035, 0.06],
+        blend: 'add',
+      });
+    } else if (ending === 'miss') {
+      this.dust(at, 7, 0.8);
+    } else {
+      this.effects.burst({
+        at,
+        count: 12,
+        colors: CHIP_COLORS,
+        speed: [0.8, 1.8],
+        up: 0.8,
+        gravity: 7,
+        life: [0.4, 0.7],
+        size: [0.035, 0.065],
+        shape: 'square',
+        floor: at.y - 0.3,
+      });
+      this.effects.burst({
+        at,
+        count: 6,
+        colors: SPARK_COLORS,
+        speed: [1, 2],
+        life: [0.1, 0.2],
+        size: [0.03, 0.05],
+        blend: 'add',
+      });
+    }
+  }
+
+  /** 10a. A guard's riposte: crossed blades over the guard as it answers. */
+  private guardFx(guardId: string): void {
+    const obj = this.units.get(guardId);
+    if (!obj) return;
+    // Above the Guard badge it answers from.
+    const at = obj.group.position.clone().setY(obj.group.position.y + TILE_TOP + BADGE_HEIGHT + BADGE_SIZE + obj.hover);
+    this.effects.icon('blades', at, 0.42, { life: 0.8, rise: 0.12 });
+  }
+
+  /** 10a. A riposte that stops the attack: a sharp gold arc and sparks where it meets the attacker. */
+  private parryFx(guardId: string, attackerId: string): void {
+    const g = this.units.get(guardId);
+    const a = this.units.get(attackerId);
+    if (!g || !a) return;
+    const at = this.contact(g, a);
+    this.effects.icon('arc', at, 0.85, {
+      life: 0.4,
+      color: GOLD,
+      rotation: this.screenAngle(g.group.position, a.group.position),
+      additive: true,
+    });
+    this.effects.burst({
+      at,
+      count: 16,
+      colors: GOLD_COLORS,
+      speed: [1.4, 2.8],
+      gravity: 5,
+      drag: 2,
+      life: [0.2, 0.4],
+      size: [0.035, 0.065],
+      blend: 'add',
+    });
+  }
+
+
   private flashUnit(id: string, amount: number): void {
     const obj = this.units.get(id);
     if (obj) obj.flash = Math.max(obj.flash, amount);
   }
 
-  /** Draw a short-lived bolt between two units (a shot without a missile image). */
-  private addTracer(fromId: string, toId: string, color: number): void {
-    const from = this.units.get(fromId);
-    const to = this.units.get(toId);
-    if (!from || !to) return;
-    const a = from.group.position.clone().setY(from.targetPos.y + 0.7);
-    const b = to.group.position.clone().setY(to.targetPos.y + 0.7);
+  /** Draw a short-lived bolt between two points (a shot without a missile image). */
+  private addTracer(a: THREE.Vector3, b: THREE.Vector3, color: number): void {
     const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1 });
     const line = new THREE.Line(geo, mat);
@@ -2058,7 +2740,10 @@ export class BoardView {
 
     // Animations run on wall-clock time (a slow frame doesn't slow them down);
     // only a long stall, like a background tab, is capped.
-    const dtMs = Math.min(rawDt, 0.25) * 1000 * this.animSpeed;
+    // A hit-stop holds board time still while the wall clock (and the camera shake) runs on.
+    const wallDt = Math.min(rawDt, 0.25) * 1000 * this.animSpeed;
+    this.wallNow += wallDt;
+    const dtMs = this.wallNow < this.freezeUntil ? 0 : wallDt;
     this.now += dtMs;
     for (let i = 0; i < this.timeline.length; ) {
       const step = this.timeline[i]!;
@@ -2075,6 +2760,7 @@ export class BoardView {
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
     this.animateMissiles();
+    this.effects.update(dtMs);
     this.rolls.update(this.now, this.projectUnit);
 
     // Fade and retire tracers.
@@ -2091,7 +2777,11 @@ export class BoardView {
       }
     }
 
+    // Shake the camera for this frame only, so the orbit controls never see it.
+    const shake = this.shakeOffset();
+    this.camera.position.add(shake);
     this.renderer.render(this.scene, this.camera);
+    this.camera.position.sub(shake);
   };
 
   /**
@@ -2224,6 +2914,7 @@ export class BoardView {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.effects.setViewport(h * this.renderer.getPixelRatio(), this.camera.fov);
     this.refitOpening();
   }
 
