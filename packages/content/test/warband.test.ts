@@ -12,9 +12,9 @@ import {
 const legal: Warband = {
   name: 'Test Band',
   units: [
-    { name: 'A', quality: 3, combat: 3, move: 3 },
-    { name: 'B', quality: 4, combat: 2, move: 3 },
-    { name: 'C', quality: 4, combat: 3, move: 3 },
+    { name: 'A', quality: 3, combat: 3 },
+    { name: 'B', quality: 4, combat: 2 },
+    { name: 'C', quality: 4, combat: 3 },
   ],
 };
 
@@ -44,7 +44,6 @@ describe('validateWarband', () => {
       name: `U${i}`,
       quality: 4,
       combat: 2,
-      move: 3,
     }));
     const result = validateWarband({ name: 'Horde', units: many });
     expect(result.errors.some((e) => e.includes('too many'))).toBe(true);
@@ -55,7 +54,7 @@ describe('validateWarband', () => {
       name: `E${i}`,
       quality: 2,
       combat: 5,
-      move: 4,
+      fast: true,
     }));
     const result = validateWarband({ name: 'Deathstar', units: elites });
     expect(result.ok).toBe(false);
@@ -66,9 +65,9 @@ describe('validateWarband', () => {
     const result = validateWarband({
       name: 'Broken',
       units: [
-        { name: 'A', quality: 3, combat: 3, move: 3 },
-        { name: 'B', quality: 3, combat: 3, move: 3 },
-        { name: 'Gremlin', quality: 9, combat: 3, move: 3 },
+        { name: 'A', quality: 3, combat: 3 },
+        { name: 'B', quality: 3, combat: 3 },
+        { name: 'Gremlin', quality: 9, combat: 3 },
       ],
     });
     expect(result.ok).toBe(false);
@@ -78,7 +77,7 @@ describe('validateWarband', () => {
 });
 
 describe('validateArmy (army builder: no point limit)', () => {
-  const grunt = { name: 'Grunt', quality: 2, combat: 6, move: 8, ranged: 8, tough: true, guard: true };
+  const grunt = { name: 'Grunt', quality: 2, combat: 6, fast: true, ranged: 8, tough: true, guard: true };
 
   it('accepts any point total within the roster size', () => {
     const army: Warband = { name: 'Horde', units: Array.from({ length: ARMY_RULES.maxUnits }, () => grunt) };
@@ -107,18 +106,34 @@ describe('parseWarband', () => {
       name: 'X',
       extra: 1,
       units: [
-        { name: 'A', quality: 3, combat: 3, move: 3, tough: false, guard: true, big: true, look: 'Longbow', hp: 9 },
+        { name: 'A', quality: 3, combat: 3, fast: true, tough: false, guard: true, big: true, look: 'Longbow', hp: 9 },
       ],
     });
     expect(w).toEqual({
       name: 'X',
-      units: [{ name: 'A', quality: 3, combat: 3, move: 3, guard: true, big: true, look: 'Longbow' }],
+      units: [{ name: 'A', quality: 3, combat: 3, fast: true, guard: true, big: true, look: 'Longbow' }],
     });
+  });
+
+  it('turns a legacy numeric Move (baseline 3) into Slow or Fast', () => {
+    const w = parseWarband({
+      name: 'Old',
+      units: [
+        { name: 'S', quality: 3, combat: 3, move: 2 },
+        { name: 'N', quality: 3, combat: 3, move: 3 },
+        { name: 'F', quality: 3, combat: 3, move: 5 },
+      ],
+    });
+    expect(w.units).toEqual([
+      { name: 'S', quality: 3, combat: 3, slow: true },
+      { name: 'N', quality: 3, combat: 3 },
+      { name: 'F', quality: 3, combat: 3, fast: true },
+    ]);
   });
 
   it('rejects malformed input with a friendly error', () => {
     expect(() => parseWarband(null)).toThrow(/Not an army/);
     expect(() => parseWarband({ name: 'X' })).toThrow(/unit list/);
-    expect(() => parseWarband({ name: 'X', units: [{ name: 'A', quality: '3', combat: 3, move: 3 }] })).toThrow(/quality/);
+    expect(() => parseWarband({ name: 'X', units: [{ name: 'A', quality: '3', combat: 3 }] })).toThrow(/quality/);
   });
 });

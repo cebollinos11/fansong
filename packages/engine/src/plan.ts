@@ -20,6 +20,7 @@ import {
   occupiedKeys,
   outnumberedPenalty,
   unitById,
+  unitMove,
   walkRules,
 } from './query.js';
 import type { Command, GameState, Unit } from './types.js';
@@ -104,15 +105,16 @@ export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp
   const best = new Map<string, ReachNode>([[startKey, start]]);
   let frontier: ReachNode[] = [start];
 
+  const move = unitMove(unit);
   for (let ap = 1; ap <= maxAp && frontier.length > 0; ap++) {
     const next: ReachNode[] = [];
     for (const node of frontier) {
-      const reach = board.reachableWithin(node.cell, unit.move, rules);
+      const reach = board.reachableWithin(node.cell, move, rules);
       // Leaving *this* hex is what provokes, so the risk is counted once per hop.
       const hop = provoking.has(vecKey(node.cell)) ? 1 : 0;
       // `cellsWithin` order, exactly as `getLegalCommands` enumerates moves, so
       // the one-action layer comes out in the same order it does.
-      for (const to of board.cellsWithin(node.cell, unit.move)) {
+      for (const to of board.cellsWithin(node.cell, move)) {
         const key = vecKey(to);
         if (!reach.has(key)) continue;
         // Every Move costs 1, so this BFS over *actions* sees each hex first at
@@ -122,7 +124,7 @@ export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp
         // first would decide, and the free-hack warning would be arbitrary.
         const seen = best.get(key);
         if (seen && (seen.cost < ap || seen.provokes <= node.provokes + hop)) continue;
-        const seg = board.pathWithin(node.cell, to, unit.move, rules);
+        const seg = board.pathWithin(node.cell, to, move, rules);
         if (!seg) continue;
         const waypoints = [...node.waypoints, { ...to }];
         // The first leg contributes its start hex; later legs drop the joint.

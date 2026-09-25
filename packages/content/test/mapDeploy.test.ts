@@ -7,7 +7,7 @@ import { PRESET_IDS, PRESETS } from '../src/presets.js';
 import type { WarbandUnit } from '../src/warband.js';
 
 const units = (n: number): WarbandUnit[] =>
-  Array.from({ length: n }, (_, i) => ({ name: `U${i}`, quality: 4, combat: 2, move: 3 }));
+  Array.from({ length: n }, (_, i) => ({ name: `U${i}`, quality: 4, combat: 2 }));
 
 const row = (y: number, width: number): Vec[] => Array.from({ length: width }, (_, x) => ({ x, y }));
 

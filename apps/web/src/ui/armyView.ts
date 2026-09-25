@@ -1,3 +1,4 @@
+import { BASE_MOVE, SPEED_STEP } from '@fansong/engine';
 import { ARMY_RULES, PRESET_IDS, PRESETS, STAT_BOUNDS, type Warband, type WarbandUnit } from '@fansong/content';
 import { UNIT_SPRITES } from '../three/unitSprites.js';
 
@@ -11,13 +12,12 @@ import { UNIT_SPRITES } from '../three/unitSprites.js';
 export const ARMY_RULES_TEXT = `No point limit — ${ARMY_RULES.minUnits} to ${ARMY_RULES.maxUnits} units. Points are shown so you can agree on a size.`;
 
 /** The numeric stats the builder edits, in column order. */
-export const EDITABLE_STATS = ['quality', 'combat', 'move', 'ranged'] as const;
+export const EDITABLE_STATS = ['quality', 'combat', 'ranged'] as const;
 export type EditableStat = (typeof EDITABLE_STATS)[number];
 
 export const STAT_LABELS: Record<EditableStat, { short: string; title: string }> = {
   quality: { short: 'Q', title: 'Quality — activation dice succeed on this or higher (lower is better)' },
   combat: { short: 'C', title: 'Combat — added to the d6 in fights (higher is better)' },
-  move: { short: 'M', title: 'Move — hexes per Move action' },
   ranged: { short: 'Rng', title: 'Ranged — shooting range in hexes (0 = melee only)' },
 };
 
@@ -38,17 +38,31 @@ export function withStat(unit: WarbandUnit, stat: EditableStat, value: number): 
   return next;
 }
 
-/** A copy of `unit` with a trait switched on or off (off drops the key). */
-export function withTrait(unit: WarbandUnit, trait: 'tough' | 'guard' | 'big' | 'flying' | 'reassembling', on: boolean): WarbandUnit {
+/** The on/off traits the builder offers, in column order. */
+export type ToggleTrait = 'slow' | 'fast' | 'tough' | 'guard' | 'big' | 'flying' | 'reassembling';
+
+/** What the Slow and Fast columns mean, in words. */
+export const SPEED_TITLES = {
+  slow: `Slow — ${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,
+  fast: `Fast — ${BASE_MOVE + SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,
+} as const;
+
+/**
+ * A copy of `unit` with a trait switched on or off (off drops the key). Slow and
+ * Fast exclude each other, so switching one on switches the other off.
+ */
+export function withTrait(unit: WarbandUnit, trait: ToggleTrait, on: boolean): WarbandUnit {
   const next = { ...unit };
   if (on) next[trait] = true;
   else delete next[trait];
+  if (on && trait === 'slow') delete next.fast;
+  if (on && trait === 'fast') delete next.slow;
   return next;
 }
 
 /** A plain rank-and-file unit to start from. */
 export function blankUnit(units: readonly WarbandUnit[]): WarbandUnit {
-  return { name: uniqueName('Soldier', units), quality: 4, combat: 3, move: 3, look: 'Recruit' };
+  return { name: uniqueName('Soldier', units), quality: 4, combat: 3, look: 'Recruit' };
 }
 
 /** `base`, or `base 2`, `base 3`, … — the first not already used in `units`. */

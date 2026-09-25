@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
 import { PRESSED_COST } from './combat.js';
-import { enemiesOf, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById } from './query.js';
+import { enemiesOf, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -69,7 +69,7 @@ export function getLegalCommands(state: GameState): Command[] {
   // enemy's hex can't be crossed, and entering contact with an enemy ends the
   // walk. Enumerated in `cellsWithin` order so the command list stays deterministic.
   const reach = moveReach(state, unit, board);
-  for (const to of board.cellsWithin(unit.pos, unit.move)) {
+  for (const to of board.cellsWithin(unit.pos, unitMove(unit))) {
     if (!reach.has(vecKey(to))) continue;
     // A flyer's reach includes hexes it only phased over; it still may not land
     // on impassable terrain (or an occupied hex). For a walker these never occur.

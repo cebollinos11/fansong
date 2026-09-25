@@ -23,7 +23,7 @@ import {
 import { SandboxClient } from '../src/game/SandboxClient.js';
 import { deleteSnapshot, loadAutosave, loadSnapshots, saveAutosave, saveSnapshot } from '../src/game/sandboxStore.js';
 
-const FIGHTER = { name: 'Fighter', quality: 3, combat: 3, move: 3 };
+const FIGHTER = { name: 'Fighter', quality: 3, combat: 3 };
 
 /** Two fighters, face to face on an empty 8x8 board. */
 function duel(): { state: GameState; a: Vec; b: Vec } {

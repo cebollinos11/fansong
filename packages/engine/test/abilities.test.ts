@@ -413,7 +413,7 @@ describe('Big trait', () => {
       seed: 5,
       board: { width: 6, height: 3 },
       warbands: [
-        [{ name: 'Runner', quality: 3, combat: 3, move: 3, pos: { x: 1, y: 1 } }],
+        [{ name: 'Runner', quality: 3, combat: 3, slow: true, pos: { x: 1, y: 1 } }],
         [{ name: 'Ogre', quality: 3, combat: 3, big: true, pos: { x: 2, y: 1 } }],
       ],
     };
@@ -532,7 +532,7 @@ describe('Flying trait', () => {
       seed: 5,
       board: { width: 6, height: 3 },
       warbands: [
-        [{ name: 'Runner', quality: 3, combat: 3, move: 3, pos: { x: 1, y: 1 } }],
+        [{ name: 'Runner', quality: 3, combat: 3, slow: true, pos: { x: 1, y: 1 } }],
         [{ name: 'Talon', quality: 3, combat: 3, flying: true, pos: { x: 2, y: 1 } }],
       ],
     };
@@ -546,7 +546,7 @@ describe('Flying trait', () => {
       seed: 5,
       board: { width: 6, height: 3 },
       warbands: [
-        [{ name: 'Talon', quality: 3, combat: 3, move: 3, flying: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Talon', quality: 3, combat: 3, slow: true, flying: true, pos: { x: 1, y: 1 } }],
         [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
       ],
     };
@@ -595,7 +595,7 @@ describe('Flying trait', () => {
       seed: 5,
       board: { width: 6, height: 3 },
       warbands: [
-        [{ name: 'Talon', quality: 3, combat: 3, move: 3, flying: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Talon', quality: 3, combat: 3, slow: true, flying: true, pos: { x: 1, y: 1 } }],
         [{ name: 'Wall', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
       ],
     };
@@ -611,7 +611,7 @@ describe('Flying trait', () => {
       seed: 5,
       board: { width: 6, height: 3, blocked: ['2,1'] },
       warbands: [
-        [{ name: 'Talon', quality: 3, combat: 3, move: 3, flying: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Talon', quality: 3, combat: 3, slow: true, flying: true, pos: { x: 1, y: 1 } }],
         [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 5, y: 0 } }],
       ],
     };

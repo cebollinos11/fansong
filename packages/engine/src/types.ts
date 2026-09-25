@@ -1,5 +1,6 @@
 import type { BoardData, Vec } from './board.js';
 import type { ModeState } from './mode.js';
+import type { BASE_MOVE, SPEED_STEP } from './query.js';
 
 /** Two players: 0 and 1. */
 export type Owner = 0 | 1;
@@ -10,6 +11,10 @@ export type Owner = 0 | 1;
  * unit uniformly. Each is priced in `packages/content` and understood by the AI.
  */
 export interface UnitTraits {
+  /** Slow: moves {@link SPEED_STEP} fewer hexes per Move action than {@link BASE_MOVE}. */
+  slow: boolean;
+  /** Fast: moves {@link SPEED_STEP} more hexes per Move action than {@link BASE_MOVE}. Never with {@link slow}. */
+  fast: boolean;
   /**
    * Maximum range of a ranged (Shoot) attack, in cells. `0` = melee only. A
    * ranged unit can shoot a non-adjacent enemy within range and line of sight,
@@ -74,8 +79,6 @@ export interface Unit {
   quality: number;
   /** Combat value, added to a d6 in opposed melee rolls. */
   combat: number;
-  /** Max hex cells moved per Move action. */
-  move: number;
   pos: Vec;
   dead: boolean;
   knockedDown: boolean;

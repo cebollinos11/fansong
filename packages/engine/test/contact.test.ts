@@ -43,7 +43,7 @@ const move = (s: GameState, to: Vec) => reduce(s, { type: 'Move', unitId: 'p0u0'
 const hacks = (events: GameEvent[]) => events.filter((e): e is Hack => e.type === 'FreeHackResolved');
 
 describe('moving into contact', () => {
-  const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, move: 3, pos: { x: 2, y: 2 } };
+  const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, slow: true, pos: { x: 2, y: 2 } };
   const enemy: UnitSpec = { name: 'Enemy', quality: 3, combat: 3, pos: { x: 4, y: 2 } };
 
   it('stops a walk on the first hex in contact with an enemy', () => {
@@ -79,14 +79,14 @@ describe('moving into contact', () => {
       const path = e.path!;
       expect(path[0]).toEqual(mover.pos);
       expect(path.at(-1)).toEqual(to);
-      expect(path.length - 1).toBeLessThanOrEqual(mover.move!);
+      expect(path.length - 1).toBeLessThanOrEqual(3); // a Slow unit's Move
       for (let i = 1; i < path.length; i++) expect(board.distance(path[i - 1]!, path[i]!)).toBe(1);
     }
   });
 });
 
 describe('free hacks (leaving contact)', () => {
-  const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, move: 3, pos: { x: 2, y: 2 } };
+  const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, slow: true, pos: { x: 2, y: 2 } };
   const enemy: UnitSpec = { name: 'Enemy', quality: 3, combat: 3, pos: { x: 3, y: 2 } };
   const away = { x: 0, y: 2 };
 

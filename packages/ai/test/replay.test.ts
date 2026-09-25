@@ -21,8 +21,8 @@ function demoConfig(seed: number): GameConfig {
     seed,
     board: { width: demo.board.width, height: demo.board.height, blocked: [...demo.board.blocked] },
     warbands: [
-      demo.units.filter((u) => u.owner === 0).map((u) => ({ name: u.name, quality: u.quality, combat: u.combat, move: u.move, pos: u.pos })),
-      demo.units.filter((u) => u.owner === 1).map((u) => ({ name: u.name, quality: u.quality, combat: u.combat, move: u.move, pos: u.pos })),
+      demo.units.filter((u) => u.owner === 0).map((u) => ({ name: u.name, quality: u.quality, combat: u.combat, slow: u.traits.slow, fast: u.traits.fast, pos: u.pos })),
+      demo.units.filter((u) => u.owner === 1).map((u) => ({ name: u.name, quality: u.quality, combat: u.combat, slow: u.traits.slow, fast: u.traits.fast, pos: u.pos })),
     ],
     initiativeLeader: demo.initiativeLeader,
   };

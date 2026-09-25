@@ -75,7 +75,8 @@ These are implemented, so they are not listed again below:
    player moving away chooses the order. If an early hack removes the model,
    the rest are lost.
 3. **Move length categories.** The original has Short, Medium and Long moves
-   rather than a free number. FanSong's integer `move` already covers this. The
+   rather than a free number. FanSong's base Move of 5 with Slow (3) and Fast (7)
+   covers this. The
    useful part is the **terrain step-down** in item 4.
 4. **Difficult terrain.** Rough ground, woods, marsh and shallow water lower a
    model's move by one category (for example Medium becomes Short). A model can
@@ -201,8 +202,9 @@ original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
 **Movement:**
-- **Long Move / Short Move / Slow:** change the move category. Our `move` stat
-  already covers these.
+- ✅ **Done — Slow / Fast.** *Implemented:* every unit moves 5 hexes per Move
+  action; a `slow` trait makes it 3 and a `fast` trait 7 (they exclude each
+  other, and are priced through `perMove`).
 - ✅ **Done — Flying.** *Implemented:* a `flying` trait. A flyer's move phases
   through every hex — terrain, friends and foes alike — and is bound only by
   where it may *land* (a legal, empty hex); leaving contact draws no free hack.

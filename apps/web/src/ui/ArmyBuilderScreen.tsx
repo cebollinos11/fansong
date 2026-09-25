@@ -32,6 +32,7 @@ import {
   moveUnit,
   newArmy,
   presetTemplates,
+  SPEED_TITLES,
   STAT_LABELS,
   templateUnit,
   withStat,
@@ -207,6 +208,8 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
                       {STAT_LABELS[s].short}
                     </th>
                   ))}
+                  <th title={SPEED_TITLES.slow}>Slow</th>
+                  <th title={SPEED_TITLES.fast}>Fast</th>
                   <th title="Tough — the first would-be kill only knocks it down">Tough</th>
                   <th title="Guard — may take a stance that ripostes the first melee attacker">Guard</th>
                   <th title="Big — +1 in melee against smaller foes, but +1 to anyone shooting it">Big</th>
@@ -340,6 +343,12 @@ function UnitRow({
           />
         </td>
       ))}
+      <td>
+        <input type="checkbox" checked={unit.slow ?? false} aria-label="Slow" onChange={(e) => onChange(withTrait(unit, 'slow', e.target.checked))} />
+      </td>
+      <td>
+        <input type="checkbox" checked={unit.fast ?? false} aria-label="Fast" onChange={(e) => onChange(withTrait(unit, 'fast', e.target.checked))} />
+      </td>
       <td>
         <input type="checkbox" checked={unit.tough ?? false} aria-label="Tough" onChange={(e) => onChange(withTrait(unit, 'tough', e.target.checked))} />
       </td>

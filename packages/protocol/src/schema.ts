@@ -122,6 +122,8 @@ export const boardDataSchema = z
 
 export const unitTraitsSchema = z
   .object({
+    slow: z.boolean(),
+    fast: z.boolean(),
     ranged: z.number().int().min(0),
     tough: z.boolean(),
     guard: z.boolean(),
@@ -139,7 +141,6 @@ export const unitSchema = z
     look: z.string().optional(),
     quality: z.number(),
     combat: z.number(),
-    move: z.number(),
     pos: vecSchema,
     dead: z.boolean(),
     knockedDown: z.boolean(),
@@ -345,6 +346,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
 
 const stat = ([min, max]: readonly [number, number]) => z.number().int().min(min).max(max);
 
+
+
 /**
  * A unit as a replay's config places it. Stats are held to {@link STAT_BOUNDS}
  * — the same range the army builder and every preset are checked against — so a
@@ -356,8 +359,9 @@ export const unitSpecSchema = z
     name: z.string().max(NAME_LIMITS.unit),
     quality: stat(STAT_BOUNDS.quality),
     combat: stat(STAT_BOUNDS.combat),
-    move: stat(STAT_BOUNDS.move).optional(),
     pos: vecSchema,
+    slow: z.boolean().optional(),
+    fast: z.boolean().optional(),
     ranged: stat(STAT_BOUNDS.ranged).optional(),
     tough: z.boolean().optional(),
     guard: z.boolean().optional(),
@@ -367,14 +371,15 @@ export const unitSpecSchema = z
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
-  .strict();
+  .strict()
+  .refine((u) => !(u.slow && u.fast), { message: 'a unit cannot be both slow and fast' });
 
 /**
  * The starting config of a game — the trust boundary for a **replay file**,
  * which is the one place an untrusted config reaches `createGame`. Sizes are
- * bounded (board to {@link MAP_LIMITS}, rosters to {@link ARMY_RULES}, Move to
- * {@link STAT_BOUNDS}) so that replaying a hostile file cannot ask the engine
- * to walk an astronomically large board.
+ * bounded (board to {@link MAP_LIMITS}, rosters to {@link ARMY_RULES}; Move is
+ * fixed by the Slow/Fast traits) so that replaying a hostile file cannot ask the
+ * engine to walk an astronomically large board.
  */
 export const gameConfigSchema = z
   .object({
@@ -411,8 +416,9 @@ export const warbandUnitSchema = z
     name: z.string().max(NAME_LIMITS.unit),
     quality: z.number().int(),
     combat: z.number().int(),
-    move: z.number().int(),
     ranged: z.number().int().optional(),
+    slow: z.boolean().optional(),
+    fast: z.boolean().optional(),
     tough: z.boolean().optional(),
     guard: z.boolean().optional(),
     big: z.boolean().optional(),

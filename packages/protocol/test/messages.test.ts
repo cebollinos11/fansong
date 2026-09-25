@@ -39,7 +39,7 @@ describe('client messages', () => {
   it('encode → parse round-trips every client message', () => {
     const msgs: ClientMessage[] = [
       { t: 'join' },
-      { t: 'setArmy', preset: 'custom', warband: { name: 'Few', units: [{ name: 'A', quality: 3, combat: 3, move: 4 }] }, king: 0 },
+      { t: 'setArmy', preset: 'custom', warband: { name: 'Few', units: [{ name: 'A', quality: 3, combat: 3, fast: true }] }, king: 0 },
       { t: 'setMap', mapId: 'old-forest', mode: 'capture-the-flag' },
       { t: 'ready', ready: true },
       { t: 'rematch' },

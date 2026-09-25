@@ -71,12 +71,13 @@ export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, 
     name: profile.name,
     quality: profile.quality,
     combat: profile.combat,
-    move: profile.move,
     pos: { x: pos.x, y: pos.y },
     dead: false,
     knockedDown: false,
     activatedThisRound: false,
     traits: {
+      slow: profile.slow ?? false,
+      fast: profile.fast ?? false,
       ranged: profile.ranged ?? 0,
       tough: profile.tough ?? false,
       guard: profile.guard ?? false,
@@ -126,7 +127,7 @@ export function teleportUnit(state: GameState, id: string, pos: Vec): GameState 
 
 /** The unit fields the inspector may rewrite. */
 export type UnitPatch = Partial<
-  Pick<Unit, 'name' | 'owner' | 'quality' | 'combat' | 'move' | 'dead' | 'knockedDown' | 'activatedThisRound' | 'guarding'>
+  Pick<Unit, 'name' | 'owner' | 'quality' | 'combat' | 'dead' | 'knockedDown' | 'activatedThisRound' | 'guarding'>
 > & { traits?: Partial<UnitTraits> };
 
 /** Rewrite a unit's stats, traits or status flags. */

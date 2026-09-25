@@ -46,7 +46,7 @@ function harness(state: GameState) {
   return { controller, sent, runner };
 }
 
-const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, move: 3, pos: { x: 2, y: 3 } };
+const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, slow: true, pos: { x: 2, y: 3 } };
 const far: UnitSpec = { name: 'Far', quality: 3, combat: 3, pos: { x: 10, y: 0 } };
 const move = (to: { x: number; y: number }): Command => ({ type: 'Move', unitId: 'p0u0', to });
 
@@ -75,7 +75,7 @@ describe('PlanRunner', () => {
     // Seed 17: leaving contact with the brute at (4,3) knocks the mover down,
     // which strands it where it stood and ends its activation.
     const brute: UnitSpec = { name: 'Brute', quality: 3, combat: 6, pos: { x: 4, y: 3 } };
-    const weak: UnitSpec = { name: 'Weak', quality: 3, combat: 1, move: 3, pos: { x: 3, y: 3 } };
+    const weak: UnitSpec = { name: 'Weak', quality: 3, combat: 1, slow: true, pos: { x: 3, y: 3 } };
     const pal: UnitSpec = { name: 'Pal', quality: 3, combat: 3, pos: { x: 0, y: 0 } };
     const spare: UnitSpec = { name: 'Spare', quality: 3, combat: 3, pos: { x: 10, y: 6 } };
     const { controller, sent, runner } = harness(acting(config(17, [weak, pal], [brute, spare]), 2));

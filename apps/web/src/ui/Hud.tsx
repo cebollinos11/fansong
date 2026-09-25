@@ -1,4 +1,4 @@
-import { unitById, type GameState, type Owner } from '@fansong/engine';
+import { unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
 import { isAiSeat, type MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
@@ -216,7 +216,7 @@ function UnitInspector({ state, unitId }: { state: GameState; unitId: string | n
       <div className="inspector-stats">
         <span title="Activation dice succeed on this or higher — lower is better">Quality {u.quality}</span>
         <span title="Added to the d6 in fights — higher is better">Combat {u.combat}</span>
-        <span title="Hexes per Move action">Move {u.move}</span>
+        <span title="Hexes per Move action">Move {unitMove(u)}</span>
       </div>
       {/* Ranged, Tough and Guard change how a unit must be fought far more than
           its stats do, so they are shown wherever a unit is described. */}

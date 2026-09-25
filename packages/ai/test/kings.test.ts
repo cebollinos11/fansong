@@ -94,16 +94,19 @@ describe('AI in kill-the-king', () => {
   });
 
   it('prefers high ground among equally close hexes', () => {
-    // Two hexes adjacent to the target at the same distance; one is raised.
-    const base = kingGame([U('k', 0, 0, { king: true }), U('a', 4, 4, { move: 1 })], [U('k', 8, 4, { king: true })]);
+    // Several hexes one (Slow, 3-hex) Move away get equally close to the target; one is raised.
+    const start = { x: 2, y: 4 };
+    const target = { x: 10, y: 4 };
+    const base = kingGame([U('k', 0, 0, { king: true }), U('a', start.x, start.y, { slow: true })], [U('k', target.x, target.y, { king: true })]);
     const board = makeHexGrid(base.board);
-    const target = { x: 8, y: 4 };
-    const opts = board.neighbors({ x: 4, y: 4 }).filter((n) => board.distance(n, target) === board.distance({ x: 4, y: 4 }, target) - 1);
+    const reach = board.cellsWithin(start, 3);
+    const closest = Math.min(...reach.map((c) => board.distance(c, target)));
+    const opts = reach.filter((c) => board.distance(c, target) === closest);
     expect(opts.length).toBeGreaterThanOrEqual(2);
     const raised = opts[opts.length - 1]!;
     const s = activate(kingGame(
-      [U('k', 0, 0, { king: true }), U('a', 4, 4, { move: 1 })],
-      [U('k', 8, 4, { king: true })],
+      [U('k', 0, 0, { king: true }), U('a', start.x, start.y, { slow: true })],
+      [U('k', target.x, target.y, { king: true })],
       { terrain: { [`${raised.x},${raised.y}`]: { elevation: 1 } } },
     ), 'p0u1');
     expect(moveTo(chooseCommand(s))).toEqual(raised);

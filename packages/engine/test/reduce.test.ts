@@ -32,7 +32,7 @@ describe('reduce + legal moves', () => {
       seed: 3,
       board: { width: 8, height: 3 },
       warbands: [
-        [{ name: 'Runner', quality: 1, combat: 3, move: 3, pos: { x: 0, y: 1 } }],
+        [{ name: 'Runner', quality: 1, combat: 3, slow: true, pos: { x: 0, y: 1 } }],
         [{ name: 'Far', quality: 1, combat: 3, pos: { x: 7, y: 1 } }],
       ],
     });

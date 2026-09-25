@@ -42,7 +42,7 @@ const plain = (plans: ActionPlan[], targetId: string, kind: 'attack' | 'shoot'):
 const pressed = (plans: ActionPlan[], targetId: string, kind: 'attack' | 'shoot'): ActionPlan | undefined =>
   strikes(plans, targetId, kind).find((p) => p.pressed);
 
-const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, move: 3, pos: { x: 2, y: 3 } };
+const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, slow: true, pos: { x: 2, y: 3 } };
 
 describe('getActionPlans parity with getLegalCommands', () => {
   const cases: Array<[string, GameConfig]> = [
@@ -182,7 +182,7 @@ describe('multi-action reach', () => {
 
   it('caps the chain at three actions however many are held', () => {
     // A plodder on a long board, so cost keeps climbing if nothing stops it.
-    const plodder: UnitSpec = { ...mover, move: 1 };
+    const plodder: UnitSpec = { ...mover, slow: true };
     const c = config(15, [plodder], [{ name: 'Far', quality: 3, combat: 3, pos: { x: 29, y: 0 } }], 31, 7);
     const board = makeHexGrid(createGame(c).board);
     const unit = createGame(c).units[0]!;
@@ -302,7 +302,7 @@ describe('spending the second action on the blow instead of the walk', () => {
 
 describe('move-then-shoot', () => {
   it('steps aside to clear a lane a friend is blocking', () => {
-    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, move: 3, ranged: 8, pos: { x: 2, y: 3 } };
+    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, slow: true, ranged: 8, pos: { x: 2, y: 3 } };
     const blocker: UnitSpec = { name: 'Blocker', quality: 3, combat: 3, pos: { x: 3, y: 3 } };
     const target: UnitSpec = { name: 'Foe', quality: 3, combat: 3, pos: { x: 4, y: 3 } };
 
@@ -319,7 +319,7 @@ describe('move-then-shoot', () => {
   });
 
   it('never chooses a firing hex in contact with a living enemy', () => {
-    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, move: 4, ranged: 8, pos: { x: 1, y: 3 } };
+    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, slow: true, ranged: 8, pos: { x: 1, y: 3 } };
     const target: UnitSpec = { name: 'Foe', quality: 3, combat: 3, pos: { x: 6, y: 3 } };
     const s = acting(config(41, [archer], [target]), 3);
     const board = makeHexGrid(s.board);
@@ -330,7 +330,7 @@ describe('move-then-shoot', () => {
 
   it('does not let the vacated start hex block its own lane', () => {
     // Moving along the firing line: the hex the archer left must not count.
-    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, move: 1, ranged: 8, pos: { x: 2, y: 3 } };
+    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, slow: true, ranged: 8, pos: { x: 2, y: 3 } };
     const target: UnitSpec = { name: 'Foe', quality: 3, combat: 3, pos: { x: 7, y: 3 } };
     const s = acting(config(42, [archer], [target]), 2);
     const shot = plain(getActionPlans(s), 'p1u0', 'shoot')!;
@@ -339,7 +339,7 @@ describe('move-then-shoot', () => {
   });
 
   it('offers no move-then-shoot with a single action', () => {
-    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, move: 3, ranged: 3, pos: { x: 1, y: 3 } };
+    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, slow: true, ranged: 3, pos: { x: 1, y: 3 } };
     const target: UnitSpec = { name: 'Foe', quality: 3, combat: 3, pos: { x: 8, y: 3 } };
     const s = acting(config(43, [archer], [target]), 1);
     expect(getActionPlans(s).some((p) => p.kind === 'shoot')).toBe(false);

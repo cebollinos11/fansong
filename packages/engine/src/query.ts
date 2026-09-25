@@ -1,5 +1,16 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
-import type { GameState, Owner, Unit } from './types.js';
+import type { GameState, Owner, Unit, UnitTraits } from './types.js';
+
+/** Hexes per Move action of every unit that is neither Slow nor Fast. */
+export const BASE_MOVE = 5;
+
+/** How far the Slow and Fast traits shift a unit's Move from {@link BASE_MOVE}. */
+export const SPEED_STEP = 2;
+
+/** Max hexes `unit` walks per Move action: {@link BASE_MOVE}, shifted by Slow or Fast. */
+export function unitMove(unit: { traits: Pick<UnitTraits, 'slow' | 'fast'> }): number {
+  return BASE_MOVE + (unit.traits.fast ? SPEED_STEP : 0) - (unit.traits.slow ? SPEED_STEP : 0);
+}
 
 export function unitById(state: GameState, id: string): Unit | undefined {
   return state.units.find((u) => u.id === id);
@@ -90,5 +101,5 @@ export function walkRules(state: GameState, unit: Unit, board: Board): WalkRules
 
 /** Every hex `unit` can reach with one Move action (ignoring occupancy of the destination). */
 export function moveReach(state: GameState, unit: Unit, board: Board): Set<string> {
-  return board.reachableWithin(unit.pos, unit.move, walkRules(state, unit, board));
+  return board.reachableWithin(unit.pos, unitMove(unit), walkRules(state, unit, board));
 }

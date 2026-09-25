@@ -1,6 +1,8 @@
+import { BASE_MOVE, unitMove } from '@fansong/engine';
+
 /**
- * Point-buy costing. A unit's cost is derived purely from the three stats the
- * engine actually simulates — Quality, Combat, and Move — so a point total is
+ * Point-buy costing. A unit's cost is derived purely from what the engine
+ * actually simulates — Quality, Combat, Move and the special traits — so a point total is
  * an honest measure of battlefield value with no unimplemented "paper" traits.
  *
  * The formula is original to FanSong (game mechanics aren't copyrightable, but
@@ -14,8 +16,10 @@ export interface Profile {
   quality: number;
   /** Melee value added to the d6 in opposed rolls. Higher is better. */
   combat: number;
-  /** Max hex cells per Move action. Higher is better. */
-  move: number;
+  /** Slow: 2 fewer hexes per Move action than {@link BASE_MOVE} (see engine `unitMove`). */
+  slow?: boolean;
+  /** Fast: 2 more hexes per Move action than {@link BASE_MOVE} (see engine `unitMove`). */
+  fast?: boolean;
   /** Ranged attack range in cells (0/omitted = melee only). */
   ranged?: number;
   /** Tough: first would-be kill downgraded to a knockdown. */
@@ -34,12 +38,13 @@ export interface Profile {
 export const STAT_BOUNDS = {
   quality: [2, 6] as const,
   combat: [1, 6] as const,
-  move: [1, 8] as const,
   ranged: [0, 8] as const,
 };
 
-/** The Move value a profile is costed against as "free"; deviations adjust cost. */
-export const BASELINE_MOVE = 3;
+/** Hexes per Move action a profile gets: the engine's {@link BASE_MOVE}, shifted by Slow or Fast. */
+export function profileMove(p: Pick<Profile, 'slow' | 'fast'>): number {
+  return unitMove({ traits: { slow: p.slow ?? false, fast: p.fast ?? false } });
+}
 
 /** Weights of the additive cost formula. Exported so a UI can itemise a cost. */
 export const COST_WEIGHTS = {
@@ -50,7 +55,8 @@ export const COST_WEIGHTS = {
   /** Each point of Combat is worth this much. */
   perCombat: 5,
   /**
-   * Each cell of Move away from {@link BASELINE_MOVE} is worth this much. On the
+   * Each cell of Move away from {@link BASE_MOVE} is worth this much, so Fast
+   * costs `SPEED_STEP * perMove` and Slow refunds as much. On the
    * hex board a cell of extra reach opens a disc of `3r(r+1)` cells (smaller than
    * a square king-move window), so mobility is priced a touch below a point of
    * Combat.
@@ -95,10 +101,9 @@ export function statErrors(p: Profile): string[] {
     errors.push(`quality ${p.quality} out of range ${STAT_BOUNDS.quality.join('..')}`);
   if (!inRange(p.combat, STAT_BOUNDS.combat))
     errors.push(`combat ${p.combat} out of range ${STAT_BOUNDS.combat.join('..')}`);
-  if (!inRange(p.move, STAT_BOUNDS.move))
-    errors.push(`move ${p.move} out of range ${STAT_BOUNDS.move.join('..')}`);
   if (!inRange(p.ranged ?? 0, STAT_BOUNDS.ranged))
     errors.push(`ranged ${p.ranged} out of range ${STAT_BOUNDS.ranged.join('..')}`);
+  if (p.slow && p.fast) errors.push('cannot be both slow and fast');
   return errors;
 }
 
@@ -113,7 +118,7 @@ export function unitCost(p: Profile): number {
     base +
     (qualityMax - p.quality) * perQuality +
     p.combat * perCombat +
-    (p.move - BASELINE_MOVE) * perMove +
+    (profileMove(p) - BASE_MOVE) * perMove +
     (p.ranged ?? 0) * perRanged +
     (p.tough ? tough : 0) +
     (p.guard ? guard : 0) +

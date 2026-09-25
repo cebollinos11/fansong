@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { BASELINE_MOVE, COST_WEIGHTS, STAT_BOUNDS, statErrors, unitCost, type Profile } from '../src/cost.js';
+import { BASE_MOVE, SPEED_STEP } from '@fansong/engine';
+import { COST_WEIGHTS, profileMove, STAT_BOUNDS, statErrors, unitCost, type Profile } from '../src/cost.js';
 
-const baseline: Profile = { quality: 3, combat: 3, move: BASELINE_MOVE };
+const baseline: Profile = { quality: 3, combat: 3 };
 
 describe('unitCost', () => {
   it('costs a baseline profile at a stable known value', () => {
@@ -24,13 +25,14 @@ describe('unitCost', () => {
     expect(c4).toBeGreaterThan(c2);
   });
 
-  it('charges for Move above baseline and rebates below it', () => {
-    expect(unitCost({ ...baseline, move: 4 })).toBeGreaterThan(unitCost(baseline));
-    expect(unitCost({ ...baseline, move: 2 })).toBeLessThan(unitCost(baseline));
+  it('charges for Fast and rebates Slow, per cell of Move they shift', () => {
+    const step = SPEED_STEP * COST_WEIGHTS.perMove;
+    expect(unitCost({ ...baseline, fast: true }) - unitCost(baseline)).toBe(step);
+    expect(unitCost(baseline) - unitCost({ ...baseline, slow: true })).toBe(step);
   });
 
   it('never returns less than 1 even for the worst legal stats', () => {
-    const worst: Profile = { quality: STAT_BOUNDS.quality[1], combat: STAT_BOUNDS.combat[0], move: 1 };
+    const worst: Profile = { quality: STAT_BOUNDS.quality[1], combat: STAT_BOUNDS.combat[0], slow: true };
     expect(unitCost(worst)).toBeGreaterThanOrEqual(1);
   });
 
@@ -68,16 +70,30 @@ describe('statErrors', () => {
   });
 
   it('rejects out-of-range and non-integer stats', () => {
-    expect(statErrors({ quality: 1, combat: 3, move: 3 })).toHaveLength(1);
-    expect(statErrors({ quality: 3, combat: 9, move: 3 })).toHaveLength(1);
-    expect(statErrors({ quality: 3, combat: 3, move: 0 })).toHaveLength(1);
-    expect(statErrors({ quality: 3.5, combat: 3, move: 3 })).toHaveLength(1);
-    expect(statErrors({ quality: 0, combat: 0, move: 0 })).toHaveLength(3);
+    expect(statErrors({ quality: 1, combat: 3 })).toHaveLength(1);
+    expect(statErrors({ quality: 3, combat: 9 })).toHaveLength(1);
+    expect(statErrors({ quality: 3.5, combat: 3 })).toHaveLength(1);
+    expect(statErrors({ quality: 0, combat: 0, ranged: -1 })).toHaveLength(3);
+  });
+
+  it('rejects a unit both Slow and Fast', () => {
+    expect(statErrors({ ...baseline, slow: true })).toEqual([]);
+    expect(statErrors({ ...baseline, fast: true })).toEqual([]);
+    expect(statErrors({ ...baseline, slow: true, fast: true })).toHaveLength(1);
   });
 
   it('rejects a ranged value out of range but accepts an omitted one', () => {
     expect(statErrors({ ...baseline, ranged: 9 })).toHaveLength(1);
     expect(statErrors({ ...baseline, ranged: 4 })).toEqual([]);
     expect(statErrors(baseline)).toEqual([]); // ranged omitted == 0
+  });
+});
+
+describe('profileMove', () => {
+  it('is the base Move, shifted down by Slow and up by Fast', () => {
+    expect(BASE_MOVE).toBe(5);
+    expect(profileMove(baseline)).toBe(5);
+    expect(profileMove({ slow: true })).toBe(3);
+    expect(profileMove({ fast: true })).toBe(7);
   });
 });

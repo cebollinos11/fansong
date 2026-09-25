@@ -107,7 +107,8 @@ export function validateArmy(w: Warband): ValidationResult {
 /**
  * Structurally parse an untrusted warband (a saved army, an imported file).
  * Throws a friendly `Error` unless it has a name and a list of units with a
- * name and numeric stats; unknown keys are dropped. Stat ranges and roster
+ * name and numeric stats; unknown keys are dropped (a legacy numeric `move`
+ * becomes Slow or Fast). Stat ranges and roster
  * size are left to {@link validateArmy}.
  */
 export function parseWarband(raw: unknown): Warband {
@@ -121,8 +122,15 @@ export function parseWarband(raw: unknown): Warband {
       if (typeof v !== 'number') throw new Error(`${u.name as string}: ${k} is not a number.`);
       return v;
     };
-    const unit: WarbandUnit = { name: u.name, quality: num('quality'), combat: num('combat'), move: num('move') };
+    const unit: WarbandUnit = { name: u.name, quality: num('quality'), combat: num('combat') };
     if (u.ranged !== undefined) unit.ranged = num('ranged');
+    if (u.slow === true) unit.slow = true;
+    if (u.fast === true) unit.fast = true;
+    // Armies saved before Slow/Fast carried a raw Move against a baseline of 3.
+    if (u.slow === undefined && u.fast === undefined && typeof u.move === 'number') {
+      if (u.move < 3) unit.slow = true;
+      if (u.move > 3) unit.fast = true;
+    }
     if (u.tough === true) unit.tough = true;
     if (u.guard === true) unit.guard = true;
     if (u.big === true) unit.big = true;

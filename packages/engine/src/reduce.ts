@@ -35,6 +35,7 @@ import {
   playerHasAvailable,
   unitAvailable,
   unitById,
+  unitMove,
   walkRules,
 } from './query.js';
 import type {
@@ -165,16 +166,17 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
 
   const board = makeHexGrid(s.board);
+  const move = unitMove(unit);
   if (!board.inBounds(to)) throw new Error('destination out of bounds');
   if (board.isBlocked(to)) throw new Error('destination blocked');
-  if (board.distance(unit.pos, to) > unit.move) throw new Error('destination beyond move range');
+  if (board.distance(unit.pos, to) > move) throw new Error('destination beyond move range');
   // Walks stop on entering contact with an enemy and never pass through one.
   const rules = walkRules(s, unit, board);
-  if (!board.reachableWithin(unit.pos, unit.move, rules).has(vecKey(to))) {
+  if (!board.reachableWithin(unit.pos, move, rules).has(vecKey(to))) {
     throw new Error('destination unreachable within move range');
   }
   if (isOccupied(s, to, unit.id)) throw new Error('destination occupied');
-  const path = board.pathWithin(unit.pos, to, unit.move, rules)!;
+  const path = board.pathWithin(unit.pos, to, move, rules)!;
 
   s.actionsRemaining -= 1;
   // Leaving contact: each standing enemy in contact takes a free hack first. A

@@ -65,7 +65,7 @@ describe('mode filtering', () => {
 describe('launchFor with saved armies', () => {
   const horde: Warband = {
     name: 'Horde',
-    units: Array.from({ length: 12 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, move: 5 })),
+    units: Array.from({ length: 12 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, fast: true })),
   };
   const armies: SavedArmy[] = [{ id: 'a1', warband: horde }];
 

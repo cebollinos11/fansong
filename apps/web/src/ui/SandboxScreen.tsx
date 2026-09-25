@@ -9,7 +9,7 @@ import {
   type TerrainFeature,
   type Unit,
 } from '@fansong/engine';
-import { PRESETS, type MatchSetup, type WarbandUnit } from '@fansong/content';
+import { PRESETS, profileMove, type MatchSetup, type WarbandUnit } from '@fansong/content';
 import { playableArmies } from '../game/armies.js';
 import { browserStorage } from '../game/customMaps.js';
 import * as sandboxOps from '../game/sandbox.js';
@@ -297,7 +297,7 @@ export function SandboxScreen({ initial, setup, onExit }: Props): JSX.Element {
 
 /** A unit's profile, for spawning copies of it. */
 function templateOf(u: Unit): WarbandUnit {
-  const t: WarbandUnit = { name: u.name, quality: u.quality, combat: u.combat, move: u.move, ...u.traits };
+  const t: WarbandUnit = { name: u.name, quality: u.quality, combat: u.combat, ...u.traits };
   if (u.look !== undefined) t.look = u.look;
   return t;
 }
@@ -343,7 +343,7 @@ function NumberField({
   );
 }
 
-const TRAITS = ['tough', 'guard', 'big', 'flying', 'reassembling'] as const;
+const TRAITS = ['slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling'] as const;
 
 /** Stat and trait fields shared by the spawn template and the unit inspector. */
 function ProfileFields({
@@ -358,13 +358,22 @@ function ProfileFields({
       <div className="sb-row">
         <NumberField label="Q" value={profile.quality} min={1} max={6} onChange={(quality) => onChange({ quality })} />
         <NumberField label="C" value={profile.combat} min={0} max={9} onChange={(combat) => onChange({ combat })} />
-        <NumberField label="Mv" value={profile.move} min={0} max={9} onChange={(move) => onChange({ move })} />
         <NumberField label="Rng" value={profile.ranged ?? 0} min={0} max={9} onChange={(ranged) => onChange({ ranged })} />
       </div>
       <div className="sb-row sb-checks">
         {TRAITS.map((t) => (
           <label key={t}>
-            <input type="checkbox" checked={profile[t] ?? false} onChange={(e) => onChange({ [t]: e.target.checked })} />
+            <input
+              type="checkbox"
+              checked={profile[t] ?? false}
+              onChange={(e) => {
+                const on = e.target.checked;
+                // Slow and Fast exclude each other.
+                if (on && t === 'slow') onChange({ slow: true, fast: false });
+                else if (on && t === 'fast') onChange({ fast: true, slow: false });
+                else onChange({ [t]: on });
+              }}
+            />
             {t}
           </label>
         ))}
@@ -416,7 +425,7 @@ function SpawnSection({
               .filter((p) => p.group === g)
               .map((p) => (
                 <option key={p.key} value={p.key}>
-                  {p.unit.name} (Q{p.unit.quality} C{p.unit.combat} M{p.unit.move})
+                  {p.unit.name} (Q{p.unit.quality} C{p.unit.combat} M{profileMove(p.unit)})
                 </option>
               ))}
           </optgroup>
@@ -506,11 +515,10 @@ function UnitSection({
       <OwnerPicker value={unit.owner} onChange={(owner) => onPatch({ owner })} />
       <ProfileFields
         profile={templateOf(unit)}
-        onChange={({ quality, combat, move, ...traits }) =>
+        onChange={({ quality, combat, ...traits }) =>
           onPatch({
             ...(quality !== undefined ? { quality } : {}),
             ...(combat !== undefined ? { combat } : {}),
-            ...(move !== undefined ? { move } : {}),
             traits,
           })
         }

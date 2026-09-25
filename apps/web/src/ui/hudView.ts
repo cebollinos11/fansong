@@ -1,4 +1,4 @@
-import { livingCount, routThreshold, type GameState, type Owner, type Unit } from '@fansong/engine';
+import { BASE_MOVE, livingCount, routThreshold, SPEED_STEP, type GameState, type Owner, type Unit } from '@fansong/engine';
 import { getPreset, isAiSeat, type MatchSetup } from '@fansong/content';
 
 // Pure HUD presentation (no DOM), so every label and warning is unit-testable.
@@ -61,6 +61,8 @@ export function warbandStatus(state: GameState, owner: Owner): WarbandStatus {
 
 /** What each trait does, for the inspector's tooltips. */
 export const TRAIT_HELP = {
+  slow: `Moves ${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,
+  fast: `Moves ${BASE_MOVE + SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,
   ranged: 'Shoots at range, taking no return damage — but not while in melee',
   tough: 'The first would-be kill is downgraded to a knockdown',
   guard: 'May take a Guard action, meeting its next melee attacker with a riposte',
@@ -81,6 +83,8 @@ export interface TraitTag {
  */
 export function traitTags(unit: Pick<Unit, 'traits'>): TraitTag[] {
   const tags: TraitTag[] = [];
+  if (unit.traits.slow) tags.push({ label: 'Slow', help: TRAIT_HELP.slow });
+  if (unit.traits.fast) tags.push({ label: 'Fast', help: TRAIT_HELP.fast });
   if (unit.traits.ranged > 0) tags.push({ label: `Ranged ${unit.traits.ranged}`, help: TRAIT_HELP.ranged });
   if (unit.traits.tough) tags.push({ label: 'Tough', help: TRAIT_HELP.tough });
   if (unit.traits.guard) tags.push({ label: 'Guard', help: TRAIT_HELP.guard });

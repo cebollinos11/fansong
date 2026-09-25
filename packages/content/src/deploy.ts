@@ -55,9 +55,10 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     name: unit.name,
     quality: unit.quality,
     combat: unit.combat,
-    move: unit.move,
     pos,
     // Carry the special-ability traits through to the engine profile.
+    slow: unit.slow,
+    fast: unit.fast,
     ranged: unit.ranged,
     tough: unit.tough,
     guard: unit.guard,

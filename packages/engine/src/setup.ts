@@ -7,8 +7,11 @@ export interface UnitSpec {
   name: string;
   quality: number;
   combat: number;
-  move?: number;
   pos: Vec;
+  /** Slow: 3 hexes per Move action instead of the base 5. Never with `fast`. */
+  slow?: boolean;
+  /** Fast: 7 hexes per Move action instead of the base 5. Never with `slow`. */
+  fast?: boolean;
   /** Ranged attack range in cells (0/omitted = melee only). */
   ranged?: number;
   /** First would-be kill is downgraded to a knockdown. */
@@ -50,18 +53,20 @@ export interface GameConfig {
 }
 
 function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
+  if (spec.slow && spec.fast) throw new Error(`unit '${spec.name}' cannot be both slow and fast`);
   const unit: Unit = {
     id: `p${owner}u${index}`,
     owner,
     name: spec.name,
     quality: spec.quality,
     combat: spec.combat,
-    move: spec.move ?? 3,
     pos: { x: spec.pos.x, y: spec.pos.y },
     dead: false,
     knockedDown: false,
     activatedThisRound: false,
     traits: {
+      slow: spec.slow ?? false,
+      fast: spec.fast ?? false,
       ranged: spec.ranged ?? 0,
       tough: spec.tough ?? false,
       guard: spec.guard ?? false,
@@ -159,12 +164,12 @@ export function createDemoGame(seed: number): GameState {
   const p0: UnitSpec[] = [
     { name: 'Warden', quality: 3, combat: 3, pos: { x: 0, y: rows[0]! } },
     { name: 'Blade', quality: 4, combat: 4, pos: { x: 0, y: rows[1]! } },
-    { name: 'Skirmisher', quality: 3, combat: 2, move: 4, pos: { x: 0, y: rows[2]! } },
+    { name: 'Skirmisher', quality: 3, combat: 2, fast: true, pos: { x: 0, y: rows[2]! } },
   ];
   const p1: UnitSpec[] = [
     { name: 'Raider', quality: 3, combat: 3, pos: { x: width - 1, y: rows[0]! } },
     { name: 'Brute', quality: 4, combat: 4, pos: { x: width - 1, y: rows[1]! } },
-    { name: 'Scout', quality: 3, combat: 2, move: 4, pos: { x: width - 1, y: rows[2]! } },
+    { name: 'Scout', quality: 3, combat: 2, fast: true, pos: { x: width - 1, y: rows[2]! } },
   ];
 
   return createGame({

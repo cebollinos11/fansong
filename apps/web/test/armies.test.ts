@@ -26,7 +26,7 @@ function memoryStorage(initial: Record<string, string> = {}): MapStorage & { dat
   };
 }
 
-const ARMY: Warband = { name: 'Horde', units: [{ name: 'Grunt', quality: 3, combat: 4, move: 4, look: 'Marauder' }] };
+const ARMY: Warband = { name: 'Horde', units: [{ name: 'Grunt', quality: 3, combat: 4, fast: true, look: 'Marauder' }] };
 
 describe('saved armies', () => {
   it('saves, replaces by id, loads and deletes', () => {
@@ -90,16 +90,23 @@ describe('army builder helpers', () => {
   it('clamps stats into range and drops a zero range', () => {
     expect(clampStat('combat', 99)).toBe(6);
     expect(clampStat('quality', 1)).toBe(2);
-    expect(clampStat('move', NaN)).toBe(1);
-    const u = withStat({ name: 'A', quality: 3, combat: 3, move: 3, ranged: 4 }, 'ranged', 0);
+    expect(clampStat('ranged', NaN)).toBe(0);
+    const u = withStat({ name: 'A', quality: 3, combat: 3, ranged: 4 }, 'ranged', 0);
     expect('ranged' in u).toBe(false);
     expect(withStat(u, 'ranged', 3).ranged).toBe(3);
   });
 
   it('toggles traits, dropping the key when off', () => {
-    const on = withTrait({ name: 'A', quality: 3, combat: 3, move: 3 }, 'tough', true);
+    const on = withTrait({ name: 'A', quality: 3, combat: 3 }, 'tough', true);
     expect(on.tough).toBe(true);
     expect('tough' in withTrait(on, 'tough', false)).toBe(false);
+  });
+
+  it('keeps Slow and Fast exclusive', () => {
+    const slow = withTrait({ name: 'A', quality: 3, combat: 3 }, 'slow', true);
+    const fast = withTrait(slow, 'fast', true);
+    expect(fast).toEqual({ name: 'A', quality: 3, combat: 3, fast: true });
+    expect(withTrait(fast, 'slow', true)).toEqual({ name: 'A', quality: 3, combat: 3, slow: true });
   });
 
   it('keeps unit names unique and preset looks', () => {
@@ -113,7 +120,7 @@ describe('army builder helpers', () => {
   });
 
   it('reorders units', () => {
-    const units = ['a', 'b', 'c'].map((name) => ({ name, quality: 3, combat: 3, move: 3 }));
+    const units = ['a', 'b', 'c'].map((name) => ({ name, quality: 3, combat: 3 }));
     expect(moveUnit(units, 0, 1).map((u) => u.name)).toEqual(['b', 'a', 'c']);
     expect(moveUnit(units, 2, 5).map((u) => u.name)).toEqual(['a', 'b', 'c']);
   });

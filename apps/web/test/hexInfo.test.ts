@@ -1,5 +1,5 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
-import type { GameEvent, GameState } from '@fansong/engine';
+import { unitMove, type GameEvent, type GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { describeHex } from '../src/ui/hexInfo.js';
 import type { PlanPreview } from '../src/game/planView.js';
@@ -39,19 +39,19 @@ describe('describeHex', () => {
     const u = state.units[0]!;
     const info = describeHex(state, u.pos);
     expect(info?.lines).toContain(`${u.name} (P${u.owner})`);
-    expect(info?.lines).toContain(`Q${u.quality} · C${u.combat} · M${u.move}`);
+    expect(info?.lines).toContain(`Q${u.quality} · C${u.combat} · M${unitMove(u)}`);
   });
 
   it('spells out the abilities that change how a unit must be fought', () => {
     const plain = state.units[0]!;
     // A unit with no abilities says nothing extra.
-    expect(describeHex(state, plain.pos)?.lines.at(-1)).toBe(`Q${plain.quality} · C${plain.combat} · M${plain.move}`);
+    expect(describeHex(state, plain.pos)?.lines.at(-1)).toBe(`Q${plain.quality} · C${plain.combat} · M${unitMove(plain)}`);
 
     const armed: GameState = {
       ...state,
       units: state.units.map((u) =>
         u.id === plain.id
-          ? { ...u, guarding: true, traits: { ranged: 4, tough: true, guard: true, big: true, flying: false, reassembling: false } }
+          ? { ...u, guarding: true, traits: { ...u.traits, ranged: 4, tough: true, guard: true, big: true } }
           : u,
       ),
     };

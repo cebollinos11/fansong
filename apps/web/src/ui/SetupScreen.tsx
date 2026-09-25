@@ -8,6 +8,7 @@ import {
   listMaps,
   PRESET_IDS,
   PRESETS,
+  profileMove,
   supportedModes,
   validateArmy,
   validateWarband,
@@ -378,7 +379,7 @@ export function Roster({
             </label>
           )}
           <span className="stats">
-            Q{u.quality} C{u.combat} M{u.move}
+            Q{u.quality} C{u.combat} M{profileMove(u)}
             {u.ranged ? ` R${u.ranged}` : ''}
             {u.tough ? ' Tough' : ''}
             {u.guard ? ' Guard' : ''}

@@ -25,7 +25,7 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
 
 /**
  * Friends within this board-distance radius of a gruesome casualty must test
- * nerve: a "long" reach, half again the baseline move of 3.
+ * nerve (a little under the base Move of 5).
  */
 export const MORALE_RADIUS = 4;
 

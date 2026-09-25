@@ -1,5 +1,5 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
-import { ROUT_FRACTION, type GameState, type Owner } from '@fansong/engine';
+import { ROUT_FRACTION, type GameState, type Owner, type UnitTraits } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { armyName, seatLabel, traitLine, traitTags, turnPhrase, warbandStatus } from '../src/ui/hudView.js';
 
@@ -41,8 +41,8 @@ describe('seatLabel', () => {
       ...HOTSEAT,
       presets: ['custom', 'custom'],
       warbands: [
-        { name: 'My Lads', units: [{ name: 'A', quality: 4, combat: 3, move: 3 }] },
-        { name: 'Their Lads', units: [{ name: 'B', quality: 4, combat: 3, move: 3 }] },
+        { name: 'My Lads', units: [{ name: 'A', quality: 4, combat: 3 }] },
+        { name: 'Their Lads', units: [{ name: 'B', quality: 4, combat: 3 }] },
       ],
     };
     expect(seatLabel(custom, [0, 1], 0)).toBe('My Lads');
@@ -95,8 +95,8 @@ describe('warbandStatus', () => {
 });
 
 describe('traitTags', () => {
-  const traits = (over: Partial<{ ranged: number; tough: boolean; guard: boolean; big: boolean; flying: boolean; reassembling: boolean }>) => ({
-    traits: { ranged: 0, tough: false, guard: false, big: false, flying: false, reassembling: false, ...over },
+  const traits = (over: Partial<UnitTraits>) => ({
+    traits: { slow: false, fast: false, ranged: 0, tough: false, guard: false, big: false, flying: false, reassembling: false, ...over },
   });
 
   it('says nothing for a plain unit', () => {
@@ -112,6 +112,11 @@ describe('traitTags', () => {
       'Big',
     ]);
     expect(traitLine(traits({ tough: true }))).toBe('Tough');
+  });
+
+  it('names Slow and Fast first', () => {
+    expect(traitLine(traits({ slow: true }))).toBe('Slow');
+    expect(traitLine(traits({ fast: true, tough: true }))).toBe('Fast · Tough');
   });
 
   it('explains what each ability does', () => {

@@ -19,7 +19,6 @@ describe('layOutWarband', () => {
       name: `U${i}`,
       quality: 4,
       combat: 2,
-      move: 3,
     }));
     const specs = layOutWarband(units, 0, board);
     const seen = new Set<string>();
@@ -39,7 +38,6 @@ describe('layOutWarband', () => {
       name: `U${i}`,
       quality: 4,
       combat: 2,
-      move: 3,
     }));
     const p0 = layOutWarband(units, 0, board);
     const p1 = layOutWarband(units, 1, board);

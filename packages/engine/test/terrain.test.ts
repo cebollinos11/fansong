@@ -144,7 +144,7 @@ describe('movement pathing around impassable terrain', () => {
       terrain: { '2,0': { feature: 'rock' }, '2,1': { feature: 'building' }, '2,2': { feature: 'rock' } },
     },
     warbands: [
-      [{ name: 'Runner', quality: 1, combat: 3, move: 3, pos: { x: 1, y: 1 } }],
+      [{ name: 'Runner', quality: 1, combat: 3, slow: true, pos: { x: 1, y: 1 } }],
       [{ name: 'Far', quality: 1, combat: 3, pos: { x: 5, y: 4 } }],
     ],
   };
@@ -210,7 +210,7 @@ describe('movement pathing around impassable terrain', () => {
       board: { width: 4, height: 1 },
       warbands: [
         [
-          { name: 'Runner', quality: 1, combat: 3, move: 3, pos: { x: 0, y: 0 } },
+          { name: 'Runner', quality: 1, combat: 3, slow: true, pos: { x: 0, y: 0 } },
           { name: 'Ally', quality: 1, combat: 3, pos: { x: 1, y: 0 } },
         ],
         [{ name: 'Far', quality: 1, combat: 3, pos: { x: 3, y: 0 } }],

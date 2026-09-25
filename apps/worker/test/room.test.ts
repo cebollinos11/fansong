@@ -111,7 +111,7 @@ describe('RoomEngine — seats', () => {
 describe('RoomEngine — lobby', () => {
   const HORDE: Warband = {
     name: 'Horde',
-    units: Array.from({ length: 9 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, move: 5, look: 'Marauder' })),
+    units: Array.from({ length: 9 }, (_, i) => ({ name: `Grunt ${i}`, quality: 2, combat: 6, fast: true, look: 'Marauder' })),
   };
 
   it('starts with default armies, the default map and annihilation, with no problem', () => {

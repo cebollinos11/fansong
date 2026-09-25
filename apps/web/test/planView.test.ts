@@ -27,7 +27,7 @@ function acting(c: GameConfig, actions: number): GameState {
 
 const index = (s: GameState) => buildPlanIndex(getActionPlans(s), s);
 
-const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, move: 3, pos: { x: 2, y: 3 } };
+const mover: UnitSpec = { name: 'Mover', quality: 3, combat: 3, slow: true, pos: { x: 2, y: 3 } };
 const far: UnitSpec = { name: 'Far', quality: 3, combat: 3, pos: { x: 10, y: 0 } };
 
 describe('buildPlanIndex', () => {
@@ -88,7 +88,7 @@ describe('buildPlanIndex', () => {
   it('prefers shooting now over walking into melee at the same price', () => {
     // An archer can shoot this target where it stands, or spend the same action
     // walking adjacent; standing still is the offer that keeps its distance.
-    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, move: 3, ranged: 6, pos: { x: 2, y: 3 } };
+    const archer: UnitSpec = { name: 'Archer', quality: 3, combat: 3, slow: true, ranged: 6, pos: { x: 2, y: 3 } };
     const foe: UnitSpec = { name: 'Foe', quality: 3, combat: 3, pos: { x: 4, y: 3 } };
     const idx = index(acting(config(5, [archer], [foe]), 2));
 

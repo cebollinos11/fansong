@@ -92,9 +92,11 @@ seed replays identically).
 
 `packages/content` turns stat lines into armies:
 
-- **Cost model** (`unitCost`) — an original, additive formula over the three
-  stats the engine actually simulates (Quality, Combat, Move), so a point total
-  is an honest measure of value with no unimplemented "paper" traits.
+- **Cost model** (`unitCost`) — an original, additive formula over what the
+  engine actually simulates (Quality, Combat, Move and the traits), so a point
+  total is an honest measure of value with no unimplemented "paper" traits.
+  Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
+  3 or 7.
 - **Validation** (`validateWarband`) — checks stat ranges, roster size, and a
   point budget (default 200), reporting every problem at once for a builder UI.
 - **Presets** — five original warbands (`iron-wardens`, `ashfang-raiders`,
