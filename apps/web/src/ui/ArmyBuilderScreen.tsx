@@ -8,6 +8,7 @@ import {
   unitCost,
   validateArmy,
   warbandCost,
+  type ShooterKind,
   type Warband,
   type WarbandUnit,
 } from '@fansong/content';
@@ -32,9 +33,12 @@ import {
   moveUnit,
   newArmy,
   presetTemplates,
+  SHOOTER_OPTIONS,
+  SHOOTER_TITLE,
   SPEED_TITLES,
   STAT_LABELS,
   templateUnit,
+  withShooter,
   withStat,
   withTrait,
 } from './armyView.js';
@@ -163,7 +167,7 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
               <option value="">Copy a preset…</option>
               {PRESET_IDS.map((id) => (
                 <option key={id} value={id}>
-                  {PRESETS[id]!.name}
+                  {PRESETS[id]!.name} — {warbandCost(PRESETS[id]!)} pts
                 </option>
               ))}
             </select>
@@ -208,6 +212,7 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
                       {STAT_LABELS[s].short}
                     </th>
                   ))}
+                  <th title={SHOOTER_TITLE}>Shooter</th>
                   <th title={SPEED_TITLES.slow}>Slow</th>
                   <th title={SPEED_TITLES.fast}>Fast</th>
                   <th title="Tough — the first would-be kill only knocks it down">Tough</th>
@@ -343,6 +348,19 @@ function UnitRow({
           />
         </td>
       ))}
+      <td>
+        <select
+          value={unit.shooter ?? ''}
+          aria-label="Shooter"
+          onChange={(e) => onChange(withShooter(unit, (e.target.value || undefined) as ShooterKind | undefined))}
+        >
+          {SHOOTER_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </td>
       <td>
         <input type="checkbox" checked={unit.slow ?? false} aria-label="Slow" onChange={(e) => onChange(withTrait(unit, 'slow', e.target.checked))} />
       </td>

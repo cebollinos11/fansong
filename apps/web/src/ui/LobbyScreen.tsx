@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DEFAULT_MAP_ID, defaultKing, getMap, PRESET_IDS } from '@fansong/content';
+import { DEFAULT_MAP_ID, defaultKing, getMap, PRESET_IDS, warbandCost } from '@fansong/content';
 import type { Owner } from '@fansong/engine';
 import type { Lobby } from '@fansong/protocol';
 import type { OnlineRoom } from '../game/OnlineRoom.js';
@@ -69,7 +69,7 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
             {them.present ? (
               <>
                 <p className="warband-meta">
-                  {them.warband.name} · {them.warband.units.length} units
+                  {them.warband.name} · {warbandCost(them.warband)} pts · {them.warband.units.length} units
                 </p>
                 <Roster warband={them.warband} king={kingMode ? them.king : undefined} />
               </>

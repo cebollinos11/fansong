@@ -13,7 +13,7 @@ import {
   saveArmy,
 } from '../src/game/armies.js';
 import type { MapStorage } from '../src/game/customMaps.js';
-import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, uniqueName, withStat, withTrait } from '../src/ui/armyView.js';
+import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, uniqueName, withShooter, withStat, withTrait } from '../src/ui/armyView.js';
 
 function memoryStorage(initial: Record<string, string> = {}): MapStorage & { data: Record<string, string> } {
   const data = { ...initial };
@@ -87,13 +87,17 @@ describe('saved armies', () => {
 });
 
 describe('army builder helpers', () => {
-  it('clamps stats into range and drops a zero range', () => {
+  it('clamps stats into range', () => {
     expect(clampStat('combat', 99)).toBe(6);
     expect(clampStat('quality', 1)).toBe(2);
-    expect(clampStat('ranged', NaN)).toBe(0);
-    const u = withStat({ name: 'A', quality: 3, combat: 3, ranged: 4 }, 'ranged', 0);
-    expect('ranged' in u).toBe(false);
-    expect(withStat(u, 'ranged', 3).ranged).toBe(3);
+    expect(clampStat('combat', NaN)).toBe(1);
+    expect(withStat({ name: 'A', quality: 3, combat: 3 }, 'combat', 9).combat).toBe(6);
+  });
+
+  it('sets a Shooter trait, dropping the key for melee only', () => {
+    const u = withShooter({ name: 'A', quality: 3, combat: 3 }, 'long');
+    expect(u.shooter).toBe('long');
+    expect('shooter' in withShooter(u, undefined)).toBe(false);
   });
 
   it('toggles traits, dropping the key when off', () => {
@@ -115,7 +119,7 @@ describe('army builder helpers', () => {
     expect(blankUnit(units).name).toBe('Soldier 2');
     expect(uniqueName('X', [])).toBe('X');
     const bow = PRESETS['hollow-watch']!.units[2]!;
-    expect(templateUnit(bow, [bow])).toMatchObject({ name: 'Longbow 2', look: 'Longbow', ranged: 4 });
+    expect(templateUnit(bow, [bow])).toMatchObject({ name: 'Longbow 2', look: 'Longbow', shooter: 'long' });
     expect(armyFromPreset('thorn-patrol').units.map((u) => u.look)).toEqual(['Thorn-Bow', 'Thorn-Blade', 'Thorn-Spear']);
   });
 

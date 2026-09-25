@@ -9,7 +9,17 @@ import {
   type TerrainFeature,
   type Unit,
 } from '@fansong/engine';
-import { PRESETS, profileMove, type MatchSetup, type WarbandUnit } from '@fansong/content';
+import {
+  PRESETS,
+  profileMove,
+  profileRange,
+  SHOOTER_KINDS,
+  SHOOTER_NAMES,
+  shooterForRange,
+  type MatchSetup,
+  type ShooterKind,
+  type WarbandUnit,
+} from '@fansong/content';
 import { playableArmies } from '../game/armies.js';
 import { browserStorage } from '../game/customMaps.js';
 import * as sandboxOps from '../game/sandbox.js';
@@ -297,7 +307,10 @@ export function SandboxScreen({ initial, setup, onExit }: Props): JSX.Element {
 
 /** A unit's profile, for spawning copies of it. */
 function templateOf(u: Unit): WarbandUnit {
-  const t: WarbandUnit = { name: u.name, quality: u.quality, combat: u.combat, ...u.traits };
+  const { ranged, ...traits } = u.traits;
+  const t: WarbandUnit = { name: u.name, quality: u.quality, combat: u.combat, ...traits };
+  const shooter = shooterForRange(ranged);
+  if (shooter) t.shooter = shooter;
   if (u.look !== undefined) t.look = u.look;
   return t;
 }
@@ -358,7 +371,20 @@ function ProfileFields({
       <div className="sb-row">
         <NumberField label="Q" value={profile.quality} min={1} max={6} onChange={(quality) => onChange({ quality })} />
         <NumberField label="C" value={profile.combat} min={0} max={9} onChange={(combat) => onChange({ combat })} />
-        <NumberField label="Rng" value={profile.ranged ?? 0} min={0} max={9} onChange={(ranged) => onChange({ ranged })} />
+        <label className="sb-num">
+          Shooter
+          <select
+            value={profile.shooter ?? ''}
+            onChange={(e) => onChange({ shooter: (e.target.value || undefined) as ShooterKind | undefined })}
+          >
+            <option value="">—</option>
+            {SHOOTER_KINDS.map((k) => (
+              <option key={k} value={k}>
+                {SHOOTER_NAMES[k]}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="sb-row sb-checks">
         {TRAITS.map((t) => (
@@ -515,12 +541,15 @@ function UnitSection({
       <OwnerPicker value={unit.owner} onChange={(owner) => onPatch({ owner })} />
       <ProfileFields
         profile={templateOf(unit)}
-        onChange={({ quality, combat, ...traits }) =>
+        onChange={(patch) => {
+          const { quality, combat, shooter, ...traits } = patch;
           onPatch({
             ...(quality !== undefined ? { quality } : {}),
             ...(combat !== undefined ? { combat } : {}),
-            traits,
-          })
+            // A Shooter trait is a range to the engine; picking none sets it to 0.
+            traits: 'shooter' in patch ? { ...traits, ranged: profileRange({ shooter }) } : traits,
+          });
+        }
         }
       />
       <div className="sb-row sb-checks">

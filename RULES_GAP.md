@@ -52,10 +52,9 @@ These are implemented, so they are not listed again below:
 | A player activates models one after another until a turnover or until they choose to stop, and then the whole turn passes to the opponent. | Players alternate **one unit at a time**, and a turnover benches the player for the round. | This is the project's core twist. |
 | Whoever goes first is decided by a roll, and players then alternate turns. | Initiative flips each round. | Part of the twist. |
 | An attack against a fallen model gets **+2**, and any win kills it. | A fallen defender only hurts its attacker on a natural 6, and any win against it kills. | This is a different mechanism with a similar feel. The original's +2 also makes a double, and so a kill, much easier. |
-| Points use a *multiplicative* formula: Combat and trait costs, scaled by a Quality multiplier. | Points use an original *additive* formula. | Intentional (IP note). Nothing to copy. |
 | Fear: a **gruesome** kill (see §3) makes nearby friends test, and a failure means fleeing. | A gruesome kill makes friends within 4 hexes test with one die, and a failure means a knockdown. | The trigger now matches (M8); the 3-dice test and fleeing are still open (§5). |
 | The player whose model is leaving contact chooses the order of the free hacks. | Free hacks come in unit order. | Avoids a new command mid-move; could become a choice later. |
-| Range penalties are counted in measuring-stick bands. | One −1 band beyond short range (the first half of the reach, rounded up). | Our ranges are 3–4 hexes, so a second band would make long shots nearly useless. |
+| Range penalties are counted in measuring-stick bands. | One −1 band beyond short range (the first half of the reach, rounded up). | Our ranges are only 3–7 hexes, so a second band would make long shots nearly useless. |
 
 ---
 
@@ -196,7 +195,7 @@ objective and are not leaders.
 
 ## 7. Special rules (traits)
 
-FanSong implements Ranged, Tough, Guard, Big, Flying and Reassembling (see the
+FanSong implements Shooter, Tough, Guard, Big, Flying and Reassembling (see the
 ✅ entries below). Guard and Reassembling have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
@@ -247,7 +246,7 @@ short paraphrase, and the exact effects should be checked before building one.
 - **Distract:** makes enemies in contact worse.
 
 **Shooting:**
-- **Shooter (Short / Medium / Long):** our `ranged` stat already covers this.
+- ✅ **Shooter (Short / Medium / Long):** implemented as Shooter (short range), Shooter and Shooter (long range), with ranges of 3, 5 and 7 hexes.
 - **Good Shot / Unerring Aim / Legendary Shot** *(revised)*: better aim, halved
   range penalties, and more shots per action. These need §4.1 first.
 
@@ -296,10 +295,10 @@ short paraphrase, and the exact effects should be checked before building one.
 
 - **Personalities.** Named heroes are capped at a fraction of the warband's
   points (about a third in the core rules and half in the advanced edition).
-- **A standard game size** in points. FanSong validates points, but there is no
-  agreed standard size yet.
-- **Costing traits.** Every new trait needs a price in `packages/content`,
-  following the existing pattern.
+- **A standard game size** in points. FanSong shows each warband's point total
+  but sets no limit, and there is no agreed standard size yet.
+- **Costing traits.** Every new trait must be counted as favorable (+3) or
+  unfavorable (−3) in `traitCounts` in `packages/content/src/cost.ts`.
 
 ## 10. Scenarios and campaigns
 

@@ -20,8 +20,8 @@ const legal: Warband = {
 
 describe('warbandCost', () => {
   it('sums the unit costs', () => {
-    // 31 + 22 + 27 = 80
-    expect(warbandCost(legal)).toBe(80);
+    // 30 + 15 + 23 = 68
+    expect(warbandCost(legal)).toBe(68);
   });
 });
 
@@ -30,7 +30,7 @@ describe('validateWarband', () => {
     const result = validateWarband(legal);
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
-    expect(result.cost).toBe(80);
+    expect(result.cost).toBe(68);
   });
 
   it('rejects a roster that is too small', () => {
@@ -49,7 +49,7 @@ describe('validateWarband', () => {
     expect(result.errors.some((e) => e.includes('too many'))).toBe(true);
   });
 
-  it('rejects an over-budget warband', () => {
+  it('has no point limit', () => {
     const elites = Array.from({ length: 8 }, (_, i) => ({
       name: `E${i}`,
       quality: 2,
@@ -57,11 +57,12 @@ describe('validateWarband', () => {
       fast: true,
     }));
     const result = validateWarband({ name: 'Deathstar', units: elites });
-    expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes('over budget'))).toBe(true);
+    expect(result.ok).toBe(true);
+    // (5*5 + 3) * (7-2) / 2 = 70 each
+    expect(result.cost).toBe(8 * 70);
   });
 
-  it('attributes a bad stat to its unit by name and skips the budget check', () => {
+  it('attributes a bad stat to its unit by name and costs only the clean units', () => {
     const result = validateWarband({
       name: 'Broken',
       units: [
@@ -72,18 +73,19 @@ describe('validateWarband', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.startsWith('Gremlin:'))).toBe(true);
-    expect(result.errors.some((e) => e.includes('over budget'))).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    expect(result.cost).toBe(60);
   });
 });
 
-describe('validateArmy (army builder: no point limit)', () => {
-  const grunt = { name: 'Grunt', quality: 2, combat: 6, fast: true, ranged: 8, tough: true, guard: true };
+describe('validateArmy (army builder)', () => {
+  const grunt = { name: 'Grunt', quality: 2, combat: 6, fast: true, shooter: 'long' as const, tough: true, guard: true };
 
   it('accepts any point total within the roster size', () => {
     const army: Warband = { name: 'Horde', units: Array.from({ length: ARMY_RULES.maxUnits }, () => grunt) };
     const check = validateArmy(army);
     expect(check.ok).toBe(true);
-    expect(check.cost).toBeGreaterThan(DEFAULT_RULES.budget * 10);
+    expect(check.cost).toBeGreaterThan(1000);
   });
 
   it('allows a single unit but not none, nor more than the cap', () => {
@@ -129,6 +131,22 @@ describe('parseWarband', () => {
       { name: 'N', quality: 3, combat: 3 },
       { name: 'F', quality: 3, combat: 3, fast: true },
     ]);
+  });
+
+  it('keeps a Shooter trait, drops an unknown one, and turns a legacy range into the nearest', () => {
+    const w = parseWarband({
+      name: 'Bows',
+      units: [
+        { name: 'L', quality: 3, combat: 2, shooter: 'long' },
+        { name: 'X', quality: 3, combat: 2, shooter: 'huge' },
+        { name: 'R3', quality: 3, combat: 2, ranged: 3 },
+        { name: 'R4', quality: 3, combat: 2, ranged: 4 },
+        { name: 'R8', quality: 3, combat: 2, ranged: 8 },
+        { name: 'R0', quality: 3, combat: 2, ranged: 0 },
+      ],
+    });
+    expect(w.units.map((u) => u.shooter)).toEqual(['long', undefined, 'short', 'normal', 'long', undefined]);
+    expect(w.units.every((u) => !('ranged' in u))).toBe(true);
   });
 
   it('rejects malformed input with a friendly error', () => {

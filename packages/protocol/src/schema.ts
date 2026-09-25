@@ -22,7 +22,7 @@ import type {
   Unit,
   UnitSpec,
 } from '@fansong/engine';
-import { ARMY_RULES, MAP_LIMITS, NAME_LIMITS, STAT_BOUNDS, type MatchSetup, type Seat, type Warband } from '@fansong/content';
+import { ARMY_RULES, MAP_LIMITS, NAME_LIMITS, SHOOTER_KINDS, STAT_BOUNDS, type MatchSetup, type Seat, type Warband } from '@fansong/content';
 
 /**
  * Wire schemas. These are the trust boundary: a Durable Object never `reduce`s a
@@ -362,7 +362,8 @@ export const unitSpecSchema = z
     pos: vecSchema,
     slow: z.boolean().optional(),
     fast: z.boolean().optional(),
-    ranged: stat(STAT_BOUNDS.ranged).optional(),
+    // A raw range: the Shooter traits give 3, 5 or 7, and replays recorded before them reach up to 8.
+    ranged: stat([0, 8]).optional(),
     tough: z.boolean().optional(),
     guard: z.boolean().optional(),
     big: z.boolean().optional(),
@@ -416,7 +417,7 @@ export const warbandUnitSchema = z
     name: z.string().max(NAME_LIMITS.unit),
     quality: z.number().int(),
     combat: z.number().int(),
-    ranged: z.number().int().optional(),
+    shooter: z.enum(SHOOTER_KINDS).optional(),
     slow: z.boolean().optional(),
     fast: z.boolean().optional(),
     tough: z.boolean().optional(),

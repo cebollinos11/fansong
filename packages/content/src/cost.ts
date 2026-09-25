@@ -1,13 +1,12 @@
-import { BASE_MOVE, unitMove } from '@fansong/engine';
+import { unitMove } from '@fansong/engine';
 
 /**
  * Point-buy costing. A unit's cost is derived purely from what the engine
  * actually simulates — Quality, Combat, Move and the special traits — so a point total is
  * an honest measure of battlefield value with no unimplemented "paper" traits.
  *
- * The formula is original to FanSong (game mechanics aren't copyrightable, but
- * the numbers here are ours) and deliberately additive so a builder UI can show
- * each stat's contribution and so costs are trivial to reason about in tests.
+ * The formula is the official Song of Blades and Heroes one: Combat and the
+ * special traits are summed, then scaled by a Quality multiplier (see {@link unitCost}).
  */
 
 /** The stats a costed unit profile is built from. See engine `Unit`. */
@@ -16,12 +15,12 @@ export interface Profile {
   quality: number;
   /** Melee value added to the d6 in opposed rolls. Higher is better. */
   combat: number;
-  /** Slow: 2 fewer hexes per Move action than {@link BASE_MOVE} (see engine `unitMove`). */
+  /** Slow: 2 fewer hexes per Move action than the engine's `BASE_MOVE` (see `unitMove`). */
   slow?: boolean;
-  /** Fast: 2 more hexes per Move action than {@link BASE_MOVE} (see engine `unitMove`). */
+  /** Fast: 2 more hexes per Move action than the engine's `BASE_MOVE` (see `unitMove`). */
   fast?: boolean;
-  /** Ranged attack range in cells (0/omitted = melee only). */
-  ranged?: number;
+  /** Shooter: which kind of Shooter trait the unit has, and so its range (see {@link SHOOTER_RANGE}). Omitted = melee only. */
+  shooter?: ShooterKind;
   /** Tough: first would-be kill downgraded to a knockdown. */
   tough?: boolean;
   /** Guard: may riposte the first melee attacker. */
@@ -34,61 +33,72 @@ export interface Profile {
   reassembling?: boolean;
 }
 
+/** The kinds of Shooter trait: short range, plain Shooter, and long range. */
+export const SHOOTER_KINDS = ['short', 'normal', 'long'] as const;
+export type ShooterKind = (typeof SHOOTER_KINDS)[number];
+
+/** Shooting range in hexes each Shooter trait gives. */
+export const SHOOTER_RANGE: Record<ShooterKind, number> = { short: 3, normal: 5, long: 7 };
+
+/** Each Shooter trait's name, as the rules and the UI call it. */
+export const SHOOTER_NAMES: Record<ShooterKind, string> = {
+  short: 'Shooter (short range)',
+  normal: 'Shooter',
+  long: 'Shooter (long range)',
+};
+
+/** Shooting range in hexes a profile gets from its Shooter trait (0 = melee only). */
+export function profileRange(p: Pick<Profile, 'shooter'>): number {
+  return p.shooter ? SHOOTER_RANGE[p.shooter] : 0;
+}
+
+/**
+ * The Shooter trait whose range is nearest to `range` hexes (0 or less = none),
+ * for carrying over units that stored a raw range. Ties go to the longer kind.
+ */
+export function shooterForRange(range: number): ShooterKind | undefined {
+  if (!(range > 0)) return undefined;
+  let best: ShooterKind = SHOOTER_KINDS[0];
+  for (const k of SHOOTER_KINDS) {
+    if (Math.abs(SHOOTER_RANGE[k] - range) <= Math.abs(SHOOTER_RANGE[best] - range)) best = k;
+  }
+  return best;
+}
+
 /** Inclusive `[min, max]` legal range for each stat. */
 export const STAT_BOUNDS = {
   quality: [2, 6] as const,
   combat: [1, 6] as const,
-  ranged: [0, 8] as const,
 };
 
-/** Hexes per Move action a profile gets: the engine's {@link BASE_MOVE}, shifted by Slow or Fast. */
+/** Hexes per Move action a profile gets: the engine's `BASE_MOVE`, shifted by Slow or Fast. */
 export function profileMove(p: Pick<Profile, 'slow' | 'fast'>): number {
   return unitMove({ traits: { slow: p.slow ?? false, fast: p.fast ?? false } });
 }
 
-/** Weights of the additive cost formula. Exported so a UI can itemise a cost. */
+/** Weights of the cost formula. Exported so a UI can itemise a cost. */
 export const COST_WEIGHTS = {
-  /** Flat floor so even a minimal model costs something. */
-  base: 4,
-  /** Each point of Quality *better* than the worst (6) is worth this much. */
-  perQuality: 4,
-  /** Each point of Combat is worth this much. */
+  /** Each point of Combat is worth this much, before the Quality multiplier. */
   perCombat: 5,
   /**
-   * Each cell of Move away from {@link BASE_MOVE} is worth this much, so Fast
-   * costs `SPEED_STEP * perMove` and Slow refunds as much. On the
-   * hex board a cell of extra reach opens a disc of `3r(r+1)` cells (smaller than
-   * a square king-move window), so mobility is priced a touch below a point of
-   * Combat.
+   * Each favorable trait adds this much, before the Quality multiplier: Fast,
+   * any one Shooter trait, Tough, Guard, Big, Flying and Reassembling.
    */
-  perMove: 2,
-  /** Each cell of ranged reach is worth this much (attacking without reprisal). */
-  perRanged: 3,
-  /** Flat surcharge for the Tough trait (a free save against the first kill). */
-  tough: 12,
-  /** Flat surcharge for the Guard trait (a defensive riposte). */
-  guard: 10,
-  /**
-   * Flat surcharge for the Big trait. It is worth about a point of Combat in
-   * melee (and only against smaller foes), but it hands every shooter a point
-   * back, so it is priced well under {@link COST_WEIGHTS.perCombat}.
-   */
-  big: 3,
-  /**
-   * Flat surcharge for the Flying trait. Free rein over terrain and units, immunity
-   * to free hacks, and a swoop that hits grounded foes at +1 add up to a potent
-   * package — priced near a Guard's, shaded down because every shooter aims at an
-   * airborne flyer at +1.
-   */
-  flying: 9,
-  /**
-   * Flat surcharge for the Reassembling trait. It saves no lives — a lethal blow
-   * still kills — but it turns every knockdown into a mere stumble, refunding the
-   * action a downed unit would otherwise spend standing up. Worth about half a
-   * Tough save: it recovers only from knockdowns, and only once the round turns.
-   */
-  reassembling: 6,
+  favorable: 3,
+  /** Each unfavorable trait adds this much (a rebate), before the Quality multiplier: Slow. */
+  unfavorable: -3,
+  /** Quality is scored as `qualityBase - quality`, so Quality 2 multiplies by 5 and Quality 6 by 1. */
+  qualityBase: 7,
 };
+
+/** How many of a profile's traits are favorable and how many unfavorable. */
+export function traitCounts(p: Profile): { favorable: number; unfavorable: number } {
+  const favorable = [p.fast, p.shooter !== undefined, p.tough, p.guard, p.big, p.flying, p.reassembling].filter(
+    Boolean,
+  ).length;
+  const unfavorable = p.slow ? 1 : 0;
+  return { favorable, unfavorable };
+}
 
 function inRange(value: number, [min, max]: readonly [number, number]): boolean {
   return Number.isInteger(value) && value >= min && value <= max;
@@ -101,29 +111,24 @@ export function statErrors(p: Profile): string[] {
     errors.push(`quality ${p.quality} out of range ${STAT_BOUNDS.quality.join('..')}`);
   if (!inRange(p.combat, STAT_BOUNDS.combat))
     errors.push(`combat ${p.combat} out of range ${STAT_BOUNDS.combat.join('..')}`);
-  if (!inRange(p.ranged ?? 0, STAT_BOUNDS.ranged))
-    errors.push(`ranged ${p.ranged} out of range ${STAT_BOUNDS.ranged.join('..')}`);
+  if (p.shooter !== undefined && !SHOOTER_KINDS.includes(p.shooter))
+    errors.push(`unknown shooter trait ${String(p.shooter)}`);
   if (p.slow && p.fast) errors.push('cannot be both slow and fast');
   return errors;
 }
 
 /**
- * Point cost of a single unit profile. Assumes valid stats; callers that accept
- * untrusted profiles should run {@link statErrors} first. Always >= 1.
+ * Point cost of a single unit profile, by the Song of Blades and Heroes formula
+ * `(C * 5 + Special Abilities) * (7 - Q) / 2`, where Special Abilities sums
+ * {@link COST_WEIGHTS.favorable} per favorable trait and
+ * {@link COST_WEIGHTS.unfavorable} per unfavorable one. Halves round up.
+ * Assumes valid stats; callers that accept untrusted profiles should run
+ * {@link statErrors} first. Always >= 1.
  */
 export function unitCost(p: Profile): number {
-  const { base, perQuality, perCombat, perMove, perRanged, tough, guard, big, flying, reassembling } = COST_WEIGHTS;
-  const qualityMax = STAT_BOUNDS.quality[1]; // worst quality = cheapest
-  const cost =
-    base +
-    (qualityMax - p.quality) * perQuality +
-    p.combat * perCombat +
-    (profileMove(p) - BASE_MOVE) * perMove +
-    (p.ranged ?? 0) * perRanged +
-    (p.tough ? tough : 0) +
-    (p.guard ? guard : 0) +
-    (p.big ? big : 0) +
-    (p.flying ? flying : 0) +
-    (p.reassembling ? reassembling : 0);
+  const { perCombat, favorable, unfavorable, qualityBase } = COST_WEIGHTS;
+  const traits = traitCounts(p);
+  const abilities = traits.favorable * favorable + traits.unfavorable * unfavorable;
+  const cost = Math.ceil(((p.combat * perCombat + abilities) * (qualityBase - p.quality)) / 2);
   return Math.max(1, cost);
 }

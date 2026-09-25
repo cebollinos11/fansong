@@ -9,6 +9,7 @@ import {
   PRESET_IDS,
   PRESETS,
   profileMove,
+  profileRange,
   supportedModes,
   validateArmy,
   validateWarband,
@@ -319,7 +320,7 @@ export function WarbandPicker({
   const check = isArmyChoice(value) ? validateArmy(wb) : validateWarband(wb);
   const presetOptions = PRESET_IDS.map((id) => (
     <option key={id} value={id}>
-      {PRESETS[id]!.name}
+      {PRESETS[id]!.name} — {warbandCost(PRESETS[id]!)} pts
     </option>
   ));
   return (
@@ -334,7 +335,7 @@ export function WarbandPicker({
             <optgroup label="Your armies">
               {armies.map((a) => (
                 <option key={a.id} value={armyChoice(a.id)}>
-                  {a.warband.name}
+                  {a.warband.name} — {warbandCost(a.warband)} pts
                 </option>
               ))}
             </optgroup>
@@ -380,7 +381,7 @@ export function Roster({
           )}
           <span className="stats">
             Q{u.quality} C{u.combat} M{profileMove(u)}
-            {u.ranged ? ` R${u.ranged}` : ''}
+            {u.shooter ? ` R${profileRange(u)}` : ''}
             {u.tough ? ' Tough' : ''}
             {u.guard ? ' Guard' : ''}
           </span>

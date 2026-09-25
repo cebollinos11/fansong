@@ -1,13 +1,31 @@
 import { describe, expect, it } from 'vitest';
-import { BASE_MOVE, SPEED_STEP } from '@fansong/engine';
-import { COST_WEIGHTS, profileMove, STAT_BOUNDS, statErrors, unitCost, type Profile } from '../src/cost.js';
+import { BASE_MOVE } from '@fansong/engine';
+import {
+  COST_WEIGHTS,
+  profileMove,
+  profileRange,
+  SHOOTER_KINDS,
+  shooterForRange,
+  STAT_BOUNDS,
+  statErrors,
+  unitCost,
+  type Profile,
+  type ShooterKind,
+} from '../src/cost.js';
 
 const baseline: Profile = { quality: 3, combat: 3 };
 
 describe('unitCost', () => {
-  it('costs a baseline profile at a stable known value', () => {
-    // base 4 + (6-3)*4 + 3*5 + 0 = 31
-    expect(unitCost(baseline)).toBe(31);
+  it('costs a baseline profile by (C*5 + SA) * (7-Q) / 2', () => {
+    // (3*5 + 0) * (7-3) / 2 = 30
+    expect(unitCost(baseline)).toBe(30);
+    // (4*5 + 0) * (7-2) / 2 = 50
+    expect(unitCost({ quality: 2, combat: 4 })).toBe(50);
+  });
+
+  it('rounds a half point up', () => {
+    // (3*5 + 0) * (7-4) / 2 = 22.5
+    expect(unitCost({ quality: 4, combat: 3 })).toBe(23);
   });
 
   it('makes better Quality (lower number) cost more', () => {
@@ -25,42 +43,26 @@ describe('unitCost', () => {
     expect(c4).toBeGreaterThan(c2);
   });
 
-  it('charges for Fast and rebates Slow, per cell of Move they shift', () => {
-    const step = SPEED_STEP * COST_WEIGHTS.perMove;
-    expect(unitCost({ ...baseline, fast: true }) - unitCost(baseline)).toBe(step);
-    expect(unitCost(baseline) - unitCost({ ...baseline, slow: true })).toBe(step);
+  it('adds 3 per favorable trait, scaled by Quality', () => {
+    // (3*5 + 3) * (7-3) / 2 = 36
+    for (const trait of ['fast', 'tough', 'guard', 'big', 'flying', 'reassembling'] as const) {
+      expect(unitCost({ ...baseline, [trait]: true })).toBe(36);
+    }
+    for (const shooter of SHOOTER_KINDS) expect(unitCost({ ...baseline, shooter })).toBe(36);
+    // (3*5 + 6) * (7-3) / 2 = 42
+    expect(unitCost({ ...baseline, tough: true, guard: true })).toBe(42);
+  });
+
+
+  it('takes 3 off per unfavorable trait, scaled by Quality', () => {
+    // (3*5 - 3) * (7-3) / 2 = 24
+    expect(unitCost({ ...baseline, slow: true })).toBe(24);
+    expect(COST_WEIGHTS.unfavorable).toBe(-COST_WEIGHTS.favorable);
   });
 
   it('never returns less than 1 even for the worst legal stats', () => {
     const worst: Profile = { quality: STAT_BOUNDS.quality[1], combat: STAT_BOUNDS.combat[0], slow: true };
     expect(unitCost(worst)).toBeGreaterThanOrEqual(1);
-  });
-
-  it('charges per cell of ranged reach', () => {
-    expect(unitCost({ ...baseline, ranged: 4 }) - unitCost(baseline)).toBe(4 * COST_WEIGHTS.perRanged);
-    expect(unitCost({ ...baseline, ranged: 0 })).toBe(unitCost(baseline));
-  });
-
-  it('charges a flat surcharge for Tough and Guard', () => {
-    expect(unitCost({ ...baseline, tough: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.tough);
-    expect(unitCost({ ...baseline, guard: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.guard);
-    expect(unitCost({ ...baseline, tough: true, guard: true }) - unitCost(baseline)).toBe(
-      COST_WEIGHTS.tough + COST_WEIGHTS.guard,
-    );
-  });
-
-  it('charges for Big, but under a point of Combat — it cuts both ways', () => {
-    expect(unitCost({ ...baseline, big: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.big);
-    expect(COST_WEIGHTS.big).toBeLessThan(COST_WEIGHTS.perCombat);
-  });
-
-  it('charges a flat surcharge for Flying', () => {
-    expect(unitCost({ ...baseline, flying: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.flying);
-  });
-
-  it('charges a flat surcharge for Reassembling, under a Tough save', () => {
-    expect(unitCost({ ...baseline, reassembling: true }) - unitCost(baseline)).toBe(COST_WEIGHTS.reassembling);
-    expect(COST_WEIGHTS.reassembling).toBeLessThan(COST_WEIGHTS.tough);
   });
 });
 
@@ -73,7 +75,7 @@ describe('statErrors', () => {
     expect(statErrors({ quality: 1, combat: 3 })).toHaveLength(1);
     expect(statErrors({ quality: 3, combat: 9 })).toHaveLength(1);
     expect(statErrors({ quality: 3.5, combat: 3 })).toHaveLength(1);
-    expect(statErrors({ quality: 0, combat: 0, ranged: -1 })).toHaveLength(3);
+    expect(statErrors({ quality: 0, combat: 0 })).toHaveLength(2);
   });
 
   it('rejects a unit both Slow and Fast', () => {
@@ -82,10 +84,9 @@ describe('statErrors', () => {
     expect(statErrors({ ...baseline, slow: true, fast: true })).toHaveLength(1);
   });
 
-  it('rejects a ranged value out of range but accepts an omitted one', () => {
-    expect(statErrors({ ...baseline, ranged: 9 })).toHaveLength(1);
-    expect(statErrors({ ...baseline, ranged: 4 })).toEqual([]);
-    expect(statErrors(baseline)).toEqual([]); // ranged omitted == 0
+  it('accepts each Shooter trait and rejects an unknown one', () => {
+    for (const shooter of SHOOTER_KINDS) expect(statErrors({ ...baseline, shooter })).toEqual([]);
+    expect(statErrors({ ...baseline, shooter: 'huge' as ShooterKind })).toHaveLength(1);
   });
 });
 
@@ -95,5 +96,23 @@ describe('profileMove', () => {
     expect(profileMove(baseline)).toBe(5);
     expect(profileMove({ slow: true })).toBe(3);
     expect(profileMove({ fast: true })).toBe(7);
+  });
+});
+
+describe('profileRange', () => {
+  it('gives short range 3, Shooter 5 and long range 7, and melee units 0', () => {
+    expect(profileRange({ shooter: 'short' })).toBe(3);
+    expect(profileRange({ shooter: 'normal' })).toBe(5);
+    expect(profileRange({ shooter: 'long' })).toBe(7);
+    expect(profileRange(baseline)).toBe(0);
+  });
+});
+
+describe('shooterForRange', () => {
+  it('picks the Shooter trait nearest a raw range, ties going longer', () => {
+    expect(shooterForRange(0)).toBeUndefined();
+    expect([1, 2, 3].map(shooterForRange)).toEqual(['short', 'short', 'short']);
+    expect([4, 5].map(shooterForRange)).toEqual(['normal', 'normal']);
+    expect([6, 7, 8].map(shooterForRange)).toEqual(['long', 'long', 'long']);
   });
 });

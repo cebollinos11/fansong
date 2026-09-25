@@ -3,7 +3,7 @@ import type { Warband } from './warband.js';
 /**
  * Original preset warbands. Names, themes, and stat lines are FanSong's own —
  * no trademarked names or published profiles. Each is built to be legal under
- * {@link DEFAULT_RULES} (<= 200 pts); the preset test asserts that invariant.
+ * {@link DEFAULT_RULES}; the preset test asserts that invariant.
  *
  * Design intent (so the AI-vs-AI matchups stay interesting):
  * *  - iron-wardens : tough, disciplined — wins by grinding; a Slow, Big, Tough
@@ -11,7 +11,7 @@ import type { Warband } from './warband.js';
  *  - ashfang-raiders : fast and fragile — wins by reaching you first (melee only).
  *  - free-company : a balanced generalist baseline with a ranged skirmisher.
  *  - hollow-watch : a defensive garrison showcasing all three M5 traits
- *    (Ranged bows, a Tough shield-warden, and a Guard captain).
+ *    (Shooter bows, a Tough shield-warden, and a Guard captain).
  *  - thorn-patrol : a minimum-size (3-unit) band — one bow, two foot — for
  *    quick games and small boards.
  *  - sky-talons : a pair of Flying gryphons that vault terrain and gang up in
@@ -55,7 +55,7 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Sergeant', quality: 3, combat: 4 },
       { name: 'Swordsman', quality: 3, combat: 3 },
       { name: 'Pikeman', quality: 3, combat: 3 },
-      { name: 'Slinger', quality: 3, combat: 2, fast: true, ranged: 3 },
+      { name: 'Slinger', quality: 3, combat: 2, fast: true, shooter: 'short' },
       { name: 'Halberd-Recruit', quality: 4, combat: 3 },
       { name: 'Recruit', quality: 4, combat: 3 },
     ],
@@ -65,15 +65,15 @@ export const PRESETS: Record<string, Warband> = {
     units: [
       { name: 'Watch-Captain', quality: 2, combat: 4, guard: true },
       { name: 'Shield-Warden', quality: 3, combat: 3, tough: true },
-      { name: 'Longbow', quality: 3, combat: 2, ranged: 4 },
-      { name: 'Crossbow', quality: 4, combat: 3, ranged: 3 },
+      { name: 'Longbow', quality: 3, combat: 2, shooter: 'long' },
+      { name: 'Crossbow', quality: 4, combat: 3, shooter: 'short' },
       { name: 'Sentry', quality: 3, combat: 3 },
     ],
   },
   'thorn-patrol': {
     name: 'Thorn Patrol',
     units: [
-      { name: 'Thorn-Bow', quality: 3, combat: 2, ranged: 4 },
+      { name: 'Thorn-Bow', quality: 3, combat: 2, shooter: 'normal' },
       { name: 'Thorn-Blade', quality: 3, combat: 4 },
       { name: 'Thorn-Spear', quality: 3, combat: 3 },
     ],
@@ -83,7 +83,7 @@ export const PRESETS: Record<string, Warband> = {
     units: [
       { name: 'Sky-Talon', quality: 3, combat: 3, fast: true, flying: true },
       { name: 'Storm-Talon', quality: 3, combat: 3, fast: true, flying: true },
-      { name: 'Talon-Falconer', quality: 3, combat: 2, ranged: 3 },
+      { name: 'Talon-Falconer', quality: 3, combat: 2, shooter: 'short' },
       { name: 'Skywatch', quality: 3, combat: 3 },
       { name: 'Fledgling', quality: 4, combat: 2, fast: true },
     ],
@@ -94,8 +94,8 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Bone-Sergeant', quality: 3, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
       { name: 'Skeleton Infantry', quality: 4, combat: 3, reassembling: true },
       { name: 'Bone-Legionary', quality: 4, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
-      { name: 'Skeleton Archer', quality: 4, combat: 2, ranged: 3, reassembling: true },
-      { name: 'Bone-Fletcher', quality: 4, combat: 2, ranged: 3, reassembling: true, look: 'Skeleton Archer' },
+      { name: 'Skeleton Archer', quality: 4, combat: 2, shooter: 'short', reassembling: true },
+      { name: 'Bone-Fletcher', quality: 4, combat: 2, shooter: 'short', reassembling: true, look: 'Skeleton Archer' },
     ],
   },
   'grave-knights': {
@@ -123,7 +123,7 @@ export const PRESETS: Record<string, Warband> = {
       { name: 'Wild Wyvern', quality: 3, combat: 4, fast: true, flying: true },
       { name: 'Bear', quality: 4, combat: 4, big: true },
       { name: 'Yeti', quality: 3, combat: 5, big: true },
-      { name: 'Giant Spider', quality: 3, combat: 3, ranged: 2, big: true },
+      { name: 'Giant Spider', quality: 3, combat: 3, shooter: 'short', big: true },
     ],
   },
 };

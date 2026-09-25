@@ -1,4 +1,4 @@
-import { statErrors, unitCost, type Profile } from './cost.js';
+import { SHOOTER_KINDS, shooterForRange, statErrors, unitCost, type Profile, type ShooterKind } from './cost.js';
 
 /** A named unit profile within a warband roster. */
 export interface WarbandUnit extends Profile {
@@ -10,7 +10,7 @@ export interface WarbandUnit extends Profile {
   look?: string;
 }
 
-/** A roster: a name plus its units. Points are derived, never stored. */
+/** A roster: a name plus its units. Points are derived, never stored, and never capped. */
 export interface Warband {
   name: string;
   units: WarbandUnit[];
@@ -18,8 +18,6 @@ export interface Warband {
 
 /** Constraints a legal warband must satisfy. */
 export interface WarbandRules {
-  /** Maximum total point cost. */
-  budget: number;
   /** Fewest units allowed. */
   minUnits: number;
   /** Most units allowed. */
@@ -28,17 +26,15 @@ export interface WarbandRules {
 
 /** Default constraints for a standard FanSong skirmish. */
 export const DEFAULT_RULES: WarbandRules = {
-  budget: 200,
   minUnits: 3,
   maxUnits: 12,
 };
 
 /**
- * Constraints for an army-builder army: no point limit, just a sane roster size.
+ * Constraints for an army-builder army: a sane roster size.
  * Whether it fits a map's deploy zone is checked when the match is built.
  */
 export const ARMY_RULES: WarbandRules = {
-  budget: Infinity,
   minUnits: 1,
   maxUnits: 30,
 };
@@ -59,7 +55,8 @@ export interface ValidationResult {
 
 /**
  * Check a warband against its rules. Reports *all* problems (bad stats, roster
- * size, over budget) at once so a builder UI can surface them together.
+ * size) at once so a builder UI can surface them together. There is no point
+ * limit: the cost is reported for display only.
  */
 export function validateWarband(w: Warband, rules: WarbandRules = DEFAULT_RULES): ValidationResult {
   const errors: string[] = [];
@@ -74,12 +71,8 @@ export function validateWarband(w: Warband, rules: WarbandRules = DEFAULT_RULES)
   }
 
   // Cost is only meaningful when every stat is in range; otherwise unitCost can
-  // return a misleading number, so gate the budget check on clean stats.
-  const cost = errors.length === 0 ? warbandCost(w) : NaN;
-  if (Number.isFinite(cost) && cost > rules.budget)
-    errors.push(`over budget: ${cost} > ${rules.budget}`);
-
-  return { ok: errors.length === 0, cost: Number.isFinite(cost) ? cost : warbandCostSafe(w), errors };
+  // return a misleading number, so count only the units with clean stats.
+  return { ok: errors.length === 0, cost: warbandCostSafe(w), errors };
 }
 
 /** Best-effort cost even when some stats are invalid, for display alongside errors. */
@@ -89,7 +82,7 @@ function warbandCostSafe(w: Warband): number {
 
 /**
  * Check an army-builder army: {@link validateWarband} under {@link ARMY_RULES}
- * (so no point limit), plus non-empty, bounded names.
+ * (a larger roster), plus non-empty, bounded names.
  */
 export function validateArmy(w: Warband): ValidationResult {
   const result = validateWarband(w, ARMY_RULES);
@@ -108,7 +101,7 @@ export function validateArmy(w: Warband): ValidationResult {
  * Structurally parse an untrusted warband (a saved army, an imported file).
  * Throws a friendly `Error` unless it has a name and a list of units with a
  * name and numeric stats; unknown keys are dropped (a legacy numeric `move`
- * becomes Slow or Fast). Stat ranges and roster
+ * becomes Slow or Fast, and a legacy `ranged` the nearest Shooter trait). Stat ranges and roster
  * size are left to {@link validateArmy}.
  */
 export function parseWarband(raw: unknown): Warband {
@@ -123,7 +116,13 @@ export function parseWarband(raw: unknown): Warband {
       return v;
     };
     const unit: WarbandUnit = { name: u.name, quality: num('quality'), combat: num('combat') };
-    if (u.ranged !== undefined) unit.ranged = num('ranged');
+    if (typeof u.shooter === 'string' && (SHOOTER_KINDS as readonly string[]).includes(u.shooter))
+      unit.shooter = u.shooter as ShooterKind;
+    // Armies saved before the Shooter traits carried a raw range in hexes.
+    else if (u.ranged !== undefined) {
+      const shooter = shooterForRange(num('ranged'));
+      if (shooter) unit.shooter = shooter;
+    }
     if (u.slow === true) unit.slow = true;
     if (u.fast === true) unit.fast = true;
     // Armies saved before Slow/Fast carried a raw Move against a baseline of 3.

@@ -18,7 +18,7 @@ import {
   type UnitTraits,
   type Vec,
 } from '@fansong/engine';
-import type { WarbandUnit } from '@fansong/content';
+import { profileRange, type WarbandUnit } from '@fansong/content';
 
 /**
  * The dev sandbox's rule-bending operations. Everything here is pure: each edit
@@ -78,7 +78,7 @@ export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, 
     traits: {
       slow: profile.slow ?? false,
       fast: profile.fast ?? false,
-      ranged: profile.ranged ?? 0,
+      ranged: profileRange(profile),
       tough: profile.tough ?? false,
       guard: profile.guard ?? false,
       big: profile.big ?? false,

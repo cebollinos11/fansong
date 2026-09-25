@@ -1,5 +1,16 @@
 import { BASE_MOVE, SPEED_STEP } from '@fansong/engine';
-import { ARMY_RULES, PRESET_IDS, PRESETS, STAT_BOUNDS, type Warband, type WarbandUnit } from '@fansong/content';
+import {
+  ARMY_RULES,
+  PRESET_IDS,
+  PRESETS,
+  SHOOTER_KINDS,
+  SHOOTER_NAMES,
+  SHOOTER_RANGE,
+  STAT_BOUNDS,
+  type ShooterKind,
+  type Warband,
+  type WarbandUnit,
+} from '@fansong/content';
 import { UNIT_SPRITES } from '../three/unitSprites.js';
 
 /**
@@ -12,13 +23,12 @@ import { UNIT_SPRITES } from '../three/unitSprites.js';
 export const ARMY_RULES_TEXT = `No point limit — ${ARMY_RULES.minUnits} to ${ARMY_RULES.maxUnits} units. Points are shown so you can agree on a size.`;
 
 /** The numeric stats the builder edits, in column order. */
-export const EDITABLE_STATS = ['quality', 'combat', 'ranged'] as const;
+export const EDITABLE_STATS = ['quality', 'combat'] as const;
 export type EditableStat = (typeof EDITABLE_STATS)[number];
 
 export const STAT_LABELS: Record<EditableStat, { short: string; title: string }> = {
   quality: { short: 'Q', title: 'Quality — activation dice succeed on this or higher (lower is better)' },
   combat: { short: 'C', title: 'Combat — added to the d6 in fights (higher is better)' },
-  ranged: { short: 'Rng', title: 'Ranged — shooting range in hexes (0 = melee only)' },
 };
 
 /** Every look a unit can take: the sprites of the preset units, by preset unit name. */
@@ -31,10 +41,27 @@ export function clampStat(stat: EditableStat, value: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
-/** A copy of `unit` with `stat` set (clamped); a ranged value of 0 drops the key. */
+/** A copy of `unit` with `stat` set (clamped). */
 export function withStat(unit: WarbandUnit, stat: EditableStat, value: number): WarbandUnit {
-  const next = { ...unit, [stat]: clampStat(stat, value) };
-  if (stat === 'ranged' && next.ranged === 0) delete next.ranged;
+  return { ...unit, [stat]: clampStat(stat, value) };
+}
+
+/** What the Shooter column means, in words. */
+export const SHOOTER_TITLE = `Shooter — shoots at range, taking no return damage: ${SHOOTER_KINDS.map(
+  (k) => `${SHOOTER_NAMES[k]} ${SHOOTER_RANGE[k]} hexes`,
+).join(', ')}`;
+
+/** The Shooter column's choices: melee only, then each Shooter trait with its range. */
+export const SHOOTER_OPTIONS: readonly { value: ShooterKind | ''; label: string }[] = [
+  { value: '', label: '—' },
+  ...SHOOTER_KINDS.map((k) => ({ value: k, label: `${SHOOTER_NAMES[k]} · ${SHOOTER_RANGE[k]}` })),
+];
+
+/** A copy of `unit` with its Shooter trait set, or dropped for `undefined` (melee only). */
+export function withShooter(unit: WarbandUnit, shooter: ShooterKind | undefined): WarbandUnit {
+  const next = { ...unit };
+  if (shooter) next.shooter = shooter;
+  else delete next.shooter;
   return next;
 }
 

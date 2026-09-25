@@ -1,5 +1,5 @@
 import { makeHexGrid, type GameConfig, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
-import { unitCost } from './cost.js';
+import { profileRange, unitCost } from './cost.js';
 import { flatMap, mapToBoard, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
 import type { Warband, WarbandUnit } from './warband.js';
@@ -59,7 +59,7 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     // Carry the special-ability traits through to the engine profile.
     slow: unit.slow,
     fast: unit.fast,
-    ranged: unit.ranged,
+    ranged: profileRange(unit),
     tough: unit.tough,
     guard: unit.guard,
     big: unit.big,

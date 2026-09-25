@@ -92,16 +92,17 @@ seed replays identically).
 
 `packages/content` turns stat lines into armies:
 
-- **Cost model** (`unitCost`) — an original, additive formula over what the
-  engine actually simulates (Quality, Combat, Move and the traits), so a point
-  total is an honest measure of value with no unimplemented "paper" traits.
+- **Cost model** (`unitCost`) — the Song of Blades and Heroes formula
+  `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
+  favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling) adds
+  3 to Special Abilities and each unfavorable one (Slow) takes 3 off.
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
   3 or 7.
-- **Validation** (`validateWarband`) — checks stat ranges, roster size, and a
-  point budget (default 200), reporting every problem at once for a builder UI.
+- **Validation** (`validateWarband`) — checks stat ranges and roster size,
+  reporting every problem at once for a builder UI. There is no point limit:
+  the total cost is shown next to each warband's name so players can agree on a size.
 - **Presets** — five original warbands (`iron-wardens`, `ashfang-raiders`,
-  `free-company`, `hollow-watch`, `thorn-patrol`), each proven legal by the test suite. The cost
-  model prices the M5 traits too (ranged reach, plus flat Tough/Guard surcharges).
+  `free-company`, `hollow-watch`, `thorn-patrol`), each proven legal by the test suite.
 - **Deploy** (`buildMatch`) — lays two warbands out facing off and emits an
   engine `GameConfig`; the CLI and any future UI share it.
 
@@ -180,8 +181,10 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
 
 - **Special abilities** — three original traits, each behind the command /
   legal-move seams and priced in `packages/content`:
-  - **Ranged** (`Shoot`) — fire on a non-adjacent enemy within range and line of
-    sight, with no return damage; you can't shoot while locked in melee.
+  - **Shooter** (`Shoot`) — fire on a non-adjacent enemy within range and line of
+    sight, with no return damage; you can't shoot while locked in melee. The
+    trait sets the range: Shooter (short range) 3 hexes, Shooter 5, Shooter
+    (long range) 7.
   - **Tough** — the first would-be kill is downgraded to a knockdown.
   - **Guard** (reaction) — a `Guard` action assumes a stance; a guarding unit
     strikes the first melee attacker *first*, and a good riposte prevents the
