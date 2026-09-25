@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "sprites": "tsx scripts/import-wesnoth.ts"
+    "sprites": "tsx scripts/import-wesnoth.ts",
+    "apply-presets": "tsx scripts/apply-presets.ts"
   },
   "dependencies": {
     "@fansong/ai": "workspace:*",
