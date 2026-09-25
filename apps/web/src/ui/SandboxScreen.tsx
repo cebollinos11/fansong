@@ -879,7 +879,7 @@ function StateSection({
         />
       </div>
       <p className="sb-hint">
-        Autosaved: open the app with <code>?sandbox</code> to resume here. From the console, <code>fansong</code>{' '}
+        Autosaved: open the app with <code>?dev=1&amp;sandbox</code> to resume here. From the console, <code>fansong</code>{' '}
         scripts the sandbox (e.g. <code>fansong.edit(s =&gt; …)</code>).
       </p>
     </Section>

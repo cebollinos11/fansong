@@ -41,7 +41,7 @@ export function App(): JSX.Element {
         onOpenEditor={() => setView({ kind: 'editor' })}
         onOpenArmies={() => setView({ kind: 'armies' })}
         onOpenSandbox={
-          import.meta.env.DEV
+          devTools()
             ? (setup) => setView({ kind: 'sandbox', id: Date.now(), initial: sandboxStart(setup), setup })
             : undefined
         }
@@ -227,9 +227,14 @@ function sandboxStart(setup: MatchSetup): GameState {
   }
 }
 
-/** `?sandbox` opens the dev sandbox straight away, resuming its autosave (dev builds only). */
+/** Dev tools (the sandbox) are on in any build whose URL carries `?dev=1`. */
+function devTools(): boolean {
+  return new URLSearchParams(window.location.search).get('dev') === '1';
+}
+
+/** `?dev=1&sandbox` opens the dev sandbox straight away, resuming its autosave. */
 function sandboxFromUrl(): View | null {
-  if (!import.meta.env.DEV || !new URLSearchParams(window.location.search).has('sandbox')) return null;
+  if (!devTools() || !new URLSearchParams(window.location.search).has('sandbox')) return null;
   const initial = loadAutosave(browserStorage()) ?? sandboxStart(DEFAULT_SETUP);
   return { kind: 'sandbox', id: Date.now(), initial, setup: DEFAULT_SETUP };
 }

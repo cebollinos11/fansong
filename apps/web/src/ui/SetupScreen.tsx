@@ -31,7 +31,7 @@ interface Props {
   onLoadReplay: (replay: Replay) => void;
   onOpenEditor: () => void;
   onOpenArmies: () => void;
-  /** Dev builds: open the sandbox, starting from the chosen warbands and map. */
+  /** With `?dev=1` in the URL: open the sandbox, starting from the chosen warbands and map. */
   onOpenSandbox?: (setup: MatchSetup) => void;
 }
 
