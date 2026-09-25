@@ -126,14 +126,19 @@ export function BoardCanvas(props: Props): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Editor: re-draw the terrain after an edit (the mount effect drew the first board).
-  const builtBoard = useRef(props.state.board);
+  // Editor and sandbox: re-draw the terrain after an edit (the mount effect drew
+  // the first board). Compared by content, since play clones the board per command.
+  const boardKey = useMemo(
+    () => (props.liveTerrain ? JSON.stringify(props.state.board) : ''),
+    [props.liveTerrain, props.state.board],
+  );
+  const builtBoard = useRef(boardKey);
   useEffect(() => {
-    if (!props.liveTerrain || builtBoard.current === props.state.board) return;
-    builtBoard.current = props.state.board;
+    if (!props.liveTerrain || builtBoard.current === boardKey) return;
+    builtBoard.current = boardKey;
     viewRef.current?.buildBoard(props.state);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [props.liveTerrain, props.state.board]);
+  }, [props.liveTerrain, boardKey]);
 
   // Editor: switch left-drag between orbiting and drag painting.
   const dragging = props.onCellDrag !== undefined;

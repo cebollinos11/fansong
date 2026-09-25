@@ -22,9 +22,26 @@ interface Props {
   onWatchReplay: (replay: Replay) => void;
   /** Online: go back to the room's lobby for another game (once this one is over). */
   onRematch?: () => void;
+  /** The dev sandbox's hooks into the board (see {@link SandboxHooks}). */
+  sandbox?: SandboxHooks;
+  /** Drawn over the game (the dev sandbox's panel). */
+  children?: React.ReactNode;
 }
 
-export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props): JSX.Element {
+/**
+ * How the dev sandbox borrows the board: its tools see every click first, at
+ * any time — whoever's turn it is — and swallow the ones they handle.
+ */
+export interface SandboxHooks {
+  /** Return true to swallow the click. */
+  onUnitClick: (id: string) => boolean;
+  /** Return true to swallow the click. */
+  onCellClick: (cell: Vec) => boolean;
+  /** The unit the sandbox has picked, ringed on the board. */
+  selectedUnitId: string | null;
+}
+
+export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, children }: Props): JSX.Element {
   // What the board is showing (it may still be rolling dice for it)...
   const [shown, setShown] = useState<{ state: GameState; events: GameEvent[] }>(() => ({
     state: client.getState(),
@@ -159,6 +176,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
   const replay = over ? client.getReplay() : null;
 
   const handleUnitClick = (id: string): void => {
+    if (sandbox?.onUnitClick(id)) return;
     if (!myTurn) return;
     if (state.phase === 'awaitingActivation') {
       if (interaction.selectableUnitIds.includes(id)) setSelectedUnitId(id);
@@ -204,6 +222,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
 
   const handleCellClick = (cell: Vec): void => {
     setAttackChoice(null);
+    if (sandbox?.onCellClick(cell)) return;
     if (!myTurn) return;
     if (state.phase === 'acting' && state.activeUnitId) {
       // One click commits the whole chain, however many actions it spends.
@@ -301,14 +320,15 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
         approachTargetIds={acting ? plans.approachIds : []}
         previewFor={hoverPreview}
         selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
-        selectedUnitId={selectedUnitId}
-        interactive={myTurn}
+        selectedUnitId={selectedUnitId ?? sandbox?.selectedUnitId ?? null}
+        interactive={myTurn || sandbox !== undefined}
+        liveTerrain={sandbox !== undefined}
         events={shown.events}
         onEventsPlayed={(ms) => queueRef.current?.played(ms)}
         announcement={announcement}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
-        diceChoices={myTurn && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}
+        diceChoices={myTurn && selectedUnitId && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}
         onChooseDice={handleActivate}
         playing
       />
@@ -351,6 +371,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch }: Props):
           ) : null}
         </div>
       ) : null}
+      {children}
     </div>
   );
 }

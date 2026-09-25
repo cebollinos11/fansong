@@ -31,6 +31,8 @@ interface Props {
   onLoadReplay: (replay: Replay) => void;
   onOpenEditor: () => void;
   onOpenArmies: () => void;
+  /** Dev builds: open the sandbox, starting from the chosen warbands and map. */
+  onOpenSandbox?: (setup: MatchSetup) => void;
 }
 
 export type Mode = 'vsAI' | 'hotseat' | 'online';
@@ -108,7 +110,7 @@ export function modeFor(map: MapDef, wanted: GameMode): GameMode {
   return supportedModes(map).includes(wanted) ? wanted : 'annihilation';
 }
 
-export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOpenArmies }: Props): JSX.Element {
+export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOpenArmies, onOpenSandbox }: Props): JSX.Element {
   const [mode, setMode] = useState<Mode>(initial.seats[1] === 'ai' ? 'vsAI' : 'hotseat');
   const [p0, setP0] = useState(initial.presets[0]);
   const [p1, setP1] = useState(initial.presets[1]);
@@ -206,6 +208,11 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
           <button className="ghost" onClick={onOpenEditor}>
             Map editor…
           </button>
+          {onOpenSandbox && launch.kind === 'local' && problem === null ? (
+            <button className="ghost" title="Dev tool: set up and test any situation" onClick={() => onOpenSandbox(launch.setup)}>
+              Sandbox…
+            </button>
+          ) : null}
         </div>
 
         {mode === 'online' ? null : (

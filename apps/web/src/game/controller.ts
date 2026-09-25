@@ -69,6 +69,16 @@ export class MatchController {
     return events;
   }
 
+  /**
+   * Adopt a state that did not come from {@link apply} — the dev sandbox's
+   * edits, undo, or a result it reduced itself — and broadcast it like any
+   * other transition. No rules are checked: the caller vouches for the state.
+   */
+  replace(state: GameState, events: GameEvent[] = [], command?: Command): void {
+    this.state = state;
+    for (const sub of this.subscribers) sub({ state, events, command });
+  }
+
   subscribe(sub: Subscriber): () => void {
     this.subscribers.add(sub);
     return () => this.subscribers.delete(sub);

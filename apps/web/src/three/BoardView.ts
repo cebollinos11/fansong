@@ -578,8 +578,15 @@ export class BoardView {
       seen.add(u.id);
       let obj = this.units.get(u.id);
       // A unit whose look changed (an online host's stand-in opponent replaced
-      // by the real army) is rebuilt with its new sprite.
-      if (obj && obj.spriteName !== spriteFor(u.look ?? u.name)) {
+      // by the real army), or whose side, size or flight the dev sandbox
+      // rewrote, is rebuilt with its new sprite.
+      if (
+        obj &&
+        (obj.spriteName !== spriteFor(u.look ?? u.name) ||
+          obj.owner !== u.owner ||
+          obj.size !== (u.traits.big ? BIG_SCALE : 1) ||
+          obj.flying !== u.traits.flying)
+      ) {
         this.scene.remove(obj.group);
         this.units.delete(u.id);
         obj = undefined;

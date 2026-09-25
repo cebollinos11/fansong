@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import type { Replay } from '@fansong/engine';
+import type { GameState, Replay } from '@fansong/engine';
 import { GameScreen } from './ui/GameScreen.js';
 import { SetupScreen } from './ui/SetupScreen.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { EditorScreen } from './ui/EditorScreen.js';
 import { ArmyBuilderScreen } from './ui/ArmyBuilderScreen.js';
 import { LobbyScreen } from './ui/LobbyScreen.js';
-import { DEFAULT_SETUP, type MatchSetup } from '@fansong/content';
+import { createMatchFromPresets, DEFAULT_BOARD, DEFAULT_SETUP, type MatchSetup } from '@fansong/content';
+import { SandboxScreen } from './ui/SandboxScreen.js';
+import { loadAutosave } from './game/sandboxStore.js';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
 import type { OnlineRoom, RoomView } from './game/OnlineRoom.js';
@@ -19,10 +21,13 @@ type View =
   | { kind: 'editor' }
   | { kind: 'armies' }
   | { kind: 'match'; id: number; launch: Launch }
-  | { kind: 'replay'; id: number; replay: Replay };
+  | { kind: 'replay'; id: number; replay: Replay }
+  | { kind: 'sandbox'; id: number; initial: GameState; setup: MatchSetup };
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>(() => {
+    const sandbox = sandboxFromUrl();
+    if (sandbox) return sandbox;
     const launch = inviteLaunch();
     return launch ? { kind: 'match', id: Date.now(), launch } : { kind: 'setup' };
   });
@@ -35,6 +40,11 @@ export function App(): JSX.Element {
         onLoadReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
         onOpenEditor={() => setView({ kind: 'editor' })}
         onOpenArmies={() => setView({ kind: 'armies' })}
+        onOpenSandbox={
+          import.meta.env.DEV
+            ? (setup) => setView({ kind: 'sandbox', id: Date.now(), initial: sandboxStart(setup), setup })
+            : undefined
+        }
       />
     );
   }
@@ -45,6 +55,10 @@ export function App(): JSX.Element {
 
   if (view.kind === 'editor') {
     return <EditorScreen onExit={() => setView({ kind: 'setup' })} />;
+  }
+
+  if (view.kind === 'sandbox') {
+    return <SandboxScreen key={view.id} initial={view.initial} setup={view.setup} onExit={() => setView({ kind: 'setup' })} />;
   }
 
   if (view.kind === 'replay') {
@@ -201,4 +215,21 @@ function Lobby({ children, onExit }: { children: React.ReactNode; onExit: () => 
       </div>
     </div>
   );
+}
+
+/** A sandbox starts from a setup's deployment (or the default one if that won't build). */
+function sandboxStart(setup: MatchSetup): GameState {
+  const lookup = customMapLookup(browserStorage());
+  try {
+    return createMatchFromPresets(setup, DEFAULT_BOARD, lookup);
+  } catch {
+    return createMatchFromPresets(DEFAULT_SETUP, DEFAULT_BOARD, lookup);
+  }
+}
+
+/** `?sandbox` opens the dev sandbox straight away, resuming its autosave (dev builds only). */
+function sandboxFromUrl(): View | null {
+  if (!import.meta.env.DEV || !new URLSearchParams(window.location.search).has('sandbox')) return null;
+  const initial = loadAutosave(browserStorage()) ?? sandboxStart(DEFAULT_SETUP);
+  return { kind: 'sandbox', id: Date.now(), initial, setup: DEFAULT_SETUP };
 }
