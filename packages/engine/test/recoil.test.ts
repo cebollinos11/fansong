@@ -66,19 +66,74 @@ describe('recoil (push back)', () => {
     expect(events).toContainEqual({ type: 'UnitRecoiled', unitId: 'p1u0', from: { x: 3, y: 2 }, to: { x: 4, y: 3 } });
   });
 
-  it('falls instead when the hex behind is impassable, occupied or off the board', () => {
+  it('falls instead when the hex behind is impassable, an enemy or a knocked-down friend', () => {
     const seed = seedFor('defenderRecoiled');
     const blocked = config(seed, { board: { width: 7, height: 5, blocked: ['4,3'] } });
-    const friend = config(seed);
-    friend.warbands[1].push({ name: 'Friend', quality: 3, combat: 3, pos: { x: 4, y: 3 } });
-    const edge = config(seed, { board: { width: 4, height: 5 } });
+    // Knocked down, the enemy behind doesn't outnumber the target, so the roll is unchanged.
+    const enemy = config(seed);
+    enemy.warbands[0].push({ name: 'Enemy', quality: 3, combat: 3, pos: { x: 4, y: 3 } });
+    const downedFriend = config(seed);
+    downedFriend.warbands[1].push({ name: 'Friend', quality: 3, combat: 3, pos: { x: 4, y: 3 } });
 
-    for (const c of [blocked, friend, edge]) {
-      const { state, events } = attack(acting(c));
+    for (const [c, downId] of [[blocked, null], [enemy, 'p0u1'], [downedFriend, 'p1u1']] as const) {
+      const s = acting(c);
+      if (downId) s.units.find((u) => u.id === downId)!.knockedDown = true;
+      const { state, events } = attack(s);
       expect((events.find((e) => e.type === 'AttackResolved') as Attack).result).toBe('defenderKnockedDown');
-      expect(state.units[1]!.pos).toEqual({ x: 3, y: 2 });
-      expect(state.units[1]!.knockedDown).toBe(true);
+      expect(state.units.find((u) => u.id === 'p1u0')!.pos).toEqual({ x: 3, y: 2 });
+      expect(state.units.find((u) => u.id === 'p1u0')!.knockedDown).toBe(true);
     }
+  });
+
+  it('a standing friend behind supports the pushed unit: it holds its ground, on its feet', () => {
+    const seed = seedFor('defenderRecoiled');
+    const c = config(seed);
+    c.warbands[1].push({ name: 'Friend', quality: 3, combat: 3, pos: { x: 4, y: 3 } });
+    const s = acting(c);
+    s.units.find((u) => u.id === 'p1u0')!.guarding = true;
+    const { state, events } = attack(s);
+    expect((events.find((e) => e.type === 'AttackResolved') as Attack).result).toBe('defenderRecoiled');
+    expect(events).toContainEqual({ type: 'UnitSupported', unitId: 'p1u0', supporterId: 'p1u1' });
+    expect(events.some((e) => e.type === 'UnitRecoiled')).toBe(false);
+    const target = state.units.find((u) => u.id === 'p1u0')!;
+    expect(target.pos).toEqual({ x: 3, y: 2 });
+    expect(target.knockedDown).toBe(false);
+    expect(target.guarding).toBe(true); // never moved, so its stance holds
+  });
+
+  it('pushed off the map, the unit is killed', () => {
+    const seed = seedFor('defenderRecoiled');
+    const { state, events } = attack(acting(config(seed, { board: { width: 4, height: 5 } })));
+    expect((events.find((e) => e.type === 'AttackResolved') as Attack).result).toBe('defenderRecoiled');
+    expect(events).toContainEqual({ type: 'UnitPushedOff', unitId: 'p1u0' });
+    expect(events).toContainEqual({ type: 'UnitKilled', unitId: 'p1u0', byId: 'p0u0' });
+    expect(state.units[1]!.dead).toBe(true);
+  });
+
+  it('a Tough unit pushed off the map is knocked down at the edge instead', () => {
+    const seed = seedFor('defenderRecoiled');
+    const c = config(seed, { board: { width: 4, height: 5 } });
+    c.warbands[1][0] = { ...c.warbands[1][0]!, tough: true };
+    const { state, events } = attack(acting(c));
+    expect(events).toContainEqual({ type: 'ToughnessSaved', unitId: 'p1u0' });
+    const target = state.units[1]!;
+    expect(target.dead).toBe(false);
+    expect(target.knockedDown).toBe(true);
+    expect(target.pos).toEqual({ x: 3, y: 2 });
+  });
+
+  it('an attacker pushed off the map dies, ending its activation', () => {
+    const seed = seedFor('attackerRecoiled');
+    // On the left edge, the hex directly away from its target is off the board.
+    const c = config(seed);
+    c.warbands[0][0] = { ...c.warbands[0][0]!, pos: { x: 0, y: 2 } };
+    c.warbands[1][0] = { ...c.warbands[1][0]!, pos: { x: 1, y: 2 } };
+    const board = makeHexGrid({ width: 7, height: 5, blocked: [] });
+    expect(board.inBounds(board.stepAway({ x: 1, y: 2 }, { x: 0, y: 2 }))).toBe(false);
+    const { state, events } = attack(acting(c, 2));
+    expect(events).toContainEqual({ type: 'UnitPushedOff', unitId: 'p0u0' });
+    expect(state.units[0]!.dead).toBe(true);
+    expect(state.activeUnitId).toBeNull();
   });
 
   it('a pushed-back attacker stays standing and keeps its remaining actions', () => {
@@ -96,5 +151,40 @@ describe('recoil (push back)', () => {
     s.mode!.flags![0] = { at: { x: 3, y: 2 }, carrier: 'p1u0' };
     const { state } = attack(s);
     expect(state.mode!.flags![0]).toEqual({ at: { x: 4, y: 3 }, carrier: 'p1u0' });
+  });
+});
+
+describe('a guard riposte against a supported attacker', () => {
+  const guarded = (seed: number): GameConfig => {
+    const c = config(seed);
+    c.warbands[1][0] = { ...c.warbands[1][0]!, guard: true };
+    return c;
+  };
+  const riposte = (events: GameEvent[]) =>
+    events.find((e) => e.type === 'GuardRiposte') as Extract<GameEvent, { type: 'GuardRiposte' }>;
+  const withGuard = (c: GameConfig, actions = 1) => {
+    const s = acting(c, actions);
+    s.units.find((u) => u.id === 'p1u0')!.guarding = true;
+    return s;
+  };
+
+  it('lets the attack through when a friend braces the pushed attacker', () => {
+    let seed = 1;
+    while (riposte(attack(withGuard(guarded(seed))).events).result !== 'defenderRecoiled') seed++;
+    // Unsupported, the push drives the attacker back and stops the blow.
+    const alone = attack(withGuard(guarded(seed))).events;
+    expect(riposte(alone).prevented).toBe(true);
+    expect(alone.some((e) => e.type === 'AttackResolved')).toBe(false);
+
+    // With a friend in the hex behind (not touching the guard), the blow lands.
+    const board = makeHexGrid({ width: 7, height: 5, blocked: [] });
+    const behind = board.stepAway({ x: 3, y: 2 }, { x: 2, y: 2 });
+    const c = guarded(seed);
+    c.warbands[0].push({ name: 'Friend', quality: 3, combat: 3, pos: behind });
+    const { state, events } = attack(withGuard(c));
+    expect(riposte(events).prevented).toBe(false);
+    expect(events).toContainEqual({ type: 'UnitSupported', unitId: 'p0u0', supporterId: 'p0u1' });
+    expect(events.some((e) => e.type === 'AttackResolved')).toBe(true);
+    expect(state.units[0]!.pos).toEqual({ x: 2, y: 2 });
   });
 });

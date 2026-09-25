@@ -51,6 +51,10 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `    ${name(state, e.unitId)} is knocked down`;
     case 'UnitRecoiled':
       return `    ${name(state, e.unitId)} is pushed back to (${e.to.x},${e.to.y})`;
+    case 'UnitSupported':
+      return `    ${name(state, e.unitId)} holds its ground, supported by ${name(state, e.supporterId)}`;
+    case 'UnitPushedOff':
+      return `    ${name(state, e.unitId)} is pushed off the edge of the map`;
     case 'UnitKilled':
       return `    ☠ ${name(state, e.unitId)} is killed`;
     case 'ActivationEnded':

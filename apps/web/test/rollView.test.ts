@@ -59,6 +59,16 @@ describe('opposed roll cards', () => {
     expect(back.verdict).toMatchObject({ text: 'Pushed back', on: ['a'] });
   });
 
+  it('says where a push ended: braced by a friend, or off the edge', () => {
+    const push = attack({ attackDie: 3, result: 'defenderRecoiled' });
+    const held = describeCombat(push, [{ type: 'UnitSupported', unitId: 'd', supporterId: 'f' }]).verdict;
+    expect(held).toMatchObject({ text: 'Holds ground', on: ['d'], tone: 'save' });
+    const off = describeCombat(push, [{ type: 'UnitPushedOff', unitId: 'd' }, { type: 'UnitKilled', unitId: 'd', byId: 'a' }]);
+    expect(off.verdict).toMatchObject({ text: 'Pushed off!', on: ['d'], tone: 'kill' });
+    const tough = describeCombat(push, [{ type: 'UnitPushedOff', unitId: 'd' }, { type: 'ToughnessSaved', unitId: 'd' }]);
+    expect(tough.verdict).toMatchObject({ text: 'Tough!', tone: 'save' });
+  });
+
   it('explains a knocked-down defender whose higher total did nothing', () => {
     const r = describeCombat(attack({ attackScore: 4, defenseScore: 6, result: 'clash' }));
     expect(r.b).toMatchObject({ outcome: 'tie', note: 'Down: only a 6 strikes back' });

@@ -766,6 +766,11 @@ export class BoardView {
           obj.walk = { path: [this.unitWorld(e.from), this.unitWorld(e.to)], start: this.now + lastHit, backward: true };
           t = Math.max(t, lastHit + WALK_MS_PER_HEX);
         }
+      } else if (e.type === 'UnitSupported') {
+        // The friend behind braces the pushed unit on the blow's hit frame.
+        this.at(lastHit, () =>
+          this.rolls.addVerdict({ text: 'Supported', on: [e.supporterId], tone: 'save' }, this.now),
+        );
       } else if (e.type === 'UnitKnockedDown' || e.type === 'UnitKilled') {
         hold(e.unitId, settle);
       } else if (e.type === 'UnitRouted') {

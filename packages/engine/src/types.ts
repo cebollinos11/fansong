@@ -25,7 +25,7 @@ export interface UnitTraits {
    * Guard: this unit may take a Guard action to enter a defensive stance. While
    * guarding, every melee attacker it faces is met with a pre-emptive strike (a
    * "riposte"); if the riposte kills, knocks down or pushes back the attacker,
-   * that attack is prevented. The stance holds until the unit next activates,
+   * that attack is prevented (a push a friend braces does not prevent it). The stance holds until the unit next activates,
    * gets knocked down, or is pushed back — and losing a riposte never costs the
    * guard anything.
    */
@@ -311,7 +311,7 @@ export type GameEvent =
       result: CombatResult;
       /** Present when the riposte's kill tripled the attacker's score (a gruesome kill). */
       gruesome?: true;
-      /** True if the riposte stopped the incoming attack (attacker killed, knocked down or pushed back). */
+      /** True if the riposte stopped the incoming attack (attacker killed, knocked down or pushed back — not when a friend braced it). */
       prevented: boolean;
     }
   | { type: 'ToughnessSaved'; unitId: string }
@@ -321,6 +321,10 @@ export type GameEvent =
   | { type: 'UnitKnockedDown'; unitId: string }
   /** Pushed one hex directly away from the opponent that beat it. */
   | { type: 'UnitRecoiled'; unitId: string; from: Vec; to: Vec }
+  /** A push that would have driven `unitId` back into its standing friend `supporterId`: braced, it holds its ground. */
+  | { type: 'UnitSupported'; unitId: string; supporterId: string }
+  /** Pushed off the edge of the map; the kill (or a Tough save) follows. */
+  | { type: 'UnitPushedOff'; unitId: string }
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }

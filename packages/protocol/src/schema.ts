@@ -311,6 +311,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('UnitRouted'), unitId: z.string() }),
   z.object({ type: z.literal('UnitKnockedDown'), unitId: z.string() }),
   z.object({ type: z.literal('UnitRecoiled'), unitId: z.string(), from: vecSchema, to: vecSchema }),
+  z.object({ type: z.literal('UnitSupported'), unitId: z.string(), supporterId: z.string() }),
+  z.object({ type: z.literal('UnitPushedOff'), unitId: z.string() }),
   z.object({ type: z.literal('UnitKilled'), unitId: z.string(), byId: z.string().nullable() }),
   z.object({ type: z.literal('ActivationEnded'), unitId: z.string() }),
   z.object({ type: z.literal('RoundEnded'), round: z.number(), nextLeader: ownerSchema }),

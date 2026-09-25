@@ -97,7 +97,7 @@ function outcomes(a: number, b: number): [RollSide['outcome'], RollSide['outcome
 /**
  * Describe an attack, shot, riposte or free hack. `after` is the rest of the
  * event batch, scanned for a Tough save that turns the would-be kill into a
- * knockdown.
+ * knockdown, and for where a push ended (braced by a friend, off the map).
  */
 export function describeCombat(e: Combat, after: readonly GameEvent[] = []): OpposedRoll {
   let a: RollSide;
@@ -173,7 +173,18 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
     return { text: 'Slips away', detail: `${detail} on an odd ${winner.die}`, on: [loser.unitId], tone: 'neutral' };
   }
   if (e.result === 'defenderRecoiled' || e.result === 'attackerRecoiled') {
-    return { text: 'Pushed back', detail: `${detail} on an odd ${winner.die}`, on: [loser.unitId], tone: 'down' };
+    const odd = `${detail} on an odd ${winner.die}`;
+    if (after.some((x) => x.type === 'UnitSupported' && x.unitId === loser.unitId)) {
+      // The supporter gets its own "Supported" over its head; this names what it saved.
+      return { text: 'Holds ground', detail: `${odd} — braced by a friend`, on: [loser.unitId], tone: 'save' };
+    }
+    if (after.some((x) => x.type === 'UnitPushedOff' && x.unitId === loser.unitId)) {
+      const saved = after.some((x) => x.type === 'ToughnessSaved' && x.unitId === loser.unitId);
+      return saved
+        ? { text: 'Tough!', detail: `${odd} — off the edge, knocked down instead`, on: [loser.unitId], tone: 'save' }
+        : { text: 'Pushed off!', detail: `${odd} — off the edge of the map`, on: [loser.unitId], tone: 'kill' };
+    }
+    return { text: 'Pushed back', detail: odd, on: [loser.unitId], tone: 'down' };
   }
   const cornered = winner.die % 2 === 1 ? ' — no room to fall back' : '';
   return { text: 'Knocked down', detail: `${detail}${cornered}`, on: [loser.unitId], tone: 'down' };

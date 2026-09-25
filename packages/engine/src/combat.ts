@@ -7,7 +7,11 @@ export interface CombatSide {
   /** The natural (unmodified) d6. */
   die: number;
   knockedDown: boolean;
-  /** Whether the hex directly behind it (away from the opponent) is free to recoil into. */
+  /**
+   * Whether a push can resolve without a fall: the hex directly behind it (away
+   * from the opponent) is free, holds a standing friend to brace it, or is off
+   * the map. False when terrain, an enemy or a knocked-down friend blocks it.
+   */
   canRecoil: boolean;
 }
 
@@ -17,8 +21,9 @@ export interface CombatSide {
  *
  * - winner doubles the loser -> loser killed (see {@link isGruesome} for triples)
  * - winner beats the loser   -> loser already down: killed; else the winner's
- *                               natural die decides: odd = recoil one hex, even =
- *                               knocked down (a loser with no room to recoil falls)
+ *                               natural die decides: odd = pushed one hex, even =
+ *                               knocked down (a loser pushed into a blocked hex
+ *                               falls; see `canRecoil` and the push in `reduce.ts`)
  * - tie                      -> clash (no effect)
  *
  * Modifiers (outnumbering, range, cover) can push a score to 0 or below, so a

@@ -226,11 +226,11 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
 
   const roll = rollMelee(s, board, attacker, target, powerPenalty);
   const { attackDie, defenseDie, attackScore, defenseScore } = roll;
-  const attackerRecoil = recoilHex(s, board, attacker, target);
-  const targetRecoil = recoilHex(s, board, target, attacker);
+  const attackerPush = pushOutcome(s, board, attacker, target);
+  const targetPush = pushOutcome(s, board, target, attacker);
   const result = computeCombatResult(
-    { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: attackerRecoil !== null },
-    { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
+    { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: canBePushed(attackerPush) },
+    { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: canBePushed(targetPush) },
   );
   const gruesome = gruesomeKill(result, attackScore, defenseScore);
 
@@ -252,7 +252,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     case 'defenderKilled':
     case 'defenderKnockedDown':
     case 'defenderRecoiled':
-      hitDefender(s, events, result, target, attacker.id, board, gruesome, targetRecoil);
+      hitDefender(s, events, result, target, attacker.id, board, gruesome, targetPush);
       break;
     case 'attackerKilled':
       strike(s, attacker, target.id, events, board, gruesome);
@@ -263,7 +263,10 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
       attackerEnded = true; // a knocked-down attacker's activation ends
       break;
     case 'attackerRecoiled':
-      recoil(s, events, attacker, attackerRecoil!); // still standing, so it may act again
+      push(s, events, attacker, attackerPush, target.id, board);
+      // Pushed back or braced it is still standing, so it may act again; pushed
+      // off the map it is dead (or, Tough, knocked down at the edge).
+      attackerEnded = attacker.dead || attacker.knockedDown;
       break;
     case 'clash':
       break;
@@ -314,12 +317,12 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   const attackScore = attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget - range - cover;
   const defenseScore = target.combat + defenseDie + defenseBonus - aimPenalty;
 
-  const targetRecoil = recoilHex(s, board, target, attacker);
+  const targetPush = pushOutcome(s, board, target, attacker);
   // A shot only ever harms the target — the shooter takes no return damage.
   const result = defenderOnly(
     computeCombatResult(
       { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: false },
-      { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: targetRecoil !== null },
+      { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: canBePushed(targetPush) },
     ),
   );
   const gruesome = gruesomeKill(result, attackScore, defenseScore);
@@ -337,7 +340,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     ...(gruesome ? { gruesome } : {}),
   });
 
-  hitDefender(s, events, result, target, attacker.id, board, gruesome, targetRecoil);
+  hitDefender(s, events, result, target, attacker.id, board, gruesome, targetPush);
 
   s.actionsRemaining -= cost;
   if (checkGameOver(s, events)) return;
@@ -375,7 +378,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     defenseBig: attackerBig,
     attackFly: guardFly,
   } = roll.mods;
-  const attackerRecoil = recoilHex(s, board, attacker, guard);
+  const attackerPush = pushOutcome(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6. And a guard never
   // wounds itself parrying, so only attacker-harming outcomes stand: losing the
   // exchange merely lets the blow in, and is reported — like a shot that draws
@@ -388,12 +391,13 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
             score: attackerScore,
             die: attackerDie,
             knockedDown: attacker.knockedDown,
-            canRecoil: attackerRecoil !== null,
+            canRecoil: canBePushed(attackerPush),
           },
         )
       : 'clash',
   );
-  const prevented = result !== 'clash';
+  // An attacker braced by a friend is not driven back, so its blow still lands.
+  const prevented = result !== 'clash' && !(result === 'defenderRecoiled' && attackerPush.kind === 'supported');
   const gruesome = gruesomeKill(result, guardScore, attackerScore);
 
   events.push({
@@ -410,7 +414,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     prevented,
   });
 
-  hitDefender(s, events, result, attacker, guard.id, board, gruesome, attackerRecoil);
+  hitDefender(s, events, result, attacker, guard.id, board, gruesome, attackerPush);
   return prevented;
 }
 
@@ -553,8 +557,9 @@ function shown<K extends string>(mods: Record<K, number | undefined>): Partial<R
 
 /**
  * Apply a defender-side outcome to `victim` (mutates `s`): a killing blow
- * (honouring Tough and the morale that follows), a knockdown, or a push into
- * `recoilTo`. Any other `result` — including a clash — does nothing.
+ * (honouring Tough and the morale that follows), a knockdown, or the push
+ * `pushed` (null: the push does nothing, as for a leaver slipping away). Any
+ * other `result` — including a clash — does nothing.
  */
 function hitDefender(
   s: GameState,
@@ -564,11 +569,11 @@ function hitDefender(
   byId: string,
   board: Board,
   gruesome: boolean,
-  recoilTo: Vec | null,
+  pushed: Push | null,
 ): void {
   if (result === 'defenderKilled') strike(s, victim, byId, events, board, gruesome);
   else if (result === 'defenderKnockedDown') knockDown(events, victim);
-  else if (result === 'defenderRecoiled' && recoilTo) recoil(s, events, victim, recoilTo);
+  else if (result === 'defenderRecoiled' && pushed) push(s, events, victim, pushed, byId, board);
 }
 
 function knockDown(events: GameEvent[], unit: Unit): void {
@@ -584,10 +589,39 @@ function gruesomeKill(result: CombatResult, aggressorScore: number, defenderScor
   return false;
 }
 
-/** Where `unit` recoils when beaten by `by`: the hex directly away, or null if off-board, impassable or occupied. */
-function recoilHex(s: GameState, board: Board, unit: Unit, by: Unit): Vec | null {
+/**
+ * What pushing `unit` one hex directly away from `by` would do:
+ * - `back`: the hex is free, so it recoils into it;
+ * - `supported`: a standing friend holds that hex and braces it — it stays put, on its feet;
+ * - `off`: the hex is off the map, so the push kills it;
+ * - `blocked`: impassable terrain, an enemy or a knocked-down friend — it falls instead.
+ */
+type Push = { kind: 'back'; to: Vec } | { kind: 'supported'; by: Unit } | { kind: 'off' } | { kind: 'blocked' };
+
+function pushOutcome(s: GameState, board: Board, unit: Unit, by: Unit): Push {
   const to = board.stepAway(by.pos, unit.pos);
-  return board.inBounds(to) && !board.isBlocked(to) && !isOccupied(s, to, unit.id) ? to : null;
+  if (!board.inBounds(to)) return { kind: 'off' };
+  if (board.isBlocked(to)) return { kind: 'blocked' };
+  const there = s.units.find((u) => !u.dead && u.id !== unit.id && u.pos.x === to.x && u.pos.y === to.y);
+  if (!there) return { kind: 'back', to };
+  return there.owner === unit.owner && !there.knockedDown ? { kind: 'supported', by: there } : { kind: 'blocked' };
+}
+
+/** Whether a push has somewhere to resolve other than a fall (see {@link pushOutcome}). */
+const canBePushed = (p: Push) => p.kind !== 'blocked';
+
+/**
+ * Resolve a winning odd-die push on `unit` (mutates `s`): recoil into the free
+ * hex, stand braced against a supporting friend, or go off the map — a combat
+ * kill by `byId` (a Tough unit is knocked down at the edge instead).
+ */
+function push(s: GameState, events: GameEvent[], unit: Unit, p: Push, byId: string, board: Board): void {
+  if (p.kind === 'back') recoil(s, events, unit, p.to);
+  else if (p.kind === 'supported') events.push({ type: 'UnitSupported', unitId: unit.id, supporterId: p.by.id });
+  else if (p.kind === 'off') {
+    events.push({ type: 'UnitPushedOff', unitId: unit.id });
+    strike(s, unit, byId, events, board, false);
+  }
 }
 
 function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {

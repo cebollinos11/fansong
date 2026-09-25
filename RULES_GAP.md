@@ -25,7 +25,10 @@ These are implemented, so they are not listed again below:
   and 2 or more failures cause a turnover.
 - An opposed d6 + Combat roll. A tie does nothing, doubling the loser kills it,
   and a plain win makes the loser **recoil** on the winner's odd die or **fall**
-  on an even one. A loser with nowhere to recoil falls instead.
+  on an even one. A loser pushed into a standing friend is **supported** and
+  holds its ground. A loser pushed off the map is killed (Tough saves it as a
+  fall). Pushed into anything else (terrain, an enemy or a fallen friend), it
+  falls.
 - Beating a fallen model kills it, standing up costs one action, and a fallen
   carrier drops its objective.
 - Shooting cannot be done while the shooter is in melee, needs line of sight,
