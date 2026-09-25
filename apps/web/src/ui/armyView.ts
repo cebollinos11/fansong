@@ -66,7 +66,7 @@ export function withShooter(unit: WarbandUnit, shooter: ShooterKind | undefined)
 }
 
 /** The on/off traits the builder offers, in column order. */
-export type ToggleTrait = 'slow' | 'fast' | 'tough' | 'guard' | 'big' | 'flying' | 'reassembling';
+export type ToggleTrait = 'slow' | 'fast' | 'tough' | 'guard' | 'big' | 'flying' | 'reassembling' | 'mounted';
 
 /** What the Slow and Fast columns mean, in words. */
 export const SPEED_TITLES = {

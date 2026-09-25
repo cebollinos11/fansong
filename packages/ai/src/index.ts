@@ -10,6 +10,7 @@ import {
   getLegalCommands,
   kingOf,
   makeHexGrid,
+  mountedMeleeBonus,
   outnumberedPenalty,
   rangePenalty,
   scoringZones,
@@ -113,14 +114,18 @@ function pressedEdge(worthIt: boolean, pressed: boolean): number {
   return pressed === worthIt ? PRESSED_EDGE : -PRESSED_EDGE;
 }
 
-/** How far the melee is stacked our way: our Combat less the foe's, both after size and outnumbering. */
+/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, mounts and outnumbering. */
 function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
   return (
     attacker.combat +
     bigMeleeBonus(attacker, target) +
-    flyingMeleeBonus(attacker, target) -
+    flyingMeleeBonus(attacker, target) +
+    mountedMeleeBonus(attacker, target) -
     outnumberedPenalty(state, attacker, board) -
-    (target.combat + bigMeleeBonus(target, attacker) - outnumberedPenalty(state, target, board))
+    (target.combat +
+      bigMeleeBonus(target, attacker) +
+      mountedMeleeBonus(target, attacker) -
+      outnumberedPenalty(state, target, board))
   );
 }
 

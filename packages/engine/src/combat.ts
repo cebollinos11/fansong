@@ -72,6 +72,9 @@ export const BIG_TARGET_BONUS = 1;
 /** How much a flyer's swoop is worth in a melee it presses against a grounded foe. */
 export const FLYING_MELEE_BONUS = 1;
 
+/** How much a standing rider's horse is worth in a melee against a foe on foot. */
+export const MOUNTED_MELEE_BONUS = 1;
+
 /** How much easier an airborne flyer is to shoot: a target with no cover in the open sky. */
 export const FLYING_TARGET_BONUS = 1;
 
@@ -133,6 +136,20 @@ export function flyingMeleeBonus(
  */
 export function flyingTargetBonus(target: Pick<Unit, 'traits' | 'knockedDown'>): number {
   return target.traits.flying && !target.knockedDown ? FLYING_TARGET_BONUS : 0;
+}
+
+/**
+ * The Mounted bonus for one side of a melee: {@link MOUNTED_MELEE_BONUS} when it
+ * is Mounted and its opponent is not, else 0. Like size it counts on both sides
+ * of every melee — blows, ripostes and free hacks — and two riders cancel out;
+ * but like flight it is the horse that gives it, so a knocked-down rider loses it.
+ */
+export function mountedMeleeBonus(
+  unit: Pick<Unit, 'traits' | 'knockedDown'>,
+  opponent: Pick<Unit, 'traits'>,
+): number {
+  if (unit.knockedDown) return 0;
+  return unit.traits.mounted && !opponent.traits.mounted ? MOUNTED_MELEE_BONUS : 0;
 }
 
 function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {

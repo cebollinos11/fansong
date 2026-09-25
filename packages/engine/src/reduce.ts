@@ -10,6 +10,7 @@ import {
   highGroundBonus,
   COVER_PENALTY,
   isGruesome,
+  mountedMeleeBonus,
   POWER_BLOW_PENALTY,
   PRESSED_COST,
   rangePenalty,
@@ -382,6 +383,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackBig: guardBig,
     defenseBig: attackerBig,
     attackFly: guardFly,
+    attackMounted: guardMounted,
+    defenseMounted: attackerMounted,
   } = roll.mods;
   const attackerPush = pushOutcome(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6. And a guard never
@@ -413,7 +416,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackerDie,
     guardScore,
     attackerScore,
-    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered, guardBig, attackerBig, guardFly }),
+    ...shown({ guardBonus, attackerBonus, guardOutnumbered, attackerOutnumbered, guardBig, attackerBig, guardFly, guardMounted, attackerMounted }),
     result,
     ...(gruesome ? { gruesome } : {}),
     prevented,
@@ -485,6 +488,8 @@ interface MeleeMods {
   defenseBig: number;
   /** The aggressor's flying swoop (a flyer striking a grounded foe). Only ever the aggressor's — flying is pressed, not defended with. */
   attackFly: number;
+  attackMounted: number;
+  defenseMounted: number;
 }
 
 /** One opposed melee: both dice, both scores, and the modifiers behind them. */
@@ -506,7 +511,7 @@ function rollPair(s: GameState): { attackDie: number; defenseDie: number } {
 
 /**
  * Roll one opposed melee exchange (mutates `s.rngState`). Each side scores its
- * Combat plus its die, any high ground and any edge its size gives it, less what
+ * Combat plus its die, any high ground and any edge its size, flight or mount gives it, less what
  * it is outnumbered by; `defensePenalty` (a power blow's) comes off the defender
  * on top. Every melee
  * in the game — an ordinary blow, a guard's riposte, a free hack — is scored
@@ -528,14 +533,28 @@ function rollMelee(
     attackBig: bigMeleeBonus(aggressor, defender),
     defenseBig: bigMeleeBonus(defender, aggressor),
     attackFly: flyingMeleeBonus(aggressor, defender),
+    attackMounted: mountedMeleeBonus(aggressor, defender),
+    defenseMounted: mountedMeleeBonus(defender, aggressor),
   };
   return {
     attackDie,
     defenseDie,
     attackScore:
-      aggressor.combat + attackDie + mods.attackBonus + mods.attackBig + mods.attackFly - mods.attackOutnumbered,
+      aggressor.combat +
+      attackDie +
+      mods.attackBonus +
+      mods.attackBig +
+      mods.attackFly +
+      mods.attackMounted -
+      mods.attackOutnumbered,
     defenseScore:
-      defender.combat + defenseDie + mods.defenseBonus + mods.defenseBig - mods.defenseOutnumbered - defensePenalty,
+      defender.combat +
+      defenseDie +
+      mods.defenseBonus +
+      mods.defenseBig +
+      mods.defenseMounted -
+      mods.defenseOutnumbered -
+      defensePenalty,
     mods,
   };
 }

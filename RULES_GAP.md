@@ -195,7 +195,7 @@ objective and are not leaders.
 
 ## 7. Special rules (traits)
 
-FanSong implements Shooter, Tough, Guard, Big, Flying and Reassembling (see the
+FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling and Mounted (see the
 ✅ entries below). Guard and Reassembling have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
@@ -238,7 +238,12 @@ short paraphrase, and the exact effects should be checked before building one.
   shoot, cannot hide, and more attackers fit around them.
 - **Huge / Gargantuan:** the larger sizes, and the hiding and contact-capacity
   parts of size, are still open.
-- **Mounted:** +1 against models on foot.
+- ✅ **Done — Mounted.** *Implemented:* a `mounted` trait. A standing rider
+  scores +1 in every melee against a non-Mounted opponent — attacking,
+  defending, riposting and hacking at a leaver alike — and two riders cancel
+  out (`attackMounted` / `defenseMounted` / `guardMounted` / `attackerMounted`
+  event fields). Like flight, and unlike size, the edge lapses while the rider is
+  knocked down. It does not touch shooting. *Original:* +1 against models on foot.
 - **Rabble:** a cheap mob model that fights better next to friends of its own
   kind *(revised)*.
 - **Swarm:** a mob that is hard to kill outright.

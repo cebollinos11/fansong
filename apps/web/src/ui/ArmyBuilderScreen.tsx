@@ -290,6 +290,7 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
         <th title="Big — +1 in melee against smaller foes, but +1 to anyone shooting it">Big</th>
         <th title="Flying — soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne">Fly</th>
         <th title="Reassembling — stands back up for free at the start of each round if knocked down">Bones</th>
+        <th title="Mounted — +1 in melee against foes on foot, lost while knocked down">Mount</th>
         <th>Pts</th>
         {extra}
         <th />
@@ -399,6 +400,9 @@ export function UnitRow({
       </td>
       <td>
         <input type="checkbox" checked={unit.reassembling ?? false} aria-label="Reassembling" onChange={(e) => onChange(withTrait(unit, 'reassembling', e.target.checked))} />
+      </td>
+      <td>
+        <input type="checkbox" checked={unit.mounted ?? false} aria-label="Mounted" onChange={(e) => onChange(withTrait(unit, 'mounted', e.target.checked))} />
       </td>
       <td className="stats">{valid ? unitCost(unit) : '—'}</td>
       {extra}

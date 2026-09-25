@@ -84,6 +84,7 @@ export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, 
       big: profile.big ?? false,
       flying: profile.flying ?? false,
       reassembling: profile.reassembling ?? false,
+      mounted: profile.mounted ?? false,
     },
     guarding: false,
   };

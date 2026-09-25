@@ -620,3 +620,112 @@ describe('Flying trait', () => {
     expect(has(legal, (c) => c.type === 'Move' && c.to.x === 2 && c.to.y === 1)).toBe(false);
   });
 });
+
+// --- Mounted ------------------------------------------------------------------
+
+describe('Mounted trait', () => {
+  /** A duel between two neighbours, either of which may ride. */
+  function melee(attackerMounted: boolean, defenderMounted: boolean): GameConfig {
+    return {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Rider', quality: 3, combat: 3, mounted: attackerMounted, pos: { x: 1, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, mounted: defenderMounted, pos: { x: 2, y: 1 } }],
+      ],
+    };
+  }
+
+  const resolveAttack = (config: GameConfig, prep?: (s: GameState) => void) => {
+    const s = acting(config, 'p0u0');
+    prep?.(s);
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    return events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+  };
+
+  it('adds +1 to a rider attacking a foe on foot', () => {
+    const rider = resolveAttack(melee(true, false));
+    const plain = resolveAttack(melee(false, false));
+    expect(rider.attackMounted).toBe(1);
+    expect(rider.attackScore - plain.attackScore).toBe(1);
+    expect(rider.defenseScore).toBe(plain.defenseScore);
+  });
+
+  it('adds +1 to a rider defending against a foe on foot', () => {
+    const rider = resolveAttack(melee(false, true));
+    const plain = resolveAttack(melee(false, false));
+    expect(rider.defenseMounted).toBe(1);
+    expect(rider.defenseScore - plain.defenseScore).toBe(1);
+    expect(rider.attackMounted).toBeUndefined();
+  });
+
+  it('cancels out when both ride', () => {
+    const both = resolveAttack(melee(true, true));
+    const plain = resolveAttack(melee(false, false));
+    expect(both.attackMounted).toBeUndefined();
+    expect(both.defenseMounted).toBeUndefined();
+    expect(both.attackScore).toBe(plain.attackScore);
+    expect(both.defenseScore).toBe(plain.defenseScore);
+  });
+
+  it('lapses while the rider is knocked down', () => {
+    const downedAttacker = resolveAttack(melee(true, false), (s) => {
+      s.units.find((u) => u.id === 'p0u0')!.knockedDown = true;
+    });
+    expect(downedAttacker.attackMounted).toBeUndefined();
+    const downedDefender = resolveAttack(melee(false, true), (s) => {
+      s.units.find((u) => u.id === 'p1u0')!.knockedDown = true;
+    });
+    expect(downedDefender.defenseMounted).toBeUndefined();
+  });
+
+  it("carries into a mounted guard's riposte", () => {
+    const config: GameConfig = {
+      seed: 5,
+      board: { width: 4, height: 3 },
+      warbands: [
+        [{ name: 'Lancer', quality: 3, combat: 3, guard: true, mounted: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Raider', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const s = acting(config, 'p1u0');
+    s.units.find((u) => u.id === 'p0u0')!.guarding = true;
+    const { events } = reduce(s, { type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
+    const rip = events.find((e) => e.type === 'GuardRiposte') as Extract<GameEvent, { type: 'GuardRiposte' }>;
+    expect(rip.guardMounted).toBe(1);
+    expect(rip.attackerMounted).toBeUndefined();
+  });
+
+  it('carries into free hacks, for the hacker and the leaver alike', () => {
+    const config = (hackerMounted: boolean, leaverMounted: boolean): GameConfig => ({
+      seed: 5,
+      board: { width: 6, height: 3 },
+      warbands: [
+        [{ name: 'Runner', quality: 3, combat: 3, slow: true, mounted: leaverMounted, pos: { x: 1, y: 1 } }],
+        [{ name: 'Rider', quality: 3, combat: 3, mounted: hackerMounted, pos: { x: 2, y: 1 } }],
+      ],
+    });
+    const hackOf = (c: GameConfig) => {
+      const { events } = reduce(acting(c, 'p0u0'), { type: 'Move', unitId: 'p0u0', to: { x: 0, y: 1 } });
+      return events.find((e) => e.type === 'FreeHackResolved') as Extract<GameEvent, { type: 'FreeHackResolved' }>;
+    };
+    expect(hackOf(config(true, false)).attackMounted).toBe(1);
+    expect(hackOf(config(false, true)).defenseMounted).toBe(1);
+  });
+
+  it('does not touch shooting', () => {
+    const config = (mounted: boolean): GameConfig => ({
+      seed: 5,
+      board: { width: 9, height: 3 },
+      warbands: [
+        [{ name: 'Horse-Archer', quality: 3, combat: 2, ranged: 4, mounted, pos: { x: 0, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    });
+    const shoot = (c: GameConfig) => {
+      const { events } = reduce(acting(c, 'p0u0'), { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' });
+      return events.find((e) => e.type === 'ShotResolved') as Extract<GameEvent, { type: 'ShotResolved' }>;
+    };
+    expect(shoot(config(true)).attackScore).toBe(shoot(config(false)).attackScore);
+  });
+});

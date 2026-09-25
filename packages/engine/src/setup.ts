@@ -24,6 +24,8 @@ export interface UnitSpec {
   flying?: boolean;
   /** Reassembling: a knocked-down unit stands up for free at the start of each round. */
   reassembling?: boolean;
+  /** Mounted: +1 in melee against foes on foot, while not knocked down. */
+  mounted?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -73,6 +75,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       big: spec.big ?? false,
       flying: spec.flying ?? false,
       reassembling: spec.reassembling ?? false,
+      mounted: spec.mounted ?? false,
     },
     guarding: false,
   };

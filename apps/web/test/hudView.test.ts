@@ -96,7 +96,7 @@ describe('warbandStatus', () => {
 
 describe('traitTags', () => {
   const traits = (over: Partial<UnitTraits>) => ({
-    traits: { slow: false, fast: false, ranged: 0, tough: false, guard: false, big: false, flying: false, reassembling: false, ...over },
+    traits: { slow: false, fast: false, ranged: 0, tough: false, guard: false, big: false, flying: false, reassembling: false, mounted: false, ...over },
   });
 
   it('says nothing for a plain unit', () => {

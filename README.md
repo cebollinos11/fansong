@@ -94,7 +94,8 @@ seed replays identically).
 
 - **Cost model** (`unitCost`) — the Song of Blades and Heroes formula
   `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
-  favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling) adds
+  favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling,
+  Mounted) adds
   3 to Special Abilities and each unfavorable one (Slow) takes 3 off.
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
   3 or 7.

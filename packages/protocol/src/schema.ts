@@ -130,6 +130,7 @@ export const unitTraitsSchema = z
     big: z.boolean(),
     flying: z.boolean(),
     reassembling: z.boolean(),
+    mounted: z.boolean(),
   })
   .strict();
 
@@ -240,6 +241,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     attackBig: z.number().optional(),
     defenseBig: z.number().optional(),
     attackFly: z.number().optional(),
+    attackMounted: z.number().optional(),
+    defenseMounted: z.number().optional(),
     powerPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -277,6 +280,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     attackBig: z.number().optional(),
     defenseBig: z.number().optional(),
     attackFly: z.number().optional(),
+    attackMounted: z.number().optional(),
+    defenseMounted: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
   }),
@@ -296,6 +301,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     guardBig: z.number().optional(),
     attackerBig: z.number().optional(),
     guardFly: z.number().optional(),
+    guardMounted: z.number().optional(),
+    attackerMounted: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
     prevented: z.boolean(),
@@ -369,6 +376,7 @@ export const unitSpecSchema = z
     big: z.boolean().optional(),
     flying: z.boolean().optional(),
     reassembling: z.boolean().optional(),
+    mounted: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -425,6 +433,7 @@ export const warbandUnitSchema = z
     big: z.boolean().optional(),
     flying: z.boolean().optional(),
     reassembling: z.boolean().optional(),
+    mounted: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();
