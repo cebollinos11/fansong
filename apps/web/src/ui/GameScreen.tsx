@@ -7,6 +7,7 @@ import { buildPlanIndex, previewFor } from '../game/planView.js';
 import { PlanRunner } from '../game/planRunner.js';
 import { PresentationQueue } from '../game/presentation.js';
 import { downloadReplay } from '../game/replay-io.js';
+import { splitRoundStart } from '../game/roundStart.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { Hud } from './Hud.js';
@@ -93,7 +94,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       },
     );
     queueRef.current = queue;
-    const unsub = client.subscribe((t) => queue.push(t));
+    // Reassembling units stand up after the round's banner, not under it.
+    const unsub = client.subscribe((t) => splitRoundStart(t).forEach((part) => queue.push(part)));
     const unsubStatus = client.onStatus(setStatus);
     setStatus(client.status());
     return () => {

@@ -316,6 +316,12 @@ const DEFLECT = 0.08; // how far a clash throws the two combatants apart
 const JOLT_MS = 220;
 const TOUGH_HITCH_MS = 320; // a Tough unit freezes mid-death this long before it drops to the ground instead
 const GLOW_MS = 1200; // gold rim glow on a Tough save
+const BONE = 0xe8e0c8; // a Reassembling unit's bones pulling back together
+const BONE_COLORS = [0xf4eedc, 0xe8e0c8, 0xbfb49a];
+const REASSEMBLE_GATHER_MS = 650; // the bones drawing in, before the unit starts to climb up
+const REASSEMBLE_STAGGER_MS = 250; // between one unit's reassembly and the next
+const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the player's view
+const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
 const HIT_STOP_MS = 90; // a gruesome kill freezes the action this long on impact
 const FEAR_WAVE_MS = 800; // time for a gruesome kill's fear to reach the edge of its radius
 const SHATTER_FADE_MS = 200; // a unit that shatters into motes is gone this fast
@@ -913,6 +919,7 @@ export class BoardView {
     let pair: [string, string] | null = null; // the two sides of the latest blow
     let gruesome = false; // whether the latest blow was a gruesome kill
     const toughSaved = new Set<string>(); // units whose killing blow Tough turned into a knockdown
+    let reassembling = false; // whether this batch's Reassembling stand-ups are already laid out
     const hold = (id: string, until: number) => {
       const obj = this.units.get(id);
       if (obj) obj.holdUntil = Math.max(obj.holdUntil, this.now + until);
@@ -959,6 +966,13 @@ export class BoardView {
         }
         settle = resolve;
         t = end;
+      } else if (e.type === 'UnitStoodUp' && e.reassembled) {
+        // The round's free stand-ups play as one beat of their own, on the first.
+        if (reassembling) return;
+        reassembling = true;
+        const ids = [e.unitId, ...after.flatMap((x) => (x.type === 'UnitStoodUp' && x.reassembled ? [x.unitId] : []))];
+        t = this.reassemble(ids, Math.max(t, settle), hold);
+        lastHit = settle = t;
       } else if (e.type === 'UnitStoodUp') {
         hold(e.unitId, settle);
       } else if (
@@ -1183,6 +1197,55 @@ export class BoardView {
     // Close enough to fill the view with the pair, but never further out than the opening shot.
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
     const dur = this.scheduleMove(at, centre, this.closeUp(span * COMBAT_SPAN_MARGIN));
+    if (dur > 0) this.focusUnits(unitIds, at);
+    return dur;
+  }
+
+  /**
+   * The top of a round, when Reassembling units haul themselves up: frame them
+   * all, pull each one's bones back together in turn, let it climb out of its
+   * down pose, then hand the player back the view they had. Starts `at` ms from
+   * now; `hold` keeps a unit's shown state down until the given time. Returns
+   * when the beat is over.
+   */
+  private reassemble(ids: string[], at: number, hold: (id: string, until: number) => void): number {
+    const units = ids.map((id) => this.units.get(id)).filter((obj): obj is UnitObj => !!obj && !obj.fade);
+    if (units.length === 0) return at;
+    // Where the player was looking from — out of any close-up still pending.
+    const back = this.plannedCamera();
+    if (this.restoreDist !== null) back.dist = this.restoreDist;
+    this.restoreDist = null;
+    let t = at + this.pause(this.frameReassembly(ids, at));
+    this.at(t, () =>
+      this.rolls.addVerdict({ text: 'Reassembling', on: ids, tone: 'save' }, this.now, 'bottom'),
+    );
+    let end = t;
+    units.forEach((obj, i) => {
+      const start = t + i * REASSEMBLE_STAGGER_MS;
+      this.at(start, () => this.reassembleFx(obj));
+      // The shown state catches up as the bones come together: it climbs up.
+      const up = start + REASSEMBLE_GATHER_MS;
+      hold(obj.id, up);
+      const fall = this.deathClip(obj, 'fall');
+      end = Math.max(end, up + (fall ? clipDuration(fall) : 200));
+    });
+    t = end + REASSEMBLE_HOLD_MS;
+    const ret = this.scheduleMove(t, back.target, back.dist);
+    return t + ret;
+  }
+
+  /**
+   * Bring every reassembling unit into view — up close in the cinematic camera,
+   * only if off screen when following. Returns the move's length.
+   */
+  private frameReassembly(unitIds: string[], at: number): number {
+    if (this.cameraMode !== 'cinematic') return this.frameUnits(unitIds, at);
+    if (this.downPos) return 0;
+    const points = this.unitPoints(unitIds);
+    if (points.length === 0) return 0;
+    const centre = middle(points);
+    const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
+    const dur = this.scheduleMove(at, centre, this.closeUp(Math.max(span * COMBAT_SPAN_MARGIN, REASSEMBLE_MIN_SPAN)));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -2545,6 +2608,45 @@ export class BoardView {
     this.effects.beam(a, b, color, 0.035, { life: 0.7 });
     this.effects.icon('shield', a.clone().lerp(b, 0.5).setY(Math.max(a.y, b.y) + 0.25), 0.36, { life: 0.9, color });
     this.joltUnit(friend, friend.group.position.clone().sub(obj.group.position), 0.1);
+  }
+
+  /** Reassembling: a ring of pale bone light closes in on the fallen unit and its shards fly back together. */
+  private reassembleFx(obj: UnitObj): void {
+    if (obj.state.dead) return;
+    const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
+    const chest = this.chest(obj);
+    this.effects.ring(ground, BONE, HEX_SIZE * 0.95, 0.25, { life: REASSEMBLE_GATHER_MS / 1000, opacity: 0.9, additive: true });
+    // Shards thrown out from the unit fall straight back in: a burst with gravity pulling toward it.
+    this.effects.burst({
+      at: ground.clone().setY(ground.y + 0.05),
+      count: 22,
+      colors: BONE_COLORS,
+      speed: [0.6, 1.4],
+      flat: true,
+      up: 1.2,
+      gravity: 5,
+      drag: 1,
+      life: [0.3, 0.55],
+      size: [0.03, 0.06],
+      shape: 'square',
+    });
+    this.at(REASSEMBLE_GATHER_MS, () => {
+      this.flashUnit(obj.id, 0.4);
+      this.effects.ring(ground, BONE, 0.2, HEX_SIZE * 0.7, { life: 0.35, opacity: 0.7, additive: true });
+      this.effects.burst({
+        at: chest,
+        count: 14,
+        colors: BONE_COLORS,
+        speed: [0.4, 1],
+        up: 0.6,
+        gravity: 2,
+        drag: 2,
+        life: [0.3, 0.6],
+        size: [0.03, 0.05],
+        blend: 'add',
+      });
+      obj.glow = { color: BONE, start: this.now, end: this.now + GLOW_MS };
+    });
   }
 
   /** Knocked down: the unit blinks out and back {@link BLINKS} times as it hits the ground. */
