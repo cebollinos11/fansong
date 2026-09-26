@@ -1,5 +1,6 @@
 import {
   adjacentEnemies,
+  airborne,
   aliveUnits,
   bigMeleeBonus,
   bigTargetBonus,
@@ -69,7 +70,7 @@ const DISENGAGE_COST = 30_000;
 function disengageCost(state: GameState, board: Board, unitId: string): number {
   const mover = unitById(state, unitId)!;
   // A flyer lifts away without drawing a hack, so leaving contact costs it nothing.
-  if (mover.traits.flying) return 0;
+  if (airborne(state, mover)) return 0;
   return adjacentEnemies(state, mover, board).filter((e) => !e.knockedDown).length * DISENGAGE_COST;
 }
 
@@ -88,7 +89,7 @@ function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit
     rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) +
     cover -
     bigTargetBonus(target) -
-    flyingTargetBonus(target) -
+    flyingTargetBonus(state, target) -
     opportunistBonus(shooter, target)
   );
 }
@@ -121,7 +122,7 @@ function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit)
   return (
     attacker.combat +
     bigMeleeBonus(attacker, target) +
-    flyingMeleeBonus(attacker, target) +
+    flyingMeleeBonus(state, attacker, target) +
     mountedMeleeBonus(attacker, target) +
     opportunistBonus(attacker, target) -
     outnumberedPenalty(state, attacker, board) -

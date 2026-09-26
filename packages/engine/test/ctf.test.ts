@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  airborne,
   createGame,
   dropFallenCarriers,
   flagAtBase,
   flagCarriedBy,
+  flyingTargetBonus,
+  makeHexGrid,
   reduce,
+  walkRules,
   type Command,
   type GameConfig,
   type GameEvent,
@@ -178,5 +182,78 @@ describe('capture-the-flag', () => {
     expect(flagEvents(events)).toEqual([{ type: 'FlagReturned', player: 0, unitId: 'p0u0' }]);
     expect(flagAtBase(state, 0)).toBe(true);
     expect(state.mode?.flags?.[1]).toEqual({ at: { x: 2, y: 2 }, carrier: 'p0u0' });
+  });
+
+  it('a downed carrier takes its dropped flag back as it stands up', () => {
+    let stood = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = createGame({ ...config([U('a', 1, 1)], [U('b', 4, 2)]), seed });
+      const s = structuredClone(g);
+      s.phase = 'awaitingActivation';
+      s.active = 1;
+      s.units[1]!.knockedDown = true;
+      s.mode!.flags![0] = { at: { x: 4, y: 2 }, carrier: null };
+      const { state, events } = run(s, [{ type: 'ChooseActivation', unitId: 'p1u0', diceCount: 1 }]);
+      if (state.units[1]!.knockedDown) {
+        expect(flagEvents(events)).toEqual([]);
+        continue;
+      }
+      stood++;
+      expect(flagEvents(events)).toEqual([{ type: 'FlagPickedUp', player: 0, unitId: 'p1u0' }]);
+      expect(events.findIndex((e) => e.type === 'FlagPickedUp')).toBe(
+        events.findIndex((e) => e.type === 'UnitStoodUp') + 1,
+      );
+      expect(state.mode?.flags?.[0]).toEqual({ at: { x: 4, y: 2 }, carrier: 'p1u0' });
+    }
+    expect(stood).toBeGreaterThan(0);
+  });
+
+  it('a carrier pushed onto its own base captures', () => {
+    let pushed = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const g = createGame({ ...config([U('a', 3, 2)], [U('b', 4, 2), U('c', 7, 5)]), seed });
+      const s = acting(g, 'p1u0', 1);
+      // Put p0's base right behind its carrier, so a recoil lands on it.
+      const board = makeHexGrid(s.board);
+      s.mode!.objectives.flags![0] = board.stepAway({ x: 4, y: 2 }, { x: 3, y: 2 });
+      s.mode!.flags![0].at = { ...s.mode!.objectives.flags![0] };
+      s.mode!.flags![1] = { at: { x: 3, y: 2 }, carrier: 'p0u0' };
+      const { state, events } = run(s, [{ type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' }]);
+      if (!events.some((e) => e.type === 'UnitRecoiled' && e.unitId === 'p0u0')) continue;
+      pushed++;
+      const types = events.map((e) => e.type);
+      expect(types.slice(types.indexOf('UnitRecoiled'))).toEqual(['UnitRecoiled', 'FlagCaptured', 'GameOver']);
+      expect(state.winner).toBe(0);
+      expect(state.mode?.scores).toEqual([1, 0]);
+      expect(state.actionsRemaining).toBe(0);
+    }
+    expect(pushed).toBeGreaterThan(0);
+  });
+
+  it('a flyer carrying a flag is grounded until it drops it', () => {
+    const g = createGame(config([U('a', 3, 2, { flying: true })], [U('b', 5, 2)]));
+    const s = structuredClone(g);
+    const flyer = s.units[0]!;
+    const board = makeHexGrid(s.board);
+    expect(airborne(s, flyer)).toBe(true);
+    expect(flyingTargetBonus(s, flyer)).toBeGreaterThan(0);
+
+    s.mode!.flags![1] = { at: { x: 3, y: 2 }, carrier: 'p0u0' };
+    expect(airborne(s, flyer)).toBe(false);
+    expect(walkRules(s, flyer, board).phaseThrough).toBeFalsy();
+    expect(flyingTargetBonus(s, flyer)).toBe(0);
+
+    flyer.knockedDown = true;
+    dropFallenCarriers(s, []);
+    flyer.knockedDown = false;
+    expect(airborne(s, flyer)).toBe(true);
+  });
+
+  it('a grounded carrier takes free hacks leaving contact', () => {
+    const g = createGame(config([U('a', 3, 2, { flying: true })], [U('b', 4, 2)]));
+    const s = acting(g, 'p0u0');
+    s.mode!.flags![1] = { at: { x: 3, y: 2 }, carrier: 'p0u0' };
+    const { events } = run(s, [move('p0u0', 1, 2)]);
+    expect(events[0]).toMatchObject({ type: 'FreeHackResolved', attackerId: 'p1u0', targetId: 'p0u0' });
   });
 });

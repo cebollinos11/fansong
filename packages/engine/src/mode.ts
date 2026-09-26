@@ -308,7 +308,8 @@ export function flagAtBase(state: GameState, player: Owner): boolean {
 
 /**
  * Capture-the-flag (mutates `s`): a flag `unit` carries follows it. Being pushed
- * (a recoil) only does this — it never picks up, returns or captures a flag.
+ * or running only does this — it never picks up or returns a flag (though a
+ * recoil can end on the carrier's base: see {@link captureIfHome}).
  */
 export function carryFlags(s: GameState, unit: Unit): void {
   for (const f of s.mode?.flags ?? []) if (f.carrier === unit.id) f.at = { x: unit.pos.x, y: unit.pos.y };
@@ -318,8 +319,8 @@ export function carryFlags(s: GameState, unit: Unit): void {
  * Capture-the-flag, after `unitId` ends a move (mutates `s`): a carried flag
  * follows its carrier; moving onto your own dropped flag returns it to base;
  * moving onto the enemy flag (at its base or dropped) picks it up; and a carrier
- * ending its move on its own base captures — scoring 1 and winning at once
- * (whether or not its own flag is home). Returns whether the game ended.
+ * ending its move on its own base captures (see {@link captureIfHome}). Returns
+ * whether the game ended.
  */
 export function flagsAfterMove(s: GameState, events: GameEvent[], unitId: string): boolean {
   const m = s.mode;
@@ -327,7 +328,6 @@ export function flagsAfterMove(s: GameState, events: GameEvent[], unitId: string
   if (!m?.flags || !m.objectives.flags || !unit) return false;
   const bases = m.objectives.flags;
   const own = unit.owner;
-  const enemy: Owner = own === 0 ? 1 : 0;
   carryFlags(s, unit);
 
   const mine = m.flags[own];
@@ -335,24 +335,51 @@ export function flagsAfterMove(s: GameState, events: GameEvent[], unitId: string
     mine.at = { x: bases[own].x, y: bases[own].y };
     events.push({ type: 'FlagReturned', player: own, unitId: unit.id });
   }
-  const theirs = m.flags[enemy];
-  if (theirs.carrier === null && sameHex(theirs.at, unit.pos)) {
-    theirs.carrier = unit.id;
-    events.push({ type: 'FlagPickedUp', player: enemy, unitId: unit.id });
-  }
-  if (theirs.carrier === unit.id && sameHex(unit.pos, bases[own])) {
-    m.scores[own] += 1;
-    events.push({ type: 'FlagCaptured', player: own, unitId: unit.id });
-    finishGame(s, events, own, 'flag');
-    return true;
-  }
-  return false;
+  pickUpLooseFlag(s, events, unit);
+  return captureIfHome(s, events, unit);
+}
+
+/** Capture-the-flag (mutates `s`): `unit` takes the enemy flag if it lies loose on its hex. */
+function pickUpLooseFlag(s: GameState, events: GameEvent[], unit: Unit): void {
+  const enemy: Owner = unit.owner === 0 ? 1 : 0;
+  const theirs = s.mode?.flags?.[enemy];
+  if (!theirs || theirs.carrier !== null || !sameHex(theirs.at, unit.pos)) return;
+  theirs.carrier = unit.id;
+  events.push({ type: 'FlagPickedUp', player: enemy, unitId: unit.id });
+}
+
+/**
+ * Capture-the-flag (mutates `s`): as `unit` stands back up, an enemy flag lying
+ * on its hex — the one it dropped going down — is back in its hands for free.
+ */
+export function regrabOnStandUp(s: GameState, events: GameEvent[], unit: Unit): void {
+  pickUpLooseFlag(s, events, unit);
+}
+
+/**
+ * Capture-the-flag (mutates `s`): a carrier standing on its own base captures —
+ * scoring 1 and winning at once, whether or not its own flag is home. Checked
+ * when it ends a move there or is pushed (recoils) onto it. Returns whether the
+ * game ended.
+ */
+export function captureIfHome(s: GameState, events: GameEvent[], unit: Unit): boolean {
+  const m = s.mode;
+  const bases = m?.objectives.flags;
+  if (!m?.flags || !bases || s.phase === 'gameOver') return false;
+  const own = unit.owner;
+  const enemy: Owner = own === 0 ? 1 : 0;
+  if (m.flags[enemy].carrier !== unit.id || !sameHex(unit.pos, bases[own])) return false;
+  m.scores[own] += 1;
+  events.push({ type: 'FlagCaptured', player: own, unitId: unit.id });
+  finishGame(s, events, own, 'flag');
+  return true;
 }
 
 /**
  * Capture-the-flag (mutates `s`): a carrier that has been knocked down or has
  * died (killed or routed) drops the flag on its hex. Checked after every
- * combat and activation, before the game-over checks.
+ * combat and activation, before the game-over checks. A carrier that was only
+ * knocked down takes it back as it stands up (see {@link regrabOnStandUp}).
  */
 export function dropFallenCarriers(s: GameState, events: GameEvent[]): void {
   const flags = s.mode?.flags;

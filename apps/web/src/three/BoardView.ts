@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
+  airborne,
   makeHexGrid,
   MORALE_RADIUS,
   vecKey,
@@ -434,8 +435,10 @@ interface UnitObj {
   sprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   /** Cutout size multiplier: {@link BIG_SCALE} for a Big unit, else 1. */
   size: number;
-  /** Whether this unit is a flyer (floats above its hex unless downed). */
+  /** Whether this unit is a flyer (floats above its hex unless downed or grounded). */
   flying: boolean;
+  /** A flyer weighed down by a flag it carries: it walks, so it stays on the ground. */
+  grounded: boolean;
   /** Current hover height, lerped toward {@link FLY_HOVER} while airborne (0 on the ground). */
   hover: number;
   base: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial>;
@@ -842,6 +845,7 @@ export class BoardView {
       obj.targetPos = this.unitWorld(u.pos);
       obj.name = u.name;
       obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead };
+      obj.grounded = u.traits.flying && !airborne(state, u);
 
       const isActive = state.activeUnitId === u.id;
       const isSelected = vm.selectedUnitId === u.id;
@@ -1515,6 +1519,7 @@ export class BoardView {
       id,
       size: big ? BIG_SCALE : 1,
       flying,
+      grounded: false,
       hover: 0,
       owner,
       name,
@@ -1946,8 +1951,9 @@ export class BoardView {
       obj.group.visible = f < 1;
     }
     // A flyer floats above its hex with a slow bob, and settles to earth when
-    // knocked down or dying; its base ring stays put on the ground as a shadow.
-    const airborne = obj.flying && !obj.shown.knocked && !obj.fade;
+    // knocked down, dying or carrying a flag; its base ring stays put on the
+    // ground as a shadow.
+    const airborne = obj.flying && !obj.grounded && !obj.shown.knocked && !obj.fade;
     obj.hover += ((airborne ? FLY_HOVER : 0) - obj.hover) * lerp;
     const lift = obj.hover + (airborne ? Math.sin((this.now / FLY_BOB_MS) * Math.PI * 2) * FLY_BOB : 0);
     obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT + lift - sink, off.z);

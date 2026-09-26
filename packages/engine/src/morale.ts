@@ -1,7 +1,7 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
-import { carryFlags } from './mode.js';
+import { carryFlags, regrabOnStandUp } from './mode.js';
 import { rollD6 } from './rng.js';
-import { aliveUnits, isOccupied, livingCount } from './query.js';
+import { airborne, aliveUnits, isOccupied, livingCount } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
 
 /**
@@ -138,6 +138,7 @@ function flee(s: GameState, events: GameEvent[], unit: Unit, board: Board, hacks
   if (unit.knockedDown) {
     unit.knockedDown = false;
     events.push({ type: 'UnitStoodUp', unitId: unit.id });
+    regrabOnStandUp(s, events, unit);
   }
   if (!hacks(unit)) return;
 
@@ -175,7 +176,7 @@ export function fleeRun(s: GameState, unit: Unit, board: Board): { to: Vec; path
 
 /** How a runner may go: nowhere an enemy stands or can reach out and touch. A flyer goes over it all. */
 function fleeRules(s: GameState, unit: Unit, board: Board): WalkRules {
-  if (unit.traits.flying) return { phaseThrough: true };
+  if (airborne(s, unit)) return { phaseThrough: true };
   const shunned = new Set<string>();
   for (const e of s.units) {
     if (e.dead || e.owner === unit.owner) continue;

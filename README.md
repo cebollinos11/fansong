@@ -278,8 +278,10 @@ absent when unused.
   - **conquest** — as above with three zones (A/B/C) scored separately; first
     to **8**, else higher score after round 12.
   - **capture-the-flag** — move onto the enemy flag to pick it up; a knocked-down
-    or killed carrier drops it; move onto your own dropped flag to return it;
-    end a move on your base with the enemy flag to win.
+    or killed carrier drops it (a downed carrier takes it back for free as it
+    stands up); move onto your own dropped flag to return it; end a move on — or
+    be pushed onto — your base with the enemy flag to win. A flying carrier is
+    weighed down and walks until it drops the flag.
 
   The heuristic AI plays every mode (zones, flags, Kings, high ground and cover),
   and a self-play matrix runs every built-in map × every mode it supports.

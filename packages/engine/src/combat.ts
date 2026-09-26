@@ -1,5 +1,6 @@
 import type { Vec } from './board.js';
-import type { CombatResult, Unit } from './types.js';
+import { airborne } from './query.js';
+import type { CombatResult, GameState, Unit } from './types.js';
 
 /** One combatant's side of an opposed roll. */
 export interface CombatSide {
@@ -121,24 +122,22 @@ export function bigTargetBonus(target: Pick<Unit, 'traits'>): number {
  * grounded (non-flying) opponent, else 0. Only the aggressor of a melee ever
  * gets it — flying is an edge you press, not one you defend with. And unlike
  * size, the edge is the flight itself, so — like high ground — a knocked-down
- * flyer, brought to earth, loses it.
+ * flyer, brought to earth, loses it — as does one weighed down by a flag.
  */
-export function flyingMeleeBonus(
-  unit: Pick<Unit, 'traits' | 'knockedDown'>,
-  opponent: Pick<Unit, 'traits'>,
-): number {
+export function flyingMeleeBonus(state: GameState, unit: Unit, opponent: Unit): number {
   if (unit.knockedDown) return 0;
-  return unit.traits.flying && !opponent.traits.flying ? FLYING_MELEE_BONUS : 0;
+  return airborne(state, unit) && !airborne(state, opponent) ? FLYING_MELEE_BONUS : 0;
 }
 
 /**
  * The bonus a shot gets for its target being an airborne flyer:
  * {@link FLYING_TARGET_BONUS} against a flyer that is not knocked down, else 0.
  * A flyer in the open sky has nowhere to take cover, so it is easy to hit whoever
- * is shooting; brought down to the ground it is an ordinary target again.
+ * is shooting; brought down to the ground (or carrying a flag) it is an
+ * ordinary target again.
  */
-export function flyingTargetBonus(target: Pick<Unit, 'traits' | 'knockedDown'>): number {
-  return target.traits.flying && !target.knockedDown ? FLYING_TARGET_BONUS : 0;
+export function flyingTargetBonus(state: GameState, target: Unit): number {
+  return airborne(state, target) && !target.knockedDown ? FLYING_TARGET_BONUS : 0;
 }
 
 /**

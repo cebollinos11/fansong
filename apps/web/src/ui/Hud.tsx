@@ -1,4 +1,4 @@
-import { unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
+import { airborne, unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
 import { isAiSeat, type MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
@@ -207,7 +207,7 @@ export function Hud(props: Props): JSX.Element {
 function UnitInspector({ state, unitId }: { state: GameState; unitId: string | null }): JSX.Element | null {
   const u = unitId ? unitById(state, unitId) : null;
   if (!u) return null;
-  const traits = traitTags(u);
+  const traits = traitTags(u, u.traits.flying && !airborne(state, u));
   return (
     <div className="inspector">
       <h3>

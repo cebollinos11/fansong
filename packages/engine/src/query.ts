@@ -77,6 +77,14 @@ export function outnumberedPenalty(state: GameState, unit: Unit, board: Board): 
 }
 
 /**
+ * Whether `unit` is flying right now: a flyer, unless it is weighed down with a
+ * flag (capture-the-flag) — a carrier goes on foot like anyone else.
+ */
+export function airborne(state: GameState, unit: Unit): boolean {
+  return unit.traits.flying && !state.mode?.flags?.some((f) => f.carrier === unit.id);
+}
+
+/**
  * How `unit` may walk: never through an enemy's hex, and a walk that enters a
  * hex in contact with any living enemy stops there. Leaving contact from the
  * start hex is allowed (it provokes free hacks — see `reduce`).
@@ -85,7 +93,7 @@ export function walkRules(state: GameState, unit: Unit, board: Board): WalkRules
   // A flyer moves over everything — terrain and friend and foe — and is only
   // bound by where it may *land* (the caller's occupancy/terrain check on the
   // destination). So no hex bars it and none halts it; it phases through.
-  if (unit.traits.flying) return { phaseThrough: true };
+  if (airborne(state, unit)) return { phaseThrough: true };
   const enemyHexes = new Set<string>();
   const contact = new Set<string>();
   for (const e of state.units) {

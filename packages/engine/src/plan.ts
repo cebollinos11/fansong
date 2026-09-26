@@ -14,6 +14,7 @@
 import { makeHexGrid, vecKey, type Board, type Vec } from './board.js';
 import { COVER_PENALTY, highGroundBonus, PRESSED_COST, rangePenalty } from './combat.js';
 import {
+  airborne,
   enemiesOf,
   inMelee,
   isOccupied,
@@ -86,7 +87,7 @@ export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp
   // swing (see `resolveFreeHacks`), so a knocked-down foe holds nobody in place —
   // and a flyer lifts away untouched, so nothing provokes one.
   const provoking = new Set<string>();
-  if (!unit.traits.flying) {
+  if (!airborne(state, unit)) {
     for (const e of state.units) {
       if (e.dead || e.knockedDown || e.owner === unit.owner) continue;
       for (const n of board.neighbors(e.pos)) provoking.add(vecKey(n));

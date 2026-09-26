@@ -73,6 +73,9 @@ export const TRAIT_HELP = {
   opportunist: 'Strikes when a foe is down: +1 in melee or shooting against a knocked-down foe',
 } as const;
 
+/** Why a flyer carrying a flag has lost its flight. */
+const GROUNDED_HELP = 'A flyer weighed down by the flag it carries: it walks, and fights and is shot at like a unit on foot, until it drops it';
+
 /** One of a unit's special abilities, as the inspector shows it. */
 export interface TraitTag {
   label: string;
@@ -81,9 +84,10 @@ export interface TraitTag {
 
 /**
  * A unit's special abilities. These decide how you fight a unit far more than
- * its stats do, so they belong wherever a unit is described.
+ * its stats do, so they belong wherever a unit is described. A `grounded` flyer
+ * (weighed down by a flag it carries) is shown as such.
  */
-export function traitTags(unit: Pick<Unit, 'traits'>): TraitTag[] {
+export function traitTags(unit: Pick<Unit, 'traits'>, grounded = false): TraitTag[] {
   const tags: TraitTag[] = [];
   if (unit.traits.slow) tags.push({ label: 'Slow', help: TRAIT_HELP.slow });
   if (unit.traits.fast) tags.push({ label: 'Fast', help: TRAIT_HELP.fast });
@@ -91,7 +95,9 @@ export function traitTags(unit: Pick<Unit, 'traits'>): TraitTag[] {
   if (unit.traits.tough) tags.push({ label: 'Tough', help: TRAIT_HELP.tough });
   if (unit.traits.guard) tags.push({ label: 'Guard', help: TRAIT_HELP.guard });
   if (unit.traits.big) tags.push({ label: 'Big', help: TRAIT_HELP.big });
-  if (unit.traits.flying) tags.push({ label: 'Flying', help: TRAIT_HELP.flying });
+  if (unit.traits.flying) {
+    tags.push(grounded ? { label: 'Grounded', help: GROUNDED_HELP } : { label: 'Flying', help: TRAIT_HELP.flying });
+  }
   if (unit.traits.reassembling) tags.push({ label: 'Reassembling', help: TRAIT_HELP.reassembling });
   if (unit.traits.mounted) tags.push({ label: 'Mounted', help: TRAIT_HELP.mounted });
   if (unit.traits.opportunist) tags.push({ label: 'Opportunist', help: TRAIT_HELP.opportunist });

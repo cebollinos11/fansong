@@ -17,18 +17,21 @@ import {
   rangePenalty,
 } from './combat.js';
 import {
+  captureIfHome,
   carryFlags,
   checkRoundLimit,
   dropFallenCarriers,
   fallenKingOwner,
   finishGame,
   flagsAfterMove,
+  regrabOnStandUp,
   scoreZones,
 } from './mode.js';
 import { resolveCombatMorale, type FreeHacks } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import {
   adjacentEnemies,
+  airborne,
   inMelee,
   isOccupied,
   livingCount,
@@ -146,6 +149,7 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
     unit.knockedDown = false;
     actions -= 1;
     events.push({ type: 'UnitStoodUp', unitId });
+    regrabOnStandUp(s, events, unit);
   }
 
   s.activationCount += 1;
@@ -216,6 +220,9 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
 
   const board = makeHexGrid(s.board);
   if (board.distance(attacker.pos, target.pos) !== 1) throw new Error('target not adjacent');
+  // Spent up front: the actions go even if the attack is repelled, and a push
+  // can end the game (a carrier shoved home) before the blow is settled.
+  s.actionsRemaining -= cost;
 
   // Guard reaction: a guarding defender strikes first. If the riposte kills or
   // knocks the attacker down, the incoming attack is prevented entirely.
@@ -224,7 +231,6 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     // reaches the riposte — only the swing it was bought for.
     const prevented = resolveRiposte(s, events, target, attacker, board);
     if (prevented) {
-      s.actionsRemaining -= cost; // the actions are spent even though the attack was repelled
       if (checkGameOver(s, events)) return;
       endActivation(s, events);
       return;
@@ -279,8 +285,6 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
       break;
   }
 
-  s.actionsRemaining -= cost;
-
   if (checkGameOver(s, events)) return;
   if (attackerEnded || s.actionsRemaining <= 0) endActivation(s, events);
 }
@@ -312,6 +316,8 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   if (!board.lineOfSight(attacker.pos, target.pos, (v) => occ.has(vecKey(v))))
     throw new Error('no line of sight to target');
 
+  // Spent up front, as the shot's push can end the game (a carrier shoved home).
+  s.actionsRemaining -= cost;
   const { attackDie, defenseDie } = rollPair(s);
   const attackBonus = highGroundBonus(board, attacker, target);
   const defenseBonus = highGroundBonus(board, target, attacker);
@@ -320,7 +326,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   // A Big target is hard to miss, whoever is shooting at it.
   const bigTarget = bigTargetBonus(target);
   // An airborne flyer has no cover in the open sky — easy to shoot down.
-  const flyingTarget = flyingTargetBonus(target);
+  const flyingTarget = flyingTargetBonus(s, target);
   const attackOpportunist = opportunistBonus(attacker, target);
   const attackScore =
     attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget + attackOpportunist - range - cover;
@@ -351,7 +357,6 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
 
   hitDefender(s, events, result, target, attacker.id, board, gruesome, targetPush);
 
-  s.actionsRemaining -= cost;
   if (checkGameOver(s, events)) return;
   if (s.actionsRemaining <= 0) endActivation(s, events);
 }
@@ -454,7 +459,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
  */
 function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board: Board): boolean {
   // A flyer lifts straight up out of contact — no ground blade can catch it.
-  if (mover.traits.flying) return true;
+  if (airborne(s, mover)) return true;
   for (const hacker of adjacentEnemies(s, mover, board)) {
     if (hacker.knockedDown) continue;
     const roll = rollMelee(s, board, hacker, mover);
@@ -551,7 +556,7 @@ function rollMelee(
     defenseOutnumbered: outnumberedPenalty(s, defender, board),
     attackBig: bigMeleeBonus(aggressor, defender),
     defenseBig: bigMeleeBonus(defender, aggressor),
-    attackFly: flyingMeleeBonus(aggressor, defender),
+    attackFly: flyingMeleeBonus(s, aggressor, defender),
     attackMounted: mountedMeleeBonus(aggressor, defender),
     defenseMounted: mountedMeleeBonus(defender, aggressor),
     attackOpportunist: opportunistBonus(aggressor, defender),
@@ -677,6 +682,8 @@ function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {
   unit.guarding = false; // shoved out of position, stance broken
   carryFlags(s, unit);
   events.push({ type: 'UnitRecoiled', unitId: unit.id, from, to: { x: to.x, y: to.y } });
+  // A carrier shoved onto its own base still gets the flag home.
+  captureIfHome(s, events, unit);
 }
 
 /**
@@ -766,6 +773,7 @@ function endRound(s: GameState, events: GameEvent[]): void {
     if (u.dead || !u.knockedDown || !u.traits.reassembling) continue;
     u.knockedDown = false;
     events.push({ type: 'UnitStoodUp', unitId: u.id, reassembled: true });
+    regrabOnStandUp(s, events, u);
   }
 }
 
