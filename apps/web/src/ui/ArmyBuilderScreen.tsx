@@ -294,6 +294,7 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
         <th title="Opportunist — +1 in melee or shooting against a knocked-down foe">Opp</th>
         <th title="Savage — every kill it deals is gruesome, so the victim's friends must test for fear">Sav</th>
         <th title="Leader — once a round, war cries to inspire every friend still to activate; friends who see it fall must test nerve. Costs as two traits">Lead</th>
+        <th title="Armored — a combat it loses by exactly 1 point does it no harm, even knocked down">Arm</th>
         <th>Pts</th>
         {extra}
         <th />
@@ -415,6 +416,9 @@ export function UnitRow({
       </td>
       <td>
         <input type="checkbox" checked={unit.leader ?? false} aria-label="Leader" onChange={(e) => onChange(withTrait(unit, 'leader', e.target.checked))} />
+      </td>
+      <td>
+        <input type="checkbox" checked={unit.armored ?? false} aria-label="Armored" onChange={(e) => onChange(withTrait(unit, 'armored', e.target.checked))} />
       </td>
       <td className="stats">{valid ? unitCost(unit) : '—'}</td>
       {extra}

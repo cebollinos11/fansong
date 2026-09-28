@@ -309,6 +309,8 @@ const WAR_CRY_MS = 1100; // a Leader's war cry: its rallying clip and verdict be
 const SPARK_COLORS = [0xffffff, 0xfff3c4, 0xffd98a];
 const GOLD = 0xffcf4a;
 const GOLD_COLORS = [0xffe28a, 0xffcf4a, 0xfff6d0];
+const STEEL = 0xc9d6e3;
+const STEEL_COLORS = [0xffffff, 0xc9d6e3, 0x9fb3c8];
 const ASH_COLORS = [0x34313a, 0x57525e, 0x807a88];
 const CHIP_COLORS = [0x8a8074, 0x6b635a, 0xb0a594];
 const DUST_TINT = 0xb8a888; // what the ground's colour is lightened toward for dust
@@ -995,17 +997,20 @@ export class BoardView {
         // blow only reaches pair[1] on a defender-side result. Anything else is
         // a miss, a getaway, a clash, or a parry the guard didn't land, and
         // must not flash the other unit as though it had connected.
-        const land = e.result.startsWith('defender');
+        // A blow an Armored loser turned aside still connects — the armor, not a
+        // parry, is what stops it (the ArmorHeld that follows plays the flare).
+        const armored = after[0]?.type === 'ArmorHeld' ? after[0].unitId : undefined;
+        const land = e.result.startsWith('defender') || armored === pair[1];
         // Melee the defender answers plays as an exchange, so the swing goes in
         // and is turned aside before the answer comes back — landing when the
         // attacker lost the roll, turned aside in its turn when they clashed.
         const cover = e.type === 'ShotResolved' && (e.coverPenalty ?? 0) > 0;
         const s =
-          e.type === 'AttackResolved' && this.answered(e)
-            ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') })
+          e.type === 'AttackResolved' && armored !== pair[1] && this.answered(e)
+            ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') || armored === pair[0] })
             : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land, cover });
         const [first, second] = pair;
-        if (e.result === 'clash' && e.type !== 'ShotResolved') this.at(s.hit, () => this.clashFx(first, second));
+        if (e.result === 'clash' && !armored && e.type !== 'ShotResolved') this.at(s.hit, () => this.clashFx(first, second));
         if (e.type === 'GuardRiposte') {
           this.at(start + cards, () => this.guardFx(e.guardId));
           if (e.prevented) this.at(s.hit, () => this.parryFx(e.guardId, e.attackerId));
@@ -1067,6 +1072,8 @@ export class BoardView {
       } else if (e.type === 'ToughnessSaved') {
         toughSaved.add(e.unitId);
         this.at(lastHit, () => this.toughFx(e.unitId));
+      } else if (e.type === 'ArmorHeld') {
+        this.at(lastHit, () => this.armorFx(e.unitId));
       } else if (e.type === 'UnitRecoiled') {
         const obj = this.units.get(e.unitId);
         if (obj) {
@@ -2851,6 +2858,28 @@ export class BoardView {
     const cell = this.worldToCell(obj.targetPos);
     const y = cell ? this.surfaceAt(cell) : this.groundY(obj);
     this.effects.mark(obj.id, 'fallen', obj.targetPos.clone().setY(y + 0.015), HEX_SIZE * 0.75, 0.5);
+  }
+
+  /** A blow turned aside by armor: a steel shield flares on the unit and sparks glance off it. */
+  private armorFx(id: string): void {
+    const obj = this.units.get(id);
+    if (!obj) return;
+    this.flashUnit(id, 0.35);
+    const chest = this.chest(obj);
+    this.effects.icon('shield', chest, 0.5, { life: 0.45, color: STEEL });
+    this.effects.burst({
+      at: chest,
+      count: 18,
+      colors: STEEL_COLORS,
+      speed: [1.5, 3],
+      up: 0.6,
+      gravity: 6,
+      drag: 1.5,
+      life: [0.2, 0.45],
+      size: [0.03, 0.06],
+      shape: 'square',
+      blend: 'add',
+    });
   }
 
   /** 8a–8b. A Tough save: a gold ward flares and shatters, and the unit freezes mid-death with a gold rim. */

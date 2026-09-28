@@ -88,6 +88,13 @@ export interface UnitTraits {
    * check or flee.
    */
   leader: boolean;
+  /**
+   * Armored: a combat it loses by exactly 1 point — a blow, a shot, a riposte or
+   * a free hack — does it no harm, whether it is standing or knocked down: the
+   * blow is turned aside and the roll counts as a clash (see `armorHeld` in
+   * combat.ts), reported by an `ArmorHeld` event.
+   */
+  armored: boolean;
 }
 
 export interface Unit {
@@ -404,6 +411,11 @@ export type GameEvent =
       prevented: boolean;
     }
   | { type: 'ToughnessSaved'; unitId: string }
+  /**
+   * An Armored unit lost the combat just before this event by exactly 1 point,
+   * and its armor turned the blow aside: the roll's result is a clash.
+   */
+  | { type: 'ArmorHeld'; unitId: string }
   | {
       type: 'NerveCheck';
       unitId: string;

@@ -73,6 +73,7 @@ export const TRAIT_HELP = {
   opportunist: 'Strikes when a foe is down: +1 in melee or shooting against a knocked-down foe',
   savage: 'Kills horribly: every kill it deals is gruesome, so the victim\'s friends must test for fear',
   leader: 'Once a round, one action: a war cry inspires every friend still to activate (first activation die a sure 6). Friends who see it fall must test nerve',
+  armored: 'Turns blows aside: a combat it loses by exactly 1 point does it no harm, even knocked down',
 } as const;
 
 /** Why a flyer carrying a flag has lost its flight. */
@@ -105,6 +106,7 @@ export function traitTags(unit: Pick<Unit, 'traits'>, grounded = false): TraitTa
   if (unit.traits.opportunist) tags.push({ label: 'Opportunist', help: TRAIT_HELP.opportunist });
   if (unit.traits.savage) tags.push({ label: 'Savage', help: TRAIT_HELP.savage });
   if (unit.traits.leader) tags.push({ label: 'Leader', help: TRAIT_HELP.leader });
+  if (unit.traits.armored) tags.push({ label: 'Armored', help: TRAIT_HELP.armored });
   return tags;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canStrikeBack, computeCombatResult, type CombatSide } from '../src/combat.js';
+import { armorHeld, canStrikeBack, computeCombatResult, type CombatSide } from '../src/combat.js';
 
 /** A side with an even natural die (knockdown on a plain win) and room to recoil unless overridden. */
 const side = (score: number, o: Partial<CombatSide> = {}): CombatSide => ({
@@ -64,5 +64,36 @@ describe('canStrikeBack', () => {
       expect(canStrikeBack(false, die)).toBe(true);
       expect(canStrikeBack(true, die)).toBe(die === 6);
     }
+  });
+});
+
+describe('Armored', () => {
+  const armored = (score: number, o: Partial<CombatSide> = {}) => side(score, { armored: true, ...o });
+
+  it('turns a loss by exactly 1 into a clash, whatever it would have cost', () => {
+    expect(computeCombatResult(side(6, { die: 4 }), armored(5))).toBe('clash'); // knockdown
+    expect(computeCombatResult(side(6, { die: 3 }), armored(5))).toBe('clash'); // push
+    expect(computeCombatResult(side(2), armored(1))).toBe('clash'); // a double
+    expect(computeCombatResult(armored(5), side(6, { die: 4 }))).toBe('clash');
+    expect(armorHeld(side(6), armored(5))).toBe('defense');
+    expect(armorHeld(armored(5), side(6))).toBe('attack');
+  });
+
+  it('holds for a knocked-down loser too', () => {
+    expect(computeCombatResult(side(6), armored(5, { knockedDown: true }))).toBe('clash');
+    expect(computeCombatResult(armored(5, { knockedDown: true }), side(6))).toBe('clash');
+  });
+
+  it('does nothing against a loss by 2 or more, or for the winner', () => {
+    expect(computeCombatResult(side(7, { die: 4 }), armored(5))).toBe('defenderKnockedDown');
+    expect(computeCombatResult(side(7), armored(5, { knockedDown: true }))).toBe('defenderKilled');
+    expect(computeCombatResult(armored(6, { die: 4 }), side(5))).toBe('defenderKnockedDown');
+    expect(armorHeld(armored(6), side(5))).toBeNull();
+    expect(armorHeld(side(5), armored(5))).toBeNull();
+  });
+
+  it('is not needed against a knocked-down defender that cannot strike back', () => {
+    expect(armorHeld(armored(5), side(6, { knockedDown: true, die: 5 }))).toBeNull();
+    expect(armorHeld(armored(5), side(6, { knockedDown: true, die: 6 }))).toBe('attack');
   });
 });

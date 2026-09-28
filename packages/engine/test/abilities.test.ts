@@ -925,6 +925,87 @@ describe('Savage trait', () => {
   });
 });
 
+// --- Armored ------------------------------------------------------------------
+
+describe('Armored trait', () => {
+  /** P0's Striker next to P1's Target (p1u0), with two far units so one death never routs P1. */
+  const config = (seed: number, p0: Partial<UnitSpec>, target: Partial<UnitSpec> = {}): GameConfig => ({
+    seed,
+    board: { width: 9, height: 5 },
+    warbands: [
+      [{ name: 'Striker', quality: 3, combat: 3, pos: { x: 3, y: 2 }, ...p0 }],
+      [
+        { name: 'Target', quality: 4, combat: 3, pos: { x: 4, y: 2 }, ...target },
+        { name: 'Far1', quality: 4, combat: 3, pos: { x: 8, y: 0 } },
+        { name: 'Far2', quality: 4, combat: 3, pos: { x: 8, y: 4 } },
+      ],
+    ],
+  });
+
+  type Combat = Extract<GameEvent, { type: 'AttackResolved' | 'ShotResolved' }>;
+
+  /** The first seed whose opening blow (or shot) by p0u0 on p1u0 passes `pick`; `down` knocks the target down first. */
+  function find(
+    p0: Partial<UnitSpec>,
+    target: Partial<UnitSpec>,
+    pick: (e: Combat) => boolean,
+    down = false,
+  ) {
+    const shoot = (p0.ranged ?? 0) > 0;
+    for (let seed = 1; seed <= 2000; seed++) {
+      const s = acting(config(seed, p0, target), 'p0u0');
+      if (down) s.units.find((u) => u.id === 'p1u0')!.knockedDown = true;
+      const { state, events } = reduce(s, { type: shoot ? 'Shoot' : 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+      const e = events.find((x): x is Combat => x.type === 'AttackResolved' || x.type === 'ShotResolved')!;
+      if (pick(e)) return { e, events, state };
+    }
+    throw new Error('no seed fits');
+  }
+
+  const byOne = (e: Combat) => e.attackScore === e.defenseScore + 1;
+  const unit = (state: GameState, id: string) => state.units.find((u) => u.id === id)!;
+
+  it('turns aside a blow that beats it by exactly 1', () => {
+    const { e, events, state } = find({}, { armored: true }, byOne);
+    expect(e.result).toBe('clash');
+    expect(events[events.indexOf(e) + 1]).toEqual({ type: 'ArmorHeld', unitId: 'p1u0' });
+    expect(unit(state, 'p1u0')).toMatchObject({ dead: false, knockedDown: false, pos: { x: 4, y: 2 } });
+  });
+
+  it('saves a knocked-down unit from a 1-point loss too', () => {
+    const { e, events, state } = find({}, { armored: true }, byOne, true);
+    expect(e.result).toBe('clash');
+    expect(events.some((x) => x.type === 'ArmorHeld' && x.unitId === 'p1u0')).toBe(true);
+    expect(unit(state, 'p1u0')).toMatchObject({ dead: false, knockedDown: true });
+  });
+
+  it('protects an Armored attacker that loses by 1', () => {
+    const { e, events, state } = find({ armored: true }, {}, (e) => e.defenseScore === e.attackScore + 1);
+    expect(e.result).toBe('clash');
+    expect(events.some((x) => x.type === 'ArmorHeld' && x.unitId === 'p0u0')).toBe(true);
+    expect(unit(state, 'p0u0')).toMatchObject({ dead: false, knockedDown: false });
+  });
+
+  it('turns aside a shot that beats it by exactly 1', () => {
+    const shooter = { ranged: 5, pos: { x: 1, y: 2 } };
+    const { e, events } = find(shooter, { armored: true }, byOne);
+    expect(e.result).toBe('clash');
+    expect(events.some((x) => x.type === 'ArmorHeld' && x.unitId === 'p1u0')).toBe(true);
+  });
+
+  it('does nothing against a loss by 2 or more', () => {
+    const { e, events } = find({}, { armored: true }, (e) => e.attackScore >= e.defenseScore + 2);
+    expect(e.result).not.toBe('clash');
+    expect(events.some((x) => x.type === 'ArmorHeld')).toBe(false);
+  });
+
+  it('leaves an unarmored 1-point loser to its fate', () => {
+    const { e, events } = find({}, {}, byOne);
+    expect(e.result).not.toBe('clash');
+    expect(events.some((x) => x.type === 'ArmorHeld')).toBe(false);
+  });
+});
+
 // --- Leader -------------------------------------------------------------------
 
 describe('Leader trait', () => {

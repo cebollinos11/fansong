@@ -45,6 +45,8 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `  ⚔ ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)}: ${e.guardScore} vs ${e.attackerScore} (d${e.guardDie}/d${e.attackerDie})${mods([['size', e.guardBig], ['swoop', e.guardFly], ['mounted', e.guardMounted], ['opportunist', e.guardOpportunist], ['foe size', e.attackerBig], ['foe mounted', e.attackerMounted], ['foe opportunist', e.attackerOpportunist]])} -> ${e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `    ${name(state, e.unitId)} shrugs off the blow (Tough)`;
+    case 'ArmorHeld':
+      return `    ${name(state, e.unitId)}'s armor turns the blow aside (Armored)`;
     case 'NerveCheck':
       return `    ${name(state, e.unitId)} nerve check d${e.die} vs Q${e.quality} -> ${e.passed ? 'holds' : 'falters'}${e.inspirationLost ? ' (inspiration lost)' : ''}`;
     case 'WarbandBroken':

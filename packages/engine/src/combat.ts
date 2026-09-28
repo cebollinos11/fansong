@@ -14,6 +14,8 @@ export interface CombatSide {
    * the map. False when terrain, an enemy or a knocked-down friend blocks it.
    */
   canRecoil: boolean;
+  /** Armored: a loss by exactly 1 point does it no harm (see {@link armorHeld}). */
+  armored?: boolean;
 }
 
 /**
@@ -31,9 +33,11 @@ export interface CombatSide {
  * kill needs a strict win *and* a double: any win over a score of 0 or less kills.
  *
  * A knocked-down defender only hurts the attacker on a natural 6 (see
- * {@link canStrikeBack}); any other defender win is a clash.
+ * {@link canStrikeBack}); any other defender win is a clash. So is a loss by
+ * exactly 1 point for an Armored loser (see {@link armorHeld}).
  */
 export function computeCombatResult(attack: CombatSide, defense: CombatSide): CombatResult {
+  if (armorHeld(attack, defense)) return 'clash';
   if (attack.score > defense.score) {
     return attack.score >= defense.score * 2 ? 'defenderKilled' : `defender${beaten(defense, attack.die)}`;
   }
@@ -42,6 +46,22 @@ export function computeCombatResult(attack: CombatSide, defense: CombatSide): Co
     return defense.score >= attack.score * 2 ? 'attackerKilled' : `attacker${beaten(attack, defense.die)}`;
   }
   return 'clash';
+}
+
+/**
+ * Whose armor turned a blow aside: `'attack'` or `'defense'` when that side is
+ * Armored and would otherwise have lost the roll by exactly 1 point — standing
+ * or knocked down, whatever the loss would have cost it (a push, a knockdown or
+ * a kill) — else null. A win the defender can't strike back with (a
+ * knocked-down defender without a natural 6) hurts no one, so no armor is
+ * needed.
+ */
+export function armorHeld(attack: CombatSide, defense: CombatSide): 'attack' | 'defense' | null {
+  if (attack.score === defense.score + 1) return defense.armored ? 'defense' : null;
+  if (defense.score === attack.score + 1 && canStrikeBack(defense.knockedDown, defense.die)) {
+    return attack.armored ? 'attack' : null;
+  }
+  return null;
 }
 
 /**

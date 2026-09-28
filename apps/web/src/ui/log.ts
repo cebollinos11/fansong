@@ -87,6 +87,8 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus, [['outnumbered', e.guardOutnumbered]], [['size', e.guardBig], ['flying', e.guardFly], ['mounted', e.guardMounted], ['opportunist', e.guardOpportunist]])}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus, [['outnumbered', e.attackerOutnumbered]], [['size', e.attackerBig], ['mounted', e.attackerMounted], ['opportunist', e.attackerOpportunist]])}) → ${e.result === 'clash' ? 'attack goes through' : e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `  ${name(state, e.unitId)} shrugs off the blow (Tough)`;
+    case 'ArmorHeld':
+      return `  ${name(state, e.unitId)}'s armor turns the blow aside`;
     case 'NerveCheck':
       return null; // implied by the knockdown/rout it produces; keep the log terse
     case 'WarbandBroken':

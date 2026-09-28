@@ -207,6 +207,19 @@ describe('opposed roll cards', () => {
     expect(r.verdict).toEqual({ text: 'Gruesome!', detail: '6 doubles 3 — a savage kill', on: ['d'], tone: 'kill' });
   });
 
+  it("says an Armored loser's armor turned a 1-point loss aside", () => {
+    const r = describeCombat(attack({ attackScore: 6, defenseScore: 5, result: 'clash' }), [{ type: 'ArmorHeld', unitId: 'd' }]);
+    expect(r.b.note).toBe('Armor holds');
+    expect(r.verdict).toEqual({ text: 'Armor holds!', detail: '6 beats 5 by only 1', on: ['d'], tone: 'save' });
+  });
+
+  it("names an Armored attacker's save, not a knocked-down defender's miss", () => {
+    const r = describeCombat(attack({ attackScore: 5, defenseScore: 6, result: 'clash' }), [{ type: 'ArmorHeld', unitId: 'a' }]);
+    expect(r.a.note).toBe('Armor holds');
+    expect(r.b.note).toBeUndefined();
+    expect(r.verdict).toEqual({ text: 'Armor holds!', detail: '6 beats 5 by only 1', on: ['a'], tone: 'save' });
+  });
+
   it('shows a free hack at a unit leaving contact', () => {
     type Hack = Extract<GameEvent, { type: 'FreeHackResolved' }>;
     const hack = (over: Partial<Hack>): Hack => ({

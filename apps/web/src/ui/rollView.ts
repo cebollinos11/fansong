@@ -99,8 +99,9 @@ function outcomes(a: number, b: number): [RollSide['outcome'], RollSide['outcome
 
 /**
  * Describe an attack, shot, riposte or free hack. `after` is the rest of the
- * event batch, scanned for a Tough save that turns the would-be kill into a
- * knockdown, and for where a push ended (braced by a friend, off the map).
+ * event batch, scanned for an armor save that turned a 1-point loss into a
+ * clash, for a Tough save that turns the would-be kill into a knockdown, and
+ * for where a push ended (braced by a friend, off the map).
  */
 export function describeCombat(e: Combat, after: readonly GameEvent[] = []): OpposedRoll {
   let a: RollSide;
@@ -123,8 +124,13 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
 
   // A higher total that did nothing: a shot never hurts the shooter, a unit
   // leaving contact can't hit back, a guard never wounds itself parrying, and a
-  // knocked-down unit only strikes back on a natural 6.
-  if (e.result === 'clash' && b.outcome === 'win') {
+  // knocked-down unit only strikes back on a natural 6. (A win the loser's
+  // armor turned aside still reads as a win; the verdict says why.)
+  const armored = armorSave(after);
+  if (armored) {
+    const loser = armored === a.unitId ? a : b;
+    loser.note = 'Armor holds';
+  } else if (e.result === 'clash' && b.outcome === 'win') {
     b.outcome = 'tie';
     a.outcome = 'tie';
     b.note =
@@ -136,7 +142,7 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
             ? 'Guard is unhurt'
             : 'Down: only a 6 strikes back';
   }
-  if (e.type === 'GuardRiposte' && e.result === 'clash' && a.total > b.total) {
+  if (!armored && e.type === 'GuardRiposte' && e.result === 'clash' && a.total > b.total) {
     a.outcome = 'tie';
     b.outcome = 'tie';
     a.note = 'Down: only a 6 strikes back';
@@ -145,9 +151,20 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
   return { kind: 'opposed', a, b, verdict: combatVerdict(e, a, b, after) };
 }
 
+/** The unit whose armor turned this roll into a clash, if any: an `ArmorHeld` straight after the roll. */
+function armorSave(after: readonly GameEvent[]): string | undefined {
+  const next = after[0];
+  return next?.type === 'ArmorHeld' ? next.unitId : undefined;
+}
+
 function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly GameEvent[]): RollVerdict {
   const hitsB = e.result.startsWith('defender');
   const hitsA = e.type !== 'GuardRiposte' && e.result.startsWith('attacker');
+  const armored = armorSave(after);
+  if (armored) {
+    const [winner, loser] = armored === a.unitId ? [b, a] : [a, b];
+    return { text: 'Armor holds!', detail: `${winner.total} beats ${loser.total} by only 1`, on: [loser.unitId], tone: 'save' };
+  }
   if (!hitsA && !hitsB) {
     const detail = a.total === b.total ? `${a.total} ties ${b.total}` : undefined;
     const text =

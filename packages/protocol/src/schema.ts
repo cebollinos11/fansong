@@ -142,6 +142,7 @@ export const unitTraitsSchema = z
     opportunist: z.boolean(),
     savage: z.boolean(),
     leader: z.boolean(),
+    armored: z.boolean(),
   })
   .strict();
 
@@ -331,6 +332,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     prevented: z.boolean(),
   }),
   z.object({ type: z.literal('ToughnessSaved'), unitId: z.string() }),
+  z.object({ type: z.literal('ArmorHeld'), unitId: z.string() }),
   z.object({
     type: z.literal('NerveCheck'),
     unitId: z.string(),
@@ -404,6 +406,7 @@ export const unitSpecSchema = z
     opportunist: z.boolean().optional(),
     savage: z.boolean().optional(),
     leader: z.boolean().optional(),
+    armored: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -464,6 +467,7 @@ export const warbandUnitSchema = z
     opportunist: z.boolean().optional(),
     savage: z.boolean().optional(),
     leader: z.boolean().optional(),
+    armored: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

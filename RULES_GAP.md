@@ -210,7 +210,7 @@ still not done.
 ## 7. Special rules (traits)
 
 FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted,
-Opportunist and Savage (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist and Savage have no direct equivalent in the
+Opportunist, Savage and Armored (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist, Savage and Armored have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
@@ -270,6 +270,12 @@ short paraphrase, and the exact effects should be checked before building one.
   blow, a shot, a riposte, a free hack, or a push off the map — so it flags
   `gruesome` on the combat event and its victim's friends test for fear. Its own
   death is gruesome only if the killer tripled it (or is Savage too).
+- ✅ **Done — Armored** *(FanSong's own)*. *Implemented:* an `armored` trait.
+  A combat it loses by exactly 1 point — a blow (attacking or defending), a
+  shot, a riposte or a free hack — does it no harm, whatever the loss would
+  have cost (a push, a knockdown, or a kill, a double of 2 over 1 included),
+  and whether it is standing or knocked down. The roll resolves as a `clash`
+  and an `ArmorHeld` event follows it (`armorHeld` in combat.ts).
 - **Rabble:** a cheap mob model that fights better next to friends of its own
   kind *(revised)*.
 - **Swarm:** a mob that is hard to kill outright.

@@ -32,6 +32,8 @@ export interface UnitSpec {
   savage?: boolean;
   /** Leader: may war cry once a round, inspiring its friends; its death shakes those who see it. */
   leader?: boolean;
+  /** Armored: a combat it loses by exactly 1 point does it no harm. */
+  armored?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -85,6 +87,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       opportunist: spec.opportunist ?? false,
       savage: spec.savage ?? false,
       leader: spec.leader ?? false,
+      armored: spec.armored ?? false,
     },
     guarding: false,
     inspired: false,

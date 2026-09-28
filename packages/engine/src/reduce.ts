@@ -1,6 +1,7 @@
 import { makeHexGrid, vecKey, type Board, type Vec } from './board.js';
 import {
   AIMED_SHOT_PENALTY,
+  armorHeld,
   bigMeleeBonus,
   bigTargetBonus,
   canStrikeBack,
@@ -15,6 +16,7 @@ import {
   POWER_BLOW_PENALTY,
   PRESSED_COST,
   rangePenalty,
+  type CombatSide,
 } from './combat.js';
 import {
   captureIfHome,
@@ -260,10 +262,21 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
   const { attackDie, defenseDie, attackScore, defenseScore } = roll;
   const attackerPush = pushOutcome(s, board, attacker, target);
   const targetPush = pushOutcome(s, board, target, attacker);
-  const result = computeCombatResult(
-    { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: canBePushed(attackerPush) },
-    { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: canBePushed(targetPush) },
-  );
+  const attackSide: CombatSide = {
+    score: attackScore,
+    die: attackDie,
+    knockedDown: attacker.knockedDown,
+    canRecoil: canBePushed(attackerPush),
+    armored: attacker.traits.armored,
+  };
+  const defenseSide: CombatSide = {
+    score: defenseScore,
+    die: defenseDie,
+    knockedDown: target.knockedDown,
+    canRecoil: canBePushed(targetPush),
+    armored: target.traits.armored,
+  };
+  const result = computeCombatResult(attackSide, defenseSide);
   const gruesome = gruesomeKill(result, attacker, target, attackScore, defenseScore, attackerPush, targetPush);
 
   events.push({
@@ -278,6 +291,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     result,
     ...(gruesome ? { gruesome } : {}),
   });
+  armorEvent(events, armorHeld(attackSide, defenseSide), attacker, target);
 
   let attackerEnded = false;
   switch (result) {
@@ -353,12 +367,15 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
 
   const targetPush = pushOutcome(s, board, target, attacker);
   // A shot only ever harms the target — the shooter takes no return damage.
-  const result = defenderOnly(
-    computeCombatResult(
-      { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: false },
-      { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: canBePushed(targetPush) },
-    ),
-  );
+  const shotSide: CombatSide = { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: false };
+  const targetSide: CombatSide = {
+    score: defenseScore,
+    die: defenseDie,
+    knockedDown: target.knockedDown,
+    canRecoil: canBePushed(targetPush),
+    armored: target.traits.armored,
+  };
+  const result = defenderOnly(computeCombatResult(shotSide, targetSide));
   const gruesome = gruesomeKill(result, attacker, target, attackScore, defenseScore, null, targetPush);
 
   events.push({
@@ -373,6 +390,8 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     result,
     ...(gruesome ? { gruesome } : {}),
   });
+  // A shooter that loses the roll takes no harm anyway, so only the target's armor counts.
+  armorEvent(events, targetOnly(armorHeld(shotSide, targetSide)), attacker, target);
 
   hitDefender(s, events, result, target, attacker.id, board, gruesome, targetPush);
 
@@ -442,19 +461,16 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   // wounds itself parrying, so only attacker-harming outcomes stand: losing the
   // exchange merely lets the blow in, and is reported — like a shot that draws
   // no return fire — as a clash.
-  const result = defenderOnly(
-    canStrikeBack(guard.knockedDown, guardDie)
-      ? computeCombatResult(
-          { score: guardScore, die: guardDie, knockedDown: guard.knockedDown, canRecoil: false },
-          {
-            score: attackerScore,
-            die: attackerDie,
-            knockedDown: attacker.knockedDown,
-            canRecoil: canBePushed(attackerPush),
-          },
-        )
-      : 'clash',
-  );
+  const guardSide: CombatSide = { score: guardScore, die: guardDie, knockedDown: guard.knockedDown, canRecoil: false };
+  const attackerSide: CombatSide = {
+    score: attackerScore,
+    die: attackerDie,
+    knockedDown: attacker.knockedDown,
+    canRecoil: canBePushed(attackerPush),
+    armored: attacker.traits.armored,
+  };
+  const lands = canStrikeBack(guard.knockedDown, guardDie);
+  const result = defenderOnly(lands ? computeCombatResult(guardSide, attackerSide) : 'clash');
   // An attacker braced by a friend is not driven back, so its blow still lands.
   const prevented = result !== 'clash' && !(result === 'defenderRecoiled' && attackerPush.kind === 'supported');
   const gruesome = gruesomeKill(result, guard, attacker, guardScore, attackerScore, null, attackerPush);
@@ -484,6 +500,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     ...(gruesome ? { gruesome } : {}),
     prevented,
   });
+  // A guard never wounds itself parrying, so only the attacker's armor counts.
+  if (lands) armorEvent(events, targetOnly(armorHeld(guardSide, attackerSide)), guard, attacker);
 
   hitDefender(s, events, result, attacker, guard.id, board, gruesome, attackerPush);
   return prevented;
@@ -506,13 +524,16 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
     const roll = rollMelee(s, board, hacker, mover);
     const { attackDie, defenseDie, attackScore, defenseScore } = roll;
     // Only the leaver can be hurt; the hacker never is.
-    const result = defenderOnly(
-      computeCombatResult(
-        { score: attackScore, die: attackDie, knockedDown: false, canRecoil: false },
-        // A leaver always has somewhere to "recoil": the way it was going.
-        { score: defenseScore, die: defenseDie, knockedDown: mover.knockedDown, canRecoil: true },
-      ),
-    );
+    const hackSide: CombatSide = { score: attackScore, die: attackDie, knockedDown: false, canRecoil: false };
+    // A leaver always has somewhere to "recoil": the way it was going.
+    const leaverSide: CombatSide = {
+      score: defenseScore,
+      die: defenseDie,
+      knockedDown: mover.knockedDown,
+      canRecoil: true,
+      armored: mover.traits.armored,
+    };
+    const result = defenderOnly(computeCombatResult(hackSide, leaverSide));
     const gruesome = gruesomeKill(result, hacker, mover, attackScore, defenseScore, null, null);
 
     events.push({
@@ -527,6 +548,7 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
       result,
       ...(gruesome ? { gruesome } : {}),
     });
+    armorEvent(events, targetOnly(armorHeld(hackSide, leaverSide)), hacker, mover);
 
     // A kill (or a Tough save onto the ground) and a knockdown both stop the
     // move; a recoil is just the leaver slipping away, so it carries on.
@@ -636,6 +658,16 @@ function rollMelee(
  */
 function defenderOnly(result: CombatResult): CombatResult {
   return result.startsWith('defender') ? result : 'clash';
+}
+
+/** {@link armorHeld} for a roll where only the defender can be hurt: the aggressor's armor never has anything to stop. */
+function targetOnly(held: 'attack' | 'defense' | null): 'defense' | null {
+  return held === 'defense' ? held : null;
+}
+
+/** Report whose armor turned the roll into a clash, if anyone's did. */
+function armorEvent(events: GameEvent[], held: 'attack' | 'defense' | null, aggressor: Unit, defender: Unit): void {
+  if (held) events.push({ type: 'ArmorHeld', unitId: (held === 'attack' ? aggressor : defender).id });
 }
 
 /** Drop the zero modifiers, so an event only ever carries the ones that applied. */

@@ -139,6 +139,7 @@ export function parseWarband(raw: unknown): Warband {
     if (u.opportunist === true) unit.opportunist = true;
     if (u.savage === true) unit.savage = true;
     if (u.leader === true) unit.leader = true;
+    if (u.armored === true) unit.armored = true;
     if (typeof u.look === 'string') unit.look = u.look;
     return unit;
   });
