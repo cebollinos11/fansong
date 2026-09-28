@@ -1,4 +1,4 @@
-import { unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
+import { combatOdds, unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
 import type { PlanPreview } from '../game/planView.js';
 import { traitLine } from './hudView.js';
 
@@ -69,6 +69,23 @@ function planLines(state: GameState, plan: PlanPreview): string[] {
         : `Shoot ${name} — ${ACTIONS(plan.cost)}${spare}`,
     );
   }
+  const odds = oddsLine(state, plan);
+  if (odds) lines.push(odds);
   if (plan.provokes > 0) lines.push('Breaking away — risks a parting blow');
   return lines;
+}
+
+const pct = (p: number): string => `${Math.round(p * 100)}%`;
+
+/** The chance the click wins its fight, for an attack or shot by the activating unit. */
+function oddsLine(state: GameState, plan: PlanPreview): string | null {
+  if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return null;
+  const ranged = plan.kind === 'shoot';
+  const from = plan.path.at(-1);
+  const odds = combatOdds(state, state.activeUnitId, plan.targetId, { ranged, ...(from ? { from } : {}) });
+  const parts = [`Win ${pct(odds.win)}`];
+  if (odds.kill > 0) parts.push(`kill ${pct(odds.kill)}`);
+  // A shot draws no return fire, so a miss is only ever a miss.
+  parts.push(ranged ? 'no risk' : `lose ${pct(odds.lose)}`);
+  return parts.join(' · ');
 }

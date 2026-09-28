@@ -439,9 +439,11 @@ button.ghost {
 
 .hex-tooltip {
   position: absolute;
-  /* Under the camera buttons: the bottom band belongs to the combat cards. */
-  top: 44px;
-  left: 10px;
+  /* Placed beside the pointer by BoardCanvas. */
+  top: 0;
+  left: 0;
+  z-index: 5;
+  max-width: 320px;
   padding: 6px 10px;
   font-size: 12px;
   line-height: 1.5;

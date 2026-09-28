@@ -353,19 +353,11 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   // Spent up front, as the shot's push can end the game (a carrier shoved home).
   s.actionsRemaining -= cost;
   const { attackDie, defenseDie } = rollPair(s);
-  const attackBonus = highGroundBonus(board, attacker, target);
-  const defenseBonus = highGroundBonus(board, target, attacker);
-  const range = rangePenalty(attacker.traits.ranged, d);
-  const cover = board.inCover(attacker.pos, target.pos, (v) => occ.has(vecKey(v))) ? COVER_PENALTY : 0;
-  // A Big target is hard to miss, whoever is shooting at it.
-  const bigTarget = bigTargetBonus(target);
-  // An airborne flyer has no cover in the open sky — easy to shoot down.
-  const flyingTarget = flyingTargetBonus(s, target);
-  const attackOpportunist = opportunistBonus(attacker, target);
-  const attackSharpshooter = sharpshooterBonus(attacker);
-  const attackScore =
-    attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget + attackOpportunist + attackSharpshooter - range - cover;
-  const defenseScore = target.combat + defenseDie + defenseBonus - aimPenalty;
+  const { attackBase, defenseBase, mods } = shotScoring(s, board, attacker, target, aimPenalty);
+  const { attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget } = mods;
+  const { attackOpportunist, attackSharpshooter } = mods;
+  const attackScore = attackBase + attackDie;
+  const defenseScore = defenseBase + defenseDie;
 
   const targetPush = pushOutcome(s, board, target, attacker);
   // A shot only ever harms the target — the shooter takes no return damage.
@@ -399,6 +391,36 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
 
   if (checkGameOver(s, events)) return;
   if (s.actionsRemaining <= 0) endActivation(s, events);
+}
+
+/** A shot's scores before the dice, and the modifiers behind them (see {@link handleShoot}). */
+function shotScoring(s: GameState, board: Board, attacker: Unit, target: Unit, aimPenalty: number) {
+  const occ = occupiedKeys(s);
+  const mods = {
+    attackBonus: highGroundBonus(board, attacker, target),
+    defenseBonus: highGroundBonus(board, target, attacker),
+    rangePenalty: rangePenalty(attacker.traits.ranged, board.distance(attacker.pos, target.pos)),
+    coverPenalty: board.inCover(attacker.pos, target.pos, (v) => occ.has(vecKey(v))) ? COVER_PENALTY : 0,
+    // A Big target is hard to miss, whoever is shooting at it.
+    bigTarget: bigTargetBonus(target),
+    // An airborne flyer has no cover in the open sky — easy to shoot down.
+    flyingTarget: flyingTargetBonus(s, target),
+    attackOpportunist: opportunistBonus(attacker, target),
+    attackSharpshooter: sharpshooterBonus(attacker),
+  };
+  return {
+    attackBase:
+      attacker.combat +
+      mods.attackBonus +
+      mods.bigTarget +
+      mods.flyingTarget +
+      mods.attackOpportunist +
+      mods.attackSharpshooter -
+      mods.rangePenalty -
+      mods.coverPenalty,
+    defenseBase: target.combat + mods.defenseBonus - aimPenalty,
+    mods,
+  };
 }
 
 // --- Guard ----------------------------------------------------------------
@@ -614,6 +636,18 @@ function rollMelee(
   defensePenalty = 0,
 ): MeleeRoll {
   const { attackDie, defenseDie } = rollPair(s);
+  const { attackBase, defenseBase, mods } = meleeScoring(s, board, aggressor, defender, defensePenalty);
+  return { attackDie, defenseDie, attackScore: attackBase + attackDie, defenseScore: defenseBase + defenseDie, mods };
+}
+
+/** An opposed melee's scores before the dice (see {@link rollMelee}), and the modifiers behind them. */
+function meleeScoring(
+  s: GameState,
+  board: Board,
+  aggressor: Unit,
+  defender: Unit,
+  defensePenalty = 0,
+): { attackBase: number; defenseBase: number; mods: MeleeMods } {
   const mods: MeleeMods = {
     attackBonus: highGroundBonus(board, aggressor, defender),
     defenseBonus: highGroundBonus(board, defender, aggressor),
@@ -628,20 +662,16 @@ function rollMelee(
     defenseOpportunist: opportunistBonus(defender, aggressor),
   };
   return {
-    attackDie,
-    defenseDie,
-    attackScore:
+    attackBase:
       aggressor.combat +
-      attackDie +
       mods.attackBonus +
       mods.attackBig +
       mods.attackFly +
       mods.attackMounted +
       mods.attackOpportunist -
       mods.attackOutnumbered,
-    defenseScore:
+    defenseBase:
       defender.combat +
-      defenseDie +
       mods.defenseBonus +
       mods.defenseBig +
       mods.defenseMounted +
@@ -650,6 +680,96 @@ function rollMelee(
       defensePenalty,
     mods,
   };
+}
+
+// --- Odds -------------------------------------------------------------------
+
+/** How one attack is likely to go, as probabilities summing to 1. */
+export interface CombatOdds {
+  /** The target is hurt: killed, knocked down or pushed back. */
+  win: number;
+  /** Among {@link win}, the target is killed outright (before any Tough save). */
+  kill: number;
+  /** The attacker is hurt instead — by the target, or by its guard's riposte. */
+  lose: number;
+  /** Nobody is hurt. */
+  clash: number;
+}
+
+export interface CombatOddsOptions {
+  /** Shoot rather than strike in melee. */
+  ranged?: boolean;
+  /** A power blow / aimed shot. */
+  pressed?: boolean;
+  /** Where the attacker strikes from (a charge's last hex); defaults to where it stands. */
+  from?: Vec;
+}
+
+/**
+ * The odds of one attack or shot by `attackerId` on `targetId`, over all 36
+ * pairs of dice, scored exactly as {@link reduce} scores them. A guarding
+ * target's riposte is counted first. Free hacks provoked on the way in are not:
+ * they may stop the charge before it is made. Does not mutate `state`.
+ */
+export function combatOdds(
+  state: GameState,
+  attackerId: string,
+  targetId: string,
+  options: CombatOddsOptions = {},
+): CombatOdds {
+  const from = options.from;
+  const s: GameState = from
+    ? { ...state, units: state.units.map((u) => (u.id === attackerId ? { ...u, pos: { ...from } } : u)) }
+    : state;
+  const attacker = unitById(s, attackerId);
+  const target = unitById(s, targetId);
+  if (!attacker || !target) throw new Error('unknown combatant');
+  const board = makeHexGrid(s.board);
+  const penalty = options.pressed ? (options.ranged ? AIMED_SHOT_PENALTY : POWER_BLOW_PENALTY) : 0;
+  const { attackBase, defenseBase } = options.ranged
+    ? shotScoring(s, board, attacker, target, penalty)
+    : meleeScoring(s, board, attacker, target, penalty);
+
+  // A guard's riposte stops the blow whenever it harms the attacker, unless a
+  // braced attacker merely holds its ground against the push.
+  let through = 1;
+  let lose = 0;
+  if (!options.ranged && target.guarding && target.traits.guard) {
+    const riposte = meleeScoring(s, board, target, attacker);
+    const braced = pushOutcome(s, board, attacker, target).kind === 'supported';
+    let stopped = 0;
+    for (let g = 1; g <= 6; g++) {
+      for (let a = 1; a <= 6; a++) {
+        if (!canStrikeBack(target.knockedDown, g)) continue;
+        const result = computeCombatResult(
+          { score: riposte.attackBase + g, die: g, knockedDown: target.knockedDown, canRecoil: false },
+          { score: riposte.defenseBase + a, die: a, knockedDown: attacker.knockedDown, canRecoil: true, armored: attacker.traits.armored },
+        );
+        if (result.startsWith('defender') && !(result === 'defenderRecoiled' && braced)) stopped++;
+      }
+    }
+    lose = stopped / 36;
+    through = 1 - lose;
+  }
+
+  let win = 0;
+  let kill = 0;
+  let hurt = 0;
+  for (let a = 1; a <= 6; a++) {
+    for (let d = 1; d <= 6; d++) {
+      const result = computeCombatResult(
+        { score: attackBase + a, die: a, knockedDown: attacker.knockedDown, canRecoil: true, armored: attacker.traits.armored },
+        { score: defenseBase + d, die: d, knockedDown: target.knockedDown, canRecoil: true, armored: target.traits.armored },
+      );
+      if (result.startsWith('defender')) {
+        win++;
+        if (result === 'defenderKilled') kill++;
+      } else if (result.startsWith('attacker') && !options.ranged) hurt++;
+    }
+  }
+  win = (through * win) / 36;
+  lose += (through * hurt) / 36;
+  return { win, kill: (through * kill) / 36, lose, clash: Math.max(0, 1 - win - lose) };
 }
 
 /**

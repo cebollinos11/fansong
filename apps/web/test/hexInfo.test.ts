@@ -138,6 +138,18 @@ describe('describeHex with a plan', () => {
     );
   });
 
+  it('quotes the odds of the fight a click would start', () => {
+    const attacker = state.units.find((u) => u.owner === 0)!;
+    const target = state.units.find((u) => u.owner === 1)!;
+    const live = { ...state, phase: 'acting' as const, activeUnitId: attacker.id };
+    const attack = describeHex(live, cell, { ...base, kind: 'attack', cost: 2, targetId: target.id })!.lines;
+    expect(attack.some((l) => /^Win \d+%.* · lose \d+%$/.test(l))).toBe(true);
+    const shot = describeHex(live, cell, { ...base, kind: 'shoot', cost: 2, targetId: target.id })!.lines;
+    expect(shot.some((l) => /^Win \d+%.* · no risk$/.test(l))).toBe(true);
+    // No odds for a walk, nor without an activating unit to fight.
+    expect(lines({ ...base, kind: 'attack', cost: 2, targetId: target.id }).join(' ')).not.toContain('Win');
+  });
+
   it('leaves the tooltip alone when there is no plan for the hex', () => {
     expect(describeHex(state, cell)!.lines).toEqual(describeHex(state, cell, null)!.lines);
   });

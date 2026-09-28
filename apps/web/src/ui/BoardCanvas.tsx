@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { unitById, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
@@ -237,6 +237,33 @@ export function BoardCanvas(props: Props): JSX.Element {
 
   const hexInfo = hover ? describeHex(props.state, hover, previewFor?.(hover) ?? null) : null;
 
+  // The tooltip rides next to the pointer, flipping to its other side near an
+  // edge. Placed straight on the DOM so a drifting pointer never re-renders.
+  const tipRef = useRef<HTMLDivElement>(null);
+  const pointer = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  const placeTip = useCallback(() => {
+    const tip = tipRef.current;
+    if (!tip) return;
+    const { x, y, w, h } = pointer.current;
+    const gap = 16;
+    let left = x + gap;
+    if (left + tip.offsetWidth > w - 8) left = Math.max(8, x - gap - tip.offsetWidth);
+    let top = y + gap;
+    if (top + tip.offsetHeight > h - 8) top = Math.max(8, y - gap - tip.offsetHeight);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${top}px`;
+  }, []);
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      pointer.current = { x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height };
+      placeTip();
+    },
+    [placeTip],
+  );
+  // A new hex changes the tooltip's size, so place it again after each render.
+  useLayoutEffect(placeTip);
+
   // Stable across renders so the menu's follow loop isn't torn down each frame.
   const project = useCallback(
     (id: string, height: number) => viewRef.current?.projectUnit(id, height) ?? null,
@@ -248,7 +275,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       : null;
 
   return (
-    <div className="board-wrap">
+    <div className="board-wrap" onPointerMove={onPointerMove}>
       <div ref={containerRef} className="board-canvas" />
       {props.announcement ? (
         <div key={props.announcement.round} className={`round-announce p${props.announcement.owner}`}>
@@ -276,7 +303,7 @@ export function BoardCanvas(props: Props): JSX.Element {
         />
       ) : null}
       {hexInfo ? (
-        <div className="hex-tooltip">
+        <div ref={tipRef} className="hex-tooltip">
           <strong>{hexInfo.title}</strong>
           {hexInfo.lines.map((line) => (
             <div key={line}>{line}</div>
