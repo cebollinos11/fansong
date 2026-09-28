@@ -77,12 +77,22 @@ function planLines(state: GameState, plan: PlanPreview): string[] {
 
 const pct = (p: number): string => `${Math.round(p * 100)}%`;
 
-/** The chance the click wins its fight, for an attack or shot by the activating unit. */
-function oddsLine(state: GameState, plan: PlanPreview): string | null {
+/**
+ * The chance a plan wins its fight, for an attack or shot by the activating
+ * unit; a pressed plan (power blow / aimed shot) is quoted as pressed.
+ */
+export function oddsLine(
+  state: GameState,
+  plan: Pick<PlanPreview, 'kind' | 'targetId' | 'path'> & { pressed?: true },
+): string | null {
   if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return null;
   const ranged = plan.kind === 'shoot';
   const from = plan.path.at(-1);
-  const odds = combatOdds(state, state.activeUnitId, plan.targetId, { ranged, ...(from ? { from } : {}) });
+  const odds = combatOdds(state, state.activeUnitId, plan.targetId, {
+    ranged,
+    ...(plan.pressed ? { pressed: true } : {}),
+    ...(from ? { from } : {}),
+  });
   const parts = [`Win ${pct(odds.win)}`];
   if (odds.kill > 0) parts.push(`kill ${pct(odds.kill)}`);
   // A shot draws no return fire, so a miss is only ever a miss.

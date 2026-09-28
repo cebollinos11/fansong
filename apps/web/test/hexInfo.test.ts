@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { unitMove, type GameEvent, type GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { describeHex } from '../src/ui/hexInfo.js';
+import { describeHex, oddsLine } from '../src/ui/hexInfo.js';
 import type { PlanPreview } from '../src/game/planView.js';
 import { formatEvent } from '../src/ui/log.js';
 
@@ -148,6 +148,18 @@ describe('describeHex with a plan', () => {
     expect(shot.some((l) => /^Win \d+%.* · no risk$/.test(l))).toBe(true);
     // No odds for a walk, nor without an activating unit to fight.
     expect(lines({ ...base, kind: 'attack', cost: 2, targetId: target.id }).join(' ')).not.toContain('Win');
+  });
+
+  it('quotes a pressed blow at its own, better odds for the attack menu', () => {
+    const attacker = state.units.find((u) => u.owner === 0)!;
+    const target = state.units.find((u) => u.owner === 1)!;
+    const live = { ...state, phase: 'acting' as const, activeUnitId: attacker.id };
+    const win = (line: string | null): number => Number(/^Win (\d+)%/.exec(line ?? '')?.[1]);
+    const plan = { ...base, kind: 'attack' as const, cost: 1, targetId: target.id };
+    const plain = oddsLine(live, plan);
+    const pressed = oddsLine(live, { ...plan, pressed: true });
+    expect(plain).toMatch(/^Win \d+%/);
+    expect(win(pressed)).toBeGreaterThan(win(plain));
   });
 
   it('leaves the tooltip alone when there is no plan for the hex', () => {

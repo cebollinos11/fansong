@@ -10,6 +10,7 @@ import { downloadReplay } from '../game/replay-io.js';
 import { splitRoundStart } from '../game/roundStart.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
+import { oddsLine } from './hexInfo.js';
 import { Hud } from './Hud.js';
 import { seatLabel, turnPhrase } from './hudView.js';
 import { appendEvents, type LogEntry } from './log.js';
@@ -198,6 +199,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         kind: plan.kind === 'attack' ? 'melee' : 'ranged',
         plain: plan,
         pressed,
+        plainOdds: oddsLine(state, plan),
+        pressedOdds: oddsLine(state, pressed),
         actionsRemaining: state.actionsRemaining,
         at: { ...pointer.current },
       });

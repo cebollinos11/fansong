@@ -12,6 +12,9 @@ export interface AttackChoice {
   plain: ActionPlan;
   /** The pressed twin of {@link plain}, from the same hex. */
   pressed: ActionPlan;
+  /** Each option's chance to win, as the hover tooltip quotes it (see `oddsLine`). */
+  plainOdds?: string | null;
+  pressedOdds?: string | null;
   /** Actions the unit holds, so the menu can say what each choice leaves over. */
   actionsRemaining: number;
   /** Where the click landed, in viewport coordinates; the menu opens above it. */
@@ -86,7 +89,7 @@ export function AttackMenu({ choice, onPick, onCancel }: Props): JSX.Element {
   useLayoutEffect(() => setHeight(ref.current?.offsetHeight ?? 0), [choice]);
 
   const MARGIN = 12;
-  const left = Math.min(Math.max(choice.at.x, 120), window.innerWidth - 120);
+  const left = Math.min(Math.max(choice.at.x, 150), window.innerWidth - 150);
   const above = choice.at.y - MARGIN;
   const top =
     height > 0 && above - height < MARGIN
@@ -104,11 +107,17 @@ export function AttackMenu({ choice, onPick, onCancel }: Props): JSX.Element {
     >
       <div className="attack-menu-title">{choice.targetName}</div>
       <button type="button" className="primary" onClick={() => onPick(false)}>
-        {approach ? words.approach : words.plain}{' '}
+        <span className="attack-menu-label">
+          {approach ? words.approach : words.plain}
+          {choice.plainOdds ? <span className="odds">{choice.plainOdds}</span> : null}
+        </span>{' '}
         <span className="ap">{cost(choice.plain, choice.actionsRemaining)}</span>
       </button>
       <button type="button" className="primary pressed" onClick={() => onPick(true)}>
-        {approach ? `${words.approach}, ${words.pressed.toLowerCase()}` : words.pressed}{' '}
+        <span className="attack-menu-label">
+          {approach ? `${words.approach}, ${words.pressed.toLowerCase()}` : words.pressed}
+          {choice.pressedOdds ? <span className="odds">{choice.pressedOdds}</span> : null}
+        </span>{' '}
         <span className="ap">{cost(choice.pressed, choice.actionsRemaining)}</span>
       </button>
       <div className="attack-menu-hint">{words.hint}</div>
