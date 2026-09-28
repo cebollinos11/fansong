@@ -195,8 +195,8 @@ objective and are not leaders.
 
 ## 7. Special rules (traits)
 
-FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted and
-Opportunist (see the ✅ entries below). Guard, Reassembling and Opportunist have no direct equivalent in the
+FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted,
+Opportunist and Savage (see the ✅ entries below). Guard, Reassembling, Opportunist and Savage have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
@@ -251,6 +251,11 @@ short paraphrase, and the exact effects should be checked before building one.
   `attackerOpportunist` event fields) — and +1 shooting a knocked-down target
   (`attackOpportunist` on `ShotResolved`). It works whether or not the
   Opportunist is itself on its feet.
+- ✅ **Done — Savage** *(FanSong's own)*. *Implemented:* a `savage` trait.
+  Every kill it deals is a gruesome kill (§3.1), whatever the scores — by a
+  blow, a shot, a riposte, a free hack, or a push off the map — so it flags
+  `gruesome` on the combat event and its victim's friends test for fear. Its own
+  death is gruesome only if the killer tripled it (or is Savage too).
 - **Rabble:** a cheap mob model that fights better next to friends of its own
   kind *(revised)*.
 - **Swarm:** a mob that is hard to kill outright.

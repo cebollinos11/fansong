@@ -202,6 +202,11 @@ describe('opposed roll cards', () => {
     expect(r.verdict).toEqual({ text: 'Gruesome!', detail: '9 triples 3', on: ['d'], tone: 'kill' });
   });
 
+  it("calls a Savage's merely doubled kill gruesome, and says why", () => {
+    const r = describeCombat(attack({ attackScore: 6, defenseScore: 3, result: 'defenderKilled', gruesome: true }));
+    expect(r.verdict).toEqual({ text: 'Gruesome!', detail: '6 doubles 3 — a savage kill', on: ['d'], tone: 'kill' });
+  });
+
   it('shows a free hack at a unit leaving contact', () => {
     type Hack = Extract<GameEvent, { type: 'FreeHackResolved' }>;
     const hack = (over: Partial<Hack>): Hack => ({

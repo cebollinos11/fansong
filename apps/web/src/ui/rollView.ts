@@ -164,7 +164,12 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
   if (killed) {
     const saved = after.some((x) => x.type === 'ToughnessSaved' && x.unitId === loser.unitId);
     if (saved) return { text: 'Tough!', detail: `${detail} — knocked down instead`, on: [loser.unitId], tone: 'save' };
-    if (e.gruesome) return { text: 'Gruesome!', detail: `${winner.total} triples ${loser.total}`, on: [loser.unitId], tone: 'kill' };
+    if (e.gruesome) {
+      // Gruesome without tripling: the winner is Savage, and every kill it deals is.
+      const tripled = winner.total > loser.total && winner.total >= loser.total * 3;
+      const why = tripled ? `${winner.total} triples ${loser.total}` : `${detail} — a savage kill`;
+      return { text: 'Gruesome!', detail: why, on: [loser.unitId], tone: 'kill' };
+    }
     const already = !doubled ? ' — already down' : '';
     return { text: 'Slain!', detail: `${detail}${already}`, on: [loser.unitId], tone: 'kill' };
   }
@@ -182,7 +187,9 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
       const saved = after.some((x) => x.type === 'ToughnessSaved' && x.unitId === loser.unitId);
       return saved
         ? { text: 'Tough!', detail: `${odd} — off the edge, knocked down instead`, on: [loser.unitId], tone: 'save' }
-        : { text: 'Pushed off!', detail: `${odd} — off the edge of the map`, on: [loser.unitId], tone: 'kill' };
+        : e.gruesome
+          ? { text: 'Gruesome!', detail: `${odd} — savagely shoved off the edge`, on: [loser.unitId], tone: 'kill' }
+          : { text: 'Pushed off!', detail: `${odd} — off the edge of the map`, on: [loser.unitId], tone: 'kill' };
     }
     return { text: 'Pushed back', detail: odd, on: [loser.unitId], tone: 'down' };
   }

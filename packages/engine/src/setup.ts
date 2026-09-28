@@ -28,6 +28,8 @@ export interface UnitSpec {
   mounted?: boolean;
   /** Opportunist: +1 in melee or shooting against a knocked-down foe. */
   opportunist?: boolean;
+  /** Savage: every kill it deals is a gruesome kill. */
+  savage?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -79,6 +81,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       reassembling: spec.reassembling ?? false,
       mounted: spec.mounted ?? false,
       opportunist: spec.opportunist ?? false,
+      savage: spec.savage ?? false,
     },
     guarding: false,
   };

@@ -74,6 +74,12 @@ export interface UnitTraits {
    * at a leaver alike — and +1 shooting a knocked-down target.
    */
   opportunist: boolean;
+  /**
+   * Savage: every kill it deals counts as a gruesome kill, whatever the scores
+   * — a blow, a shot, a riposte, a free hack or a shove off the map alike — so
+   * its victim's friends must test for fear.
+   */
+  savage: boolean;
 }
 
 export interface Unit {
@@ -249,7 +255,7 @@ export type GameEvent =
       /** Power-blow penalty subtracted from the defense score; present only on a two-action attack. */
       powerPenalty?: number;
       result: CombatResult;
-      /** Present when the kill tripled the loser's score (a gruesome kill, which spreads fear). */
+      /** Present when the blow made a gruesome kill (see `gruesomeKill` in reduce.ts), which spreads fear: it tripled the loser's score, or the winner is Savage. */
       gruesome?: true;
     }
   | {
@@ -278,7 +284,7 @@ export type GameEvent =
       aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
       result: CombatResult;
-      /** Present when the kill tripled the target's score (a gruesome kill, which spreads fear). */
+      /** Present when the shot made a gruesome kill, which spreads fear: it tripled the target's score, or the shooter is Savage. */
       gruesome?: true;
     }
   | {
@@ -317,7 +323,7 @@ export type GameEvent =
       /** Opportunist bonus added to the leaver's score (never in practice: a knocked-down hacker draws no hack); present only when non-zero. */
       defenseOpportunist?: number;
       result: CombatResult;
-      /** Present when the kill tripled the leaver's score (a gruesome kill, which spreads fear). */
+      /** Present when the hack made a gruesome kill, which spreads fear: it tripled the leaver's score, or the hacker is Savage. */
       gruesome?: true;
     }
   | { type: 'GuardDeclared'; unitId: string }
@@ -352,7 +358,7 @@ export type GameEvent =
       /** Opportunist bonus added to the attacker's score (an Opportunist attacking a knocked-down guard); present only when non-zero. */
       attackerOpportunist?: number;
       result: CombatResult;
-      /** Present when the riposte's kill tripled the attacker's score (a gruesome kill). */
+      /** Present when the riposte made a gruesome kill: it tripled the attacker's score, or the guard is Savage. */
       gruesome?: true;
       /** True if the riposte stopped the incoming attack (attacker killed, knocked down or pushed back — not when a friend braced it). */
       prevented: boolean;

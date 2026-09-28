@@ -8,7 +8,7 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  * Morale. Beyond the activation turnover, casualties shake the survivors:
  *
  *  - **Fear** — when a unit suffers a *gruesome* kill in combat (the winner
- *    tripled its score), every standing friend within {@link MORALE_RADIUS}
+ *    tripled its score, or is Savage), every standing friend within {@link MORALE_RADIUS}
  *    must pass a nerve check (a d6 ≥ its Quality) or flee. An ordinary kill
  *    shakes no one.
  *  - **Rout** — the first time a warband is ground down to a third of its

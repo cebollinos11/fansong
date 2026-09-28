@@ -132,6 +132,7 @@ export const unitTraitsSchema = z
     reassembling: z.boolean(),
     mounted: z.boolean(),
     opportunist: z.boolean(),
+    savage: z.boolean(),
   })
   .strict();
 
@@ -386,6 +387,7 @@ export const unitSpecSchema = z
     reassembling: z.boolean().optional(),
     mounted: z.boolean().optional(),
     opportunist: z.boolean().optional(),
+    savage: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -444,6 +446,7 @@ export const warbandUnitSchema = z
     reassembling: z.boolean().optional(),
     mounted: z.boolean().optional(),
     opportunist: z.boolean().optional(),
+    savage: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

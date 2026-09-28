@@ -74,6 +74,7 @@ action; the AI, the tests, and any future UI all pick from that list.
   defender only hurts its attacker on a natural 6 that also wins the roll;
   otherwise its best result is a clash. Tripling the loser is a **gruesome
   kill** — the only kind of death that makes nearby friends test their nerve.
+  Every kill a **Savage** unit deals is gruesome, whatever the scores.
 - **Contact:** a unit that walks next to an enemy stops there, and a unit
   leaving contact takes a **free hack** from each standing enemy it was
   touching (it can't hit back; a knockdown stops it in its tracks).
@@ -95,7 +96,7 @@ seed replays identically).
 - **Cost model** (`unitCost`) — the Song of Blades and Heroes formula
   `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
   favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling,
-  Mounted, Opportunist) adds
+  Mounted, Opportunist, Savage) adds
   3 to Special Abilities and each unfavorable one (Slow) takes 3 off.
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
   3 or 7.

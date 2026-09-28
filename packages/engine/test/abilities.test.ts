@@ -7,6 +7,7 @@ import {
   type GameConfig,
   type GameEvent,
   type GameState,
+  type UnitSpec,
 } from '../src/index.js';
 
 /**
@@ -837,5 +838,87 @@ describe('Opportunist trait', () => {
     expect(opp.attackOpportunist).toBe(1);
     expect(opp.attackScore - shoot(config(false), true).attackScore).toBe(1);
     expect(shoot(config(true), false).attackOpportunist).toBeUndefined();
+  });
+});
+
+// --- Savage -------------------------------------------------------------------
+
+describe('Savage trait', () => {
+  type Combat = Extract<GameEvent, { type: 'AttackResolved' | 'ShotResolved' }>;
+
+  /**
+   * P0's lone unit `p0` next to P1's Victim (p1u0) at the map's west edge, with
+   * a Friend in fear range and two far units so one death never routs P1.
+   */
+  const config = (seed: number, p0: Partial<UnitSpec>, victim: Partial<UnitSpec> = {}): GameConfig => ({
+    seed,
+    board: { width: 9, height: 5 },
+    warbands: [
+      [{ name: 'Brute', quality: 3, combat: 3, pos: { x: 1, y: 2 }, ...p0 }],
+      [
+        { name: 'Victim', quality: 4, combat: 3, pos: { x: 0, y: 2 }, ...victim },
+        { name: 'Friend', quality: 4, combat: 3, pos: { x: 0, y: 4 } },
+        { name: 'Far1', quality: 4, combat: 3, pos: { x: 8, y: 0 } },
+        { name: 'Far2', quality: 4, combat: 3, pos: { x: 8, y: 4 } },
+      ],
+    ],
+  });
+
+  /** The first seed whose opening blow (or shot) by p0u0 on p1u0 passes `pick`. */
+  function find(p0: Partial<UnitSpec>, pick: (e: Combat, events: GameEvent[]) => boolean, victim?: Partial<UnitSpec>) {
+    const shoot = (p0.ranged ?? 0) > 0;
+    for (let seed = 1; seed <= 2000; seed++) {
+      const { events } = reduce(acting(config(seed, p0, victim), 'p0u0'), {
+        type: shoot ? 'Shoot' : 'Attack',
+        attackerId: 'p0u0',
+        targetId: 'p1u0',
+      });
+      const e = events.find((x): x is Combat => x.type === 'AttackResolved' || x.type === 'ShotResolved')!;
+      if (pick(e, events)) return { e, events, seed };
+    }
+    throw new Error('no seed fits');
+  }
+
+  const tripled = (e: Combat) => e.attackScore >= e.defenseScore * 3;
+  const tested = (events: GameEvent[]) => events.flatMap((x) => (x.type === 'NerveCheck' ? [x.unitId] : []));
+
+  it("makes a Savage's ordinary kill gruesome, and nearby friends test for fear", () => {
+    const { e, events, seed } = find({ savage: true }, (e) => e.result === 'defenderKilled' && !tripled(e));
+    expect(e.gruesome).toBe(true);
+    expect(tested(events)).toEqual(['p1u1']);
+    // The same blow from a plain unit is an ordinary kill.
+    const plain = reduce(acting(config(seed, {}), 'p0u0'), { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    expect(plain.events.find((x) => x.type === 'AttackResolved')).not.toHaveProperty('gruesome');
+    expect(tested(plain.events)).toEqual([]);
+  });
+
+  it('makes a Savage defender killing its attacker gruesome', () => {
+    const { e } = find({}, (e) => e.result === 'attackerKilled' && e.defenseScore < e.attackScore * 3, { savage: true });
+    expect(e.gruesome).toBe(true);
+  });
+
+  it("does not make a Savage's own death gruesome", () => {
+    const { e } = find({ savage: true }, (e) => e.result === 'attackerKilled' && e.defenseScore < e.attackScore * 3);
+    expect(e).not.toHaveProperty('gruesome');
+  });
+
+  it("makes a Savage shooter's kill gruesome", () => {
+    const shooter = { savage: true, ranged: 5, pos: { x: 3, y: 2 } };
+    const { e } = find(shooter, (e) => e.result === 'defenderKilled' && !tripled(e));
+    expect(e.gruesome).toBe(true);
+  });
+
+  it('makes a Savage shoving a foe off the map a gruesome kill', () => {
+    const { e, events } = find({ savage: true }, (_, ev) => ev.some((x) => x.type === 'UnitPushedOff'));
+    expect(e.result).toBe('defenderRecoiled');
+    expect(e.gruesome).toBe(true);
+    expect(events.some((x) => x.type === 'UnitKilled' && x.unitId === 'p1u0')).toBe(true);
+    expect(tested(events)).toEqual(['p1u1']);
+  });
+
+  it('leaves an ordinary shove off the map fearless', () => {
+    const { e, events } = find({}, (_, ev) => ev.some((x) => x.type === 'UnitPushedOff'));
+    expect(e).not.toHaveProperty('gruesome');
+    expect(tested(events)).toEqual([]);
   });
 });

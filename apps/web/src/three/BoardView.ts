@@ -1075,7 +1075,8 @@ export class BoardView {
         hold(e.unitId, settle);
         const obj = this.units.get(e.unitId);
         if (obj) {
-          const fearful = gruesome && !obj.pushedOff;
+          // A shove off the map is gruesome only when a Savage did the shoving.
+          const fearful = gruesome;
           // The fear checks a gruesome kill causes follow straight after it.
           const next = after.findIndex((x) => x.type !== 'NerveCheck');
           const shaken = (next < 0 ? after : after.slice(0, next)).flatMap((x) =>

@@ -71,6 +71,7 @@ export const TRAIT_HELP = {
   reassembling: 'Stands back up for free at the start of each round if knocked down',
   mounted: 'Rides into battle: +1 in melee against foes on foot, lost while knocked down',
   opportunist: 'Strikes when a foe is down: +1 in melee or shooting against a knocked-down foe',
+  savage: 'Kills horribly: every kill it deals is gruesome, so the victim\'s friends must test for fear',
 } as const;
 
 /** Why a flyer carrying a flag has lost its flight. */
@@ -101,6 +102,7 @@ export function traitTags(unit: Pick<Unit, 'traits'>, grounded = false): TraitTa
   if (unit.traits.reassembling) tags.push({ label: 'Reassembling', help: TRAIT_HELP.reassembling });
   if (unit.traits.mounted) tags.push({ label: 'Mounted', help: TRAIT_HELP.mounted });
   if (unit.traits.opportunist) tags.push({ label: 'Opportunist', help: TRAIT_HELP.opportunist });
+  if (unit.traits.savage) tags.push({ label: 'Savage', help: TRAIT_HELP.savage });
   return tags;
 }
 

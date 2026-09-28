@@ -47,6 +47,7 @@ export function computeCombatResult(attack: CombatSide, defense: CombatSide): Co
 /**
  * A gruesome kill: the winner's score is at least **triple** the loser's. Such a
  * death shakes the victim's friends (see `morale.ts`); an ordinary kill does not.
+ * (Any kill by a Savage unit is gruesome too, whatever the scores.)
  */
 export function isGruesome(winnerScore: number, loserScore: number): boolean {
   return winnerScore > loserScore && winnerScore >= loserScore * 3;

@@ -245,7 +245,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: canBePushed(attackerPush) },
     { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: canBePushed(targetPush) },
   );
-  const gruesome = gruesomeKill(result, attackScore, defenseScore);
+  const gruesome = gruesomeKill(result, attacker, target, attackScore, defenseScore, attackerPush, targetPush);
 
   events.push({
     type: 'AttackResolved',
@@ -276,7 +276,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
       attackerEnded = true; // a knocked-down attacker's activation ends
       break;
     case 'attackerRecoiled':
-      push(s, events, attacker, attackerPush, target.id, board);
+      push(s, events, attacker, attackerPush, target.id, board, gruesome);
       // Pushed back or braced it is still standing, so it may act again; pushed
       // off the map it is dead (or, Tough, knocked down at the edge).
       attackerEnded = attacker.dead || attacker.knockedDown;
@@ -340,7 +340,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
       { score: defenseScore, die: defenseDie, knockedDown: target.knockedDown, canRecoil: canBePushed(targetPush) },
     ),
   );
-  const gruesome = gruesomeKill(result, attackScore, defenseScore);
+  const gruesome = gruesomeKill(result, attacker, target, attackScore, defenseScore, null, targetPush);
 
   events.push({
     type: 'ShotResolved',
@@ -416,7 +416,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   );
   // An attacker braced by a friend is not driven back, so its blow still lands.
   const prevented = result !== 'clash' && !(result === 'defenderRecoiled' && attackerPush.kind === 'supported');
-  const gruesome = gruesomeKill(result, guardScore, attackerScore);
+  const gruesome = gruesomeKill(result, guard, attacker, guardScore, attackerScore, null, attackerPush);
 
   events.push({
     type: 'GuardRiposte',
@@ -472,7 +472,7 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
         { score: defenseScore, die: defenseDie, knockedDown: mover.knockedDown, canRecoil: true },
       ),
     );
-    const gruesome = gruesomeKill(result, attackScore, defenseScore);
+    const gruesome = gruesomeKill(result, hacker, mover, attackScore, defenseScore, null, null);
 
     events.push({
       type: 'FreeHackResolved',
@@ -625,7 +625,7 @@ function hitDefender(
 ): void {
   if (result === 'defenderKilled') strike(s, victim, byId, events, board, gruesome);
   else if (result === 'defenderKnockedDown') knockDown(events, victim);
-  else if (result === 'defenderRecoiled' && pushed) push(s, events, victim, pushed, byId, board);
+  else if (result === 'defenderRecoiled' && pushed) push(s, events, victim, pushed, byId, board, gruesome);
 }
 
 function knockDown(events: GameEvent[], unit: Unit): void {
@@ -634,11 +634,32 @@ function knockDown(events: GameEvent[], unit: Unit): void {
   events.push({ type: 'UnitKnockedDown', unitId: unit.id });
 }
 
-/** Whether `result` is a kill that tripled the loser, given the aggressor's and the defender's scores. */
-function gruesomeKill(result: CombatResult, aggressorScore: number, defenderScore: number): boolean {
-  if (result === 'defenderKilled') return isGruesome(aggressorScore, defenderScore);
-  if (result === 'attackerKilled') return isGruesome(defenderScore, aggressorScore);
-  return false;
+/**
+ * Whether `result` is a gruesome kill: one that tripled the loser, or any kill
+ * by a Savage winner — a push off the map included (`aggressorPush` /
+ * `defenderPush`: where a recoil would send each side; null when it can't kill).
+ */
+function gruesomeKill(
+  result: CombatResult,
+  aggressor: Unit,
+  defender: Unit,
+  aggressorScore: number,
+  defenderScore: number,
+  aggressorPush: Push | null,
+  defenderPush: Push | null,
+): boolean {
+  switch (result) {
+    case 'defenderKilled':
+      return aggressor.traits.savage || isGruesome(aggressorScore, defenderScore);
+    case 'attackerKilled':
+      return defender.traits.savage || isGruesome(defenderScore, aggressorScore);
+    case 'defenderRecoiled':
+      return aggressor.traits.savage && defenderPush?.kind === 'off';
+    case 'attackerRecoiled':
+      return defender.traits.savage && aggressorPush?.kind === 'off';
+    default:
+      return false;
+  }
 }
 
 /**
@@ -665,14 +686,23 @@ const canBePushed = (p: Push) => p.kind !== 'blocked';
 /**
  * Resolve a winning odd-die push on `unit` (mutates `s`): recoil into the free
  * hex, stand braced against a supporting friend, or go off the map — a combat
- * kill by `byId` (a Tough unit is knocked down at the edge instead).
+ * kill by `byId`, `gruesome` when a Savage did the shoving (a Tough unit is
+ * knocked down at the edge instead).
  */
-function push(s: GameState, events: GameEvent[], unit: Unit, p: Push, byId: string, board: Board): void {
+function push(
+  s: GameState,
+  events: GameEvent[],
+  unit: Unit,
+  p: Push,
+  byId: string,
+  board: Board,
+  gruesome: boolean,
+): void {
   if (p.kind === 'back') recoil(s, events, unit, p.to);
   else if (p.kind === 'supported') events.push({ type: 'UnitSupported', unitId: unit.id, supporterId: p.by.id });
   else if (p.kind === 'off') {
     events.push({ type: 'UnitPushedOff', unitId: unit.id });
-    strike(s, unit, byId, events, board, false);
+    strike(s, unit, byId, events, board, gruesome);
   }
 }
 
