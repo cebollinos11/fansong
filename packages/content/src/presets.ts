@@ -6,23 +6,27 @@ import type { Warband, WarbandUnit } from './warband.js';
  * {@link DEFAULT_RULES}; the preset test asserts that invariant.
  *
  * Design intent (so the AI-vs-AI matchups stay interesting):
- * *  - iron-wardens : tough, disciplined — wins by grinding; a Slow, Big, Tough
- *    bulwark that towers over the rank and file (and draws every arrow).
- *  - ashfang-raiders : fast and fragile — wins by reaching you first (melee only).
- *  - free-company : a balanced generalist baseline with a ranged skirmisher.
- *  - hollow-watch : a defensive garrison showcasing all three M5 traits
- *    (Shooter bows, a Tough shield-warden, and a Guard captain).
- *  - thorn-patrol : a minimum-size (3-unit) band — one bow, two foot — for
+ * *  - iron-wardens : tough, disciplined — wins by grinding; a shield wall of
+ *    Guard foot around a Slow, Big, Tough, Guard bulwark that towers over the
+ *    rank and file (and draws every arrow).
+ *  - ashfang-raiders : fast and fragile — wins by reaching you first (melee only):
+ *    Mounted wolves and outriders, Opportunists who pile onto the fallen, and a
+ *    Slow raid-leader bringing up the rear.
+ *  - free-company : a balanced generalist baseline — a Tough, Guard sergeant,
+ *    foot, a fast slinger and a long-ranged bowman.
+ *  - hollow-watch : a defensive garrison — long bows and crossbows behind a
+ *    Tough, Guard shield-warden and Guard sentries.
+ *  - thorn-patrol : a minimum-size (3-unit) band — one long bow, two foot — for
  *    quick games and small boards.
- *  - sky-talons : a pair of Flying gryphons that vault terrain and gang up in
- *    melee, screened by a bow and two foot — fast, but wary of enemy archery.
- *  - bonefield-legion : a Reassembling undead host — cheap, middling foot and
- *    bows that refuse to stay down, standing back up for free every round. Wins
- *    by attrition: you must kill them, not just knock them over.
- *  - grave-knights : the skeletal elite — a mounted rider, a twin-blade, and a
- *    crowned commander, all Reassembling, all on the same average stat line.
- *  - wild-menagerie : wandering beasts — a Flying falcon, a Guard-pincered
- *    scorpion, a tough crocodile, and fast, fragile pack animals.
+ *  - sky-talons : an all-air wing — two Flying gryphons (one Big) and a Flying
+ *    falcon that vault terrain and gang up in melee, backed by a falconer's bow.
+ *  - bonefield-legion : a Reassembling undead host — a Slow mass of middling foot
+ *    and bows that refuse to stay down, standing back up for free every round.
+ *    Wins by attrition: you must kill them, not just knock them over.
+ *  - grave-knights : the skeletal elite, all Reassembling — a Mounted rider, a
+ *    fast Opportunist twin-blade, and a Slow, Guard crowned commander.
+ *  - wild-menagerie : wandering beasts — a Flying falcon, a Big, Guard-pincered
+ *    scorpion, a Slow, Tough, hard-biting crocodile, and a pack of animals.
  *  - monstrous-horde : the big brutes — a bear, a yeti and a giant (web-spitting)
  *    spider, led into the sky by a Flying wyvern.
  */
@@ -48,66 +52,61 @@ export interface PresetRoster {
  */
 export const PRESET_UNITS: Record<string, PresetUnit> = {
   // Iron Wardens
-  'Warden-Captain': { quality: 2, combat: 4 },
-  Ironguard: { quality: 3, combat: 3 },
-  Bulwark: { quality: 3, combat: 3, slow: true, tough: true, big: true },
-  Sentinel: { quality: 3, combat: 3 },
+  'Warden-Captain': { quality: 3, combat: 4 },
+  Ironguard: { quality: 4, combat: 3, guard: true },
+  Bulwark: { quality: 4, combat: 4, slow: true, tough: true, guard: true, big: true },
+  Sentinel: { quality: 3, combat: 3, guard: true },
   Halberdier: { quality: 4, combat: 3 },
   Levy: { quality: 4, combat: 2 },
 
   // Ashfang Raiders
-  'Raid-Leader': { quality: 2, combat: 4, fast: true },
+  'Raid-Leader': { quality: 2, combat: 4, slow: true },
   Marauder: { quality: 3, combat: 3 },
-  Reaver: { quality: 3, combat: 3 },
-  'Wolf-Prowler': { quality: 3, combat: 3, fast: true },
-  Outrider: { quality: 3, combat: 3, fast: true },
-  Whelp: { quality: 4, combat: 2 },
+  Reaver: { quality: 4, combat: 3, big: true, opportunist: true },
+  'Wolf-Prowler': { quality: 4, combat: 2, fast: true, mounted: true },
+  Outrider: { quality: 3, combat: 2, fast: true, mounted: true },
+  Whelp: { quality: 4, combat: 1, opportunist: true },
 
   // Free Company
-  Sergeant: { quality: 3, combat: 4 },
-  Swordsman: { quality: 3, combat: 3 },
-  Pikeman: { quality: 3, combat: 3 },
-  Slinger: { quality: 3, combat: 2, fast: true, shooter: 'short' },
-  'Halberd-Recruit': { quality: 4, combat: 3 },
+  Sergeant: { quality: 3, combat: 4, tough: true, guard: true },
+  Swordsman: { quality: 4, combat: 3 },
+  Pikeman: { quality: 4, combat: 3, opportunist: true },
+  Slinger: { quality: 3, combat: 2, shooter: 'normal', fast: true },
+  Bowman: { quality: 4, combat: 3, shooter: 'long', look: 'Halberd-Recruit' },
   Recruit: { quality: 4, combat: 3 },
 
   // Hollow Watch
-  'Watch-Captain': { quality: 2, combat: 4, guard: true },
-  'Shield-Warden': { quality: 3, combat: 3, tough: true },
+  'Watch-Captain': { quality: 2, combat: 4 },
+  'Shield-Warden': { quality: 3, combat: 3, tough: true, guard: true },
   Longbow: { quality: 3, combat: 2, shooter: 'long' },
-  Crossbow: { quality: 4, combat: 3, shooter: 'short' },
-  Sentry: { quality: 3, combat: 3 },
+  Crossbow: { quality: 4, combat: 4, shooter: 'long' },
+  Sentry: { quality: 4, combat: 3, guard: true },
 
   // Thorn Patrol
-  'Thorn-Bow': { quality: 3, combat: 2, shooter: 'normal' },
+  'Thorn-Bow': { quality: 3, combat: 2, shooter: 'long' },
   'Thorn-Blade': { quality: 3, combat: 4 },
-  'Thorn-Spear': { quality: 3, combat: 3 },
+  'Thorn-Spear': { quality: 3, combat: 3, opportunist: true },
 
   // Sky Talons
-  'Sky-Talon': { quality: 3, combat: 3, fast: true, flying: true },
-  'Storm-Talon': { quality: 3, combat: 3, fast: true, flying: true },
-  'Talon-Falconer': { quality: 3, combat: 2, shooter: 'short' },
-  Skywatch: { quality: 3, combat: 3 },
-  Fledgling: { quality: 4, combat: 2, fast: true },
+  'Sky-Talon': { quality: 3, combat: 3, flying: true },
+  'Storm-Talon': { quality: 3, combat: 4, big: true, flying: true },
+  'Talon-Falconer': { quality: 3, combat: 2, shooter: 'normal' },
 
   // Bonefield Legion
-  'Bone-Sergeant': { quality: 3, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
-  'Skeleton Infantry': { quality: 4, combat: 3, reassembling: true },
-  'Bone-Legionary': { quality: 4, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
-  'Skeleton Archer': { quality: 4, combat: 2, shooter: 'short', reassembling: true },
-  'Bone-Fletcher': { quality: 4, combat: 2, shooter: 'short', reassembling: true, look: 'Skeleton Archer' },
+  'Skeleton Infantry': { quality: 4, combat: 3, slow: true, reassembling: true },
+  'Skeleton Archer': { quality: 4, combat: 2, shooter: 'normal', slow: true, reassembling: true },
 
   // Grave Knights
-  'Skeleton Rider': { quality: 4, combat: 3, reassembling: true },
-  Deathblade: { quality: 4, combat: 3, reassembling: true },
-  'Death Knight': { quality: 4, combat: 3, reassembling: true },
+  'Skeleton Rider': { quality: 4, combat: 3, reassembling: true, mounted: true },
+  Deathblade: { quality: 4, combat: 3, fast: true, reassembling: true, opportunist: true },
+  'Death Knight': { quality: 3, combat: 4, slow: true, guard: true, reassembling: true },
 
   // Wild Menagerie
   Falcon: { quality: 4, combat: 2, fast: true, flying: true },
-  'Giant Scorpion': { quality: 4, combat: 3, fast: true, guard: true },
-  Crocodile: { quality: 4, combat: 3, fast: true, tough: true },
+  'Giant Scorpion': { quality: 4, combat: 3, fast: true, guard: true, big: true },
+  Crocodile: { quality: 4, combat: 5, slow: true, tough: true },
   Wolf: { quality: 4, combat: 2, fast: true },
-  Boar: { quality: 4, combat: 3, fast: true },
+  Boar: { quality: 4, combat: 4 },
   'Giant Rat': { quality: 5, combat: 2, fast: true },
 
   // Monstrous Horde
@@ -148,7 +147,7 @@ export const PRESET_ROSTERS: Record<string, PresetRoster> = {
       { unit: 'Swordsman' },
       { unit: 'Pikeman' },
       { unit: 'Slinger' },
-      { unit: 'Halberd-Recruit' },
+      { unit: 'Bowman' },
       { unit: 'Recruit' },
     ],
   },
@@ -176,18 +175,14 @@ export const PRESET_ROSTERS: Record<string, PresetRoster> = {
       { unit: 'Sky-Talon' },
       { unit: 'Storm-Talon' },
       { unit: 'Talon-Falconer' },
-      { unit: 'Skywatch' },
-      { unit: 'Fledgling' },
+      { unit: 'Falcon' },
     ],
   },
   'bonefield-legion': {
     name: 'Bonefield Legion',
     units: [
-      { unit: 'Bone-Sergeant' },
-      { unit: 'Skeleton Infantry' },
-      { unit: 'Bone-Legionary' },
-      { unit: 'Skeleton Archer' },
-      { unit: 'Bone-Fletcher' },
+      { unit: 'Skeleton Infantry', count: 5 },
+      { unit: 'Skeleton Archer', count: 3 },
     ],
   },
   'grave-knights': {
