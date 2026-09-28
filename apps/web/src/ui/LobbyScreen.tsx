@@ -7,6 +7,7 @@ import { browserStorage } from '../game/customMaps.js';
 import { choiceWarband, playableArmies } from '../game/armies.js';
 import { roomLink } from '../net/server.js';
 import { MODE_LABELS } from './editorView.js';
+import { MapThumb } from './Picker.js';
 import { GameModePicker, MapPicker, modeFor, Roster, sideLabel, WarbandPicker } from './SetupScreen.js';
 
 interface Props {
@@ -92,6 +93,7 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
         ) : (
           <div className="map-picker">
             <h3>Map</h3>
+            <MapThumb map={map} className="map-thumb map-thumb-large" />
             <p>
               {map.name} · {MODE_LABELS[lobby.mode]}
             </p>

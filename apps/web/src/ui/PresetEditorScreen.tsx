@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { DEFAULT_RULES, NAME_LIMITS, PRESET_ROSTERS, PRESET_UNITS, unitCost, warbandCost, statErrors } from '@fansong/content';
+import { DEFAULT_RULES, NAME_LIMITS, PRESET_ROSTERS, PRESET_UNITS, warbandCost, statErrors } from '@fansong/content';
 import { browserStorage } from '../game/customMaps.js';
 import { downloadJson } from '../game/replay-io.js';
 import { UnitRow, UnitTableHead } from './ArmyBuilderScreen.js';
 import { moveUnit } from './armyView.js';
+import { Picker, unitItem, unitLine, warbandItem } from './Picker.js';
 import {
   addLine,
   copyUnit,
@@ -170,21 +171,27 @@ export function PresetEditorScreen({ onExit }: Props): JSX.Element {
           <h3>Default matchup</h3>
           <div className="preset-matchup">
             {([0, 1] as const).map((side) => (
-              <select
+              <Picker
                 key={side}
+                title={side === 0 ? 'Default first warband' : 'Default second warband'}
+                ariaLabel={side === 0 ? 'Default first warband' : 'Default second warband'}
+                kind="warband"
+                groups={() => [
+                  {
+                    items: draft.presets.map((e) => {
+                      const w = expandEntry(draft, e);
+                      return warbandItem(e.id, { ...w, name: e.name || e.id }, `${w.units.length} units`);
+                    }),
+                  },
+                ]}
                 value={draft.matchup[side]}
-                aria-label={side === 0 ? 'Default first warband' : 'Default second warband'}
-                onChange={(e) => pickMatchup(side, e.target.value)}
+                onPick={(id) => pickMatchup(side, id)}
               >
-                {draft.presets.some((e) => e.id === draft.matchup[side]) ? null : (
-                  <option value={draft.matchup[side]}>(missing: {draft.matchup[side]})</option>
-                )}
-                {draft.presets.map((e, i) => (
-                  <option key={i} value={e.id}>
-                    {e.name || e.id}
-                  </option>
-                ))}
-              </select>
+                {(() => {
+                  const e = draft.presets.find((x) => x.id === draft.matchup[side]);
+                  return e ? e.name || e.id : `(missing: ${draft.matchup[side]})`;
+                })()}
+              </Picker>
             ))}
           </div>
           {matchupErrors(draft).map((e) => (
@@ -396,18 +403,20 @@ function WarbandPane({
       </div>
 
       <div className="army-add">
-        <select
-          value=""
-          aria-label="Add a shared unit"
-          onChange={(e) => e.target.value && onDraft(addLine(draft, index, e.target.value))}
+        <Picker
+          title="Add a shared unit"
+          kind="unit"
+          groups={() => [
+            {
+              items: sorted.map((u) =>
+                unitItem(u.ref, u.unit, statErrors(u.unit).length === 0 ? unitLine(u.unit) : 'needs fixing'),
+              ),
+            },
+          ]}
+          onPick={(ref) => onDraft(addLine(draft, index, ref))}
         >
-          <option value="">Add a shared unit…</option>
-          {sorted.map((u) => (
-            <option key={u.ref} value={u.ref}>
-              {u.unit.name} — {statErrors(u.unit).length === 0 ? `${unitCost(u.unit)} pts` : 'needs fixing'}
-            </option>
-          ))}
-        </select>
+          Add a shared unit…
+        </Picker>
         <button onClick={addNewUnit}>+ New unit</button>
       </div>
 
@@ -516,14 +525,14 @@ function UnitsPane({
       <div className="army-add">
         <button onClick={() => onDraft(newUnit(draft)[0])}>+ New unit</button>
         {gone.length > 0 ? (
-          <select value="" aria-label="Restore a deleted unit" onChange={(e) => e.target.value && onDraft(restoreUnit(draft, e.target.value))}>
-            <option value="">Restore a deleted unit…</option>
-            {gone.map((name) => (
-              <option key={name} value={name}>
-                {name} — {unitCost(PRESET_UNITS[name]!)} pts
-              </option>
-            ))}
-          </select>
+          <Picker
+            title="Restore a deleted unit"
+            kind="unit"
+            groups={() => [{ items: gone.map((name) => unitItem(name, { ...PRESET_UNITS[name]!, name })) }]}
+            onPick={(name) => onDraft(restoreUnit(draft, name))}
+          >
+            Restore a deleted unit…
+          </Picker>
         ) : null}
       </div>
 

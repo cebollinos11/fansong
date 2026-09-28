@@ -11,7 +11,6 @@ import {
 } from '@fansong/engine';
 import {
   PRESETS,
-  profileMove,
   profileRange,
   SHOOTER_KINDS,
   SHOOTER_NAMES,
@@ -21,6 +20,7 @@ import {
   type WarbandUnit,
 } from '@fansong/content';
 import { playableArmies } from '../game/armies.js';
+import { Picker, unitItem, unitLine } from './Picker.js';
 import { browserStorage } from '../game/customMaps.js';
 import * as sandboxOps from '../game/sandbox.js';
 import {
@@ -437,26 +437,22 @@ function SpawnSection({
   return (
     <Section title="Spawn template">
       <OwnerPicker value={owner} onChange={onOwner} />
-      <select
-        value=""
-        onChange={(e) => {
-          const entry = palette.find((p) => p.key === e.target.value);
+      <Picker
+        title="Load a unit profile"
+        kind="unit"
+        groups={() =>
+          groups.map((g) => ({
+            label: g,
+            items: palette.filter((p) => p.group === g).map((p) => unitItem(p.key, p.unit, unitLine(p.unit, null))),
+          }))
+        }
+        onPick={(key) => {
+          const entry = palette.find((p) => p.key === key);
           if (entry) onTemplate({ ...entry.unit });
         }}
       >
-        <option value="">Load a unit profile…</option>
-        {groups.map((g) => (
-          <optgroup key={g} label={g}>
-            {palette
-              .filter((p) => p.group === g)
-              .map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.unit.name} (Q{p.unit.quality} C{p.unit.combat} M{profileMove(p.unit)})
-                </option>
-              ))}
-          </optgroup>
-        ))}
-      </select>
+        Load a unit profile…
+      </Picker>
       <label className="sb-text">
         Name
         <input value={template.name} onChange={(e) => onTemplate({ ...template, name: e.target.value })} />

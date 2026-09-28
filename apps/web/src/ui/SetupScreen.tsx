@@ -26,6 +26,7 @@ import { parseReplay } from '../game/replay-io.js';
 import { MODE_LABELS } from './editorView.js';
 import { browserStorage, customMapLookup, playableCustomMaps } from '../game/customMaps.js';
 import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy } from '../game/armies.js';
+import { MapThumb, Picker, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
 
 interface Props {
   initial: MatchSetup;
@@ -325,30 +326,23 @@ export function WarbandPicker({
 }): JSX.Element {
   const wb = choiceWarband(value, armies) ?? PRESETS[FALLBACK_PRESET]!;
   const check = isArmyChoice(value) ? validateArmy(wb) : validateWarband(wb);
-  const presetOptions = PRESET_IDS.map((id) => (
-    <option key={id} value={id}>
-      {PRESETS[id]!.name} — {warbandCost(PRESETS[id]!)} pts
-    </option>
-  ));
+  const groups = (): PickerGroup[] => {
+    const presets = PRESET_IDS.map((id) => warbandItem(id, PRESETS[id]!));
+    if (armies.length === 0) return [{ items: presets }];
+    return [
+      { label: 'Presets', items: presets },
+      { label: 'Your armies', items: armies.map((a) => warbandItem(armyChoice(a.id), a.warband)) },
+    ];
+  };
   return (
     <div className="warband-picker">
       <h3>{label}</h3>
-      <select value={value} onChange={(e) => onChange(e.target.value)}>
-        {armies.length === 0 ? (
-          presetOptions
-        ) : (
-          <>
-            <optgroup label="Presets">{presetOptions}</optgroup>
-            <optgroup label="Your armies">
-              {armies.map((a) => (
-                <option key={a.id} value={armyChoice(a.id)}>
-                  {a.warband.name} — {warbandCost(a.warband)} pts
-                </option>
-              ))}
-            </optgroup>
-          </>
-        )}
-      </select>
+      <Picker title={`${label}: choose a warband`} kind="warband" groups={groups} value={value} onPick={onChange} className="picker-choice">
+        <span className="picker-choice-text">
+          <strong>{wb.name}</strong>
+          <WarbandStrip warband={wb} />
+        </span>
+      </Picker>
       <p className="warband-meta">
         {warbandCost(wb)} pts · {wb.units.length} units {check.ok ? '' : '· illegal'}
       </p>
@@ -414,24 +408,29 @@ export function MapPicker({
 }): JSX.Element {
   const map = getMap(value) ?? custom.find((m) => m.id === value) ?? getMap(DEFAULT_MAP_ID)!;
   const modes = supportedModes(map).map((m) => MODE_LABELS[m]);
-  const option = (m: MapDef) => (
-    <option key={m.id} value={m.id}>
-      {m.name}
-    </option>
-  );
+  const item = (m: MapDef): PickerItem => ({
+    key: m.id,
+    title: m.name,
+    detail: `${m.width}×${m.height} · ${supportedModes(m).map((x) => MODE_LABELS[x]).join(', ')}`,
+    preview: <MapThumb map={m} />,
+  });
+  const groups = (): PickerGroup[] =>
+    custom.length === 0
+      ? [{ items: listMaps().map(item) }]
+      : [
+          { label: 'Built-in', items: listMaps().map(item) },
+          { label: 'Custom', items: custom.map(item) },
+        ];
   return (
     <div className="map-picker">
       <h3>Map</h3>
-      <select value={map.id} onChange={(e) => onChange(e.target.value)}>
-        {custom.length === 0 ? (
-          listMaps().map(option)
-        ) : (
-          <>
-            <optgroup label="Built-in">{listMaps().map(option)}</optgroup>
-            <optgroup label="Custom">{custom.map(option)}</optgroup>
-          </>
-        )}
-      </select>
+      <Picker title="Choose a map" kind="map" groups={groups} value={map.id} onPick={onChange} className="picker-choice picker-map-choice">
+        <MapThumb map={map} />
+        <span className="picker-choice-text">
+          <strong>{map.name}</strong>
+          <span className="hint">Click to see every map</span>
+        </span>
+      </Picker>
       <p className="warband-meta">
         {map.width}×{map.height} · {modes.join(', ')}
         {online ? ' · online matches use built-in maps only' : ''}

@@ -28,7 +28,8 @@ export function tileHeight(elevation: number): number {
   return surfaceY(elevation) - TILE_BOTTOM;
 }
 
-function mix(a: number, b: number, t: number): number {
+/** Blend two 0xRRGGBB colours: `t` = 0 gives `a`, 1 gives `b`. */
+export function mix(a: number, b: number, t: number): number {
   const ch = (c: number, s: number) => (c >> s) & 0xff;
   let out = 0;
   for (const s of [16, 8, 0]) out |= Math.round(ch(a, s) + (ch(b, s) - ch(a, s)) * t) << s;

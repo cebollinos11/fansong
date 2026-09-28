@@ -24,6 +24,7 @@ import {
 import { browserStorage } from '../game/customMaps.js';
 import { downloadJson } from '../game/replay-io.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
+import { LookSprite, Picker, unitItem, warbandItem } from './Picker.js';
 import {
   ARMY_RULES_TEXT,
   armyFromPreset,
@@ -159,18 +160,14 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
           </ul>
           <div className="army-list-actions">
             <button onClick={() => open({ id: newArmyId(armies), warband: newArmy() })}>+ New army</button>
-            <select
-              value=""
-              aria-label="Start from a preset"
-              onChange={(e) => e.target.value && open({ id: newArmyId(armies), warband: armyFromPreset(e.target.value) })}
+            <Picker
+              title="Start from a preset"
+              kind="warband"
+              groups={() => [{ items: PRESET_IDS.map((id) => warbandItem(id, PRESETS[id]!)) }]}
+              onPick={(id) => open({ id: newArmyId(armies), warband: armyFromPreset(id) })}
             >
-              <option value="">Copy a preset…</option>
-              {PRESET_IDS.map((id) => (
-                <option key={id} value={id}>
-                  {PRESETS[id]!.name} — {warbandCost(PRESETS[id]!)} pts
-                </option>
-              ))}
-            </select>
+              Copy a preset…
+            </Picker>
             <button onClick={() => fileInput.current?.click()}>Import…</button>
             <input
               ref={fileInput}
@@ -222,26 +219,23 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
 
           <div className="army-add">
             <button onClick={() => setUnits([...warband.units, blankUnit(warband.units)])}>+ Add unit</button>
-            <select
-              value=""
-              aria-label="Add a unit from a preset"
-              onChange={(e) => {
-                const [g, u] = e.target.value.split(':').map(Number);
+            <Picker
+              title="Add a preset unit"
+              kind="unit"
+              groups={() =>
+                presetTemplates().map((group, g) => ({
+                  label: group.preset,
+                  items: group.units.map((t, u) => unitItem(`${g}:${u}`, t)),
+                }))
+              }
+              onPick={(key) => {
+                const [g, u] = key.split(':').map(Number);
                 const template = presetTemplates()[g!]?.units[u!];
                 if (template) setUnits([...warband.units, templateUnit(template, warband.units)]);
               }}
             >
-              <option value="">Add a preset unit…</option>
-              {presetTemplates().map((group, g) => (
-                <optgroup key={group.preset} label={group.preset}>
-                  {group.units.map((t, u) => (
-                    <option key={t.name} value={`${g}:${u}`}>
-                      {t.name} — {unitCost(t)} pts
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+              Add a preset unit…
+            </Picker>
           </div>
 
           {check.ok ? null : (
@@ -347,14 +341,17 @@ export function UnitRow({
         />
       </td>
       <td>
-        <select value={unit.look ?? ''} aria-label="Looks like" onChange={(e) => onChange({ ...unit, look: e.target.value })}>
-          {unit.look === undefined || !LOOKS.includes(unit.look) ? <option value={unit.look ?? ''}>(default)</option> : null}
-          {LOOKS.map((l) => (
-            <option key={l} value={l}>
-              {l}
-            </option>
-          ))}
-        </select>
+        <Picker
+          title={`What ${unit.name || 'this unit'} looks like`}
+          kind="sprite"
+          ariaLabel="Looks like"
+          className="picker-look"
+          groups={() => [{ items: LOOKS.map((l) => ({ key: l, title: l, preview: <LookSprite look={l} /> })) }]}
+          value={unit.look}
+          onPick={(look) => onChange({ ...unit, look })}
+        >
+          <span className="picker-look-name">{unit.look !== undefined && LOOKS.includes(unit.look) ? unit.look : '(default)'}</span>
+        </Picker>
       </td>
       {EDITABLE_STATS.map((s) => (
         <td key={s}>
