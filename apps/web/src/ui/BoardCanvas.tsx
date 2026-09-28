@@ -269,6 +269,7 @@ export function BoardCanvas(props: Props): JSX.Element {
           unitName={diceMenuUnit.name}
           owner={diceMenuUnit.owner}
           quality={diceMenuUnit.quality}
+          inspired={diceMenuUnit.inspired}
           choices={props.diceChoices ?? []}
           project={project}
           onPick={(n) => props.onChooseDice?.(n)}

@@ -1302,6 +1302,14 @@ button.secondary {
   color: var(--muted);
 }
 
+.dice-menu-inspired {
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+  color: #ffae3c;
+}
+
 .dice-menu-row {
   display: flex;
   gap: 6px;
@@ -1327,6 +1335,32 @@ button.secondary {
 .dice-pick-label {
   font-size: 10px;
   color: var(--muted);
+}
+
+.dice-pick-pips {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+/* A die still to be rolled, and the war cry's sure 6 (gold, as in the roll). */
+.dice-pip {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.dice-pip.sure {
+  color: #1a1206;
+  background: #ffae3c;
+  border-color: #ffae3c;
+  box-shadow: 0 0 6px rgba(255, 174, 60, 0.75);
 }
 
 .dice-pick kbd {

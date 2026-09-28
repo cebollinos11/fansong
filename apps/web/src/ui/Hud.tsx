@@ -138,6 +138,9 @@ export function Hud(props: Props): JSX.Element {
                   <p className="prompt">
                     Activate <strong>{selected.name}</strong> — commit dice:
                   </p>
+                  {selected.inspired ? (
+                    <p className="dice-menu-inspired">★ Inspired: the first die is a sure 6</p>
+                  ) : null}
                   <div className="dice-row">
                     {interaction.diceChoices.map((n) => (
                       <button key={n} className="dice" title={`Press ${n}`} onClick={() => props.onActivate(n)}>
