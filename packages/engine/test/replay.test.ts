@@ -98,6 +98,24 @@ describe('hashGameState', () => {
     moved.units[0]!.pos = { x: 2, y: 1 };
     expect(hashGameState(moved)).not.toBe(hashGameState(state));
   });
+
+  it('ignores a new false flag, so adding an off-by-default trait keeps old hashes', () => {
+    const state = createGame(duel);
+    const withFlag = structuredClone(state);
+    (withFlag.units[0]!.traits as unknown as Record<string, boolean>).someNewTrait = false;
+    expect(hashGameState(withFlag)).toBe(hashGameState(state));
+    (withFlag.units[0]!.traits as unknown as Record<string, boolean>).someNewTrait = true;
+    expect(hashGameState(withFlag)).not.toBe(hashGameState(state));
+  });
+
+  it('still tells flags apart inside arrays', () => {
+    const state = createGame(duel);
+    const benched = structuredClone(state);
+    benched.benched = [true, false];
+    const other = structuredClone(state);
+    other.benched = [false, true];
+    expect(hashGameState(benched)).not.toBe(hashGameState(other));
+  });
 });
 
 describe('golden replay', () => {

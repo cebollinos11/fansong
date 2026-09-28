@@ -81,9 +81,18 @@ export function recordReplay(
  * built by `createGame`/`reduce`), so `JSON.stringify` is a canonical encoding;
  * FNV-1a folds it to a short hex digest. Any accidental rule change shifts the
  * final state and therefore this digest.
+ *
+ * A `false` object property is hashed as if absent: a new off-by-default flag
+ * (a trait, or per-unit state like `warCried`) then leaves every existing hash —
+ * the golden fixture's included — untouched, so a hash change always means a
+ * behaviour change. Array elements are kept as-is (`benched: [false, true]`).
  */
 export function hashGameState(state: GameState): string {
-  return fnv1a(JSON.stringify(state));
+  return fnv1a(JSON.stringify(state, omitFalseProps));
+}
+
+function omitFalseProps(this: unknown, _key: string, value: unknown): unknown {
+  return value === false && !Array.isArray(this) ? undefined : value;
 }
 
 function fnv1a(input: string): string {
