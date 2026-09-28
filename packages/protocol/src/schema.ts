@@ -143,6 +143,7 @@ export const unitTraitsSchema = z
     savage: z.boolean(),
     leader: z.boolean(),
     armored: z.boolean(),
+    sharpshooter: z.boolean(),
   })
   .strict();
 
@@ -279,6 +280,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     bigTarget: z.number().optional(),
     flyingTarget: z.number().optional(),
     attackOpportunist: z.number().optional(),
+    attackSharpshooter: z.number().optional(),
     aimPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -407,6 +409,7 @@ export const unitSpecSchema = z
     savage: z.boolean().optional(),
     leader: z.boolean().optional(),
     armored: z.boolean().optional(),
+    sharpshooter: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -468,6 +471,7 @@ export const warbandUnitSchema = z
     savage: z.boolean().optional(),
     leader: z.boolean().optional(),
     armored: z.boolean().optional(),
+    sharpshooter: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

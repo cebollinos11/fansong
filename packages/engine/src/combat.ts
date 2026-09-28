@@ -100,6 +100,9 @@ export const MOUNTED_MELEE_BONUS = 1;
 /** How much an opportunist gains fighting or shooting a knocked-down foe. */
 export const OPPORTUNIST_BONUS = 1;
 
+/** How much a sharpshooter gains on every shot. */
+export const SHARPSHOOTER_BONUS = 1;
+
 /** How much easier an airborne flyer is to shoot: a target with no cover in the open sky. */
 export const FLYING_TARGET_BONUS = 1;
 
@@ -183,6 +186,11 @@ export function mountedMeleeBonus(
  */
 export function opportunistBonus(unit: Pick<Unit, 'traits'>, opponent: Pick<Unit, 'knockedDown'>): number {
   return unit.traits.opportunist && opponent.knockedDown ? OPPORTUNIST_BONUS : 0;
+}
+
+/** The Sharpshooter bonus: {@link SHARPSHOOTER_BONUS} on every shot a Sharpshooter takes, else 0. */
+export function sharpshooterBonus(shooter: Pick<Unit, 'traits'>): number {
+  return shooter.traits.sharpshooter ? SHARPSHOOTER_BONUS : 0;
 }
 
 function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {

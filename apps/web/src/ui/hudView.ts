@@ -74,6 +74,7 @@ export const TRAIT_HELP = {
   savage: 'Kills horribly: every kill it deals is gruesome, so the victim\'s friends must test for fear',
   leader: 'Once a round, one action: a war cry inspires every friend still to activate (first activation die a sure 6). Friends who see it fall must test nerve',
   armored: 'Turns blows aside: a combat it loses by exactly 1 point does it no harm, even knocked down',
+  sharpshooter: 'A deadly eye: +1 to every shot it takes',
 } as const;
 
 /** Why a flyer carrying a flag has lost its flight. */
@@ -107,6 +108,7 @@ export function traitTags(unit: Pick<Unit, 'traits'>, grounded = false): TraitTa
   if (unit.traits.savage) tags.push({ label: 'Savage', help: TRAIT_HELP.savage });
   if (unit.traits.leader) tags.push({ label: 'Leader', help: TRAIT_HELP.leader });
   if (unit.traits.armored) tags.push({ label: 'Armored', help: TRAIT_HELP.armored });
+  if (unit.traits.sharpshooter) tags.push({ label: 'Sharpshooter', help: TRAIT_HELP.sharpshooter });
   return tags;
 }
 

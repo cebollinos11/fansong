@@ -210,7 +210,7 @@ still not done.
 ## 7. Special rules (traits)
 
 FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted,
-Opportunist, Savage and Armored (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist, Savage and Armored have no direct equivalent in the
+Opportunist, Savage, Armored and Sharpshooter (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist, Savage, Armored and Sharpshooter have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
@@ -284,6 +284,11 @@ short paraphrase, and the exact effects should be checked before building one.
 
 **Shooting:**
 - ✅ **Shooter (Short / Medium / Long):** implemented as Shooter (short range), Shooter and Shooter (long range), with ranges of 3, 5 and 7 hexes.
+- ✅ **Done — Sharpshooter** *(FanSong's own)*. *Implemented:* a `sharpshooter`
+  trait. It scores +1 on every shot it takes (`attackSharpshooter` on
+  `ShotResolved`), whatever the range or cover. It does nothing in melee, and
+  nothing for a unit without a Shooter trait (though it is still priced as a
+  favorable trait).
 - **Good Shot / Unerring Aim / Legendary Shot** *(revised)*: better aim, halved
   range penalties, and more shots per action. These need §4.1 first.
 

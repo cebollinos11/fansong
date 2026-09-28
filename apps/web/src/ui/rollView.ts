@@ -112,7 +112,7 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
     b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Size', e.attackerBig], ['Mounted', e.attackerMounted], ['Opportunist', e.attackerOpportunist], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
   } else if (e.type === 'ShotResolved') {
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Flying target', e.flyingTarget], ['Opportunist', e.attackOpportunist], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
+    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Flying target', e.flyingTarget], ['Opportunist', e.attackOpportunist], ['Sharpshooter', e.attackSharpshooter], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
     b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Aimed at', minus(e.aimPenalty)]], ob);
   } else {
     const hack = e.type === 'FreeHackResolved';

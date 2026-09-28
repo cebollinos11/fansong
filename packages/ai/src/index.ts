@@ -14,6 +14,7 @@ import {
   makeHexGrid,
   mountedMeleeBonus,
   opportunistBonus,
+  sharpshooterBonus,
   outnumberedPenalty,
   rangePenalty,
   scoringZones,
@@ -80,7 +81,7 @@ const SHOT_PENALTY_COST = 100;
 
 /**
  * How far a shot at `target` from where `shooter` stands is stacked against it:
- * range and cover, less the points a Big, airborne or (to an Opportunist) downed target hands the shooter. Negative means
+ * range and cover, less the points a Big, airborne or (to an Opportunist) downed target and a Sharpshooter's eye hand the shooter. Negative means
  * the shot is better than an unmodified one.
  */
 function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit): number {
@@ -91,7 +92,8 @@ function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit
     cover -
     bigTargetBonus(target) -
     flyingTargetBonus(state, target) -
-    opportunistBonus(shooter, target)
+    opportunistBonus(shooter, target) -
+    sharpshooterBonus(shooter)
   );
 }
 

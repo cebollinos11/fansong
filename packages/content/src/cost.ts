@@ -41,6 +41,8 @@ export interface Profile {
   leader?: boolean;
   /** Armored: a combat it loses by exactly 1 point does it no harm. */
   armored?: boolean;
+  /** Sharpshooter: +1 to every shot it takes. */
+  sharpshooter?: boolean;
 }
 
 /** The kinds of Shooter trait: short range, plain Shooter, and long range. */
@@ -92,7 +94,7 @@ export const COST_WEIGHTS = {
   perCombat: 5,
   /**
    * Each favorable trait adds this much, before the Quality multiplier: Fast,
-   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Mounted, Opportunist, Savage and Armored.
+   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Mounted, Opportunist, Savage, Armored and Sharpshooter.
    * Leader lifts the whole warband, so it counts as two favorable traits.
    */
   favorable: 3,
@@ -116,6 +118,7 @@ export function traitCounts(p: Profile): { favorable: number; unfavorable: numbe
     p.opportunist,
     p.savage,
     p.armored,
+    p.sharpshooter,
   ].filter(Boolean).length + (p.leader ? 2 : 0);
   const unfavorable = p.slow ? 1 : 0;
   return { favorable, unfavorable };

@@ -13,6 +13,7 @@ import {
   isGruesome,
   mountedMeleeBonus,
   opportunistBonus,
+  sharpshooterBonus,
   POWER_BLOW_PENALTY,
   PRESSED_COST,
   rangePenalty,
@@ -361,8 +362,9 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   // An airborne flyer has no cover in the open sky — easy to shoot down.
   const flyingTarget = flyingTargetBonus(s, target);
   const attackOpportunist = opportunistBonus(attacker, target);
+  const attackSharpshooter = sharpshooterBonus(attacker);
   const attackScore =
-    attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget + attackOpportunist - range - cover;
+    attacker.combat + attackDie + attackBonus + bigTarget + flyingTarget + attackOpportunist + attackSharpshooter - range - cover;
   const defenseScore = target.combat + defenseDie + defenseBonus - aimPenalty;
 
   const targetPush = pushOutcome(s, board, target, attacker);
@@ -386,7 +388,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     defenseDie,
     attackScore,
     defenseScore,
-    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, attackOpportunist, aimPenalty }),
+    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, attackOpportunist, attackSharpshooter, aimPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });

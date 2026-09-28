@@ -95,6 +95,8 @@ export interface UnitTraits {
    * combat.ts), reported by an `ArmorHeld` event.
    */
   armored: boolean;
+  /** Sharpshooter: a deadly eye. It scores +1 on every shot it takes (see `sharpshooterBonus` in combat.ts). */
+  sharpshooter: boolean;
 }
 
 export interface Unit {
@@ -323,6 +325,8 @@ export type GameEvent =
       flyingTarget?: number;
       /** Opportunist bonus added to the attack score (an Opportunist shooting a knocked-down target); present only when non-zero. */
       attackOpportunist?: number;
+      /** Sharpshooter bonus added to the attack score (the shooter is a Sharpshooter); present only when non-zero. */
+      attackSharpshooter?: number;
       /** Aimed-shot penalty subtracted from the defense score; present only on a two-action shot. */
       aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */

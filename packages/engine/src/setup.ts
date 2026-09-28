@@ -34,6 +34,8 @@ export interface UnitSpec {
   leader?: boolean;
   /** Armored: a combat it loses by exactly 1 point does it no harm. */
   armored?: boolean;
+  /** Sharpshooter: +1 to every shot it takes. */
+  sharpshooter?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -88,6 +90,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       savage: spec.savage ?? false,
       leader: spec.leader ?? false,
       armored: spec.armored ?? false,
+      sharpshooter: spec.sharpshooter ?? false,
     },
     guarding: false,
     inspired: false,

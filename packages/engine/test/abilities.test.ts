@@ -843,6 +843,45 @@ describe('Opportunist trait', () => {
   });
 });
 
+// --- Sharpshooter -------------------------------------------------------------
+
+describe('Sharpshooter trait', () => {
+  const config = (sharpshooter: boolean): GameConfig => ({
+    seed: 5,
+    board: { width: 9, height: 3 },
+    warbands: [
+      [{ name: 'Marksman', quality: 3, combat: 2, ranged: 4, sharpshooter, pos: { x: 0, y: 1 } }],
+      [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+    ],
+  });
+  const shoot = (c: GameConfig) => {
+    const s = acting(c, 'p0u0');
+    const { events } = reduce(s, { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' });
+    return events.find((e) => e.type === 'ShotResolved') as Extract<GameEvent, { type: 'ShotResolved' }>;
+  };
+
+  it('adds +1 to every shot a Sharpshooter takes', () => {
+    const sharp = shoot(config(true));
+    expect(sharp.attackSharpshooter).toBe(1);
+    expect(sharp.attackScore - shoot(config(false)).attackScore).toBe(1);
+    expect(shoot(config(false)).attackSharpshooter).toBeUndefined();
+  });
+
+  it('does nothing in melee', () => {
+    const c: GameConfig = {
+      seed: 5,
+      board: { width: 5, height: 3 },
+      warbands: [
+        [{ name: 'Marksman', quality: 3, combat: 2, ranged: 4, sharpshooter: true, pos: { x: 1, y: 1 } }],
+        [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 1 } }],
+      ],
+    };
+    const { events } = reduce(acting(c, 'p0u0'), { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const blow = events.find((e) => e.type === 'AttackResolved') as Extract<GameEvent, { type: 'AttackResolved' }>;
+    expect(blow.attackScore).toBe(2 + blow.attackDie);
+  });
+});
+
 // --- Savage -------------------------------------------------------------------
 
 describe('Savage trait', () => {

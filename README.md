@@ -89,7 +89,7 @@ action; the AI, the tests, and any future UI all pick from that list.
   costs −1.
 - **Shooting:** −1 beyond short range (the first half of the shooter's reach)
   and −1 against a target in cover (in a forest, or only just visible past a
-  blocker).
+  blocker). A **Sharpshooter** scores +1 on every shot it takes.
 
 All of this lives behind `reduce` / the turn controller and is covered by
 `packages/engine/test` (mechanics) and `packages/ai/test` (AI-vs-AI invariants:
@@ -103,7 +103,7 @@ seed replays identically).
 - **Cost model** (`unitCost`) — the Song of Blades and Heroes formula
   `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
   favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling,
-  Mounted, Opportunist, Savage, Armored) adds
+  Mounted, Opportunist, Savage, Armored, Sharpshooter) adds
   3 to Special Abilities and each unfavorable one (Slow) takes 3 off. Leader
   counts as two favorable traits (+6).
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
