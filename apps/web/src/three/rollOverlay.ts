@@ -186,11 +186,12 @@ export class RollOverlay {
     this.now = now;
     this.retire(roll.unitId);
     const card = this.card(roll.unitId, null, lifeMs, 'roll-card activation');
-    card.el.append(this.header(`Activation · need ${roll.quality}+`, roll.unitId));
+    card.el.append(this.header(`Activation · need ${roll.quality}+${roll.inspired ? ' · inspired' : ''}`, roll.unitId));
     const line = h('div', 'roll-line');
     roll.dice.forEach((d, i) => {
       const landAt = now + TUMBLE_MS + i * ACTIVATION_STAGGER_MS;
       const die = this.die(roll.unitId, d.value, landAt);
+      if (d.inspired) die.el.classList.add('inspired');
       card.dice.push(die);
       line.append(die.el);
       this.reveal(card, die.el, landAt, d.success ? 'success' : 'failure');

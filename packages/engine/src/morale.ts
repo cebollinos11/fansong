@@ -1,7 +1,7 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
 import { carryFlags, regrabOnStandUp } from './mode.js';
 import { rollD6 } from './rng.js';
-import { airborne, aliveUnits, isOccupied, livingCount } from './query.js';
+import { airborne, aliveUnits, isOccupied, livingCount, occupiedKeys } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
 
 /**
@@ -11,10 +11,13 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  *    tripled its score, or is Savage), every standing friend within {@link MORALE_RADIUS}
  *    must pass a nerve check (a d6 ≥ its Quality) or flee. An ordinary kill
  *    shakes no one.
+ *  - **Leader** — when a Leader is killed, every standing friend with line of
+ *    sight to where it fell must pass a nerve check or flee.
  *  - **Rout** — the first time a warband is ground down to a third of its
  *    starting strength it *breaks*: every survivor takes a nerve check, and each
  *    that fails flees. It happens once per side.
  *
+ * A unit that fails any nerve check loses its inspiration (see `Unit.inspired`).
  * A unit that **flees** runs for its own edge of the map (see {@link homeColumn}),
  * taking free hacks from every foe it turns its back on. One already standing on
  * that edge leaves the field for good. A failed check never knocks a unit down.
@@ -55,14 +58,24 @@ function nerveCheck(s: GameState, events: GameEvent[], unit: Unit): boolean {
   const roll = rollD6(s.rngState);
   s.rngState = roll.state;
   const passed = roll.die >= unit.quality;
-  events.push({ type: 'NerveCheck', unitId: unit.id, quality: unit.quality, die: roll.die, passed });
+  const inspirationLost = !passed && unit.inspired;
+  if (inspirationLost) unit.inspired = false;
+  events.push({
+    type: 'NerveCheck',
+    unitId: unit.id,
+    quality: unit.quality,
+    die: roll.die,
+    passed,
+    ...(inspirationLost ? { inspirationLost: true as const } : {}),
+  });
   return passed;
 }
 
 /**
  * Resolve the morale fallout of a combat casualty: after a `gruesome` kill,
- * nearby friends test nerve (fear); then, for any kill, the casualty's warband
- * tests for a rout if it has just crossed the break threshold. Mutates `s` and
+ * nearby friends test nerve (fear); a fallen Leader shakes every friend who
+ * saw it fall; then, for any kill, the casualty's warband tests for a rout if
+ * it has just crossed the break threshold. Mutates `s` and
  * appends events. A runner cut down by a free hack is a combat casualty in its
  * own right, so the fallout can cascade — but every failed check moves a unit
  * nearer its edge or off the map, so the cascade always ends.
@@ -76,7 +89,23 @@ export function resolveCombatMorale(
   hacks: FreeHacks = noHacks,
 ): void {
   if (gruesome) fearCheck(s, events, victim, board, hacks);
+  if (victim.traits.leader) leaderCheck(s, events, victim, board, hacks);
   routCheck(s, events, victim.owner, board, hacks);
+}
+
+/**
+ * A Leader has fallen: every standing friend with line of sight to where it
+ * lay — the same sight line a shot needs, so terrain and other units block it
+ * — tests nerve, however far away.
+ */
+function leaderCheck(s: GameState, events: GameEvent[], leader: Unit, board: Board, hacks: FreeHacks): void {
+  events.push({ type: 'LeaderFallen', unitId: leader.id });
+  const occ = occupiedKeys(s);
+  const blocks = (v: Vec) => occ.has(vecKey(v));
+  const tested = aliveUnits(s, leader.owner).filter(
+    (u) => u.id !== leader.id && !u.knockedDown && board.lineOfSight(u.pos, leader.pos, blocks),
+  );
+  fleeFailures(s, events, tested, board, hacks);
 }
 
 function fearCheck(s: GameState, events: GameEvent[], victim: Unit, board: Board, hacks: FreeHacks): void {

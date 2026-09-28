@@ -32,6 +32,8 @@ export function commandsEqual(a: Command, b: Command): boolean {
       );
     case 'Guard':
       return b.type === 'Guard' && a.unitId === b.unitId;
+    case 'WarCry':
+      return b.type === 'WarCry' && a.unitId === b.unitId;
     case 'EndActivation':
       return b.type === 'EndActivation';
   }

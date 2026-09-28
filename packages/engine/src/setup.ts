@@ -30,6 +30,8 @@ export interface UnitSpec {
   opportunist?: boolean;
   /** Savage: every kill it deals is a gruesome kill. */
   savage?: boolean;
+  /** Leader: may war cry once a round, inspiring its friends; its death shakes those who see it. */
+  leader?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -82,8 +84,11 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       mounted: spec.mounted ?? false,
       opportunist: spec.opportunist ?? false,
       savage: spec.savage ?? false,
+      leader: spec.leader ?? false,
     },
     guarding: false,
+    inspired: false,
+    warCried: false,
   };
   // Only carried when set, so states (and replay hashes) without looks are unchanged.
   if (spec.look !== undefined) unit.look = spec.look;

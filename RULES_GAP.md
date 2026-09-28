@@ -151,7 +151,9 @@ The original morale model is very different from FanSong's:
 1. **Triggers:**
    - a **gruesome kill** (§3.1), tested by friends of the victim within **Long**
      range. ✅ *Done (M8):* friends within 4 hexes test;
-   - **the Leader being killed**, tested by the whole warband;
+   - **the Leader being killed**, tested by the whole warband. ✅ *Done
+     (FanSong's version):* every standing friend with line of sight to the
+     fallen Leader tests (`LeaderFallen`, then the checks);
    - the warband falling to **half or less** of its starting models, tested by
      the whole warband. FanSong uses a third, and tests only once;
    - fear-causing traits such as Terror (§7).
@@ -180,23 +182,35 @@ The original morale model is very different from FanSong's:
 
 ## 6. Leaders and group activation
 
-None of this exists yet. The `kings` of kill-the-king only exist for that
-objective and are not leaders.
+The `kings` of kill-the-king only exist for that objective and are not leaders.
 
-1. **Leader trait.** A warband has at most one Leader.
+✅ **Done — Leader and war cry** *(FanSong's own take)*. *Implemented:* a
+`leader` trait, priced as two favorable traits. Once a round, a Leader that is
+not knocked down may spend one action on a `WarCry`. Every living friend that
+isn't a Leader and has yet to activate this round becomes `inspired`: the first
+die of its next activation roll is a sure 6 (still drawn from the RNG, and the
+inspiration is spent on that roll). A failed nerve check strips a unit's
+inspiration, and all of it lapses at the end of the round. A warband may field
+any number of Leaders, and Leaders never inspire each other. When a Leader is
+killed, friends who see it fall test nerve (§5.1). Group activation below is
+still not done.
+
+1. **Leader trait.** A warband has at most one Leader. *(FanSong allows any
+   number.)*
 2. **Group activation.** The Leader activates together with friends within Long
    range. One activation roll is made, using the Leader's Quality, and the group
    then spends its actions together on a **group move** or a **group attack**
    (friends in contact with the same enemy add to the attack) *(verify the
    exact mechanics)*.
 3. **Group shooting.** Shooters in a group fire together.
-4. **Leader death** makes the whole warband test morale (§5.1).
+4. **Leader death** makes the whole warband test morale (§5.1). ✅ *Done*, but
+   only for friends with line of sight to the fallen Leader.
 5. **Sub-commanders** for large warbands *(revised, optional)*.
 
 ## 7. Special rules (traits)
 
 FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted,
-Opportunist and Savage (see the ✅ entries below). Guard, Reassembling, Opportunist and Savage have no direct equivalent in the
+Opportunist and Savage (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist and Savage have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 

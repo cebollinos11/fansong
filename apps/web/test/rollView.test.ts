@@ -263,6 +263,16 @@ describe('activation roll cards', () => {
     expect(r.summary).toBe('2 fails — turnover · 1 action');
     expect(r.verdict).toMatchObject({ text: 'Turnover!', detail: 'benched after this activation' });
   });
+
+  it("marks an inspired roll's first die as the war cry's sure 6", () => {
+    const r = describeActivation({ ...rolled([6, 2]), quality: 6, successes: 1, failures: 1, inspired: true });
+    expect(r.inspired).toBe(true);
+    expect(r.dice).toEqual([
+      { value: 6, success: true, inspired: true },
+      { value: 2, success: false },
+    ]);
+    expect(describeActivation(rolled([6, 4])).inspired).toBe(false);
+  });
 });
 
 describe('nerve roll cards', () => {
@@ -271,6 +281,7 @@ describe('nerve roll cards', () => {
     expect(describeNerve(e).summary).toBe('Flees!');
     expect(describeNerve(e, [{ type: 'UnitRouted', unitId: 'u' }]).summary).toBe('Flees the field!');
     expect(describeNerve({ ...e, die: 5, passed: true }).summary).toBe('Holds firm');
+    expect(describeNerve({ ...e, inspirationLost: true }).summary).toBe('Flees! Inspiration lost');
   });
 });
 

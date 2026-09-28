@@ -48,7 +48,10 @@ export interface ActivationRoll {
   kind: 'activation';
   unitId: string;
   quality: number;
-  dice: { value: number; success: boolean }[];
+  /** `inspired` marks the die a war cry made a sure 6. */
+  dice: { value: number; success: boolean; inspired?: true }[];
+  /** Whether the unit rolled inspired (its first die a sure 6). */
+  inspired: boolean;
   /** Result line under the dice, e.g. "2 actions". */
   summary: string;
   turnover: boolean;
@@ -205,7 +208,10 @@ export function describeActivation(
   e: Extract<GameEvent, { type: 'DiceRolled' }>,
   after: readonly GameEvent[] = [],
 ): ActivationRoll {
-  const dice = e.dice.map((value) => ({ value, success: value >= e.quality }));
+  const dice: ActivationRoll['dice'] = e.dice.map((value, i) =>
+    e.inspired && i === 0 ? { value, success: true, inspired: true } : { value, success: value >= e.quality },
+  );
+  const inspired = e.inspired === true;
   const turnover = after.some((x) => x.type === 'Turnover' && x.unitId === e.unitId);
   const stood = after.some((x) => x.type === 'UnitStoodUp' && x.unitId === e.unitId);
   const actions = e.successes - (stood ? 1 : 0);
@@ -223,7 +229,7 @@ export function describeActivation(
         tone: 'kill',
       }
     : null;
-  return { kind: 'activation', unitId: e.unitId, quality: e.quality, dice, summary, turnover, verdict };
+  return { kind: 'activation', unitId: e.unitId, quality: e.quality, dice, inspired, summary, turnover, verdict };
 }
 
 /** Describe a nerve check; `after` tells a runner leaving the field from one running for its edge. */
@@ -232,7 +238,8 @@ export function describeNerve(
   after: readonly GameEvent[] = [],
 ): NerveRoll {
   const gone = after.some((x) => x.type === 'UnitRouted' && x.unitId === e.unitId);
-  const summary = e.passed ? 'Holds firm' : gone ? 'Flees the field!' : 'Flees!';
+  const failed = gone ? 'Flees the field!' : 'Flees!';
+  const summary = e.passed ? 'Holds firm' : e.inspirationLost ? `${failed} Inspiration lost` : failed;
   return { kind: 'nerve', unitId: e.unitId, quality: e.quality, die: e.die, passed: e.passed, summary };
 }
 

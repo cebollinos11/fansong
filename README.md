@@ -67,6 +67,11 @@ action; the AI, the tests, and any future UI all pick from that list.
 - **2+ failures = turnover:** that player is **benched for the rest of the
   round** — though the unit still spends any action its successes earned first.
   With a single die you can never turn over.
+- **Leaders:** once a round, a **Leader** on its feet may spend an action on a
+  **war cry**. Every friend that isn't a Leader and has yet to activate is
+  **inspired** for the round: the first die of its activation roll is a sure 6.
+  A failed nerve check costs a unit its inspiration. When a Leader is killed,
+  every standing friend with line of sight to it tests its nerve.
 - The other player then continues **solo** until they turn over or run out.
 - Combat is an opposed roll. Doubling the loser kills; a plain win pushes the
   loser back a hex on the winner's odd die or knocks it down on an even one
@@ -97,7 +102,8 @@ seed replays identically).
   `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
   favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling,
   Mounted, Opportunist, Savage) adds
-  3 to Special Abilities and each unfavorable one (Slow) takes 3 off.
+  3 to Special Abilities and each unfavorable one (Slow) takes 3 off. Leader
+  counts as two favorable traits (+6).
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
   3 or 7.
 - **Validation** (`validateWarband`) — checks stat ranges and roster size,

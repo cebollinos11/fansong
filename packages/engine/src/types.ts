@@ -80,6 +80,14 @@ export interface UnitTraits {
    * its victim's friends must test for fear.
    */
   savage: boolean;
+  /**
+   * Leader: once a round, while on its feet, it may spend an action on a
+   * {@link WarCryCommand war cry} that inspires every friend that isn't a Leader
+   * for the rest of the round (see {@link Unit.inspired}). When a Leader is
+   * killed, every standing friend with line of sight to it must pass a nerve
+   * check or flee.
+   */
+  leader: boolean;
 }
 
 export interface Unit {
@@ -108,6 +116,14 @@ export interface Unit {
   traits: UnitTraits;
   /** Dynamic: in a Guard stance (set by a Guard action, cleared on next activation). */
   guarding: boolean;
+  /**
+   * Dynamic: inspired by a Leader's war cry. The first die of its next
+   * activation roll is a guaranteed 6. Spent on that roll; lost on a failed
+   * nerve check; cleared at the end of the round.
+   */
+  inspired: boolean;
+  /** Dynamic: this Leader has already war cried this round (cleared at the end of the round). */
+  warCried: boolean;
 }
 
 export type Phase = 'awaitingActivation' | 'acting' | 'gameOver';
@@ -186,6 +202,16 @@ export interface GuardCommand {
   unitId: string;
 }
 
+/**
+ * A Leader's **war cry**: one action, once a round, not while knocked down.
+ * Every living friend that isn't a Leader and has yet to activate this round
+ * becomes {@link Unit.inspired inspired}.
+ */
+export interface WarCryCommand {
+  type: 'WarCry';
+  unitId: string;
+}
+
 export interface EndActivation {
   type: 'EndActivation';
 }
@@ -196,6 +222,7 @@ export type Command =
   | AttackCommand
   | ShootCommand
   | GuardCommand
+  | WarCryCommand
   | EndActivation;
 
 // --- Events ---------------------------------------------------------------
@@ -211,7 +238,16 @@ export type CombatResult =
 
 export type GameEvent =
   | { type: 'ActivationChosen'; player: Owner; unitId: string; diceCount: number }
-  | { type: 'DiceRolled'; unitId: string; quality: number; dice: number[]; successes: number; failures: number }
+  | {
+      type: 'DiceRolled';
+      unitId: string;
+      quality: number;
+      dice: number[];
+      successes: number;
+      failures: number;
+      /** Present when the unit was inspired: its first die is the guaranteed 6. */
+      inspired?: true;
+    }
   | { type: 'Turnover'; player: Owner; unitId: string }
   | { type: 'UnitStoodUp'; unitId: string; /** Stood for free at round start via the Reassembling trait, not by spending an action. */ reassembled?: boolean }
   | {
@@ -327,6 +363,10 @@ export type GameEvent =
       gruesome?: true;
     }
   | { type: 'GuardDeclared'; unitId: string }
+  /** A Leader war cried; `inspired` lists the friends it inspired. */
+  | { type: 'WarCry'; unitId: string; inspired: string[] }
+  /** A Leader was killed; the nerve checks of the friends who saw it fall follow. */
+  | { type: 'LeaderFallen'; unitId: string }
   | {
       type: 'GuardRiposte';
       guardId: string;
@@ -364,7 +404,15 @@ export type GameEvent =
       prevented: boolean;
     }
   | { type: 'ToughnessSaved'; unitId: string }
-  | { type: 'NerveCheck'; unitId: string; quality: number; die: number; passed: boolean }
+  | {
+      type: 'NerveCheck';
+      unitId: string;
+      quality: number;
+      die: number;
+      passed: boolean;
+      /** Present when a failed check cost the unit its inspiration. */
+      inspirationLost?: true;
+    }
   | { type: 'WarbandBroken'; player: Owner }
   /** Fled off its own edge of the map after failing a nerve check: out of the game. */
   | { type: 'UnitRouted'; unitId: string }

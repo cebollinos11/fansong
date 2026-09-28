@@ -62,7 +62,7 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
     case 'ActivationChosen':
       return `P${e.player} activates ${name(state, e.unitId)} with ${e.diceCount} dice`;
     case 'DiceRolled':
-      return `  rolls [${e.dice.join(', ')}] vs Q${e.quality} → ${e.successes} hit / ${e.failures} miss`;
+      return `  rolls [${e.dice.join(', ')}] vs Q${e.quality} → ${e.successes} hit / ${e.failures} miss${e.inspired ? ' (inspired: first die a 6)' : ''}`;
     case 'Turnover':
       return `  TURNOVER — P${e.player} is benched for the round`;
     case 'UnitStoodUp':
@@ -79,6 +79,10 @@ export function formatEvent(state: GameState, e: GameEvent): string | null {
       return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]], [['size', e.attackBig], ['flying', e.attackFly], ['mounted', e.attackMounted], ['opportunist', e.attackOpportunist]])}) takes a free hack at ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered]], [['size', e.defenseBig], ['mounted', e.defenseMounted], ['opportunist', e.defenseOpportunist]])}) → ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
+    case 'WarCry':
+      return `  ${name(state, e.unitId)} lets out a war cry${e.inspired.length ? `, inspiring ${e.inspired.map((id) => name(state, id)).join(', ')}` : ''}`;
+    case 'LeaderFallen':
+      return `  ${name(state, e.unitId)}, a Leader, has fallen!`;
     case 'GuardRiposte':
       return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus, [['outnumbered', e.guardOutnumbered]], [['size', e.guardBig], ['flying', e.guardFly], ['mounted', e.guardMounted], ['opportunist', e.guardOpportunist]])}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus, [['outnumbered', e.attackerOutnumbered]], [['size', e.attackerBig], ['mounted', e.attackerMounted], ['opportunist', e.attackerOpportunist]])}) → ${e.result === 'clash' ? 'attack goes through' : e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':

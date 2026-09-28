@@ -87,8 +87,11 @@ export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, 
       mounted: profile.mounted ?? false,
       opportunist: profile.opportunist ?? false,
       savage: profile.savage ?? false,
+      leader: profile.leader ?? false,
     },
     guarding: false,
+    inspired: false,
+    warCried: false,
   };
   if (profile.look !== undefined) unit.look = profile.look;
   s.units.push(unit);
@@ -130,7 +133,7 @@ export function teleportUnit(state: GameState, id: string, pos: Vec): GameState 
 
 /** The unit fields the inspector may rewrite. */
 export type UnitPatch = Partial<
-  Pick<Unit, 'name' | 'owner' | 'quality' | 'combat' | 'dead' | 'knockedDown' | 'activatedThisRound' | 'guarding'>
+  Pick<Unit, 'name' | 'owner' | 'quality' | 'combat' | 'dead' | 'knockedDown' | 'activatedThisRound' | 'guarding' | 'inspired' | 'warCried'>
 > & { traits?: Partial<UnitTraits> };
 
 /** Rewrite a unit's stats, traits or status flags. */
@@ -141,10 +144,11 @@ export function patchUnit(state: GameState, id: string, patch: UnitPatch): GameS
   const { traits, ...rest } = patch;
   Object.assign(unit, rest);
   if (traits) Object.assign(unit.traits, traits);
-  // A dead unit neither stands guard nor lies knocked down.
+  // A dead unit neither stands guard, lies knocked down, nor is inspired.
   if (unit.dead) {
     unit.knockedDown = false;
     unit.guarding = false;
+    unit.inspired = false;
     if (s.activeUnitId === id) dropActivation(s);
   }
   return s;
@@ -196,7 +200,12 @@ export function setActivePlayer(state: GameState, owner: Owner): GameState {
 /** Everyone is fresh again: no one has activated, no one is benched. Keeps the round number. */
 export function freshRound(state: GameState): GameState {
   const s = structuredClone(state);
-  for (const u of s.units) u.activatedThisRound = false;
+  for (const u of s.units) {
+    u.activatedThisRound = false;
+    // A new round, as the engine starts one: last round's war cries are spent.
+    u.inspired = false;
+    u.warCried = false;
+  }
   s.benched = [false, false];
   dropActivation(s);
   if (s.phase === 'gameOver') resume(s);

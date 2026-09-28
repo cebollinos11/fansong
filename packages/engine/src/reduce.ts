@@ -32,6 +32,7 @@ import { rollD6, rollDice } from './rng.js';
 import {
   adjacentEnemies,
   airborne,
+  canWarCry,
   inMelee,
   isOccupied,
   livingCount,
@@ -82,6 +83,9 @@ export function reduce(state: GameState, command: Command): ReduceResult {
     case 'Guard':
       handleGuard(s, events, command.unitId);
       break;
+    case 'WarCry':
+      handleWarCry(s, events, command.unitId);
+      break;
     case 'EndActivation':
       handleEndActivation(s, events);
       break;
@@ -122,10 +126,25 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
 
   const { dice, state: rngState } = rollDice(s.rngState, diceCount);
   s.rngState = rngState;
+  // An inspired unit's first die is a sure 6 (still drawn, so the RNG stream
+  // doesn't depend on who is inspired). The inspiration is spent on this roll.
+  const inspired = unit.inspired;
+  if (inspired) {
+    dice[0] = 6;
+    unit.inspired = false;
+  }
   let successes = 0;
   for (const d of dice) if (d >= unit.quality) successes++;
   const failures = diceCount - successes;
-  events.push({ type: 'DiceRolled', unitId, quality: unit.quality, dice, successes, failures });
+  events.push({
+    type: 'DiceRolled',
+    unitId,
+    quality: unit.quality,
+    dice,
+    successes,
+    failures,
+    ...(inspired ? { inspired: true as const } : {}),
+  });
 
   // The twist: 2+ failures = turnover. The player is benched for the rest of the
   // round, but the unit still takes the actions its successes earned first (3
@@ -372,6 +391,28 @@ function handleGuard(s: GameState, events: GameEvent[], unitId: string): void {
   unit.guarding = true;
   events.push({ type: 'GuardDeclared', unitId });
   endActivation(s, events);
+}
+
+// --- War cry --------------------------------------------------------------
+
+function handleWarCry(s: GameState, events: GameEvent[], unitId: string): void {
+  requirePhase(s, 'acting');
+  const unit = activeUnit(s);
+  if (unit.id !== unitId) throw new Error(`unit '${unitId}' is not the activating unit`);
+  if (!canWarCry(unit)) throw new Error('unit cannot war cry (not a Leader, knocked down, or already cried this round)');
+  if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
+
+  s.actionsRemaining -= 1;
+  unit.warCried = true;
+  // Only a friend still to activate can use it; everyone else has had their roll.
+  const inspired: string[] = [];
+  for (const u of s.units) {
+    if (u.owner !== unit.owner || u.dead || u.traits.leader || u.activatedThisRound) continue;
+    u.inspired = true;
+    inspired.push(u.id);
+  }
+  events.push({ type: 'WarCry', unitId, inspired });
+  if (s.actionsRemaining <= 0) endActivation(s, events);
 }
 
 /**
@@ -791,7 +832,12 @@ function endRound(s: GameState, events: GameEvent[]): void {
   // Whoever activated last this round goes second next round.
   const lastActivated = s.active;
   s.round += 1;
-  for (const u of s.units) u.activatedThisRound = false;
+  for (const u of s.units) {
+    u.activatedThisRound = false;
+    // A war cry lasts the round it was cried in.
+    u.inspired = false;
+    u.warCried = false;
+  }
   s.benched = [false, false];
   s.initiativeLeader = other(lastActivated);
   s.active = s.initiativeLeader;

@@ -20,7 +20,7 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'ActivationChosen':
       return `P${e.player} activates ${name(state, e.unitId)} with ${e.diceCount} dice`;
     case 'DiceRolled':
-      return `  rolls [${e.dice.join(', ')}] vs Q${e.quality} -> ${e.successes} hit / ${e.failures} miss`;
+      return `  rolls [${e.dice.join(', ')}] vs Q${e.quality} -> ${e.successes} hit / ${e.failures} miss${e.inspired ? ' (inspired: first die a 6)' : ''}`;
     case 'Turnover':
       return `  ✗ TURNOVER — P${e.player} benched for the round`;
     case 'UnitStoodUp':
@@ -37,12 +37,16 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `  ${name(state, e.attackerId)} takes a free hack at ${name(state, e.targetId)} leaving contact: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['size', e.attackBig], ['swoop', e.attackFly], ['mounted', e.attackMounted], ['opportunist', e.attackOpportunist], ['leaver outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['leaver size', e.defenseBig], ['leaver mounted', e.defenseMounted], ['leaver opportunist', e.defenseOpportunist]])} -> ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
+    case 'WarCry':
+      return `  📣 ${name(state, e.unitId)} war cries, inspiring ${e.inspired.length ? e.inspired.map((id) => name(state, id)).join(', ') : 'no one'}`;
+    case 'LeaderFallen':
+      return `  ‼ Leader ${name(state, e.unitId)} has fallen`;
     case 'GuardRiposte':
       return `  ⚔ ${name(state, e.guardId)} ripostes ${name(state, e.attackerId)}: ${e.guardScore} vs ${e.attackerScore} (d${e.guardDie}/d${e.attackerDie})${mods([['size', e.guardBig], ['swoop', e.guardFly], ['mounted', e.guardMounted], ['opportunist', e.guardOpportunist], ['foe size', e.attackerBig], ['foe mounted', e.attackerMounted], ['foe opportunist', e.attackerOpportunist]])} -> ${e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
     case 'ToughnessSaved':
       return `    ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'NerveCheck':
-      return `    ${name(state, e.unitId)} nerve check d${e.die} vs Q${e.quality} -> ${e.passed ? 'holds' : 'falters'}`;
+      return `    ${name(state, e.unitId)} nerve check d${e.die} vs Q${e.quality} -> ${e.passed ? 'holds' : 'falters'}${e.inspirationLost ? ' (inspiration lost)' : ''}`;
     case 'WarbandBroken':
       return `  ‼ P${e.player}'s warband BREAKS`;
     case 'UnitRouted':

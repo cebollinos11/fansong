@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
 import { PRESSED_COST } from './combat.js';
-import { enemiesOf, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
+import { canWarCry, enemiesOf, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -62,6 +62,11 @@ export function getLegalCommands(state: GameState): Command[] {
   // Guard: a guard-capable unit may assume a defensive stance (ends its activation).
   if (unit.traits.guard) {
     commands.push({ type: 'Guard', unitId: unit.id });
+  }
+
+  // War cry: a Leader on its feet, once a round, spends an action to inspire its friends.
+  if (canWarCry(unit)) {
+    commands.push({ type: 'WarCry', unitId: unit.id });
   }
 
   // Moves: every empty cell reachable within move range by walking around

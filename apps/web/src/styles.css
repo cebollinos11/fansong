@@ -713,6 +713,14 @@ button.ghost {
     0 0 10px rgba(61, 220, 132, 0.6);
 }
 
+/* The die a war cry made a sure 6. */
+.die.success.inspired {
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.22),
+    0 0 0 2px #ffae3c,
+    0 0 12px rgba(255, 174, 60, 0.75);
+}
+
 .die.failure {
   opacity: 0.45;
   box-shadow:
@@ -1048,6 +1056,10 @@ button.secondary {
 
 .flag.guarding {
   background: rgba(61, 220, 132, 0.2);
+}
+
+.flag.inspired {
+  background: rgba(255, 170, 60, 0.25);
 }
 
 .flag.dead {

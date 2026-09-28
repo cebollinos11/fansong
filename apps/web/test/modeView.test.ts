@@ -18,6 +18,21 @@ describe('annihilation', () => {
   });
 });
 
+describe('inspired badge', () => {
+  it('stars an inspired unit, behind a Guard badge', () => {
+    const s = match(undefined);
+    const before = modeMarkingsKey(s);
+    const [a, b] = s.units;
+    a!.inspired = true;
+    b!.inspired = true;
+    b!.guarding = true;
+    expect(unitBadges(s)).toEqual({ [a!.id]: 'inspired', [b!.id]: 'guard' });
+    expect(modeMarkingsKey(s)).not.toBe(before);
+    a!.dead = true;
+    expect(unitBadges(s)).toEqual({ [b!.id]: 'guard' });
+  });
+});
+
 describe('guard badge', () => {
   it('badges a guarding unit even with no game mode in play', () => {
     const s = match(undefined);

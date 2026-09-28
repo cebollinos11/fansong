@@ -122,6 +122,7 @@ function actorOf(step: Command): string | null {
   switch (step.type) {
     case 'Move':
     case 'Guard':
+    case 'WarCry':
       return step.unitId;
     case 'Attack':
     case 'Shoot':

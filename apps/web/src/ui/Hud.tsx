@@ -24,6 +24,7 @@ interface Props {
   onActivate: (diceCount: number) => void;
   onEndActivation: () => void;
   onGuard: () => void;
+  onWarCry: () => void;
   onExit: () => void;
 }
 
@@ -165,6 +166,15 @@ export function Hud(props: Props): JSX.Element {
                   : 'Click a green tile to move, a highlighted enemy to attack.'}
               </p>
               <div className="action-row">
+                {interaction.canWarCry ? (
+                  <button
+                    className="secondary"
+                    title="Press W — one action: every friend still to activate this round is inspired, its first activation die a sure 6"
+                    onClick={props.onWarCry}
+                  >
+                    War cry <kbd>W</kbd>
+                  </button>
+                ) : null}
                 {interaction.canGuard ? (
                   <button
                     className="secondary"
@@ -232,6 +242,12 @@ function UnitInspector({ state, unitId }: { state: GameState; unitId: string | n
       <div className="inspector-flags">
         {u.knockedDown ? <span className="flag down">knocked down</span> : null}
         {u.guarding && !u.dead ? <span className="flag guarding">on guard</span> : null}
+        {u.inspired && !u.dead ? (
+          <span className="flag inspired" title="Its first activation die this round is a sure 6; lost on a failed nerve check">
+            inspired
+          </span>
+        ) : null}
+        {u.warCried && !u.dead ? <span className="flag">war cried</span> : null}
         {u.activatedThisRound ? <span className="flag">activated</span> : null}
         {u.dead ? <span className="flag dead">dead</span> : null}
       </div>

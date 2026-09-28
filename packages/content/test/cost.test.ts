@@ -53,6 +53,11 @@ describe('unitCost', () => {
     expect(unitCost({ ...baseline, tough: true, guard: true })).toBe(42);
   });
 
+  it('prices Leader as two favorable traits', () => {
+    // (3*5 + 6) * (7-3) / 2 = 42
+    expect(unitCost({ ...baseline, leader: true })).toBe(42);
+  });
+
 
   it('takes 3 off per unfavorable trait, scaled by Quality', () => {
     // (3*5 - 3) * (7-3) / 2 = 24

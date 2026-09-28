@@ -356,7 +356,7 @@ function NumberField({
   );
 }
 
-const TRAITS = ['slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage'] as const;
+const TRAITS = ['slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage', 'leader'] as const;
 
 /** Stat and trait fields shared by the spawn template and the unit inspector. */
 function ProfileFields({
@@ -557,6 +557,8 @@ function UnitSection({
           [
             ['knockedDown', 'knocked down'],
             ['guarding', 'guarding'],
+            ['inspired', 'inspired'],
+            ['warCried', 'war cried'],
             ['activatedThisRound', 'activated'],
             ['dead', 'dead'],
           ] as const
@@ -687,6 +689,8 @@ function describeCommand(state: GameState, c: Command): string {
       return `${c.aimed ? 'Aimed shot' : 'Shoot'}: ${name(c.attackerId)} → ${name(c.targetId)}`;
     case 'Guard':
       return `Guard: ${name(c.unitId)}`;
+    case 'WarCry':
+      return `War cry: ${name(c.unitId)}`;
     case 'EndActivation':
       return 'End activation';
   }

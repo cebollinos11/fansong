@@ -391,6 +391,7 @@ export function Roster({
             {u.shooter ? ` R${profileRange(u)}` : ''}
             {u.tough ? ' Tough' : ''}
             {u.guard ? ' Guard' : ''}
+            {u.leader ? ' Leader' : ''}
           </span>
         </li>
       ))}

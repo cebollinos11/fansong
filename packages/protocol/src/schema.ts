@@ -86,6 +86,13 @@ export const guardCommandSchema = z
   })
   .strict();
 
+export const warCryCommandSchema = z
+  .object({
+    type: z.literal('WarCry'),
+    unitId: z.string().min(1),
+  })
+  .strict();
+
 export const endActivationSchema = z
   .object({ type: z.literal('EndActivation') })
   .strict();
@@ -96,6 +103,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   attackCommandSchema,
   shootCommandSchema,
   guardCommandSchema,
+  warCryCommandSchema,
   endActivationSchema,
 ]);
 
@@ -133,6 +141,7 @@ export const unitTraitsSchema = z
     mounted: z.boolean(),
     opportunist: z.boolean(),
     savage: z.boolean(),
+    leader: z.boolean(),
   })
   .strict();
 
@@ -150,6 +159,8 @@ export const unitSchema = z
     activatedThisRound: z.boolean(),
     traits: unitTraitsSchema,
     guarding: z.boolean(),
+    inspired: z.boolean(),
+    warCried: z.boolean(),
   })
   .strict();
 
@@ -218,6 +229,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     dice: z.array(z.number()),
     successes: z.number(),
     failures: z.number(),
+    inspired: z.literal(true).optional(),
   }),
   z.object({ type: z.literal('Turnover'), player: ownerSchema, unitId: z.string() }),
   z.object({ type: z.literal('UnitStoodUp'), unitId: z.string(), reassembled: z.boolean().optional() }),
@@ -293,6 +305,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     gruesome: z.literal(true).optional(),
   }),
   z.object({ type: z.literal('GuardDeclared'), unitId: z.string() }),
+  z.object({ type: z.literal('WarCry'), unitId: z.string(), inspired: z.array(z.string()) }),
+  z.object({ type: z.literal('LeaderFallen'), unitId: z.string() }),
   z.object({
     type: z.literal('GuardRiposte'),
     guardId: z.string(),
@@ -323,6 +337,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     quality: z.number(),
     die: z.number(),
     passed: z.boolean(),
+    inspirationLost: z.literal(true).optional(),
   }),
   z.object({ type: z.literal('WarbandBroken'), player: ownerSchema }),
   z.object({ type: z.literal('UnitRouted'), unitId: z.string() }),
@@ -388,6 +403,7 @@ export const unitSpecSchema = z
     mounted: z.boolean().optional(),
     opportunist: z.boolean().optional(),
     savage: z.boolean().optional(),
+    leader: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
@@ -447,6 +463,7 @@ export const warbandUnitSchema = z
     mounted: z.boolean().optional(),
     opportunist: z.boolean().optional(),
     savage: z.boolean().optional(),
+    leader: z.boolean().optional(),
     look: z.string().max(64).optional(),
   })
   .strict();

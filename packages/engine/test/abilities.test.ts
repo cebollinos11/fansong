@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   createGame,
   getLegalCommands,
+  makeHexGrid,
   reduce,
   type Command,
   type GameConfig,
   type GameEvent,
   type GameState,
   type UnitSpec,
+  type Vec,
 } from '../src/index.js';
 
 /**
@@ -920,5 +922,189 @@ describe('Savage trait', () => {
     const { e, events } = find({}, (_, ev) => ev.some((x) => x.type === 'UnitPushedOff'));
     expect(e).not.toHaveProperty('gruesome');
     expect(tested(events)).toEqual([]);
+  });
+});
+
+// --- Leader -------------------------------------------------------------------
+
+describe('Leader trait', () => {
+  /** P0: a Leader, two friends and a second Leader; P1: one foe far away. */
+  const config = (seed = 1): GameConfig => ({
+    seed,
+    board: { width: 9, height: 5 },
+    warbands: [
+      [
+        { name: 'Captain', quality: 3, combat: 3, leader: true, pos: { x: 1, y: 1 } },
+        { name: 'Spear', quality: 6, combat: 3, pos: { x: 1, y: 2 } },
+        { name: 'Bow', quality: 6, combat: 2, pos: { x: 1, y: 3 } },
+        { name: 'Sergeant', quality: 4, combat: 3, leader: true, pos: { x: 0, y: 2 } },
+      ],
+      [{ name: 'Foe', quality: 4, combat: 3, pos: { x: 8, y: 2 } }],
+    ],
+  });
+
+  const warCry: Command = { type: 'WarCry', unitId: 'p0u0' };
+  const unit = (s: GameState, id: string) => s.units.find((u) => u.id === id)!;
+  type Rolled = Extract<GameEvent, { type: 'DiceRolled' }>;
+  const rolled = (events: GameEvent[]) => events.find((e): e is Rolled => e.type === 'DiceRolled')!;
+
+  it('offers a war cry to a Leader on its feet, and to no one else', () => {
+    const s = acting(config(), 'p0u0');
+    expect(has(getLegalCommands(s), (c) => c.type === 'WarCry' && c.unitId === 'p0u0')).toBe(true);
+    expect(has(getLegalCommands(acting(config(), 'p0u1')), (c) => c.type === 'WarCry')).toBe(false);
+    unit(s, 'p0u0').knockedDown = true;
+    expect(has(getLegalCommands(s), (c) => c.type === 'WarCry')).toBe(false);
+    expect(() => reduce(s, warCry)).toThrow();
+  });
+
+  it('spends an action to inspire every non-Leader friend still to activate', () => {
+    const s = acting(config(), 'p0u0');
+    s.actionsRemaining = 2;
+    unit(s, 'p0u2').activatedThisRound = true; // Bow has already had its roll
+    const { state, events } = reduce(s, warCry);
+    expect(events).toContainEqual({ type: 'WarCry', unitId: 'p0u0', inspired: ['p0u1'] });
+    expect(state.actionsRemaining).toBe(1);
+    expect(state.activeUnitId).toBe('p0u0');
+    expect(unit(state, 'p0u1').inspired).toBe(true);
+    expect(unit(state, 'p0u2').inspired).toBe(false);
+    // Leaders never inspire each other, nor themselves; the foe is untouched.
+    expect(unit(state, 'p0u3').inspired).toBe(false);
+    expect(unit(state, 'p0u0').inspired).toBe(false);
+    expect(unit(state, 'p1u0').inspired).toBe(false);
+  });
+
+  it('can be cried only once a round, and ends the activation on the last action', () => {
+    const s = acting(config(), 'p0u0');
+    s.actionsRemaining = 2;
+    const once = reduce(s, warCry).state;
+    expect(has(getLegalCommands(once), (c) => c.type === 'WarCry')).toBe(false);
+    expect(() => reduce(once, warCry)).toThrow();
+
+    const last = reduce(acting(config(), 'p0u0'), warCry);
+    expect(last.events.some((e) => e.type === 'ActivationEnded' && e.unitId === 'p0u0')).toBe(true);
+    expect(last.state.activeUnitId).toBeNull();
+  });
+
+  it("makes an inspired unit's first activation die a sure 6, spending the inspiration", () => {
+    // Spear needs a 6: find a seed where its lone die would miss.
+    for (let seed = 1; seed <= 200; seed++) {
+      const s = createGame(config(seed));
+      const plain = reduce(s, { type: 'ChooseActivation', unitId: 'p0u1', diceCount: 1 });
+      if (rolled(plain.events).successes > 0) continue;
+
+      unit(s, 'p0u1').inspired = true;
+      const { state, events } = reduce(s, { type: 'ChooseActivation', unitId: 'p0u1', diceCount: 1 });
+      expect(rolled(events)).toEqual({
+        type: 'DiceRolled',
+        unitId: 'p0u1',
+        quality: 6,
+        dice: [6],
+        successes: 1,
+        failures: 0,
+        inspired: true,
+      });
+      expect(state.actionsRemaining).toBe(1);
+      expect(unit(state, 'p0u1').inspired).toBe(false);
+      // The die is still drawn, so the rest of the game rolls the same either way.
+      expect(state.rngState).toBe(plain.state.rngState);
+      return;
+    }
+    throw new Error('no seed fits');
+  });
+
+  it('only makes the first die sure: the others roll as usual', () => {
+    const s = createGame(config(3));
+    unit(s, 'p0u1').inspired = true;
+    const plain = reduce(createGame(config(3)), { type: 'ChooseActivation', unitId: 'p0u1', diceCount: 3 });
+    const { events } = reduce(s, { type: 'ChooseActivation', unitId: 'p0u1', diceCount: 3 });
+    expect(rolled(events).dice).toEqual([6, ...rolled(plain.events).dice.slice(1)]);
+  });
+
+  it('lets a war cry and its inspiration lapse at the end of the round', () => {
+    const s = acting(config(), 'p0u0');
+    s.actionsRemaining = 2;
+    let state = reduce(s, warCry).state;
+    // Everyone else has already gone, so ending this activation ends the round.
+    for (const u of state.units) if (u.id !== 'p0u0') u.activatedThisRound = true;
+    state = reduce(state, { type: 'EndActivation' }).state;
+    expect(state.round).toBe(2);
+    expect(unit(state, 'p0u0').warCried).toBe(false);
+    expect(unit(state, 'p0u1').inspired).toBe(false);
+  });
+
+  // --- A Leader's death ---
+
+  /**
+   * P0's Brute next to P1's Leader at the west edge. Seer sees the Leader;
+   * Blind stands behind the Brute (no line of sight); Downed lies knocked down.
+   * Far units keep one death from routing P1.
+   */
+  const deathConfig = (seed: number, victim: Partial<UnitSpec>): GameConfig => ({
+    seed,
+    board: { width: 9, height: 5 },
+    warbands: [
+      [{ name: 'Brute', quality: 3, combat: 5, pos: { x: 1, y: 2 } }],
+      [
+        { name: 'Leader', quality: 4, combat: 1, pos: { x: 0, y: 2 }, ...victim },
+        { name: 'Seer', quality: 6, combat: 3, pos: { x: 0, y: 4 } },
+        { name: 'Blind', quality: 6, combat: 3, pos: { x: 4, y: 2 } },
+        { name: 'Downed', quality: 6, combat: 3, pos: { x: 0, y: 0 } },
+        { name: 'Far', quality: 4, combat: 3, pos: { x: 8, y: 0 } },
+        { name: 'Far', quality: 4, combat: 3, pos: { x: 8, y: 4 } },
+      ],
+    ],
+  });
+
+  /** The first seed whose opening blow kills the victim without a gruesome kill, and passes `pick`. */
+  function kill(victim: Partial<UnitSpec>, pick: (events: GameEvent[]) => boolean = () => true) {
+    for (let seed = 1; seed <= 2000; seed++) {
+      const s = acting(deathConfig(seed, victim), 'p0u0');
+      unit(s, 'p1u3').knockedDown = true;
+      unit(s, 'p1u1').inspired = true;
+      const { state, events } = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+      const hit = events.find((e) => e.type === 'AttackResolved');
+      if (hit?.type !== 'AttackResolved' || hit.result !== 'defenderKilled' || hit.gruesome) continue;
+      if (pick(events)) return { state, events };
+    }
+    throw new Error('no seed fits');
+  }
+  const tested = (events: GameEvent[]) => events.flatMap((x) => (x.type === 'NerveCheck' ? [x.unitId] : []));
+
+  it('has every standing friend with line of sight test nerve when a Leader falls', () => {
+    const board = makeHexGrid(createGame(deathConfig(1, {})).board);
+    const brute = (v: Vec) => v.x === 1 && v.y === 2;
+    expect(board.lineOfSight({ x: 0, y: 4 }, { x: 0, y: 2 }, brute)).toBe(true);
+    expect(board.lineOfSight({ x: 4, y: 2 }, { x: 0, y: 2 }, brute)).toBe(false);
+
+    const { events } = kill({ leader: true });
+    const fallen = events.findIndex((e) => e.type === 'LeaderFallen' && e.unitId === 'p1u0');
+    expect(fallen).toBeGreaterThan(-1);
+    const checks = tested(events.slice(fallen + 1));
+    expect(checks).toContain('p1u1'); // Seer saw it
+    expect(checks).not.toContain('p1u2'); // Blind, behind the Brute
+    expect(checks).not.toContain('p1u3'); // Downed
+  });
+
+  it('shakes no one when an ordinary unit dies an ordinary death', () => {
+    const { events } = kill({});
+    expect(events.some((e) => e.type === 'LeaderFallen')).toBe(false);
+    expect(tested(events)).toEqual([]);
+  });
+
+  it('strips the inspiration of a friend who fails its nerve check', () => {
+    const { state, events } = kill({ leader: true }, (evs) =>
+      evs.some((e) => e.type === 'NerveCheck' && e.unitId === 'p1u1' && !e.passed),
+    );
+    const check = events.find((e) => e.type === 'NerveCheck' && e.unitId === 'p1u1');
+    expect(check).toMatchObject({ passed: false, inspirationLost: true });
+    expect(unit(state, 'p1u1').inspired).toBe(false);
+  });
+
+  it('keeps the inspiration of a friend who holds its nerve', () => {
+    const { state, events } = kill({ leader: true }, (evs) =>
+      evs.some((e) => e.type === 'NerveCheck' && e.unitId === 'p1u1' && e.passed),
+    );
+    expect(events.find((e) => e.type === 'NerveCheck' && e.unitId === 'p1u1')).not.toHaveProperty('inspirationLost');
+    expect(unit(state, 'p1u1').inspired).toBe(true);
   });
 });

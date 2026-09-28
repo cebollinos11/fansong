@@ -242,7 +242,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
 
   // Keyboard: 1/2/3 commit that many dice to the selected unit and Escape drops
   // the selection; E ends the activation, which is otherwise the most-clicked
-  // button on the screen, and G declares Guard (only offered when legal). The
+  // button on the screen, G declares Guard and W war cries (each only offered
+  // when legal). The
   // attack menu owns Escape while it is open.
   useEffect(() => {
     // Also bound mid-chain, where `myTurn` is false, so Escape can stop it.
@@ -270,6 +271,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         } else if (e.key.toLowerCase() === 'g' && interaction.canGuard && state.activeUnitId) {
           e.preventDefault();
           client.send({ type: 'Guard', unitId: state.activeUnitId });
+        } else if (e.key.toLowerCase() === 'w' && interaction.canWarCry && state.activeUnitId) {
+          e.preventDefault();
+          client.send({ type: 'WarCry', unitId: state.activeUnitId });
         }
         return;
       }
@@ -303,6 +307,12 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     setAttackChoice(null);
     if (!myTurn || !state.activeUnitId) return;
     client.send({ type: 'Guard', unitId: state.activeUnitId });
+  };
+
+  const handleWarCry = (): void => {
+    setAttackChoice(null);
+    if (!myTurn || !state.activeUnitId) return;
+    client.send({ type: 'WarCry', unitId: state.activeUnitId });
   };
 
   const announcement = roundAnnounce
@@ -350,6 +360,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         onActivate={handleActivate}
         onEndActivation={handleEndActivation}
         onGuard={handleGuard}
+        onWarCry={handleWarCry}
         onExit={onExit}
       />
       {attackChoice ? (

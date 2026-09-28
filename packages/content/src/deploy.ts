@@ -68,6 +68,7 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     mounted: unit.mounted,
     opportunist: unit.opportunist,
     savage: unit.savage,
+    leader: unit.leader,
   };
   if (unit.look !== undefined) spec.look = unit.look;
   return spec;

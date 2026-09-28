@@ -165,8 +165,8 @@ export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp
  * Everything the activating unit could do with the actions it has left.
  *
  * The one-action plans are exactly the Move/Attack/Shoot set `getLegalCommands`
- * gives; the rest are chains of those. `Guard` and `EndActivation` are left out:
- * both end the activation and the HUD already offers them.
+ * gives; the rest are chains of those. `Guard`, `WarCry` and `EndActivation`
+ * are left out: the HUD already offers each as a button of its own.
  *
  * Deterministic throughout — attacks, then shots, then moves, in unit and
  * `cellsWithin` order, with every tie broken explicitly.

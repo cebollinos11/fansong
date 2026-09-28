@@ -4,6 +4,7 @@ import {
   aliveUnits,
   bigMeleeBonus,
   bigTargetBonus,
+  canWarCry,
   enemiesOf,
   flyingMeleeBonus,
   flyingTargetBonus,
@@ -219,6 +220,34 @@ function targetZone(board: Board, zones: ZoneView[], unit: Unit): ZoneView | und
 }
 
 /**
+ * How many friends a war cry from `leader` would inspire right now: the living
+ * non-Leaders of its side still to activate this round. Zero when it can't cry.
+ */
+function warCryReach(state: GameState, leader: Unit): number {
+  if (!canWarCry(leader)) return 0;
+  return aliveUnits(state, leader.owner).filter((u) => !u.traits.leader && !u.activatedThisRound).length;
+}
+
+/**
+ * A war cry is worth an action once it inspires at least this many friends: it
+ * then outranks even an attack, so the Leader cries first and fights after.
+ */
+const WAR_CRY_QUORUM = 2;
+
+/** Score of a war cry by `leader`: before anything else with a quorum, else just above guarding. */
+function warCryScore(state: GameState, leader: Unit): number {
+  return warCryReach(state, leader) >= WAR_CRY_QUORUM ? 1_050_000 : 5;
+}
+
+/**
+ * Activation score floor for a Leader whose war cry would reach a quorum: it
+ * goes first, ahead of anyone who can merely fight, so the rest roll inspired.
+ */
+function leaderFirst(state: GameState, unit: Unit, score: number): number {
+  return warCryReach(state, unit) >= WAR_CRY_QUORUM ? Math.max(score, 110_000) : score;
+}
+
+/**
  * Dice policy: normally 2 dice (enough output, modest turnover risk). When this
  * is the player's last available unit, a turnover benches nothing, and a unit
  * that turns over still takes the actions its successes earned — so 3 dice is
@@ -243,7 +272,9 @@ function scoreCommand(
   switch (command.type) {
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
-      if (kings) return kingActivationScore(state, board, kings, unit) + diceScore(state, player, command.diceCount);
+      if (kings) {
+        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceScore(state, player, command.diceCount);
+      }
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       // Zone modes: a unit already holding a zone has nowhere better to be, so
       // it activates late; one with a zone to reach counts its distance to it.
@@ -261,7 +292,7 @@ function scoreCommand(
       const canShoot = unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged;
       const canAttack = canMelee || canShoot;
       // Prefer the unit that can already fight, else the one closest to a foe.
-      const unitScore = canAttack ? 100_000 : holding ? 1_000 : 10_000 - dist * 100;
+      const unitScore = leaderFirst(state, unit, canAttack ? 100_000 : holding ? 1_000 : 10_000 - dist * 100);
 
       return unitScore + diceScore(state, player, command.diceCount);
     }
@@ -332,6 +363,9 @@ function scoreCommand(
       if (kings && command.unitId === kings.ourKing?.id) return 10;
       return 1;
     }
+
+    case 'WarCry':
+      return warCryScore(state, unitById(state, command.unitId)!);
 
     case 'EndActivation':
       return 0;
@@ -567,6 +601,7 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
       let unitScore = canAttack ? 100_000 : 10_000 - Math.min(dist, 99) * 100;
       // The carrier moves first: every activation it waits is a chance to lose the flag.
       if (unit.id === plan.carrierId) unitScore = 150_000;
+      unitScore = leaderFirst(state, unit, unitScore);
       return unitScore + diceScore(state, player, command.diceCount);
     }
 
@@ -608,6 +643,9 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
 
     case 'Guard':
       return 1;
+
+    case 'WarCry':
+      return warCryScore(state, unitById(state, command.unitId)!);
 
     case 'EndActivation':
       return 0;

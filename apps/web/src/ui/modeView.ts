@@ -109,7 +109,8 @@ export function modeMarkers(state: GameState): BoardMarker[] {
  * (a unit flagged as an attack target loses its guard-coloured ring), so the
  * badge is the one indicator that survives every other highlight. King and
  * flag take the slot first on the rare unit that is also guarding — one badge
- * per unit — since those mark the objective itself.
+ * per unit — since those mark the objective itself. Last in line, a star marks
+ * a unit inspired by a Leader's war cry.
  */
 export function unitBadges(state: GameState): Record<string, UnitBadge> {
   const m = state.mode;
@@ -123,14 +124,18 @@ export function unitBadges(state: GameState): Record<string, UnitBadge> {
   for (const u of state.units) {
     if (u.guarding && !u.dead && !out[u.id]) out[u.id] = 'guard';
   }
+  for (const u of state.units) {
+    if (u.inspired && !u.dead && !out[u.id]) out[u.id] = 'inspired';
+  }
   return out;
 }
 
 /**
  * A string that changes exactly when the mode's board markings do, so the
  * board redraws overlays and markers only then (the state is cloned per
- * command). Guarding units feed the Guard badge in every mode, not just this
- * one's own objectives, so their ids are folded in regardless of `state.mode`.
+ * command). Guarding and inspired units feed their badges in every mode, not
+ * just this one's own objectives, so their ids are folded in regardless of
+ * `state.mode`.
  */
 export function modeMarkingsKey(state: GameState): string {
   const m = state.mode;
@@ -138,9 +143,13 @@ export function modeMarkingsKey(state: GameState): string {
     .filter((u) => u.guarding && !u.dead)
     .map((u) => u.id)
     .join(',');
-  if (!m) return `${gameMode(state)};${guards}`;
+  const inspired = state.units
+    .filter((u) => u.inspired && !u.dead)
+    .map((u) => u.id)
+    .join(',');
+  if (!m) return `${gameMode(state)};${guards};${inspired}`;
   const cell = (v: Vec) => `${v.x},${v.y}`;
   const flags = m.flags?.map((f) => `${cell(f.at)}:${f.carrier ?? ''}`).join('|') ?? '';
   const kings = m.kings?.map((id) => `${id}:${unitById(state, id)?.dead ? 1 : 0}`).join('|') ?? '';
-  return `${m.mode};${flags};${kings};${guards}`;
+  return `${m.mode};${flags};${kings};${guards};${inspired}`;
 }

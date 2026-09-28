@@ -72,8 +72,8 @@ export interface BoardViewModel {
   markingsKey?: string;
 }
 
-/** A badge over a unit: a crown (King), player 0's / player 1's carried flag, or a Guard stance. */
-export type UnitBadge = 'crown' | 'flag-0' | 'flag-1' | 'guard';
+/** A badge over a unit: a crown (King), player 0's / player 1's carried flag, a Guard stance, or a war cry's inspiration. */
+export type UnitBadge = 'crown' | 'flag-0' | 'flag-1' | 'guard' | 'inspired';
 
 /** A marker standing on a hex. */
 export interface BoardMarker {
@@ -238,6 +238,7 @@ function outlineMaterial(): THREE.ShaderMaterial {
 
 const SELECT_COLOR = 0xffd54a;
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
+const INSPIRED_COLOR = '#ffae3c'; // star over a unit inspired by a war cry
 const CROWN_COLOR = '#ffd54a';
 const BADGE_SIZE = 0.42; // world size of a badge sprite
 const BADGE_HEIGHT = 1.55; // badge centre above the unit's base
@@ -301,6 +302,7 @@ const DEATH_FADE_MS = 600; // fade after a death clip (or instead of one)
 const ROUT_MS = 700; // a routed unit flees toward its own board edge while fading
 const MAX_QUEUE_MS = 4000; // most a new batch waits behind the previous one's animations
 const NERVE_LEAD_MS = 900; // pause between a killing blow (its verdict) and the nerve checks it causes
+const WAR_CRY_MS = 1100; // a Leader's war cry: its rallying clip and verdict before play goes on
 
 // Combat effects (see effects.ts). No red anywhere: impacts are white and gold,
 // dust takes the ground's colour, and a gruesome kill leaves ash, not blood.
@@ -1031,6 +1033,31 @@ export class BoardView {
         this.at(start, () => this.rolls.addNerve(roll, this.now, NERVE_ROLL_MS + ROLL_LINGER_MS));
         settle = start + NERVE_RESOLVE_MS;
         t = Math.max(t, start + NERVE_ROLL_MS);
+      } else if (e.type === 'WarCry') {
+        // Frame the Leader, rally with its leadership clip, and name who took heart.
+        t += this.pause(this.frameUnits([e.unitId], t));
+        const obj = this.units.get(e.unitId);
+        const n = e.inspired.length;
+        this.at(t, () => {
+          if (obj?.anims.leading) obj.animator.play(obj.anims.leading);
+          this.rolls.addVerdict(
+            {
+              text: 'War cry!',
+              detail: n > 0 ? `${n} ${n === 1 ? 'friend' : 'friends'} inspired` : 'no one left to inspire',
+              on: [e.unitId],
+              tone: 'save',
+            },
+            this.now,
+          );
+        });
+        t += WAR_CRY_MS;
+        lastHit = settle = t;
+      } else if (e.type === 'LeaderFallen') {
+        const at = Math.max(lastHit, settle) + NERVE_LEAD_MS;
+        this.at(at, () =>
+          this.rolls.addVerdict({ text: 'The Leader falls!', detail: 'friends who saw it test nerve', on: [], tone: 'kill' }, this.now),
+        );
+        settle = at;
       } else if (e.type === 'WarbandBroken') {
         const at = Math.max(lastHit, settle) + NERVE_LEAD_MS;
         this.at(at, () =>
@@ -2402,6 +2429,18 @@ export class BoardView {
       g.lineTo(10, 14);
       g.closePath();
       g.fillStyle = `#${GUARD_COLOR.toString(16).padStart(6, '0')}`;
+      g.fill();
+      g.stroke();
+    } else if (kind === 'inspired') {
+      // A five-pointed star.
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const r = i % 2 === 0 ? 28 : 12;
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        g.lineTo(32 + r * Math.cos(a), 34 + r * Math.sin(a));
+      }
+      g.closePath();
+      g.fillStyle = INSPIRED_COLOR;
       g.fill();
       g.stroke();
     } else {
