@@ -25,6 +25,7 @@ import { browserStorage } from '../game/customMaps.js';
 import { downloadJson } from '../game/replay-io.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
 import { LookSprite, Picker, unitItem, warbandItem } from './Picker.js';
+import { TraitEditor } from './TraitEditor.js';
 import {
   ARMY_RULES_TEXT,
   armyFromPreset,
@@ -36,7 +37,6 @@ import {
   presetTemplates,
   SHOOTER_OPTIONS,
   SHOOTER_TITLE,
-  SPEED_TITLES,
   STAT_LABELS,
   templateUnit,
   withShooter,
@@ -277,19 +277,7 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
           </th>
         ))}
         <th title={SHOOTER_TITLE}>Shooter</th>
-        <th title={SPEED_TITLES.slow}>Slow</th>
-        <th title={SPEED_TITLES.fast}>Fast</th>
-        <th title="Tough — the first would-be kill only knocks it down">Tough</th>
-        <th title="Guard — may take a stance that ripostes the first melee attacker">Guard</th>
-        <th title="Big — +1 in melee against smaller foes, but +1 to anyone shooting it">Big</th>
-        <th title="Flying — soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne">Fly</th>
-        <th title="Reassembling — stands back up for free at the start of each round if knocked down">Bones</th>
-        <th title="Mounted — +1 in melee against foes on foot, lost while knocked down">Mount</th>
-        <th title="Opportunist — +1 in melee or shooting against a knocked-down foe">Opp</th>
-        <th title="Savage — every kill it deals is gruesome, so the victim's friends must test for fear">Sav</th>
-        <th title="Leader — once a round, war cries to inspire every friend still to activate; friends who see it fall must test nerve. Costs as two traits">Lead</th>
-        <th title="Armored — a combat it loses by exactly 1 point does it no harm, even knocked down">Arm</th>
-        <th title="Sharpshooter — +1 to every shot it takes (only matters with a Shooter trait)">Sharp</th>
+        <th>Traits</th>
         <th>Pts</th>
         {extra}
         <th />
@@ -382,44 +370,8 @@ export function UnitRow({
           ))}
         </select>
       </td>
-      <td>
-        <input type="checkbox" checked={unit.slow ?? false} aria-label="Slow" onChange={(e) => onChange(withTrait(unit, 'slow', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.fast ?? false} aria-label="Fast" onChange={(e) => onChange(withTrait(unit, 'fast', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.tough ?? false} aria-label="Tough" onChange={(e) => onChange(withTrait(unit, 'tough', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.guard ?? false} aria-label="Guard" onChange={(e) => onChange(withTrait(unit, 'guard', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.big ?? false} aria-label="Big" onChange={(e) => onChange(withTrait(unit, 'big', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.flying ?? false} aria-label="Flying" onChange={(e) => onChange(withTrait(unit, 'flying', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.reassembling ?? false} aria-label="Reassembling" onChange={(e) => onChange(withTrait(unit, 'reassembling', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.mounted ?? false} aria-label="Mounted" onChange={(e) => onChange(withTrait(unit, 'mounted', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.opportunist ?? false} aria-label="Opportunist" onChange={(e) => onChange(withTrait(unit, 'opportunist', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.savage ?? false} aria-label="Savage" onChange={(e) => onChange(withTrait(unit, 'savage', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.leader ?? false} aria-label="Leader" onChange={(e) => onChange(withTrait(unit, 'leader', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.armored ?? false} aria-label="Armored" onChange={(e) => onChange(withTrait(unit, 'armored', e.target.checked))} />
-      </td>
-      <td>
-        <input type="checkbox" checked={unit.sharpshooter ?? false} aria-label="Sharpshooter" onChange={(e) => onChange(withTrait(unit, 'sharpshooter', e.target.checked))} />
+      <td className="army-traits">
+        <TraitEditor traits={unit} onToggle={(t, on) => onChange(withTrait(unit, t, on))} />
       </td>
       <td className="stats">{valid ? unitCost(unit) : '—'}</td>
       {extra}

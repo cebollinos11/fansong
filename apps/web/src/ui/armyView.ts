@@ -65,14 +65,51 @@ export function withShooter(unit: WarbandUnit, shooter: ShooterKind | undefined)
   return next;
 }
 
-/** The on/off traits the builder offers, in column order. */
-export type ToggleTrait = 'slow' | 'fast' | 'tough' | 'guard' | 'big' | 'flying' | 'reassembling' | 'mounted' | 'opportunist' | 'savage' | 'leader' | 'armored' | 'sharpshooter';
+/** The on/off traits the editors offer, in display order. */
+export const TOGGLE_TRAITS = [
+  'slow',
+  'fast',
+  'tough',
+  'guard',
+  'big',
+  'flying',
+  'reassembling',
+  'mounted',
+  'opportunist',
+  'savage',
+  'leader',
+  'armored',
+  'sharpshooter',
+] as const;
+export type ToggleTrait = (typeof TOGGLE_TRAITS)[number];
 
-/** What the Slow and Fast columns mean, in words. */
-export const SPEED_TITLES = {
-  slow: `Slow — ${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,
-  fast: `Fast — ${BASE_MOVE + SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,
-} as const;
+/** Each on/off trait's name and what it does, for the trait editor's chips and menu. */
+export const TRAIT_INFO: Record<ToggleTrait, { label: string; title: string }> = {
+  slow: { label: 'Slow', title: `Slow — ${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
+  fast: { label: 'Fast', title: `Fast — ${BASE_MOVE + SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
+  tough: { label: 'Tough', title: 'Tough — the first would-be kill only knocks it down' },
+  guard: { label: 'Guard', title: 'Guard — may take a stance that ripostes the first melee attacker' },
+  big: { label: 'Big', title: 'Big — +1 in melee against smaller foes, but +1 to anyone shooting it' },
+  flying: {
+    label: 'Flying',
+    title: 'Flying — soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne',
+  },
+  reassembling: { label: 'Reassembling', title: 'Reassembling — stands back up for free at the start of each round if knocked down' },
+  mounted: { label: 'Mounted', title: 'Mounted — +1 in melee against foes on foot, lost while knocked down' },
+  opportunist: { label: 'Opportunist', title: 'Opportunist — +1 in melee or shooting against a knocked-down foe' },
+  savage: { label: 'Savage', title: "Savage — every kill it deals is gruesome, so the victim's friends must test for fear" },
+  leader: {
+    label: 'Leader',
+    title: 'Leader — once a round, war cries to inspire every friend still to activate; friends who see it fall must test nerve. Costs as two traits',
+  },
+  armored: { label: 'Armored', title: 'Armored — a combat it loses by exactly 1 point does it no harm, even knocked down' },
+  sharpshooter: { label: 'Sharpshooter', title: 'Sharpshooter — +1 to every shot it takes (only matters with a Shooter trait)' },
+};
+
+/** The on/off traits `unit` has, in display order. */
+export function traitsOf(unit: Partial<Record<ToggleTrait, boolean>>): ToggleTrait[] {
+  return TOGGLE_TRAITS.filter((t) => unit[t]);
+}
 
 /**
  * A copy of `unit` with a trait switched on or off (off drops the key). Slow and

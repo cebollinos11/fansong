@@ -21,6 +21,7 @@ import {
 } from '@fansong/content';
 import { playableArmies } from '../game/armies.js';
 import { Picker, unitItem, unitLine } from './Picker.js';
+import { TraitEditor } from './TraitEditor.js';
 import { browserStorage } from '../game/customMaps.js';
 import * as sandboxOps from '../game/sandbox.js';
 import {
@@ -356,8 +357,6 @@ function NumberField({
   );
 }
 
-const TRAITS = ['slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage', 'leader', 'armored', 'sharpshooter'] as const;
-
 /** Stat and trait fields shared by the spawn template and the unit inspector. */
 function ProfileFields({
   profile,
@@ -386,24 +385,15 @@ function ProfileFields({
           </select>
         </label>
       </div>
-      <div className="sb-row sb-checks">
-        {TRAITS.map((t) => (
-          <label key={t}>
-            <input
-              type="checkbox"
-              checked={profile[t] ?? false}
-              onChange={(e) => {
-                const on = e.target.checked;
-                // Slow and Fast exclude each other.
-                if (on && t === 'slow') onChange({ slow: true, fast: false });
-                else if (on && t === 'fast') onChange({ fast: true, slow: false });
-                else onChange({ [t]: on });
-              }}
-            />
-            {t}
-          </label>
-        ))}
-      </div>
+      <TraitEditor
+        traits={profile}
+        onToggle={(t, on) => {
+          // Slow and Fast exclude each other.
+          if (on && t === 'slow') onChange({ slow: true, fast: false });
+          else if (on && t === 'fast') onChange({ fast: true, slow: false });
+          else onChange({ [t]: on });
+        }}
+      />
     </>
   );
 }

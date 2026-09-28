@@ -13,7 +13,7 @@ import {
   saveArmy,
 } from '../src/game/armies.js';
 import type { MapStorage } from '../src/game/customMaps.js';
-import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, uniqueName, withShooter, withStat, withTrait } from '../src/ui/armyView.js';
+import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitsOf, uniqueName, withShooter, withStat, withTrait } from '../src/ui/armyView.js';
 
 function memoryStorage(initial: Record<string, string> = {}): MapStorage & { data: Record<string, string> } {
   const data = { ...initial };
@@ -111,6 +111,11 @@ describe('army builder helpers', () => {
     const fast = withTrait(slow, 'fast', true);
     expect(fast).toEqual({ name: 'A', quality: 3, combat: 3, fast: true });
     expect(withTrait(fast, 'slow', true)).toEqual({ name: 'A', quality: 3, combat: 3, slow: true });
+  });
+
+  it('lists a unit’s traits in display order, skipping ones switched off', () => {
+    expect(traitsOf({ sharpshooter: true, tough: true, slow: false })).toEqual(['tough', 'sharpshooter']);
+    expect(traitsOf({})).toEqual([]);
   });
 
   it('keeps unit names unique and preset looks', () => {

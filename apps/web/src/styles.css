@@ -1976,6 +1976,54 @@ button.army-item.active {
   white-space: nowrap;
 }
 
+/* A unit's traits as removable chips, plus an "add" menu (army builder, preset editor, sandbox). */
+.trait-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.army-table td.army-traits {
+  min-width: 180px;
+  max-width: 320px;
+}
+
+.trait-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.trait-chip button {
+  padding: 0 5px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.trait-chip button:hover {
+  color: var(--p1);
+}
+
+.army-table select.trait-add,
+.sandbox select.trait-add {
+  width: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .sb-owner {
   display: flex;
   gap: 4px;
