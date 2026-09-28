@@ -13,7 +13,7 @@ import {
   saveArmy,
 } from '../src/game/armies.js';
 import type { MapStorage } from '../src/game/customMaps.js';
-import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitsOf, uniqueName, withShooter, withStat, withTrait } from '../src/ui/armyView.js';
+import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitCost, traitsOf, uniqueName, withShooter, withStat, withTrait } from '../src/ui/armyView.js';
 
 function memoryStorage(initial: Record<string, string> = {}): MapStorage & { data: Record<string, string> } {
   const data = { ...initial };
@@ -116,6 +116,17 @@ describe('army builder helpers', () => {
   it('lists a unit’s traits in display order, skipping ones switched off', () => {
     expect(traitsOf({ sharpshooter: true, tough: true, slow: false })).toEqual(['tough', 'sharpshooter']);
     expect(traitsOf({})).toEqual([]);
+  });
+
+  it('prices a trait by what it would add to this unit', () => {
+    const unit = { name: 'A', quality: 3, combat: 3 };
+    expect(traitCost(unit, 'tough')).toBe(6);
+    expect(traitCost(unit, 'leader')).toBe(12);
+    expect(traitCost(unit, 'slow')).toBe(-6);
+    // Quality 6 scales by 1, and the halves round up: 8 → 9.
+    expect(traitCost({ ...unit, quality: 6 }, 'tough')).toBe(1);
+    // Fast on a Slow unit drops the Slow rebate too.
+    expect(traitCost({ ...unit, slow: true }, 'fast')).toBe(12);
   });
 
   it('keeps unit names unique and preset looks', () => {

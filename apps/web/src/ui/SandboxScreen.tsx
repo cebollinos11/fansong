@@ -386,7 +386,7 @@ function ProfileFields({
         </label>
       </div>
       <TraitEditor
-        traits={profile}
+        unit={profile}
         onToggle={(t, on) => {
           // Slow and Fast exclude each other.
           if (on && t === 'slow') onChange({ slow: true, fast: false });

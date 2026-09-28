@@ -371,7 +371,7 @@ export function UnitRow({
         </select>
       </td>
       <td className="army-traits">
-        <TraitEditor traits={unit} onToggle={(t, on) => onChange(withTrait(unit, t, on))} />
+        <TraitEditor unit={unit} onToggle={(t, on) => onChange(withTrait(unit, t, on))} />
       </td>
       <td className="stats">{valid ? unitCost(unit) : '—'}</td>
       {extra}

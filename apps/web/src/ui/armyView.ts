@@ -9,6 +9,7 @@ import {
   STAT_BOUNDS,
   type ShooterKind,
   type Warband,
+  unitCost,
   type WarbandUnit,
 } from '@fansong/content';
 import { UNIT_SPRITES } from '../three/unitSprites.js';
@@ -83,28 +84,41 @@ export const TOGGLE_TRAITS = [
 ] as const;
 export type ToggleTrait = (typeof TOGGLE_TRAITS)[number];
 
-/** Each on/off trait's name and what it does, for the trait editor's chips and menu. */
-export const TRAIT_INFO: Record<ToggleTrait, { label: string; title: string }> = {
-  slow: { label: 'Slow', title: `Slow — ${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
-  fast: { label: 'Fast', title: `Fast — ${BASE_MOVE + SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
-  tough: { label: 'Tough', title: 'Tough — the first would-be kill only knocks it down' },
-  guard: { label: 'Guard', title: 'Guard — may take a stance that ripostes the first melee attacker' },
-  big: { label: 'Big', title: 'Big — +1 in melee against smaller foes, but +1 to anyone shooting it' },
+/** Each on/off trait's name and, briefly, what it does, for the trait editor's chips and menu. */
+export const TRAIT_INFO: Record<ToggleTrait, { label: string; desc: string }> = {
+  slow: { label: 'Slow', desc: `${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
+  fast: { label: 'Fast', desc: `${BASE_MOVE + SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
+  tough: { label: 'Tough', desc: 'the first would-be kill only knocks it down' },
+  guard: { label: 'Guard', desc: 'may take a stance that ripostes the first melee attacker' },
+  big: { label: 'Big', desc: '+1 in melee against smaller foes, but +1 to anyone shooting it' },
   flying: {
     label: 'Flying',
-    title: 'Flying — soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne',
+    desc: 'soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne',
   },
-  reassembling: { label: 'Reassembling', title: 'Reassembling — stands back up for free at the start of each round if knocked down' },
-  mounted: { label: 'Mounted', title: 'Mounted — +1 in melee against foes on foot, lost while knocked down' },
-  opportunist: { label: 'Opportunist', title: 'Opportunist — +1 in melee or shooting against a knocked-down foe' },
-  savage: { label: 'Savage', title: "Savage — every kill it deals is gruesome, so the victim's friends must test for fear" },
+  reassembling: { label: 'Reassembling', desc: 'stands back up for free at the start of each round if knocked down' },
+  mounted: { label: 'Mounted', desc: '+1 in melee against foes on foot, lost while knocked down' },
+  opportunist: { label: 'Opportunist', desc: '+1 in melee or shooting against a knocked-down foe' },
+  savage: { label: 'Savage', desc: "every kill it deals is gruesome, so the victim's friends must test for fear" },
   leader: {
     label: 'Leader',
-    title: 'Leader — once a round, war cries to inspire every friend still to activate; friends who see it fall must test nerve. Costs as two traits',
+    desc: 'once a round, war cries to inspire every friend still to activate; friends who see it fall must test nerve. Costs as two traits',
   },
-  armored: { label: 'Armored', title: 'Armored — a combat it loses by exactly 1 point does it no harm, even knocked down' },
-  sharpshooter: { label: 'Sharpshooter', title: 'Sharpshooter — +1 to every shot it takes (only matters with a Shooter trait)' },
+  armored: { label: 'Armored', desc: 'a combat it loses by exactly 1 point does it no harm, even knocked down' },
+  sharpshooter: { label: 'Sharpshooter', desc: '+1 to every shot it takes (only matters with a Shooter trait)' },
 };
+
+/** A trait's tooltip: its name and what it does. */
+export function traitTitle(trait: ToggleTrait): string {
+  return `${TRAIT_INFO[trait].label} — ${TRAIT_INFO[trait].desc}`;
+}
+
+/**
+ * What switching `trait` on would change `unit`'s cost by, in points — it
+ * scales with the unit's Quality, and Slow or Fast replacing the other counts both.
+ */
+export function traitCost(unit: WarbandUnit, trait: ToggleTrait): number {
+  return unitCost(withTrait(unit, trait, true)) - unitCost(unit);
+}
 
 /** The on/off traits `unit` has, in display order. */
 export function traitsOf(unit: Partial<Record<ToggleTrait, boolean>>): ToggleTrait[] {

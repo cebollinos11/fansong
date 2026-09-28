@@ -2070,11 +2070,80 @@ button.army-item.active {
   color: var(--p1);
 }
 
-.army-table select.trait-add,
-.sandbox select.trait-add {
+button.trait-add {
   width: auto;
+  margin: 0;
+  padding: 1px 9px;
+  border: 1px dashed var(--line);
+  border-radius: 999px;
+  background: transparent;
   font-size: 12px;
   color: var(--muted);
+}
+
+button.trait-add:hover,
+button.trait-add[aria-expanded='true'] {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+/* The "+ Trait" menu (ui/TraitEditor.tsx): name, cost to this unit, and what it does. */
+.trait-menu {
+  position: fixed;
+  z-index: 50;
+  width: 320px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+.trait-option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.trait-option.active {
+  background: var(--panel-2);
+}
+
+.trait-option-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trait-option-note {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.trait-option-cost {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--p1);
+  white-space: nowrap;
+}
+
+.trait-option-cost.rebate {
+  color: var(--accent);
+}
+
+.trait-option-desc {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.trait-option-desc::first-letter {
+  text-transform: uppercase;
 }
 
 .sb-owner {
