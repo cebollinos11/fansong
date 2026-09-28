@@ -327,6 +327,8 @@ const REASSEMBLE_STAGGER_MS = 250; // between one unit's reassembly and the next
 const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the player's view
 const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
 const HIT_STOP_MS = 90; // a gruesome kill freezes the action this long on impact
+const SLOW_MO_MS = 1100; // then plays on in slow motion for this long (wall clock), easing back to full speed
+const SLOW_MO_SCALE = 0.3; // board time runs this fast at the start of a gruesome kill's slow motion
 const FEAR_WAVE_MS = 800; // time for a gruesome kill's fear to reach the edge of its radius
 const SHATTER_FADE_MS = 200; // a unit that shatters into motes is gone this fast
 const PUSH_OFF_MS = 900; // a unit shoved off the table slides, topples and drops for this long
@@ -559,6 +561,8 @@ export class BoardView {
   private wallNow = 0;
   /** Board time stands still until the wall clock reaches this (a hit-stop). */
   private freezeUntil = 0;
+  /** Board time runs slow (see {@link SLOW_MO_SCALE}) between these wall-clock times, easing back to full speed. */
+  private slowMo = { start: 0, end: 0 };
   /** Camera shakes in progress, on the wall clock. */
   private shakes: { start: number; end: number; amp: number; kind: 'nudge' | 'rumble'; dir: THREE.Vector3 }[] = [];
   /** Deferred animation steps, run once board time reaches `at` (ms). */
@@ -1474,6 +1478,7 @@ export class BoardView {
     this.effects.clear();
     this.shakes = [];
     this.freezeUntil = 0;
+    this.slowMo = { start: 0, end: 0 };
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
       obj.pulse = null;
@@ -1498,6 +1503,7 @@ export class BoardView {
     this.clearRoutes();
     this.shakes = [];
     this.freezeUntil = 0;
+    this.slowMo = { start: 0, end: 0 };
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
       obj.pulse = null;
@@ -2568,6 +2574,21 @@ export class BoardView {
     this.freezeUntil = Math.max(this.freezeUntil, this.wallNow + ms);
   }
 
+  /** Play the action in slow motion for `ms` (wall clock) once any hit-stop ends. */
+  private slowMotion(ms: number): void {
+    const start = Math.max(this.wallNow, this.freezeUntil);
+    this.slowMo = { start, end: Math.max(this.slowMo.end, start + ms) };
+  }
+
+  /** How fast board time runs against the wall clock right now: still in a hit-stop, slow in a slow motion. */
+  private timeScale(): number {
+    if (this.wallNow < this.freezeUntil) return 0;
+    const { start, end } = this.slowMo;
+    if (this.wallNow >= end || this.wallNow < start) return 1;
+    const k = (this.wallNow - start) / (end - start);
+    return SLOW_MO_SCALE + (1 - SLOW_MO_SCALE) * k * k;
+  }
+
   /** A blow that connects: a small white spark where it lands. */
   private impactFx(a: UnitObj, d: UnitObj): void {
     this.effects.burst({
@@ -2702,14 +2723,15 @@ export class BoardView {
     obj.blink = { start: this.now, end: this.now + BLINKS * BLINK_MS };
   }
 
-  /** 6d, 7a–7c. A killing blow: a shockwave — and for a gruesome one, a hit-stop, ash, a skull and a wave of fear. */
+  /** 6d, 7a–7c. A killing blow: a shockwave — and for a gruesome one, a hit-stop and slow motion, ash, a skull and a wave of fear. */
   private killFx(obj: UnitObj, gruesome: boolean, shakenIds: string[]): void {
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.035);
     this.effects.ring(ground, 0xffffff, 0.2, 1.1, { life: 0.5, opacity: 0.85, additive: true });
     if (!gruesome) return;
-    // 7a: the heavy version — a freeze on impact, a bigger double shockwave,
+    // 7a: the heavy version — a freeze on impact easing out of slow motion, a bigger double shockwave,
     // a hard shake and a burst of ash and dark shards.
     this.hitStop(HIT_STOP_MS);
+    this.slowMotion(SLOW_MO_MS);
     this.effects.ring(ground, 0xffffff, 0.3, 2.2, { life: 0.7, opacity: 0.9, additive: true });
     this.shakeCamera('rumble', 0.1, 380);
     const chest = this.chest(obj);
@@ -3010,10 +3032,11 @@ export class BoardView {
 
     // Animations run on wall-clock time (a slow frame doesn't slow them down);
     // only a long stall, like a background tab, is capped.
-    // A hit-stop holds board time still while the wall clock (and the camera shake) runs on.
+    // A hit-stop holds board time still, and a slow motion slows it, while the
+    // wall clock (and the camera shake) runs on.
     const wallDt = Math.min(rawDt, 0.25) * 1000 * this.animSpeed;
     this.wallNow += wallDt;
-    const dtMs = this.wallNow < this.freezeUntil ? 0 : wallDt;
+    const dtMs = wallDt * this.timeScale();
     this.now += dtMs;
     for (let i = 0; i < this.timeline.length; ) {
       const step = this.timeline[i]!;
