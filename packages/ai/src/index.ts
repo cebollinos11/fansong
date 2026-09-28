@@ -226,7 +226,7 @@ function targetZone(board: Board, zones: ZoneView[], unit: Unit): ZoneView | und
  * non-Leaders of its side still to activate this round. Zero when it can't cry.
  */
 function warCryReach(state: GameState, leader: Unit): number {
-  if (!canWarCry(leader)) return 0;
+  if (!canWarCry(state, leader)) return 0;
   return aliveUnits(state, leader.owner).filter((u) => !u.traits.leader && !u.activatedThisRound).length;
 }
 

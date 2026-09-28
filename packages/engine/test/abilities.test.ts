@@ -1105,6 +1105,13 @@ describe('Leader trait', () => {
     expect(last.state.activeUnitId).toBeNull();
   });
 
+  it('is not offered after a turnover: a benched side has no one left to inspire', () => {
+    const s = acting(config(), 'p0u0');
+    s.benched[0] = true; // the Leader turned over but still has an action it earned
+    expect(has(getLegalCommands(s), (c) => c.type === 'WarCry')).toBe(false);
+    expect(() => reduce(s, warCry)).toThrow();
+  });
+
   it("makes an inspired unit's first activation die a sure 6, spending the inspiration", () => {
     // Spear needs a 6: find a seed where its lone die would miss.
     for (let seed = 1; seed <= 200; seed++) {

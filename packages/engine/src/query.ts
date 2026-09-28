@@ -114,9 +114,10 @@ export function moveReach(state: GameState, unit: Unit, board: Board): Set<strin
 
 /**
  * Whether `unit` may war cry: a living Leader on its feet that hasn't cried yet
- * this round. (Being the activating unit, with an action to spend, is checked
- * by the caller.)
+ * this round, whose side isn't benched — after a turnover no friend can
+ * activate again this round, so there is no one left to inspire. (Being the
+ * activating unit, with an action to spend, is checked by the caller.)
  */
-export function canWarCry(unit: Unit): boolean {
-  return unit.traits.leader && !unit.dead && !unit.knockedDown && !unit.warCried;
+export function canWarCry(state: GameState, unit: Unit): boolean {
+  return unit.traits.leader && !unit.dead && !unit.knockedDown && !unit.warCried && !state.benched[unit.owner];
 }

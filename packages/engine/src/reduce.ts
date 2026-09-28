@@ -420,7 +420,7 @@ function handleWarCry(s: GameState, events: GameEvent[], unitId: string): void {
   requirePhase(s, 'acting');
   const unit = activeUnit(s);
   if (unit.id !== unitId) throw new Error(`unit '${unitId}' is not the activating unit`);
-  if (!canWarCry(unit)) throw new Error('unit cannot war cry (not a Leader, knocked down, or already cried this round)');
+  if (!canWarCry(s, unit)) throw new Error('unit cannot war cry (not a Leader, knocked down, already cried this round, or its side is benched)');
   if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
 
   s.actionsRemaining -= 1;

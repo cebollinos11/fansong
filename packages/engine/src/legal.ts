@@ -65,7 +65,7 @@ export function getLegalCommands(state: GameState): Command[] {
   }
 
   // War cry: a Leader on its feet, once a round, spends an action to inspire its friends.
-  if (canWarCry(unit)) {
+  if (canWarCry(state, unit)) {
     commands.push({ type: 'WarCry', unitId: unit.id });
   }
 
