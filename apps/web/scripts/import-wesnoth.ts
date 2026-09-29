@@ -39,6 +39,28 @@ const MISSILE_MACROS: Record<string, string> = {
   MISSILE_FRAME_STONE_MISS: 'projectiles/stone.png',
 };
 const DEFAULT_MISSILE_LEAD_MS = 150; // Wesnoth's usual missile_start_time=-150
+/**
+ * `{ATTACK_ANIM_*DIRECTIONAL_N_FRAME BASE TAIL …}` (animation-utils2.cfg): the
+ * whole body of an [attack_anim] — its front branch is `BASE-se-TAIL[1~N].png:100`.
+ * Values are each macro's start_time.
+ */
+const ATTACK_ANIM_MACROS: Record<string, number> = {
+  ATTACK_ANIM_DIRECTIONAL_9_FRAME: -450,
+  ATTACK_ANIM_DIRECTIONAL_10_FRAME: -450,
+  ATTACK_ANIM_QUAD_DIRECTIONAL_10_FRAME: -500,
+  ATTACK_ANIM_QUAD_DIRECTIONAL_12_FRAME: -600,
+};
+
+/** Frames and start_time of an [attack_anim] written as one ATTACK_ANIM_* macro call. */
+function attackAnimMacro(node: Node): { frames: [string, number][]; startTime: number } | undefined {
+  for (const mac of node.macros) {
+    const m = /^\{(ATTACK_ANIM_\w*?(\d+)_FRAME)\s+"([^"]+)"\s+"([^"]+)"/.exec(mac);
+    if (!m || ATTACK_ANIM_MACROS[m[1]!] === undefined) continue;
+    const [base, tail, n] = [m[3]!, m[4]!, m[2]!];
+    return { frames: expandImage(`${base}-se-${tail}[1~${n}].png:100`), startTime: ATTACK_ANIM_MACROS[m[1]!]! };
+  }
+  return undefined;
+}
 
 // --- WML ------------------------------------------------------------------
 
@@ -191,11 +213,13 @@ function rawAnims(ut: Node): RawAnim[] {
   for (const k of ut.kids) {
     if (!(k.tag.endsWith('_anim') || k.tag === 'death' || k.tag === 'defend') || !facesFront(k)) continue;
     const { frames, missiles } = collectFrames(k);
+    const fromMacro = k.tag === 'attack_anim' && frames.length === 0 ? attackAnimMacro(k) : undefined;
+    if (fromMacro) frames.push(...fromMacro.frames);
     const anim: RawAnim = {
       kind: k.tag,
       direction: k.attrs.direction,
       wounded: k.macros.some((m) => m.includes('WOUNDED_UNIT')),
-      startTime: Number(k.attrs.start_time ?? 0),
+      startTime: Number(k.attrs.start_time ?? fromMacro?.startTime ?? 0),
       missileStart: k.attrs.missile_start_time ? Number(k.attrs.missile_start_time) : undefined,
       frames,
       missiles,

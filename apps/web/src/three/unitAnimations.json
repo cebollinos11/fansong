@@ -4700,6 +4700,53 @@
     ]
    ]
   },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee1.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee2.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee3.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee4.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee5.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee6.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee7.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee8.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee9.png",
+      100
+     ],
+     [
+      "undead-skeletal/skeleton/skeleton-se-melee10.png",
+      100
+     ]
+    ],
+    "hitMs": 450
+   }
+  ],
   "defendMelee": {
    "frames": [
     [
