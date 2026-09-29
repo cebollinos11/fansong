@@ -1,51 +1,117 @@
-import { unitById, type GameEvent, type GameOverReason, type GameState } from '@fansong/engine';
+import {
+  unitById,
+  type CombatResult,
+  type GameEvent,
+  type GameOverReason,
+  type GameState,
+  type Owner,
+  type Vec,
+} from '@fansong/engine';
 
 /**
- * How a log line is emphasised: `objective` for scoring and flag events, `end` for the game-over line.
- * Absent for ordinary play.
+ * The battle log, built from engine events. Presentation only.
+ *
+ * Events are grouped by round, then by activation: each activation is one
+ * {@link LogGroup} holding the unit, its dice and what it did. A blow and the
+ * knockdown, push or death it causes read as a single fight line, and a chain
+ * of moves reads as one. Lines are kept as structured parts (unit references,
+ * emphasised bits) so the view can colour names by owner and link them to the
+ * board.
  */
-export type LogTone = 'objective' | 'end';
 
-export interface LogEntry {
+/**
+ * How a log line is emphasised: `objective` for scoring and flag events, `end`
+ * for the game-over line, `danger` for deaths, routs and turnovers. Absent for
+ * ordinary play.
+ */
+export type LogTone = 'objective' | 'end' | 'danger';
+
+/** What a line is about, for the log's filter. */
+export type LogCategory = 'combat' | 'objective' | 'other';
+
+export interface UnitRef {
+  id: string;
+  name: string;
+  owner: Owner;
+}
+
+/**
+ * A piece of a log line: plain text, a unit (coloured by owner, links to the
+ * board), a player, or an emphasised bit styled by `cls`.
+ */
+export type LogPart = string | { unit: UnitRef } | { player: Owner } | { em: string; cls?: string };
+
+export interface DiceRoll {
+  dice: number[];
+  quality: number;
+  successes: number;
+  failures: number;
+  /** The first die is the inspired, guaranteed 6. */
+  inspired: boolean;
+}
+
+export interface LogItem {
   id: number;
-  text: string;
+  icon: string;
+  parts: LogPart[];
+  /** A few words for the one-line summary of a collapsed activation; absent when not worth summarising. */
+  brief?: LogPart[];
+  /** How the line came about (a fight's score breakdown), shown on demand. */
+  detail?: string[];
   tone?: LogTone;
+  category: LogCategory;
+  /** The units the line is about, highlighted on the board while it is hovered. */
+  unitIds: string[];
+  /** The route walked, traced on the board while the line is hovered. */
+  path?: Vec[];
+  /** Set on a move line, so a chained move by the same unit extends it. */
+  mover?: string;
 }
 
-let counter = 0;
-
-function name(state: GameState, id: string): string {
-  return unitById(state, id)?.name ?? id;
+export interface LogGroup {
+  id: number;
+  /** The activating unit; absent for events outside any activation (round-end scoring, the end of the game). */
+  unit?: UnitRef;
+  diceCount?: number;
+  roll?: DiceRoll;
+  /** The dice turned over: the side is benched for the round. */
+  turnover?: boolean;
+  items: LogItem[];
+  /** Still taking events (the activation has not ended). */
+  open: boolean;
 }
 
-/**
- * A combat score, noting the modifiers already included in it: a high-ground
- * bonus, then any other bonuses (e.g. `['size', 1]` reads "+1 size"), then any
- * penalties (e.g. `['outnumbered', 1]` reads "−1 outnumbered").
- */
-function score(
-  total: number,
-  bonus: number | undefined,
-  penalties: [string, number | undefined][] = [],
-  bonuses: [string, number | undefined][] = [],
-): string {
-  const notes = bonus ? [`+${bonus} high ground`] : [];
-  for (const [label, n] of bonuses) if (n) notes.push(`+${n} ${label}`);
-  for (const [label, n] of penalties) if (n) notes.push(`−${n} ${label}`);
-  return [`${total}`, ...notes].join(', ');
+export interface LogRound {
+  round: number;
+  /** Who acts first this round; unknown for the round the log started in. */
+  leader?: Owner;
+  groups: LogGroup[];
 }
 
-const gore = (e: { gruesome?: true }) => (e.gruesome ? ' (gruesome!)' : '');
+export interface BattleLog {
+  rounds: LogRound[];
+  /** The newest emphasised line, as plain text — what the HUD's transient callout shows. */
+  callout: { id: number; text: string; tone: LogTone } | null;
+  nextId: number;
+}
+
+/** Most activations kept; older rounds are dropped whole. */
+const MAX_GROUPS = 200;
+
+export function emptyLog(round = 1): BattleLog {
+  return { rounds: [{ round, groups: [] }], callout: null, nextId: 0 };
+}
+
+function ref(state: GameState, id: string): UnitRef {
+  const u = unitById(state, id);
+  return u ? { id, name: u.name, owner: u.owner } : { id, name: id, owner: 0 };
+}
+
+const unit = (r: UnitRef): LogPart => ({ unit: r });
 
 /** Conquest zones are lettered A, B, C — matching the mode HUD. */
 function zoneLetter(zone: number): string {
   return String.fromCharCode(65 + zone);
-}
-
-/** A unit's name tagged with its owner, e.g. "Knight (P1)". */
-function tagged(state: GameState, id: string): string {
-  const u = unitById(state, id);
-  return u ? `${u.name} (P${u.owner})` : id;
 }
 
 const GAME_OVER_REASONS: Record<GameOverReason, string> = {
@@ -56,108 +122,589 @@ const GAME_OVER_REASONS: Record<GameOverReason, string> = {
   flag: 'flag captured',
 };
 
-/** Render one engine event as a short human-readable line. Presentation only. */
-export function formatEvent(state: GameState, e: GameEvent): string | null {
+/** A line flattened to text (the HUD callout, tooltips, tests). */
+export function partsText(parts: readonly LogPart[]): string {
+  return parts
+    .map((p) => (typeof p === 'string' ? p : 'unit' in p ? p.unit.name : 'player' in p ? `P${p.player}` : p.em))
+    .join('');
+}
+
+export function itemText(item: LogItem): string {
+  return `${item.icon} ${partsText(item.parts)}`;
+}
+
+// --- Fights ------------------------------------------------------------------
+
+/** One side of a roll: its die, final score and the signed modifiers behind it. */
+interface FightSide {
+  unit: UnitRef;
+  die: number;
+  score: number;
+  mods: [string, number | undefined][];
+}
+
+type FightKind = 'attack' | 'power' | 'shot' | 'aimed' | 'hack' | 'riposte';
+
+const FIGHT_VERB: Record<FightKind, string> = {
+  attack: 'attacks',
+  power: 'lands a power blow on',
+  shot: 'shoots',
+  aimed: 'takes an aimed shot at',
+  hack: 'takes a free hack at',
+  riposte: 'ripostes',
+};
+
+const FIGHT_ICON: Record<FightKind, string> = {
+  attack: '⚔',
+  power: '⚔',
+  shot: '➶',
+  aimed: '➶',
+  hack: '⚔',
+  riposte: '🛡',
+};
+
+/** A fight still gathering the consequences that follow its roll. */
+interface Fight {
+  item: LogItem;
+  kind: FightKind;
+  aggressor: FightSide;
+  defender: FightSide;
+  result: CombatResult;
+  gruesome: boolean;
+  prevented: boolean;
+  tough: boolean;
+  pushedOff: boolean;
+  recoiled: boolean;
+  supportedBy: UnitRef | null;
+  armor: UnitRef | null;
+}
+
+/** "Knight: rolled 4 + 3 combat +1 high ground −1 outnumbered = 7". */
+function breakdown(side: FightSide): string {
+  const mods = side.mods.filter((m): m is [string, number] => !!m[1]);
+  const base = side.score - side.die - mods.reduce((sum, [, n]) => sum + n, 0);
+  const notes = mods.map(([label, n]) => `${n > 0 ? '+' : '−'}${Math.abs(n)} ${label}`);
+  return `${side.unit.name}: rolled ${side.die} + ${base} combat${notes.length ? ` ${notes.join(' ')}` : ''} = ${side.score}`;
+}
+
+const bonus = (label: string, n: number | undefined): [string, number | undefined] => [label, n];
+const penalty = (label: string, n: number | undefined): [string, number | undefined] => [label, n ? -n : n];
+
+function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
+  const base = { item, gruesome: false, prevented: false, tough: false, pushedOff: false, recoiled: false, supportedBy: null, armor: null };
   switch (e.type) {
-    case 'ActivationChosen':
-      return `P${e.player} activates ${name(state, e.unitId)} with ${e.diceCount} dice`;
-    case 'DiceRolled':
-      return `  rolls [${e.dice.join(', ')}] vs Q${e.quality} → ${e.successes} hit / ${e.failures} miss${e.inspired ? ' (inspired: first die a 6)' : ''}`;
-    case 'Turnover':
-      return `  TURNOVER — P${e.player} is benched for the round`;
-    case 'UnitStoodUp':
-      return e.reassembled
-        ? `  ${name(state, e.unitId)} reassembles and stands up`
-        : `  ${name(state, e.unitId)} stands up`;
-    case 'UnitMoved':
-      return `  ${name(state, e.unitId)} moves to (${e.to.x}, ${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]], [['size', e.attackBig], ['flying', e.attackFly], ['mounted', e.attackMounted], ['opportunist', e.attackOpportunist]])}) ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered], ['power blow', e.powerPenalty]], [['size', e.defenseBig], ['mounted', e.defenseMounted], ['opportunist', e.defenseOpportunist]])}) → ${e.result}${gore(e)}`;
-    case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['long range', e.rangePenalty], ['cover', e.coverPenalty]], [['big target', e.bigTarget], ['flying target', e.flyingTarget], ['opportunist', e.attackOpportunist], ['sharpshooter', e.attackSharpshooter]])}) ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['aimed at', e.aimPenalty]])}) → ${e.result}${gore(e)}`;
-    case 'FreeHackResolved':
-      return `  ${name(state, e.attackerId)} (${score(e.attackScore, e.attackBonus, [['outnumbered', e.attackOutnumbered]], [['size', e.attackBig], ['flying', e.attackFly], ['mounted', e.attackMounted], ['opportunist', e.attackOpportunist]])}) takes a free hack at ${name(state, e.targetId)} (${score(e.defenseScore, e.defenseBonus, [['outnumbered', e.defenseOutnumbered]], [['size', e.defenseBig], ['mounted', e.defenseMounted], ['opportunist', e.defenseOpportunist]])}) → ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
-    case 'GuardDeclared':
-      return `  ${name(state, e.unitId)} raises guard`;
-    case 'WarCry':
-      return `  ${name(state, e.unitId)} lets out a war cry${e.inspired.length ? `, inspiring ${e.inspired.map((id) => name(state, id)).join(', ')}` : ''}`;
-    case 'LeaderFallen':
-      return `  ${name(state, e.unitId)}, a Leader, has fallen!`;
-    case 'GuardRiposte':
-      return `  ${name(state, e.guardId)} (${score(e.guardScore, e.guardBonus, [['outnumbered', e.guardOutnumbered]], [['size', e.guardBig], ['flying', e.guardFly], ['mounted', e.guardMounted], ['opportunist', e.guardOpportunist]])}) ripostes ${name(state, e.attackerId)} (${score(e.attackerScore, e.attackerBonus, [['outnumbered', e.attackerOutnumbered]], [['size', e.attackerBig], ['mounted', e.attackerMounted], ['opportunist', e.attackerOpportunist]])}) → ${e.result === 'clash' ? 'attack goes through' : e.result}${gore(e)}${e.prevented ? ' (attack stopped)' : ''}`;
-    case 'ToughnessSaved':
-      return `  ${name(state, e.unitId)} shrugs off the blow (Tough)`;
-    case 'ArmorHeld':
-      return `  ${name(state, e.unitId)}'s armor turns the blow aside`;
-    case 'NerveCheck':
-      return null; // implied by the knockdown/rout it produces; keep the log terse
-    case 'WarbandBroken':
-      return `  Player ${e.player}'s warband breaks!`;
-    case 'UnitRouted':
-      return `  ${name(state, e.unitId)} flees the field`;
-    case 'UnitFled':
-      return `  ${name(state, e.unitId)} breaks and runs`;
-    case 'UnitKnockedDown':
-      return `  ${name(state, e.unitId)} is knocked down`;
-    case 'UnitRecoiled':
-      return `  ${name(state, e.unitId)} is pushed back`;
-    case 'UnitSupported':
-      return `  ${name(state, e.unitId)} holds its ground, supported by ${name(state, e.supporterId)}`;
-    case 'UnitPushedOff':
-      return `  ${name(state, e.unitId)} is pushed off the edge of the map`;
-    case 'UnitKilled':
-      return `  ${name(state, e.unitId)} is killed`;
-    case 'RoundEnded':
-      return `=== Round ${e.round} — P${e.nextLeader} leads ===`;
-    case 'ScoreChanged': {
-      const what = e.zone !== undefined ? `zone ${zoneLetter(e.zone)}` : state.mode?.mode === 'king-of-the-hill' ? 'the hill' : null;
-      return `  ★ Player ${e.player} scores ${e.points}${what ? ` for holding ${what}` : ''} (${e.scores[0]}–${e.scores[1]})`;
+    case 'FreeHackResolved': {
+      const power = e.type === 'AttackResolved' ? e.powerPenalty : undefined;
+      return {
+        ...base,
+        kind: e.type === 'FreeHackResolved' ? 'hack' : power ? 'power' : 'attack',
+        result: e.result,
+        gruesome: !!e.gruesome,
+        aggressor: {
+          unit: ref(state, e.attackerId),
+          die: e.attackDie,
+          score: e.attackScore,
+          mods: [
+            bonus('high ground', e.attackBonus),
+            bonus('size', e.attackBig),
+            bonus('flying', e.attackFly),
+            bonus('mounted', e.attackMounted),
+            bonus('opportunist', e.attackOpportunist),
+            penalty('outnumbered', e.attackOutnumbered),
+          ],
+        },
+        defender: {
+          unit: ref(state, e.targetId),
+          die: e.defenseDie,
+          score: e.defenseScore,
+          mods: [
+            bonus('high ground', e.defenseBonus),
+            bonus('size', e.defenseBig),
+            bonus('mounted', e.defenseMounted),
+            bonus('opportunist', e.defenseOpportunist),
+            penalty('outnumbered', e.defenseOutnumbered),
+            penalty('power blow', power),
+          ],
+        },
+      };
     }
-    case 'FlagPickedUp':
-      return `  ⚑ ${tagged(state, e.unitId)} seizes Player ${e.player}'s flag`;
-    case 'FlagDropped':
-      return `  ⚑ ${tagged(state, e.unitId)} drops Player ${e.player}'s flag at (${e.at.x}, ${e.at.y})`;
-    case 'FlagReturned':
-      return `  ⚑ ${tagged(state, e.unitId)} returns Player ${e.player}'s flag to base`;
-    case 'FlagCaptured':
-      return `  ⚑ ${tagged(state, e.unitId)} carries the flag home — Player ${e.player} captures it!`;
-    case 'GameOver':
-      return `GAME OVER — Player ${e.winner} wins${e.reason ? ` (${GAME_OVER_REASONS[e.reason]})` : ''}`;
-    case 'ActivationEnded':
-      return null; // implied by the next activation; keep the log terse
-  }
-}
-
-/** Emphasis for an event's log line; undefined for ordinary play. */
-export function eventTone(e: GameEvent): LogTone | undefined {
-  switch (e.type) {
-    case 'ScoreChanged':
-    case 'FlagPickedUp':
-    case 'FlagDropped':
-    case 'FlagReturned':
-    case 'FlagCaptured':
-      return 'objective';
-    case 'GameOver':
-      return 'end';
+    case 'ShotResolved':
+      return {
+        ...base,
+        kind: e.aimPenalty ? 'aimed' : 'shot',
+        result: e.result,
+        gruesome: !!e.gruesome,
+        aggressor: {
+          unit: ref(state, e.attackerId),
+          die: e.attackDie,
+          score: e.attackScore,
+          mods: [
+            bonus('high ground', e.attackBonus),
+            bonus('big target', e.bigTarget),
+            bonus('flying target', e.flyingTarget),
+            bonus('opportunist', e.attackOpportunist),
+            bonus('sharpshooter', e.attackSharpshooter),
+            penalty('long range', e.rangePenalty),
+            penalty('cover', e.coverPenalty),
+          ],
+        },
+        defender: {
+          unit: ref(state, e.targetId),
+          die: e.defenseDie,
+          score: e.defenseScore,
+          mods: [bonus('high ground', e.defenseBonus), penalty('aimed at', e.aimPenalty)],
+        },
+      };
+    case 'GuardRiposte':
+      return {
+        ...base,
+        kind: 'riposte',
+        result: e.result,
+        gruesome: !!e.gruesome,
+        prevented: e.prevented,
+        aggressor: {
+          unit: ref(state, e.guardId),
+          die: e.guardDie,
+          score: e.guardScore,
+          mods: [
+            bonus('high ground', e.guardBonus),
+            bonus('size', e.guardBig),
+            bonus('flying', e.guardFly),
+            bonus('mounted', e.guardMounted),
+            bonus('opportunist', e.guardOpportunist),
+            penalty('outnumbered', e.guardOutnumbered),
+          ],
+        },
+        defender: {
+          unit: ref(state, e.attackerId),
+          die: e.attackerDie,
+          score: e.attackerScore,
+          mods: [
+            bonus('high ground', e.attackerBonus),
+            bonus('size', e.attackerBig),
+            bonus('mounted', e.attackerMounted),
+            bonus('opportunist', e.attackerOpportunist),
+            penalty('outnumbered', e.attackerOutnumbered),
+          ],
+        },
+      };
     default:
-      return undefined;
+      return null;
   }
 }
 
-/** The newest emphasised entry — what the HUD's transient callout shows. */
-export function latestCallout(log: readonly LogEntry[]): LogEntry | null {
-  for (let i = log.length - 1; i >= 0; i--) if (log[i]!.tone) return log[i]!;
-  return null;
+/**
+ * Fold a consequence of the latest roll into its fight line. Returns false when
+ * the event is not about that fight, so it gets a line of its own.
+ */
+function absorb(f: Fight, e: GameEvent, state: GameState): boolean {
+  const involved = (id: string) => id === f.aggressor.unit.id || id === f.defender.unit.id;
+  switch (e.type) {
+    case 'ArmorHeld':
+      if (!involved(e.unitId)) return false;
+      f.armor = ref(state, e.unitId);
+      return true;
+    case 'ToughnessSaved':
+      if (!involved(e.unitId)) return false;
+      f.tough = true;
+      return true;
+    case 'UnitKilled':
+      // Already said by the result.
+      return involved(e.unitId);
+    case 'UnitPushedOff':
+      if (!involved(e.unitId)) return false;
+      f.pushedOff = true;
+      return true;
+    case 'UnitRecoiled':
+      if (!involved(e.unitId)) return false;
+      f.recoiled = true;
+      return true;
+    case 'UnitSupported':
+      if (!involved(e.unitId)) return false;
+      f.supportedBy = ref(state, e.supporterId);
+      f.item.unitIds.push(e.supporterId);
+      return true;
+    case 'UnitKnockedDown':
+      // Already said by the result (or by a Tough save).
+      return involved(e.unitId);
+    default:
+      return false;
+  }
 }
 
-export function appendEvents(prev: LogEntry[], state: GameState, events: GameEvent[]): LogEntry[] {
-  const added: LogEntry[] = [];
+/** Write a fight's line once all its consequences are in. */
+function finishFight(f: Fight): void {
+  const { item, aggressor, defender, result } = f;
+  const victim = result.startsWith('attacker') ? aggressor.unit : result.startsWith('defender') ? defender.unit : null;
+  let label: string;
+  let short: string;
+  let cls: string | undefined;
+  let braced = false;
+  if (result.endsWith('Killed')) {
+    [label, short, cls] = f.tough ? ['knocked down (Tough)', 'down', 'down'] : ['killed', 'killed', 'kill'];
+  } else if (result.endsWith('KnockedDown')) {
+    [label, short, cls] = ['knocked down', 'down', 'down'];
+  } else if (result.endsWith('Recoiled')) {
+    if (f.pushedOff) {
+      [label, short, cls] = f.tough
+        ? ['pushed off the edge, knocked down (Tough)', 'down', 'down']
+        : ['pushed off the edge — killed', 'killed', 'kill'];
+    } else if (f.supportedBy) {
+      [label, short, cls] = ['braced by ', 'held', undefined];
+      braced = true;
+    } else if (!f.recoiled && f.kind === 'hack') {
+      [label, short, cls] = ['slips away', 'slipped', undefined];
+    } else {
+      [label, short, cls] = ['pushed back', 'pushed', 'push'];
+    }
+  } else if (f.armor) {
+    [label, short, cls] = ['armor holds', 'clash', undefined];
+  } else if (f.kind === 'riposte') {
+    [label, short, cls] = ['attack goes through', 'through', undefined];
+  } else {
+    [label, short, cls] = ['clash', 'clash', undefined];
+  }
+
+  const outcome: LogPart[] = [];
+  // Name the loser only when it is not the one being struck.
+  if (victim && victim.id !== defender.unit.id) outcome.push(unit(victim), ' ');
+  outcome.push(cls ? { em: label, cls } : label);
+  if (braced && f.supportedBy) outcome.push(unit(f.supportedBy));
+  if (f.gruesome) outcome.push(' ', { em: 'gruesome!', cls: 'kill' });
+  if (f.prevented) outcome.push(' · attack stopped');
+
+  item.parts = [
+    unit(aggressor.unit),
+    ` ${FIGHT_VERB[f.kind]} `,
+    unit(defender.unit),
+    ' ',
+    { em: `${aggressor.score}–${defender.score}`, cls: 'score' },
+    ' → ',
+    ...outcome,
+  ];
+  item.brief = [`${FIGHT_ICON[f.kind]} `, unit(victim ?? defender.unit), ` ${short}`];
+  item.detail = [breakdown(aggressor), breakdown(defender)];
+  if (f.gruesome) item.detail.push('Gruesome: a lopsided or savage kill that shakes nearby friends.');
+  if (cls === 'kill') item.tone = 'danger';
+}
+
+// --- Building ------------------------------------------------------------------
+
+/** Copy the parts of the log an append may touch: the newest round, its newest group and that group's items. */
+function cloneTail(log: BattleLog): BattleLog {
+  const rounds = [...log.rounds];
+  const r = rounds.at(-1)!;
+  const groups = [...r.groups];
+  const g = groups.at(-1);
+  if (g) {
+    groups[groups.length - 1] = {
+      ...g,
+      items: g.items.map((i) => ({ ...i, parts: [...i.parts], unitIds: [...i.unitIds] })),
+    };
+  }
+  rounds[rounds.length - 1] = { ...r, groups };
+  return { ...log, rounds };
+}
+
+/** Append one transition's events (read against `state`, the state after them). */
+export function appendEvents(prev: BattleLog, state: GameState, events: readonly GameEvent[]): BattleLog {
+  const log = cloneTail(prev);
+  let fight: Fight | null = null;
+
+  const round = () => log.rounds.at(-1)!;
+  const current = () => round().groups.at(-1);
+  /** The open activation, or a loose group for events outside one. */
+  const group = (): LogGroup => {
+    const g = current();
+    if (g && (g.open || !g.unit)) return g;
+    const loose: LogGroup = { id: log.nextId++, items: [], open: false };
+    round().groups.push(loose);
+    return loose;
+  };
+  const add = (item: Omit<LogItem, 'id'>): LogItem => {
+    const full = { ...item, id: log.nextId++ };
+    group().items.push(full);
+    if (full.tone === 'objective' || full.tone === 'end') {
+      log.callout = { id: full.id, text: itemText(full), tone: full.tone };
+    }
+    return full;
+  };
+  const closeFight = () => {
+    if (fight) finishFight(fight);
+    fight = null;
+  };
+
   for (const e of events) {
-    const text = formatEvent(state, e);
-    if (text === null) continue;
-    const tone = eventTone(e);
-    added.push(tone ? { id: counter++, text, tone } : { id: counter++, text });
+    if (fight && absorb(fight, e, state)) continue;
+    closeFight();
+
+    const f = fightFor(state, e, { id: -1, icon: '', parts: [], category: 'combat', unitIds: [] });
+    if (f) {
+      f.item.icon = FIGHT_ICON[f.kind];
+      f.item.unitIds = [f.aggressor.unit.id, f.defender.unit.id];
+      f.item = add(f.item);
+      fight = f;
+      continue;
+    }
+
+    switch (e.type) {
+      case 'ActivationChosen': {
+        const g = current();
+        if (g) g.open = false;
+        round().groups.push({
+          id: log.nextId++,
+          unit: ref(state, e.unitId),
+          diceCount: e.diceCount,
+          items: [],
+          open: true,
+        });
+        break;
+      }
+      case 'DiceRolled': {
+        const roll: DiceRoll = {
+          dice: e.dice,
+          quality: e.quality,
+          successes: e.successes,
+          failures: e.failures,
+          inspired: !!e.inspired,
+        };
+        const g = current();
+        if (g?.open && g.unit?.id === e.unitId) g.roll = roll;
+        break;
+      }
+      case 'Turnover': {
+        const g = current();
+        if (g?.open) g.turnover = true;
+        add({
+          icon: '✖',
+          parts: ['Turnover — ', { player: e.player }, ' is benched for the round'],
+          brief: ['✖ turnover'],
+          tone: 'danger',
+          category: 'other',
+          unitIds: [e.unitId],
+        });
+        break;
+      }
+      case 'ActivationEnded': {
+        const g = current();
+        if (g?.unit) g.open = false;
+        break;
+      }
+      case 'UnitMoved': {
+        const path = e.path ?? [e.from, e.to];
+        const last = group().items.at(-1);
+        // A chain of moves (one plan, several commands) reads as one walk.
+        if (last?.mover === e.unitId && last.path) {
+          last.path = [...last.path, ...path.slice(1)];
+        } else {
+          add({ icon: '➜', parts: [], category: 'other', unitIds: [e.unitId], path, mover: e.unitId });
+        }
+        const item = group().items.at(-1)!;
+        const hexes = item.path!.length - 1;
+        const n = `${hexes} ${hexes === 1 ? 'hex' : 'hexes'}`;
+        item.parts = [unit(ref(state, e.unitId)), ` moves ${n}`];
+        item.brief = [`➜ ${n}`];
+        break;
+      }
+      case 'UnitStoodUp':
+        add({
+          icon: '⤒',
+          parts: [unit(ref(state, e.unitId)), e.reassembled ? ' reassembles and stands up' : ' stands up'],
+          brief: ['⤒ stands'],
+          category: 'other',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'GuardDeclared':
+        add({
+          icon: '🛡',
+          parts: [unit(ref(state, e.unitId)), ' raises guard'],
+          brief: ['🛡 guard'],
+          category: 'other',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'WarCry': {
+        const inspired = e.inspired.map((id) => ref(state, id));
+        const parts: LogPart[] = [unit(ref(state, e.unitId)), ' lets out a war cry'];
+        inspired.forEach((r, i) => parts.push(i === 0 ? ', inspiring ' : ', ', unit(r)));
+        add({
+          icon: '📣',
+          parts,
+          brief: ['📣 war cry'],
+          category: 'other',
+          unitIds: [e.unitId, ...e.inspired],
+        });
+        break;
+      }
+      case 'LeaderFallen':
+        add({
+          icon: '☠',
+          parts: [unit(ref(state, e.unitId)), ', a Leader, has fallen!'],
+          brief: ['☠ ', unit(ref(state, e.unitId))],
+          tone: 'danger',
+          category: 'combat',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'NerveCheck':
+        break; // implied by the knockdown or rout it produces
+      case 'WarbandBroken':
+        add({
+          icon: '⚠',
+          parts: [{ player: e.player }, "'s warband breaks!"],
+          brief: ['⚠ broken'],
+          tone: 'danger',
+          category: 'combat',
+          unitIds: [],
+        });
+        break;
+      case 'UnitRouted':
+        add({
+          icon: '🏳',
+          parts: [unit(ref(state, e.unitId)), ' flees the field'],
+          brief: ['🏳 ', unit(ref(state, e.unitId))],
+          tone: 'danger',
+          category: 'combat',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'UnitFled':
+        add({
+          icon: '🏃',
+          parts: [unit(ref(state, e.unitId)), ' breaks and runs'],
+          brief: ['🏃 ', unit(ref(state, e.unitId))],
+          category: 'combat',
+          unitIds: [e.unitId],
+          path: e.path,
+        });
+        break;
+      // Consequences with no fight line to join (none are expected; kept so nothing is lost).
+      case 'ArmorHeld':
+        add({ icon: '🛡', parts: [unit(ref(state, e.unitId)), "'s armor turns the blow aside"], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'ToughnessSaved':
+        add({ icon: '🛡', parts: [unit(ref(state, e.unitId)), ' shrugs off the blow (Tough)'], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'UnitKnockedDown':
+        add({ icon: '↓', parts: [unit(ref(state, e.unitId)), ' is knocked down'], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'UnitRecoiled':
+        add({ icon: '↩', parts: [unit(ref(state, e.unitId)), ' is pushed back'], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'UnitSupported':
+        add({
+          icon: '⛨',
+          parts: [unit(ref(state, e.unitId)), ' holds, braced by ', unit(ref(state, e.supporterId))],
+          category: 'combat',
+          unitIds: [e.unitId, e.supporterId],
+        });
+        break;
+      case 'UnitPushedOff':
+        add({ icon: '↩', parts: [unit(ref(state, e.unitId)), ' is pushed off the edge'], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'UnitKilled':
+        add({
+          icon: '💀',
+          parts: [unit(ref(state, e.unitId)), ' is killed'],
+          brief: ['💀 ', unit(ref(state, e.unitId))],
+          tone: 'danger',
+          category: 'combat',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'RoundEnded': {
+        const g = current();
+        if (g) g.open = false;
+        log.rounds.push({ round: e.round, leader: e.nextLeader, groups: [] });
+        break;
+      }
+      case 'ScoreChanged': {
+        const what =
+          e.zone !== undefined ? `zone ${zoneLetter(e.zone)}` : state.mode?.mode === 'king-of-the-hill' ? 'the hill' : null;
+        add({
+          icon: '★',
+          parts: [
+            { player: e.player },
+            ` scores ${e.points}${what ? ` for holding ${what}` : ''} `,
+            { em: `${e.scores[0]}–${e.scores[1]}`, cls: 'score' },
+          ],
+          brief: [`★ +${e.points}`],
+          tone: 'objective',
+          category: 'objective',
+          unitIds: [],
+        });
+        break;
+      }
+      case 'FlagPickedUp':
+        add({
+          icon: '⚑',
+          parts: [unit(ref(state, e.unitId)), ' seizes ', { player: e.player }, "'s flag"],
+          brief: ['⚑ seized'],
+          tone: 'objective',
+          category: 'objective',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'FlagDropped':
+        add({
+          icon: '⚑',
+          parts: [unit(ref(state, e.unitId)), ' drops ', { player: e.player }, "'s flag"],
+          brief: ['⚑ dropped'],
+          tone: 'objective',
+          category: 'objective',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'FlagReturned':
+        add({
+          icon: '⚑',
+          parts: [unit(ref(state, e.unitId)), ' returns ', { player: e.player }, "'s flag to base"],
+          brief: ['⚑ returned'],
+          tone: 'objective',
+          category: 'objective',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'FlagCaptured':
+        add({
+          icon: '⚑',
+          parts: [unit(ref(state, e.unitId)), ' carries the flag home — ', { player: e.player }, ' captures it!'],
+          brief: ['⚑ captured'],
+          tone: 'objective',
+          category: 'objective',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'GameOver': {
+        const g = current();
+        if (g) g.open = false;
+        add({
+          icon: '🏆',
+          parts: [
+            'Game over — ',
+            { player: e.winner },
+            ' wins',
+            ...(e.reason ? [` (${GAME_OVER_REASONS[e.reason]})`] : []),
+          ],
+          tone: 'end',
+          category: 'objective',
+          unitIds: [],
+        });
+        break;
+      }
+    }
   }
-  // Keep the log bounded.
-  return [...prev, ...added].slice(-200);
+  closeFight();
+
+  // Keep the log bounded, dropping the oldest rounds whole (never the current one).
+  let count = log.rounds.reduce((n, r) => n + r.groups.length, 0);
+  while (count > MAX_GROUPS && log.rounds.length > 1) count -= log.rounds.shift()!.groups.length;
+  return log;
+}
+
+/** The whole log a list of transitions produces (a replay up to some step). */
+export function buildLog(initialRound: number, steps: readonly { state: GameState; events: readonly GameEvent[] }[]): BattleLog {
+  return steps.reduce((log, s) => appendEvents(log, s.state, s.events), emptyLog(initialRound));
 }

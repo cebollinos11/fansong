@@ -55,6 +55,8 @@ export interface BoardViewModel {
   selectableUnitIds: string[];
   /** Unit the human has selected but not yet committed dice for. */
   selectedUnitId: string | null;
+  /** Units the reader is pointing at elsewhere (a log line), ringed above every other cue. */
+  focusUnitIds?: string[];
   /** Whether the local human may currently interact. */
   interactive: boolean;
   /**
@@ -237,6 +239,7 @@ function outlineMaterial(): THREE.ShaderMaterial {
 }
 
 const SELECT_COLOR = 0xffd54a;
+const FOCUS_COLOR = 0xffffff; // ring on a unit named by the hovered log line
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
 const INSPIRED_COLOR = '#ffae3c'; // star over a unit inspired by a war cry
 const CROWN_COLOR = '#ffd54a';
@@ -870,8 +873,10 @@ export class BoardView {
       const isApproachTarget = !isAttackTarget && vm.approachTargetIds.includes(u.id);
       const isGuarding = u.guarding && !u.dead;
       const isShot = vm.shootTargetIds?.includes(u.id) ?? false;
-      obj.cue =
-        isAttackTarget || isApproachTarget
+      const isFocused = vm.focusUnitIds?.includes(u.id) ?? false;
+      obj.cue = isFocused
+        ? { color: FOCUS_COLOR, period: 0, far: false }
+        : isAttackTarget || isApproachTarget
           ? { color: isShot ? SHOT_COLOR : ATTACK_COLOR, period: CUE_FAST_MS, far: isApproachTarget }
           : isSelected
             ? { color: SELECT_COLOR, period: 0, far: false }

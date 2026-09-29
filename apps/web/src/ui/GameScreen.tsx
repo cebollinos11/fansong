@@ -13,7 +13,8 @@ import { BoardCanvas } from './BoardCanvas.js';
 import { oddsLine } from './hexInfo.js';
 import { Hud } from './Hud.js';
 import { seatLabel, turnPhrase } from './hudView.js';
-import { appendEvents, type LogEntry } from './log.js';
+import type { LogFocus } from './BattleLogView.js';
+import { appendEvents, emptyLog, type BattleLog } from './log.js';
 
 /** How long the round-start banner stays up over the board (ms; matches the CSS animation). */
 const ROUND_ANNOUNCE_MS = 1800;
@@ -52,8 +53,11 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // ...and the state whose animations have played out, which the HUD and log show.
   const [state, setState] = useState<GameState>(client.getState());
   const [idle, setIdle] = useState(true);
-  const [log, setLog] = useState<LogEntry[]>([]);
+  const [log, setLog] = useState<BattleLog>(() => emptyLog(client.getState().round));
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  // A unit picked from the log for the inspector, and what the hovered log line points at.
+  const [inspectedUnitId, setInspectedUnitId] = useState<string | null>(null);
+  const [logFocus, setLogFocus] = useState<LogFocus | null>(null);
   const [status, setStatus] = useState<ClientStatus>(client.status());
   // Open when a target was clicked with two actions in hand: attack, or press it?
   const [attackChoice, setAttackChoice] = useState<AttackChoice | null>(null);
@@ -295,6 +299,11 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, client]);
 
+  // Picking a unit to activate brings the inspector back to it.
+  useEffect(() => {
+    if (selectedUnitId) setInspectedUnitId(null);
+  }, [selectedUnitId]);
+
   // A menu left open when the turn moves on has nothing left to answer.
   useEffect(() => {
     if (!myTurn || state.phase !== 'acting') setAttackChoice(null);
@@ -345,6 +354,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         announcement={announcement}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
+        focusUnitIds={logFocus?.unitIds ?? (inspectedUnitId ? [inspectedUnitId] : [])}
+        focusPath={logFocus?.path}
         diceChoices={myTurn && selectedUnitId && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}
         onChooseDice={handleActivate}
         playing
@@ -360,6 +371,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         resolving={!idle}
         roundStarting={roundAnnounce !== null}
         log={log}
+        inspectedUnitId={inspectedUnitId}
+        onInspect={setInspectedUnitId}
+        onLogFocus={setLogFocus}
         onActivate={handleActivate}
         onEndActivation={handleEndActivation}
         onGuard={handleGuard}

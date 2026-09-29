@@ -1,9 +1,8 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
-import { unitMove, type GameEvent, type GameState } from '@fansong/engine';
+import { unitMove, type GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { describeHex, oddsLine } from '../src/ui/hexInfo.js';
 import type { PlanPreview } from '../src/game/planView.js';
-import { formatEvent } from '../src/ui/log.js';
 
 const SETUP: MatchSetup = {
   presets: ['iron-wardens', 'ashfang-raiders'],
@@ -63,42 +62,6 @@ describe('describeHex', () => {
   it('is null off the board', () => {
     expect(describeHex(state, { x: -1, y: 0 })).toBeNull();
     expect(describeHex(state, { x: state.board.width, y: 0 })).toBeNull();
-  });
-});
-
-describe('formatEvent high ground', () => {
-  const state = createMatchFromPresets(SETUP);
-  const [a, b] = [state.units[0]!, state.units.find((u) => u.owner === 1)!];
-
-  it('mentions a high-ground bonus only when present', () => {
-    const base = {
-      attackerId: a.id,
-      targetId: b.id,
-      attackDie: 3,
-      defenseDie: 2,
-      attackScore: 7,
-      defenseScore: 5,
-      result: 'defenderKnockedDown',
-    } as const;
-    const plain = formatEvent(state, { type: 'AttackResolved', ...base } as GameEvent);
-    expect(plain).not.toMatch(/high ground/);
-    const up = formatEvent(state, { type: 'AttackResolved', ...base, attackBonus: 1 } as GameEvent);
-    expect(up).toContain(`${a.name} (7, +1 high ground) attacks ${b.name} (5)`);
-    const shot = formatEvent(state, { type: 'ShotResolved', ...base, defenseBonus: 1 } as GameEvent);
-    expect(shot).toContain(`shoots ${b.name} (5, +1 high ground)`);
-    const riposte = formatEvent(state, {
-      type: 'GuardRiposte',
-      guardId: b.id,
-      attackerId: a.id,
-      guardDie: 4,
-      attackerDie: 1,
-      guardScore: 8,
-      attackerScore: 4,
-      guardBonus: 1,
-      result: 'defenderKnockedDown',
-      prevented: true,
-    } as GameEvent);
-    expect(riposte).toContain(`${b.name} (8, +1 high ground) ripostes ${a.name} (4)`);
   });
 });
 

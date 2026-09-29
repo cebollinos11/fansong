@@ -3,7 +3,8 @@ import type { Interaction } from '../game/interaction.js';
 import { isAiSeat, type MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
 import { seatLabel, traitTags, warbandStatus } from './hudView.js';
-import { latestCallout, type LogEntry } from './log.js';
+import { BattleLogView, type LogFocus } from './BattleLogView.js';
+import type { BattleLog } from './log.js';
 import { modeHud } from './modeView.js';
 
 interface Props {
@@ -20,7 +21,11 @@ interface Props {
   resolving: boolean;
   /** True while the round-start banner covers the board — nobody's turn text is accurate yet. */
   roundStarting: boolean;
-  log: LogEntry[];
+  log: BattleLog;
+  /** The unit picked from the log for the inspector; it outranks the selection until closed. */
+  inspectedUnitId: string | null;
+  onInspect: (unitId: string | null) => void;
+  onLogFocus: (focus: LogFocus | null) => void;
   onActivate: (diceCount: number) => void;
   onEndActivation: () => void;
   onGuard: () => void;
@@ -49,7 +54,7 @@ export function Hud(props: Props): JSX.Element {
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
   const banner = statusBanner(status);
   const mode = modeHud(state);
-  const callout = latestCallout(props.log);
+  const callout = props.log.callout;
 
   return (
     <aside className="hud">
@@ -92,7 +97,7 @@ export function Hud(props: Props): JSX.Element {
       {callout?.tone === 'objective' ? (
         // Keyed by entry id so each new scoring/flag event replays the fade-in/out animation.
         <div key={callout.id} className="callout">
-          {callout.text.trim()}
+          {callout.text}
         </div>
       ) : null}
 
@@ -201,23 +206,27 @@ export function Hud(props: Props): JSX.Element {
         </div>
       )}
 
-      <UnitInspector state={state} unitId={selectedUnitId ?? state.activeUnitId} />
+      <UnitInspector
+        state={state}
+        unitId={props.inspectedUnitId ?? selectedUnitId ?? state.activeUnitId}
+        onClose={props.inspectedUnitId ? () => props.onInspect(null) : undefined}
+      />
 
-      <div className="log">
-        <h3>Battle log</h3>
-        <div className="log-lines">
-          {[...props.log].reverse().map((entry) => (
-            <div key={entry.id} className={`log-line${entry.tone ? ` ${entry.tone}` : ''}`}>
-              {entry.text}
-            </div>
-          ))}
-        </div>
-      </div>
+      <BattleLogView log={props.log} onFocus={props.onLogFocus} onInspect={props.onInspect} />
     </aside>
   );
 }
 
-function UnitInspector({ state, unitId }: { state: GameState; unitId: string | null }): JSX.Element | null {
+function UnitInspector({
+  state,
+  unitId,
+  onClose,
+}: {
+  state: GameState;
+  unitId: string | null;
+  /** Set when the unit was picked from the log: back to the selected or acting unit. */
+  onClose?: () => void;
+}): JSX.Element | null {
   const u = unitId ? unitById(state, unitId) : null;
   if (!u) return null;
   const traits = traitTags(u, u.traits.flying && !airborne(state, u));
@@ -225,6 +234,11 @@ function UnitInspector({ state, unitId }: { state: GameState; unitId: string | n
     <div className="inspector">
       <h3>
         {u.name} <span className={`inspector-owner p${u.owner}`}>P{u.owner}</span>
+        {onClose ? (
+          <button type="button" className="inspector-close ghost" title="Stop inspecting" onClick={onClose}>
+            ×
+          </button>
+        ) : null}
       </h3>
       <div className="inspector-stats">
         <span title="Activation dice succeed on this or higher — lower is better">Quality {u.quality}</span>

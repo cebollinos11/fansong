@@ -23,6 +23,10 @@ interface Props {
   previewFor?: (cell: Vec) => PlanPreview | null;
   selectableUnitIds: string[];
   selectedUnitId: string | null;
+  /** Units ringed because the reader is pointing at them elsewhere (a log line). */
+  focusUnitIds?: string[];
+  /** A route traced because the reader is pointing at it elsewhere (a log line's move). */
+  focusPath?: Vec[];
   interactive: boolean;
   /** Seats this screen commands; other sides' moves trace their route first (unset: every move). */
   localSeats?: readonly Owner[];
@@ -184,6 +188,11 @@ export function BoardCanvas(props: Props): JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const localSeats = useMemo(() => props.localSeats, [seatsKey]);
 
+  // Also handed over fresh each render; only a change of units matters.
+  const focusKey = props.focusUnitIds?.join(',') ?? '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const focusUnitIds = useMemo(() => props.focusUnitIds ?? [], [focusKey]);
+
   // Reconcile visuals on every relevant change.
   useEffect(() => {
     const vm: BoardViewModel = {
@@ -194,6 +203,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       shootTargetIds: props.shootTargetIds ?? [],
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
+      focusUnitIds,
       interactive: props.interactive,
       localSeats,
       overlays,
@@ -210,6 +220,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.shootTargetIds,
     props.selectableUnitIds,
     props.selectedUnitId,
+    focusUnitIds,
     props.interactive,
     localSeats,
     overlays,
@@ -230,10 +241,17 @@ export function BoardCanvas(props: Props): JSX.Element {
 
   // Trace the hovered plan. `hover` changes only when the pointer crosses into a
   // new hex (BoardView dedupes it), so this costs nothing while the pointer drifts.
+  // Off the board, a hovered log line's route takes its place.
   const previewFor = props.previewFor;
+  const focusPath = props.focusPath;
   useEffect(() => {
-    viewRef.current?.setPlanPreview(hover && previewFor ? previewFor(hover) : null);
-  }, [hover, previewFor]);
+    const planned = hover && previewFor ? previewFor(hover) : null;
+    const traced =
+      !planned && focusPath && focusPath.length > 1
+        ? { path: focusPath, waypoints: [focusPath.at(-1)!], cost: 0, kind: 'move' as const, provokes: 0 }
+        : null;
+    viewRef.current?.setPlanPreview(planned ?? traced);
+  }, [hover, previewFor, focusPath]);
 
   const hexInfo = hover ? describeHex(props.state, hover, previewFor?.(hover) ?? null) : null;
 

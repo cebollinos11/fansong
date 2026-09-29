@@ -989,7 +989,17 @@ button.secondary {
 }
 
 .inspector h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 8px;
+}
+
+.inspector-close {
+  margin-left: auto;
+  padding: 0 8px;
+  font-size: 16px;
+  line-height: 1.4;
 }
 
 .inspector-stats {
@@ -1059,42 +1069,283 @@ button.secondary {
   background: rgba(255, 107, 91, 0.25);
 }
 
+/* --- Battle log: rounds, then activations (newest first), then their lines in order --- */
 .log {
   flex: 1;
-  min-height: 120px;
+  min-height: 160px;
   display: flex;
   flex-direction: column;
 }
 
-.log h3 {
-  margin: 0 0 8px;
+.log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
-.log-lines {
+.log-head h3 {
+  margin: 0;
+}
+
+.log-filter {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.log-filter button {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+.log-filter button + button {
+  border-left: 1px solid var(--line);
+}
+
+.log-filter button.on {
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.log-body {
   flex: 1;
   overflow-y: auto;
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
-.log-line {
-  white-space: pre-wrap;
+.log-round + .log-round {
+  border-top: 1px solid var(--line);
+}
+
+.log-round-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.log-empty {
+  padding: 6px 10px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.log-group {
+  border-left: 3px solid transparent;
+  padding: 2px 0;
+}
+
+.log-group + .log-group {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.log-group.p0 {
+  border-left-color: var(--p0);
+}
+
+.log-group.p1 {
+  border-left-color: var(--p1);
+}
+
+.log-group.open {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.log-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 3px 8px 3px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.log-group-head:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.log-caret {
+  flex: none;
+  color: var(--muted);
+  font-size: 9px;
+  transition: transform 0.15s;
+}
+
+.log-group.open .log-caret {
+  transform: rotate(90deg);
+}
+
+.log-group-head .log-unit {
+  font-weight: 600;
+}
+
+.log-brief {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  /* A summary too long for the panel fades out rather than being cut mid-word. */
+  mask-image: linear-gradient(to right, #000 85%, transparent);
+}
+
+.log-brief-bit {
+  flex: none;
+}
+
+.log-brief-bit.danger {
+  color: #ff8a7a;
+}
+
+.log-brief-bit.objective {
+  color: var(--gold, #e0b84c);
+}
+
+.log-group.turnover .log-group-head .log-unit {
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 82, 82, 0.7);
+}
+
+.log-dim {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.log-items {
+  padding: 0 0 3px;
+}
+
+.log-item {
+  display: flex;
+  gap: 6px;
+  padding: 2px 8px 2px 20px;
+  color: var(--text);
+}
+
+.log-group.loose .log-item {
+  padding-left: 9px;
+}
+
+.log-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.log-item.has-detail {
+  cursor: pointer;
+}
+
+.log-icon {
+  flex: none;
+  width: 1.2em;
+  text-align: center;
   color: var(--muted);
 }
 
-/* Scoring / flag events and the game-over line stand out and flash in once. */
-.log-line.objective {
+.log-text {
+  min-width: 0;
+}
+
+.log-more {
+  margin-left: 5px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.log-detail {
+  display: flex;
+  flex-direction: column;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-unit.p0,
+.log-player.p0 {
+  color: var(--p0);
+}
+
+.log-unit.p1,
+.log-player.p1 {
+  color: var(--p1);
+}
+
+.log-player {
+  font-weight: 600;
+}
+
+.log-unit.link {
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.log-unit.link:hover,
+.log-unit.link:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+.log-em.score {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-em.kill {
+  color: #ff5252;
+  font-weight: 700;
+}
+
+.log-em.down {
+  color: #ffb74d;
+  font-weight: 600;
+}
+
+.log-em.push {
+  color: #ffd98a;
+}
+
+/* Scoring / flag events, deaths and the game-over line stand out; objectives flash in once. */
+.log-item.danger .log-icon {
+  color: #ff5252;
+}
+
+.log-item.objective {
   color: var(--gold, #e0b84c);
   animation: log-flash 1.2s ease-out;
 }
 
-.log-line.end {
-  color: var(--text, #fff);
+.log-item.objective .log-icon {
+  color: var(--gold, #e0b84c);
+}
+
+.log-item.end {
   font-weight: 700;
+  background: rgba(224, 184, 76, 0.12);
 }
 
 @keyframes log-flash {
@@ -1104,6 +1355,46 @@ button.secondary {
   to {
     background: transparent;
   }
+}
+
+/* An activation's dice: green pips for a success, dim for a failure, gold for the inspired sure 6. */
+.log-dice {
+  display: inline-flex;
+  gap: 3px;
+  flex: none;
+}
+
+.mini-die {
+  display: grid;
+  grid-template: repeat(3, 1fr) / repeat(3, 1fr);
+  width: 14px;
+  height: 14px;
+  padding: 2px;
+  border-radius: 3px;
+  background: #d9dee6;
+}
+
+.mini-die .pip {
+  place-self: center;
+  width: 2.5px;
+  height: 2.5px;
+  border-radius: 50%;
+}
+
+.mini-die .pip.on {
+  background: #1b1f27;
+}
+
+.mini-die.hit {
+  background: var(--accent);
+}
+
+.mini-die.miss {
+  opacity: 0.4;
+}
+
+.mini-die.sure {
+  background: var(--gold, #e0b84c);
 }
 
 /* Transient HUD callout for the latest objective event: pops in, lingers, fades away. */
@@ -1158,7 +1449,7 @@ button.secondary {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .log-line.objective,
+  .log-item.objective,
   .callout,
   .score-points.pulse {
     animation: none;

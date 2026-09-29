@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { runReplay, type GameEvent, type Replay } from '@fansong/engine';
 import { BoardCanvas } from './BoardCanvas.js';
 import { downloadReplay } from '../game/replay-io.js';
-import { eventTone, formatEvent } from './log.js';
+import { BattleLogView, type LogFocus } from './BattleLogView.js';
+import { buildLog } from './log.js';
 
 interface Props {
   replay: Replay;
@@ -32,7 +33,16 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
   const stepMs = useRef(0);
 
   const state = index === 0 ? run.initial : run.frames[index - 1]!;
-  const stepEvents = index === 0 ? [] : run.events[index - 1]!;
+  // The log as it stood after this step; ids are stable, so scrubbing keeps what the reader opened.
+  const log = useMemo(
+    () =>
+      buildLog(
+        run.initial.round,
+        run.frames.slice(0, index).map((frame, i) => ({ state: frame, events: run.events[i]! })),
+      ),
+    [run, index],
+  );
+  const [logFocus, setLogFocus] = useState<LogFocus | null>(null);
 
   // Step exactly one command forward, animating that command's events.
   const stepForward = useRef<() => void>(() => {});
@@ -74,6 +84,8 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
         attackTargetIds={[]}
         selectableUnitIds={[]}
         selectedUnitId={null}
+        focusUnitIds={logFocus?.unitIds ?? []}
+        focusPath={logFocus?.path}
         interactive={false}
         events={fx}
         onEventsPlayed={(ms) => (stepMs.current = ms)}
@@ -122,24 +134,7 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
           onChange={(e) => jumpTo(parseInt(e.target.value, 10))}
         />
 
-        <div className="log">
-          <h3>This step</h3>
-          <ul>
-            {stepEvents.length === 0 ? (
-              <li className="muted">{index === 0 ? 'Starting positions' : '—'}</li>
-            ) : (
-              stepEvents.map((e, i) => {
-                const text = formatEvent(state, e);
-                const tone = eventTone(e);
-                return text ? (
-                  <li key={i} className={tone ? `log-line ${tone}` : undefined}>
-                    {text}
-                  </li>
-                ) : null;
-              })
-            )}
-          </ul>
-        </div>
+        <BattleLogView log={log} onFocus={setLogFocus} />
 
         <button className="primary" onClick={() => downloadReplay(replay)}>
           Download replay

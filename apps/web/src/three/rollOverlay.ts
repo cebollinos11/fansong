@@ -52,7 +52,7 @@ const VERDICT_BOTTOM = 30;
 export type Projector = (unitId: string, height: number) => { x: number; y: number } | null;
 
 // Which of a 3×3 grid's cells hold a pip, per face.
-const PIPS: Record<number, number[]> = {
+export const DIE_PIPS: Record<number, number[]> = {
   1: [4],
   2: [2, 6],
   3: [2, 4, 6],
@@ -412,7 +412,7 @@ export class RollOverlay {
 
   private showFace(d: Die, face: number): void {
     d.face = face;
-    const on = PIPS[face] ?? [];
+    const on = DIE_PIPS[face] ?? [];
     d.pips.forEach((p, i) => p.classList.toggle('on', on.includes(i)));
   }
 
