@@ -63,6 +63,12 @@ export interface BoardViewModel {
   /** Whether the local human may currently interact. */
   interactive: boolean;
   /**
+   * Let clicks see through what they can't act on: a figure or tree that isn't
+   * a target passes the click to the reachable hex or target unit behind it.
+   * Off where any unit may be what the click is for (the sandbox's editing tools).
+   */
+  pickThrough?: boolean;
+  /**
    * Seats this screen commands. Any other side's unit traces its route on the
    * board before it walks; left unset (a replay), every move does.
    */
@@ -715,6 +721,11 @@ export class BoardView {
   private hoverKey: string | null = null;
   /** The unit figure under the pointer, so a clickable one can answer it. */
   private hoverUnitId: string | null = null;
+  /** What a click can act on right now (see {@link pickTarget}): target units, and reachable hexes by `x,y`. */
+  private clickableUnits = new Set<string>();
+  private clickableCells = new Set<string>();
+  private pickThrough = false;
+  private interactive = false;
   private readonly ringGeo = new THREE.RingGeometry(RING_INNER, RING_OUTER, 40);
   private readonly dashedRingGeo = dashedRing();
   private clock = new THREE.Clock();
@@ -885,8 +896,9 @@ export class BoardView {
   }
 
   /** Add a board's merged chunks to the scene and to the pickable tiles (see {@link pickCell}). */
-  private addChunks(chunks: BoardChunks, material: THREE.Material): void {
+  private addChunks(chunks: BoardChunks, material: THREE.Material, feature = false): void {
     for (const mesh of chunks.meshes(material)) {
+      mesh.userData.feature = feature;
       this.tiles.push(mesh);
       this.scene.add(mesh);
     }
@@ -935,7 +947,7 @@ export class BoardView {
       );
       chunks.geometry(p.cell, geometry, matrix, p.color);
     }
-    this.addChunks(chunks, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true }));
+    this.addChunks(chunks, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true }), true);
     for (const g of [rockGeo, boxGeo, coneGeo, trunkGeo]) g.dispose();
   }
 
@@ -1011,6 +1023,10 @@ export class BoardView {
     this.drawHighlights(vm.reach);
     if (vm.overlays !== this.overlays) this.drawOverlays(vm.overlays ?? []);
     if (vm.markingsKey !== this.markingsKey) this.drawMarkings(vm);
+    this.interactive = vm.interactive;
+    this.pickThrough = vm.pickThrough ?? false;
+    this.clickableUnits = new Set([...vm.selectableUnitIds, ...vm.attackTargetIds, ...vm.approachTargetIds]);
+    this.clickableCells = new Set(vm.reach.map((t) => `${t.cell.x},${t.cell.y}`));
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
 
     // The moment the player can act again, give them back the view they set.
@@ -3329,16 +3345,9 @@ export class BoardView {
     if (moved > 6) return; // treat as a drag, not a click
 
     this.aimRay(ev);
-
-    // Units first (their meshes carry userData.unitId), then a board cell.
-    const unitId = this.pickUnit();
-    if (unitId) {
-      this.onUnitClick?.(unitId);
-      return;
-    }
-
-    const cell = this.pickCell();
-    if (cell) this.onCellClick?.(cell);
+    const pick = this.pickTarget();
+    if (pick.unitId) this.onUnitClick?.(pick.unitId);
+    else if (pick.cell) this.onCellClick?.(pick.cell);
   };
 
   private handlePointerMove = (ev: PointerEvent): void => {
@@ -3361,12 +3370,15 @@ export class BoardView {
       return this.setHover(null); // orbiting/panning: hide the tooltip
     }
     this.aimRay(ev);
+    // Hover resolves exactly as a click would, so the preview shows what it commits.
+    const pick = this.pickTarget();
+    this.hoverUnitId = pick.unitId ?? null;
+    if (this.pickThrough && this.interactive) {
+      this.renderer.domElement.style.cursor = pick.actionable ? 'pointer' : 'default';
+    }
     // A figure stands over its own hex; report that rather than the tile behind it.
-    const unitId = this.pickUnit();
-    this.hoverUnitId = unitId ?? null;
-    const target = unitId ? this.units.get(unitId)?.targetPos : undefined;
-    const unitCell = target ? this.worldToCell(target) : null;
-    this.setHover(unitCell ?? this.pickCell());
+    const target = pick.unitId ? this.units.get(pick.unitId)?.targetPos : undefined;
+    this.setHover(target ? this.worldToCell(target) : pick.cell);
   };
 
   private handlePointerLeave = (): void => {
@@ -3392,12 +3404,46 @@ export class BoardView {
     this.raycaster.setFromCamera(this.pointer, this.camera);
   }
 
-  /** The visible unit whose opaque figure is under the current ray. */
-  private pickUnit(): string | undefined {
+  /**
+   * What a click on the current ray lands on. Plainly, the nearest opaque unit
+   * figure, else the nearest hex. With {@link pickThrough} the ray first passes
+   * through figures and trees it can't act on (an ally in front, a bystander, a
+   * forest on an unreachable hex) to the nearest target unit or reachable hex
+   * behind them. The ground itself stays solid, so a hex hidden behind a hill is
+   * never picked. With nothing actionable on the ray, the plain pick stands.
+   */
+  private pickTarget(): { unitId?: string; cell: Vec | null; actionable: boolean } {
+    const hits: { distance: number; unitId?: string; cell?: Vec; feature?: boolean }[] = [];
     const meshes: THREE.Object3D[] = [];
     for (const obj of this.units.values()) if (obj.group.visible) meshes.push(obj.group);
-    const unitHits = this.raycaster.intersectObjects(meshes, true);
-    return unitHits.find((h) => this.isSolidHit(h))?.object.userData.unitId as string | undefined;
+    for (const h of this.raycaster.intersectObjects(meshes, true)) {
+      if (this.isSolidHit(h)) hits.push({ distance: h.distance, unitId: h.object.userData.unitId as string });
+    }
+    // Tile and feature hits resolve raised hexes by their top or side faces.
+    for (const h of this.raycaster.intersectObjects(this.tiles, false)) {
+      const cell = h.faceIndex != null ? (h.object.userData.cells as Vec[])[h.faceIndex] : undefined;
+      if (cell) hits.push({ distance: h.distance, cell, feature: h.object.userData.feature === true });
+    }
+    const plane = hits.some((h) => h.cell) ? null : this.pickPlane();
+    if (plane) hits.push({ distance: plane.distance, cell: plane.cell });
+    hits.sort((a, b) => a.distance - b.distance);
+    const reachable = (c: Vec) => this.clickableCells.has(`${c.x},${c.y}`);
+
+    if (this.pickThrough && this.interactive) {
+      for (const h of hits) {
+        if (h.unitId) {
+          if (this.clickableUnits.has(h.unitId)) return { unitId: h.unitId, cell: null, actionable: true };
+        } else if (h.cell) {
+          if (reachable(h.cell)) return { cell: h.cell, actionable: true };
+          if (!h.feature) break; // the ground hides whatever lies beyond it
+        }
+      }
+    }
+    // Units first (their meshes carry userData.unitId), then the nearest hex.
+    const unitId = hits.find((h) => h.unitId)?.unitId;
+    if (unitId) return { unitId, cell: null, actionable: this.clickableUnits.has(unitId) };
+    const cell = hits.find((h) => h.cell)?.cell ?? null;
+    return { cell, actionable: cell !== null && reachable(cell) };
   }
 
   /** The board cell under the current ray: nearest tile/feature hit, else the ground plane. */
@@ -3405,10 +3451,14 @@ export class BoardView {
     // The nearest tile or feature hit resolves raised hexes by their top or side faces.
     const hit = this.raycaster.intersectObjects(this.tiles, false)[0];
     const tileCell = hit?.faceIndex != null ? (hit.object.userData.cells as Vec[])[hit.faceIndex] : undefined;
-    if (tileCell) return tileCell;
+    return tileCell ?? this.pickPlane()?.cell ?? null;
+  }
+
+  /** Where the current ray meets the ground plane, off the tiles. */
+  private pickPlane(): { cell: Vec; distance: number } | null {
     const point = new THREE.Vector3();
-    if (this.raycaster.ray.intersectPlane(this.groundPlane, point)) return this.worldToCell(point);
-    return null;
+    const cell = this.raycaster.ray.intersectPlane(this.groundPlane, point) ? this.worldToCell(point) : null;
+    return cell && { cell, distance: this.raycaster.ray.origin.distanceTo(point) };
   }
 
   /** A cutout's quad is larger than its figure: only count clicks on opaque pixels. */

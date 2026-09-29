@@ -28,6 +28,8 @@ interface Props {
   /** A route traced because the reader is pointing at it elsewhere (a log line's move). */
   focusPath?: Vec[];
   interactive: boolean;
+  /** Clicks pass through figures and trees that aren't targets (see {@link BoardViewModel.pickThrough}). */
+  pickThrough?: boolean;
   /** Seats this screen commands; other sides' moves trace their route first (unset: every move). */
   localSeats?: readonly Owner[];
   /** The most recent batch of engine events, for transient FX. A new empty batch cuts pending FX short. */
@@ -233,6 +235,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       selectedUnitId: props.selectedUnitId,
       focusUnitIds,
       interactive: props.interactive,
+      pickThrough: props.pickThrough,
       localSeats,
       overlays,
       markers: markings.markers,
@@ -250,6 +253,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.selectedUnitId,
     focusUnitIds,
     props.interactive,
+    props.pickThrough,
     localSeats,
     overlays,
     markings,
