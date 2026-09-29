@@ -47,25 +47,6 @@ export function withStat(unit: WarbandUnit, stat: EditableStat, value: number): 
   return { ...unit, [stat]: clampStat(stat, value) };
 }
 
-/** What the Shooter column means, in words. */
-export const SHOOTER_TITLE = `Shooter — shoots at range, taking no return damage: ${SHOOTER_KINDS.map(
-  (k) => `${SHOOTER_NAMES[k]} ${SHOOTER_RANGE[k]} hexes`,
-).join(', ')}`;
-
-/** The Shooter column's choices: melee only, then each Shooter trait with its range. */
-export const SHOOTER_OPTIONS: readonly { value: ShooterKind | ''; label: string }[] = [
-  { value: '', label: '—' },
-  ...SHOOTER_KINDS.map((k) => ({ value: k, label: `${SHOOTER_NAMES[k]} · ${SHOOTER_RANGE[k]}` })),
-];
-
-/** A copy of `unit` with its Shooter trait set, or dropped for `undefined` (melee only). */
-export function withShooter(unit: WarbandUnit, shooter: ShooterKind | undefined): WarbandUnit {
-  const next = { ...unit };
-  if (shooter) next.shooter = shooter;
-  else delete next.shooter;
-  return next;
-}
-
 /** The on/off traits the editors offer, in display order. */
 export const TOGGLE_TRAITS = [
   'slow',
@@ -84,8 +65,31 @@ export const TOGGLE_TRAITS = [
 ] as const;
 export type ToggleTrait = (typeof TOGGLE_TRAITS)[number];
 
-/** Each on/off trait's name and, briefly, what it does, for the trait editor's chips and menu. */
-export const TRAIT_INFO: Record<ToggleTrait, { label: string; desc: string }> = {
+/** A Shooter trait as the trait editor names it; a unit has at most one. */
+export type ShooterTrait = `shooter-${ShooterKind}`;
+export const SHOOTER_TRAITS: readonly ShooterTrait[] = SHOOTER_KINDS.map((k) => `shooter-${k}` as const);
+
+/** Anything the trait editor can add or remove: an on/off trait or one of the Shooter traits. */
+export type TraitKey = ToggleTrait | ShooterTrait;
+
+/** Every trait the editor offers, in display order: movement, then shooting, then the rest. */
+export const EDITOR_TRAITS: readonly TraitKey[] = ['slow', 'fast', ...SHOOTER_TRAITS, ...TOGGLE_TRAITS.slice(2)];
+
+function isShooterTrait(t: TraitKey): t is ShooterTrait {
+  return t.startsWith('shooter-');
+}
+
+function shooterKind(t: ShooterTrait): ShooterKind {
+  return t.slice('shooter-'.length) as ShooterKind;
+}
+
+const SHOOTER_INFO = Object.fromEntries(
+  SHOOTER_KINDS.map((k) => [`shooter-${k}`, { label: SHOOTER_NAMES[k], desc: `shoots ${SHOOTER_RANGE[k]} hexes, taking no return damage` }]),
+) as Record<ShooterTrait, { label: string; desc: string }>;
+
+/** Each trait's name and, briefly, what it does, for the trait editor's chips and menu. */
+export const TRAIT_INFO: Record<TraitKey, { label: string; desc: string }> = {
+  ...SHOOTER_INFO,
   slow: { label: 'Slow', desc: `${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
   fast: { label: 'Fast', desc: `${BASE_MOVE + SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}` },
   tough: { label: 'Tough', desc: 'the first would-be kill only knocks it down' },
@@ -108,34 +112,59 @@ export const TRAIT_INFO: Record<ToggleTrait, { label: string; desc: string }> = 
 };
 
 /** A trait's tooltip: its name and what it does. */
-export function traitTitle(trait: ToggleTrait): string {
+export function traitTitle(trait: TraitKey): string {
   return `${TRAIT_INFO[trait].label} — ${TRAIT_INFO[trait].desc}`;
+}
+
+/** Whether `unit` has `trait`. */
+export function hasTrait(unit: WarbandUnit, trait: TraitKey): boolean {
+  return isShooterTrait(trait) ? unit.shooter === shooterKind(trait) : !!unit[trait];
+}
+
+/** The traits `unit` has, in display order. */
+export function traitsOf(unit: WarbandUnit): TraitKey[] {
+  return EDITOR_TRAITS.filter((t) => hasTrait(unit, t));
+}
+
+/** The trait adding `trait` to `unit` would displace (Slow and Fast, or another Shooter trait), if any. */
+export function traitReplaced(unit: WarbandUnit, trait: TraitKey): TraitKey | undefined {
+  if (trait === 'slow' && unit.fast) return 'fast';
+  if (trait === 'fast' && unit.slow) return 'slow';
+  if (isShooterTrait(trait) && unit.shooter && unit.shooter !== shooterKind(trait)) return `shooter-${unit.shooter}`;
+  return undefined;
+}
+
+/**
+ * The fields switching `trait` on or off changes: `false` for an on/off trait
+ * switched off, `shooter: undefined` for melee only. Slow and Fast exclude each
+ * other, so switching one on switches the other off.
+ */
+export function traitPatch(unit: WarbandUnit, trait: TraitKey, on: boolean): Partial<WarbandUnit> {
+  if (isShooterTrait(trait)) {
+    return { shooter: on ? shooterKind(trait) : hasTrait(unit, trait) ? undefined : unit.shooter };
+  }
+  const patch: Partial<WarbandUnit> = { [trait]: on };
+  if (on && trait === 'slow') patch.fast = false;
+  if (on && trait === 'fast') patch.slow = false;
+  return patch;
+}
+
+/** A copy of `unit` with a trait switched on or off (off drops the key); see {@link traitPatch}. */
+export function withTrait(unit: WarbandUnit, trait: TraitKey, on: boolean): WarbandUnit {
+  const next: Record<string, unknown> = { ...unit };
+  for (const [k, v] of Object.entries(traitPatch(unit, trait, on))) {
+    if (v === undefined || v === false) delete next[k];
+    else next[k] = v;
+  }
+  return next as unknown as WarbandUnit;
 }
 
 /**
  * What switching `trait` on would change `unit`'s cost by, in points — it
- * scales with the unit's Quality, and Slow or Fast replacing the other counts both.
+ * scales with the unit's Quality, and a trait replacing another counts both.
  */
-export function traitCost(unit: WarbandUnit, trait: ToggleTrait): number {
+export function traitCost(unit: WarbandUnit, trait: TraitKey): number {
   return unitCost(withTrait(unit, trait, true)) - unitCost(unit);
-}
-
-/** The on/off traits `unit` has, in display order. */
-export function traitsOf(unit: Partial<Record<ToggleTrait, boolean>>): ToggleTrait[] {
-  return TOGGLE_TRAITS.filter((t) => unit[t]);
-}
-
-/**
- * A copy of `unit` with a trait switched on or off (off drops the key). Slow and
- * Fast exclude each other, so switching one on switches the other off.
- */
-export function withTrait(unit: WarbandUnit, trait: ToggleTrait, on: boolean): WarbandUnit {
-  const next = { ...unit };
-  if (on) next[trait] = true;
-  else delete next[trait];
-  if (on && trait === 'slow') delete next.fast;
-  if (on && trait === 'fast') delete next.slow;
-  return next;
 }
 
 /** A plain rank-and-file unit to start from. */

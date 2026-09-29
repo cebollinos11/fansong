@@ -13,7 +13,7 @@ import {
   saveArmy,
 } from '../src/game/armies.js';
 import type { MapStorage } from '../src/game/customMaps.js';
-import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitCost, traitsOf, uniqueName, withShooter, withStat, withTrait } from '../src/ui/armyView.js';
+import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitCost, traitPatch, traitReplaced, traitsOf, uniqueName, withStat, withTrait } from '../src/ui/armyView.js';
 
 function memoryStorage(initial: Record<string, string> = {}): MapStorage & { data: Record<string, string> } {
   const data = { ...initial };
@@ -94,10 +94,22 @@ describe('army builder helpers', () => {
     expect(withStat({ name: 'A', quality: 3, combat: 3 }, 'combat', 9).combat).toBe(6);
   });
 
-  it('sets a Shooter trait, dropping the key for melee only', () => {
-    const u = withShooter({ name: 'A', quality: 3, combat: 3 }, 'long');
+  it('treats each Shooter kind as a trait, one at a time, dropping the key for melee only', () => {
+    const u = withTrait({ name: 'A', quality: 3, combat: 3 }, 'shooter-long', true);
     expect(u.shooter).toBe('long');
-    expect('shooter' in withShooter(u, undefined)).toBe(false);
+    const short = withTrait(u, 'shooter-short', true);
+    expect(short.shooter).toBe('short');
+    expect(traitReplaced(u, 'shooter-short')).toBe('shooter-long');
+    expect('shooter' in withTrait(short, 'shooter-short', false)).toBe(false);
+    // Removing a Shooter kind the unit doesn't have leaves its own alone.
+    expect(withTrait(short, 'shooter-long', false).shooter).toBe('short');
+  });
+
+  it('patches a live unit with false for traits switched off', () => {
+    const unit = { name: 'A', quality: 3, combat: 3, slow: true };
+    expect(traitPatch(unit, 'fast', true)).toEqual({ fast: true, slow: false });
+    expect(traitPatch(unit, 'slow', false)).toEqual({ slow: false });
+    expect(traitPatch({ ...unit, shooter: 'normal' }, 'shooter-normal', false)).toEqual({ shooter: undefined });
   });
 
   it('toggles traits, dropping the key when off', () => {
@@ -114,8 +126,13 @@ describe('army builder helpers', () => {
   });
 
   it('lists a unit’s traits in display order, skipping ones switched off', () => {
-    expect(traitsOf({ sharpshooter: true, tough: true, slow: false })).toEqual(['tough', 'sharpshooter']);
-    expect(traitsOf({})).toEqual([]);
+    const unit = { name: 'A', quality: 3, combat: 3 };
+    expect(traitsOf({ ...unit, sharpshooter: true, tough: true, slow: false, shooter: 'long' })).toEqual([
+      'shooter-long',
+      'tough',
+      'sharpshooter',
+    ]);
+    expect(traitsOf(unit)).toEqual([]);
   });
 
   it('prices a trait by what it would add to this unit', () => {
@@ -127,6 +144,9 @@ describe('army builder helpers', () => {
     expect(traitCost({ ...unit, quality: 6 }, 'tough')).toBe(1);
     // Fast on a Slow unit drops the Slow rebate too.
     expect(traitCost({ ...unit, slow: true }, 'fast')).toBe(12);
+    // Every Shooter kind costs one trait; swapping one for another is free.
+    expect(traitCost(unit, 'shooter-long')).toBe(6);
+    expect(traitCost({ ...unit, shooter: 'short' }, 'shooter-long')).toBe(0);
   });
 
   it('keeps unit names unique and preset looks', () => {

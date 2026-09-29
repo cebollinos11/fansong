@@ -8,7 +8,6 @@ import {
   unitCost,
   validateArmy,
   warbandCost,
-  type ShooterKind,
   type Warband,
   type WarbandUnit,
 } from '@fansong/content';
@@ -35,11 +34,8 @@ import {
   moveUnit,
   newArmy,
   presetTemplates,
-  SHOOTER_OPTIONS,
-  SHOOTER_TITLE,
   STAT_LABELS,
   templateUnit,
-  withShooter,
   withStat,
   withTrait,
 } from './armyView.js';
@@ -276,7 +272,6 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
             {STAT_LABELS[s].short}
           </th>
         ))}
-        <th title={SHOOTER_TITLE}>Shooter</th>
         <th>Traits</th>
         <th>Pts</th>
         {extra}
@@ -357,19 +352,6 @@ export function UnitRow({
           />
         </td>
       ))}
-      <td>
-        <select
-          value={unit.shooter ?? ''}
-          aria-label="Shooter"
-          onChange={(e) => onChange(withShooter(unit, (e.target.value || undefined) as ShooterKind | undefined))}
-        >
-          {SHOOTER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </td>
       <td className="army-traits">
         <TraitEditor unit={unit} onToggle={(t, on) => onChange(withTrait(unit, t, on))} />
       </td>

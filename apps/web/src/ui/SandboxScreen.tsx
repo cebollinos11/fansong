@@ -12,15 +12,13 @@ import {
 import {
   PRESETS,
   profileRange,
-  SHOOTER_KINDS,
-  SHOOTER_NAMES,
   shooterForRange,
   type MatchSetup,
-  type ShooterKind,
   type WarbandUnit,
 } from '@fansong/content';
 import { playableArmies } from '../game/armies.js';
 import { Picker, unitItem, unitLine } from './Picker.js';
+import { traitPatch } from './armyView.js';
 import { TraitEditor } from './TraitEditor.js';
 import { browserStorage } from '../game/customMaps.js';
 import * as sandboxOps from '../game/sandbox.js';
@@ -370,29 +368,10 @@ function ProfileFields({
       <div className="sb-row">
         <NumberField label="Q" value={profile.quality} min={1} max={6} onChange={(quality) => onChange({ quality })} />
         <NumberField label="C" value={profile.combat} min={0} max={9} onChange={(combat) => onChange({ combat })} />
-        <label className="sb-num">
-          Shooter
-          <select
-            value={profile.shooter ?? ''}
-            onChange={(e) => onChange({ shooter: (e.target.value || undefined) as ShooterKind | undefined })}
-          >
-            <option value="">—</option>
-            {SHOOTER_KINDS.map((k) => (
-              <option key={k} value={k}>
-                {SHOOTER_NAMES[k]}
-              </option>
-            ))}
-          </select>
-        </label>
       </div>
       <TraitEditor
         unit={profile}
-        onToggle={(t, on) => {
-          // Slow and Fast exclude each other.
-          if (on && t === 'slow') onChange({ slow: true, fast: false });
-          else if (on && t === 'fast') onChange({ fast: true, slow: false });
-          else onChange({ [t]: on });
-        }}
+        onToggle={(t, on) => onChange(traitPatch(profile, t, on))}
       />
     </>
   );

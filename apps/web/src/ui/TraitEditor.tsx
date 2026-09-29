@@ -1,10 +1,10 @@
 import type { WarbandUnit } from '@fansong/content';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { TOGGLE_TRAITS, TRAIT_INFO, traitCost, traitsOf, traitTitle, type ToggleTrait } from './armyView.js';
+import { EDITOR_TRAITS, TRAIT_INFO, hasTrait, traitCost, traitReplaced, traitsOf, traitTitle, type TraitKey } from './armyView.js';
 
 /**
- * A unit's on/off traits as removable chips, plus a menu to add one it lacks.
+ * A unit's traits, Shooter included, as removable chips, plus a menu to add one it lacks.
  * There are too many traits for a tick box each; a unit usually has two or three.
  */
 export function TraitEditor({
@@ -12,10 +12,10 @@ export function TraitEditor({
   onToggle,
 }: {
   unit: WarbandUnit;
-  onToggle: (trait: ToggleTrait, on: boolean) => void;
+  onToggle: (trait: TraitKey, on: boolean) => void;
 }): JSX.Element {
   const has = traitsOf(unit);
-  const missing = TOGGLE_TRAITS.filter((t) => !unit[t]);
+  const missing = EDITOR_TRAITS.filter((t) => !hasTrait(unit, t));
   return (
     <div className="trait-editor">
       {has.map((t) => (
@@ -45,8 +45,8 @@ function TraitPicker({
   onPick,
 }: {
   unit: WarbandUnit;
-  traits: readonly ToggleTrait[];
-  onPick: (trait: ToggleTrait) => void;
+  traits: readonly TraitKey[];
+  onPick: (trait: TraitKey) => void;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -94,7 +94,7 @@ function TraitPicker({
     if (open) menu.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [open, active]);
 
-  const pick = (t: ToggleTrait) => {
+  const pick = (t: TraitKey) => {
     setOpen(false);
     onPick(t);
     button.current?.focus();
@@ -158,7 +158,7 @@ function TraitPicker({
             >
               {traits.map((t, i) => {
                 const cost = traitCost(unit, t);
-                const replaces = t === 'slow' && unit.fast ? 'Fast' : t === 'fast' && unit.slow ? 'Slow' : null;
+                const replaces = traitReplaced(unit, t);
                 return (
                   <div
                     key={t}
@@ -172,9 +172,9 @@ function TraitPicker({
                   >
                     <span className="trait-option-name">
                       {TRAIT_INFO[t].label}
-                      {replaces ? <span className="trait-option-note"> replaces {replaces}</span> : null}
+                      {replaces ? <span className="trait-option-note"> replaces {TRAIT_INFO[replaces].label}</span> : null}
                     </span>
-                    <span className={`trait-option-cost${cost < 0 ? ' rebate' : ''}`}>
+                    <span className={`trait-option-cost${cost < 0 ? ' rebate' : cost === 0 ? ' free' : ''}`}>
                       {cost > 0 ? '+' : cost < 0 ? '−' : '±'}
                       {Math.abs(cost)} pts
                     </span>

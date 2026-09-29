@@ -2426,6 +2426,10 @@ button.trait-add[aria-expanded='true'] {
   color: var(--accent);
 }
 
+.trait-option-cost.free {
+  color: var(--muted);
+}
+
 .trait-option-desc {
   grid-column: 1 / -1;
   font-size: 12px;
