@@ -97,12 +97,36 @@ function saveCameraMode(mode: CameraMode): void {
   }
 }
 
+const ELEVATION_KEY = 'fansong.cameraElevation';
+/** The range the camera-angle slider offers, in degrees above the table. */
+const MIN_ELEVATION = 15;
+const MAX_ELEVATION = 89;
+
+/** The camera angle the player picked, or null to keep the opening shot's. */
+function loadElevation(): number | null {
+  try {
+    const saved = Number(localStorage.getItem(ELEVATION_KEY));
+    return saved >= MIN_ELEVATION && saved <= MAX_ELEVATION ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveElevation(degrees: number): void {
+  try {
+    localStorage.setItem(ELEVATION_KEY, String(degrees));
+  } catch {
+    // Not remembered; the slider still works for this session.
+  }
+}
+
 /** React wrapper that mounts a {@link BoardView} and keeps it in sync with props. */
 export function BoardCanvas(props: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
   const [hover, setHover] = useState<Vec | null>(null);
   const [cameraMode, setCameraMode] = useState(loadCameraMode);
+  const [elevation, setElevation] = useState(loadElevation);
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
   const handlers = useRef({
     onUnitClick: props.onUnitClick,
@@ -126,6 +150,10 @@ export function BoardCanvas(props: Props): JSX.Element {
     view.onCellClick = (cell) => handlers.current.onCellClick(cell);
     view.onCellHover = setHover;
     view.buildBoard(props.state);
+    // Show the opening shot's angle until the player picks their own.
+    const saved = loadElevation();
+    if (saved === null) setElevation(Math.round(view.elevation));
+    else view.setElevation(saved);
     viewRef.current = view;
     return () => {
       view.dispose();
@@ -351,6 +379,23 @@ export function BoardCanvas(props: Props): JSX.Element {
             {CAMERA_LABEL[cameraMode]}
           </button>
         ) : null}
+        <label className="board-pitch" title="The camera's angle above the table">
+          Angle
+          <input
+            type="range"
+            min={MIN_ELEVATION}
+            max={MAX_ELEVATION}
+            step={1}
+            value={elevation ?? MAX_ELEVATION}
+            onChange={(e) => {
+              const degrees = Number(e.target.value);
+              setElevation(degrees);
+              saveElevation(degrees);
+              viewRef.current?.setElevation(degrees);
+            }}
+          />
+          <span>{elevation ?? '–'}°</span>
+        </label>
       </div>
     </div>
   );
