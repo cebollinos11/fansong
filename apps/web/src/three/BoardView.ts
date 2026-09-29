@@ -316,7 +316,7 @@ const STAR_COLOR = '#ffe066';
 const LUNGE = 0.3; // how far (world units) a melee strike leans into its target
 const WALK_MS_PER_HEX = 300; // a move walks its path hex by hex at this steady pace
 const WALK_HOP = 0.12; // world units a walking mini hops up on each hex step
-const WALK_SWAY = 0.12; // radians it rocks side to side, alternating each step (Wesnoth foot units have no walk frames)
+const WALK_SWAY = 0.12; // radians it rocks side to side, alternating each step (for sprites without walk frames)
 const ROUTE_LEAD_MS = 450; // an opponent's route is traced this long before the unit sets off along it
 const ROUTE_FADE_MS = 250; // and fades out this long once the unit arrives
 const DEFEND_LEAD_MS = 126; // Wesnoth's defend reaction starts this long before impact
@@ -2177,10 +2177,13 @@ export class BoardView {
     const to = path[i + 1]!;
     const k = THREE.MathUtils.clamp(f - i, 0, 1);
     obj.group.position.lerpVectors(from, to, k);
-    // A tabletop hop per step: up and down, rocking onto alternate feet.
-    const arc = Math.sin(Math.PI * k);
-    obj.group.position.y += WALK_HOP * arc;
-    obj.mirror.rotation.z = WALK_SWAY * arc * (i % 2 === 0 ? 1 : -1);
+    // A tabletop hop per step: up and down, rocking onto alternate feet —
+    // unless the sprite has walk frames of its own to show the steps.
+    if (!hasWalkFrames(obj.animator)) {
+      const arc = Math.sin(Math.PI * k);
+      obj.group.position.y += WALK_HOP * arc;
+      obj.mirror.rotation.z = WALK_SWAY * arc * (i % 2 === 0 ? 1 : -1);
+    }
     if (f >= 0 && !walk.backward) this.setHeading(obj, to.clone().sub(from));
   }
 
@@ -3443,4 +3446,9 @@ export class BoardView {
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return null;
     return { x, y };
   }
+}
+
+/** Whether a sprite's move clip actually animates (a few Wesnoth ones just hold the base image). */
+function hasWalkFrames(animator: UnitAnimator): boolean {
+  return animator.anims.move?.frames.some(([f]) => f !== animator.base) ?? false;
 }

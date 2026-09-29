@@ -1,4 +1,5 @@
 import manifest from './unitAnimations.json';
+import walks from './walkAnimations.json';
 
 /**
  * Wesnoth animations for each unit sprite, generated from a Wesnoth checkout by
@@ -43,9 +44,13 @@ export interface SpriteAnimations {
 
 // JSON infers frames as (string | number)[][]; the importer guarantees [image, ms] pairs.
 const ANIMATIONS = manifest as unknown as Record<string, SpriteAnimations>;
+/** Walk cycles synthesized by `scripts/generate-walks.ts` for sprites Wesnoth gives no move clip. */
+const WALKS = walks as unknown as Record<string, Clip>;
 
 export function animationsFor(sprite: string): SpriteAnimations {
-  return ANIMATIONS[sprite] ?? {};
+  const anims = ANIMATIONS[sprite] ?? {};
+  const walk = WALKS[sprite];
+  return walk && !anims.move ? { ...anims, move: walk } : anims;
 }
 
 export const clipDuration = (clip: Clip): number => clip.frames.reduce((s, [, ms]) => s + ms, 0);

@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "sprites": "tsx scripts/import-wesnoth.ts",
+    "walks": "tsx scripts/generate-walks.ts",
     "apply-presets": "tsx scripts/apply-presets.ts"
   },
   "dependencies": {

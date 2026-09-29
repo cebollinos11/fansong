@@ -1,0 +1,22 @@
+{
+ "human-loyalists/siegetrooper.png": {
+  "frames": [
+   [
+    "human-loyalists/siegetrooper-walk-1.png",
+    75
+   ],
+   [
+    "human-loyalists/siegetrooper-walk-2.png",
+    75
+   ],
+   [
+    "human-loyalists/siegetrooper-walk-3.png",
+    75
+   ],
+   [
+    "human-loyalists/siegetrooper-walk-4.png",
+    75
+   ]
+  ]
+ }
+}
