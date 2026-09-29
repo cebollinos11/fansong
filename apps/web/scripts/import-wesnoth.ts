@@ -11,7 +11,8 @@
  *   - public/sprites/projectiles/…   — missiles for ranged attacks
  *
  * This is a small WML reader, not a WML engine: it understands the tags,
- * attributes, image-path expansion (`x-[1~3].png:[100*3]`) and the handful of
+ * attributes, image-path expansion (`x-[1~3].png:[100*3]`), the frame-sequence
+ * macros it can expand from Wesnoth's own definitions, and the handful of other
  * animation macros these units use. It fails loudly on a referenced frame that
  * doesn't exist rather than shipping a broken clip.
  */
@@ -40,27 +41,11 @@ const MISSILE_MACROS: Record<string, string> = {
 };
 const DEFAULT_MISSILE_LEAD_MS = 150; // Wesnoth's usual missile_start_time=-150
 /**
- * `{ATTACK_ANIM_*DIRECTIONAL_N_FRAME BASE TAIL …}` (animation-utils2.cfg): the
- * whole body of an [attack_anim] — its front branch is `BASE-se-TAIL[1~N].png:100`.
- * Values are each macro's start_time.
+ * Frame-sequence macros (animation-utils2.cfg) that are expanded from their
+ * Wesnoth definition, e.g. `{MOVING_ANIM_DIRECTIONAL_12_FRAME "units/…/skeleton"}`
+ * is a whole [movement_anim]. Other macros stay opaque calls on their node.
  */
-const ATTACK_ANIM_MACROS: Record<string, number> = {
-  ATTACK_ANIM_DIRECTIONAL_9_FRAME: -450,
-  ATTACK_ANIM_DIRECTIONAL_10_FRAME: -450,
-  ATTACK_ANIM_QUAD_DIRECTIONAL_10_FRAME: -500,
-  ATTACK_ANIM_QUAD_DIRECTIONAL_12_FRAME: -600,
-};
-
-/** Frames and start_time of an [attack_anim] written as one ATTACK_ANIM_* macro call. */
-function attackAnimMacro(node: Node): { frames: [string, number][]; startTime: number } | undefined {
-  for (const mac of node.macros) {
-    const m = /^\{(ATTACK_ANIM_\w*?(\d+)_FRAME)\s+"([^"]+)"\s+"([^"]+)"/.exec(mac);
-    if (!m || ATTACK_ANIM_MACROS[m[1]!] === undefined) continue;
-    const [base, tail, n] = [m[3]!, m[4]!, m[2]!];
-    return { frames: expandImage(`${base}-se-${tail}[1~${n}].png:100`), startTime: ATTACK_ANIM_MACROS[m[1]!]! };
-  }
-  return undefined;
-}
+const EXPANDED_MACROS = /^(ATTACK_ANIM_|MOVING_ANIM_|STANDING_ANIM_DIRECTIONAL)/;
 
 // --- WML ------------------------------------------------------------------
 
@@ -71,12 +56,72 @@ interface Node {
   macros: string[];
 }
 
+let macroDefs: Map<string, { params: string[]; body: string }> | undefined;
+
+/** The EXPANDED_MACROS definitions in Wesnoth's core macros, read on first use. */
+function macros(): Map<string, { params: string[]; body: string }> {
+  if (macroDefs) return macroDefs;
+  macroDefs = new Map();
+  const dir = join(CORE, 'macros');
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.cfg'))) {
+    const text = readFileSync(join(dir, file), 'utf8');
+    for (const m of text.matchAll(/^#define\s+(\w+)([^\n]*)\n([\s\S]*?)^#enddef/gm)) {
+      // Skip anything needing a real preprocessor (defaulted args, conditionals).
+      if (!EXPANDED_MACROS.test(m[1]!) || /^\s*#(arg|if)/m.test(m[3]!)) continue;
+      macroDefs.set(m[1]!, { params: m[2]!.trim().split(/\s+/).filter(Boolean), body: m[3]! });
+    }
+  }
+  return macroDefs;
+}
+
+/** Split a macro call's arguments: "quoted", (grouped), {nested}, or bare words. */
+function macroArgs(s: string): string[] {
+  const args: string[] = [];
+  let i = 0;
+  while (i < s.length) {
+    if (/\s/.test(s[i]!)) {
+      i++;
+      continue;
+    }
+    const open = s[i]!;
+    const close = open === '"' ? '"' : open === '(' ? ')' : open === '{' ? '}' : '';
+    if (!close) {
+      const end = s.slice(i).search(/\s/);
+      args.push(end < 0 ? s.slice(i) : s.slice(i, i + end));
+      i = end < 0 ? s.length : i + end;
+      continue;
+    }
+    let depth = 0;
+    let j = i;
+    for (; j < s.length; j++) {
+      if (s[j] === close && (open === '"' ? j > i : --depth === 0)) break;
+      if (s[j] === open && open !== '"') depth++;
+    }
+    // Quotes and grouping parens are the preprocessor's; nested calls stay whole.
+    args.push(open === '{' ? s.slice(i, j + 1) : s.slice(i + 1, j));
+    i = j + 1;
+  }
+  return args;
+}
+
+/** A call to one of EXPANDED_MACROS, as WML lines; undefined for any other macro. */
+function expandMacro(call: string): string[] | undefined {
+  const m = /^\{(\w+)\s*([\s\S]*)\}$/.exec(call);
+  const def = m && macros().get(m[1]!);
+  if (!def) return undefined;
+  const args = macroArgs(m[2]!);
+  if (args.length !== def.params.length) return undefined;
+  const value = new Map(def.params.map((p, i) => [p, args[i]!]));
+  return def.body.replace(/\{(\w+)\}/g, (whole, p: string) => value.get(p) ?? whole).split(/\r?\n/);
+}
+
 function parseWml(text: string): Node {
   const root: Node = { tag: 'root', attrs: {}, kids: [], macros: [] };
   const stack = [root];
   let pending = ''; // a macro call spanning several lines, until its braces balance
-  for (const raw of text.split(/\r?\n/)) {
-    let s = raw.trim();
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    let s = lines[i]!.trim();
     if (!s || s.startsWith('#')) continue;
     const top = stack[stack.length - 1]!;
     if (pending || s.startsWith('{')) {
@@ -85,7 +130,8 @@ function parseWml(text: string): Node {
       s = pending;
       pending = '';
     }
-    const tag = /^\[(\/?)(\+?[a-z_]+)\]$/.exec(s);
+    // A tag may carry a trailing comment (`[frame] # …`).
+    const tag = /^\[(\/?)(\+?[a-z_]+)\](?:\s*#.*)?$/.exec(s);
     if (tag) {
       if (tag[1]) {
         if (stack.length > 1) stack.pop();
@@ -95,7 +141,9 @@ function parseWml(text: string): Node {
         stack.push(n);
       }
     } else if (s.startsWith('{')) {
-      top.macros.push(s);
+      const body = expandMacro(s);
+      if (body) lines.splice(i + 1, 0, ...body);
+      else top.macros.push(s);
     } else {
       const kv = /^([a-z_0-9,]+)\s*=\s*(.*)$/.exec(s);
       if (kv) top.attrs[kv[1]!] = kv[2]!.replace(/\s+#.*$/, '').replace(/^_\s*/, '').replace(/^"|"$/g, '');
@@ -213,13 +261,14 @@ function rawAnims(ut: Node): RawAnim[] {
   for (const k of ut.kids) {
     if (!(k.tag.endsWith('_anim') || k.tag === 'death' || k.tag === 'defend') || !facesFront(k)) continue;
     const { frames, missiles } = collectFrames(k);
-    const fromMacro = k.tag === 'attack_anim' && frames.length === 0 ? attackAnimMacro(k) : undefined;
-    if (fromMacro) frames.push(...fromMacro.frames);
+    // Swimming variants (`crocodile-float-attack`, `wolf-water`) are Wesnoth's water-terrain
+    // art; there is no water to swim in here, so keep the dry-land default.
+    if (frames.some(([p]) => /-(float|water)\b/.test(p))) continue;
     const anim: RawAnim = {
       kind: k.tag,
       direction: k.attrs.direction,
       wounded: k.macros.some((m) => m.includes('WOUNDED_UNIT')),
-      startTime: Number(k.attrs.start_time ?? fromMacro?.startTime ?? 0),
+      startTime: Number(k.attrs.start_time ?? 0),
       missileStart: k.attrs.missile_start_time ? Number(k.attrs.missile_start_time) : undefined,
       frames,
       missiles,

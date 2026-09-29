@@ -119,6 +119,46 @@
     ]
    ]
   },
+  "move": {
+   "frames": [
+    [
+     "goblins/spearman-se-run1.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run2.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run3.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run4.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run5.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run6.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run7.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run8.png",
+     67
+    ],
+    [
+     "goblins/spearman-se-run9.png",
+     67
+    ]
+   ]
+  },
   "melee": [
    {
     "frames": [
@@ -2682,6 +2722,41 @@
     ]
    ]
   },
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/croc/crocodile-attack1.png",
+      100
+     ],
+     [
+      "monsters/croc/crocodile-attack2.png",
+      100
+     ],
+     [
+      "monsters/croc/crocodile-attack3.png",
+      100
+     ],
+     [
+      "monsters/croc/crocodile-attack4.png",
+      100
+     ],
+     [
+      "monsters/croc/crocodile-attack5.png",
+      100
+     ],
+     [
+      "monsters/croc/crocodile-attack6.png",
+      150
+     ],
+     [
+      "monsters/croc/crocodile-attack7.png",
+      250
+     ]
+    ],
+    "hitMs": 500
+   }
+  ],
   "defendMelee": {
    "frames": [
     [
@@ -4656,6 +4731,42 @@
   }
  },
  "undead-skeletal/skeleton/skeleton.png": {
+  "standing": {
+   "frames": [
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob1.png",
+     200
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob2.png",
+     200
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob3.png",
+     200
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob4.png",
+     200
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob5.png",
+     200
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob6.png",
+     200
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob7.png",
+     200
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-bob8.png",
+     200
+    ]
+   ]
+  },
   "idle": {
    "frames": [
     [
@@ -4697,6 +4808,58 @@
     [
      "undead-skeletal/skeleton/skeleton-idle-2.png",
      100
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "undead-skeletal/skeleton/skeleton-se-run1.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run2.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run3.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run4.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run5.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run6.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run7.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run8.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run9.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run10.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run11.png",
+     50
+    ],
+    [
+     "undead-skeletal/skeleton/skeleton-se-run12.png",
+     50
     ]
    ]
   },
