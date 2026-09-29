@@ -1,4 +1,4 @@
-import { MAX_ELEVATION, makeHexGrid, vecKey, type TerrainFeature, type Vec } from '@fansong/engine';
+import { isDeadlyFeature, MAX_ELEVATION, makeHexGrid, vecKey, type TerrainFeature, type Vec } from '@fansong/engine';
 import { flatMap, type MapDef, type MapHex, type MapObjectives } from './map.js';
 
 /**
@@ -69,8 +69,9 @@ function editHexes(map: MapDef, cells: readonly Vec[], f: (hex: MapHex) => MapHe
   return { ...map, hexes };
 }
 
+/** A hex with `feature` on it. Lava lies flat: it never has any elevation. */
 const withFeature = (elevation: number, feature: TerrainFeature | undefined): MapHex =>
-  feature === undefined ? { elevation } : { elevation, feature };
+  feature === undefined ? { elevation } : { elevation: isDeadlyFeature(feature) ? 0 : elevation, feature };
 
 const clampElevation = (e: number) => Math.max(0, Math.min(MAX_ELEVATION, e));
 
@@ -85,7 +86,7 @@ export function paintElevation(map: MapDef, cells: readonly Vec[], brush: Elevat
   });
 }
 
-/** Place `feature` on the hexes, or remove any feature when `undefined`. Elevation is kept. */
+/** Place `feature` on the hexes, or remove any feature when `undefined`. Elevation is kept (lava flattens it). */
 export function paintFeature(map: MapDef, cells: readonly Vec[], feature: TerrainFeature | undefined): MapDef {
   return editHexes(map, cells, (hex) => withFeature(hex.elevation, feature));
 }

@@ -31,10 +31,12 @@ export function vecKey(v: Vec): string {
  * - `rock`, `building`: impassable and block line of sight.
  * - `forest`: passable; blocks sight *through* it, but a unit inside can see and
  *   be seen from outside.
+ * - `lava`: deadly (see {@link isDeadlyFeature}). Nothing on foot may enter it, but
+ *   a flyer may cross it and land on it; it blocks no sight and gives no cover.
  */
-export type TerrainFeature = 'rock' | 'building' | 'forest';
+export type TerrainFeature = 'rock' | 'building' | 'forest' | 'lava';
 
-export const TERRAIN_FEATURES: ReadonlyArray<TerrainFeature> = ['rock', 'building', 'forest'];
+export const TERRAIN_FEATURES: ReadonlyArray<TerrainFeature> = ['rock', 'building', 'forest', 'lava'];
 
 /** Highest hex elevation (elevations are integers `0..MAX_ELEVATION`). */
 export const MAX_ELEVATION = 3;
@@ -65,9 +67,18 @@ export function isImpassableFeature(f: TerrainFeature | undefined): boolean {
   return f === 'rock' || f === 'building';
 }
 
+/**
+ * Is this feature deadly ground? A walk never enters it, and a unit on the
+ * ground that ends up there — pushed in, or a flyer knocked down over it — dies.
+ * Only an airborne flyer may stand on it.
+ */
+export function isDeadlyFeature(f: TerrainFeature | undefined): boolean {
+  return f === 'lava';
+}
+
 /** Does this feature stop line of sight passing *through* its hex? */
 export function blocksSight(f: TerrainFeature | undefined): boolean {
-  return f !== undefined;
+  return f !== undefined && !isDeadlyFeature(f);
 }
 
 /**
@@ -81,9 +92,10 @@ export interface WalkRules {
   stops?(v: Vec): boolean;
   /**
    * Phasing (a flyer): the walk passes *through* otherwise-impassable terrain —
-   * rocks, buildings and legacy blocked cells — so movement is pure hex distance
-   * around nothing. It still may not *land* on such a hex; that is the caller's
-   * check on the destination, not the board's. (Default: no.)
+   * rocks, buildings, legacy blocked cells and deadly ground — so movement is
+   * pure hex distance around nothing. It still may not *land* on a blocked hex
+   * (deadly ground it may); that is the caller's check on the destination, not
+   * the board's. (Default: no.)
    */
   phaseThrough?: boolean;
 }
@@ -92,15 +104,20 @@ export interface Board {
   readonly width: number;
   readonly height: number;
   inBounds(v: Vec): boolean;
-  /** Impassable: a legacy blocked cell or a rock/building hex. */
+  /** Impassable: a legacy blocked cell or a rock/building hex. No unit may stand on it. */
   isBlocked(v: Vec): boolean;
+  /** Deadly ground (lava): no walk enters it and only an airborne flyer may stand on it. */
+  isDeadly(v: Vec): boolean;
   /** Integer elevation of a hex (0 when flat or out of bounds). */
   elevation(v: Vec): number;
   /** The hex's terrain feature, if any. */
   feature(v: Vec): TerrainFeature | undefined;
   /** Hex (cube) distance between two cells. */
   distance(a: Vec, b: Vec): number;
-  /** In-bounds, unblocked adjacent cells (every cell at distance 1). */
+  /**
+   * In-bounds, unblocked adjacent cells (every cell at distance 1). Deadly ground
+   * is included: it is a hex a flyer can stand on, only never walked into.
+   */
   neighbors(v: Vec): Vec[];
   /**
    * The hex adjacent to `v` directly away from `from` (continuing the line from
@@ -116,8 +133,8 @@ export interface Board {
   cellsWithin(v: Vec, r: number): Vec[];
   /**
    * Movement reach: every passable cell reachable from `v` in `1..steps` steps,
-   * walking only through in-bounds, unblocked hexes (BFS around rocks, buildings
-   * and legacy blocked cells). Occupancy is ignored — the caller decides whether
+   * walking only through in-bounds, unblocked hexes (BFS around rocks, buildings,
+   * legacy blocked cells and deadly ground). Occupancy is ignored — the caller decides whether
    * a destination may hold another unit. Returned as a set of `"x,y"` keys.
    * `rules` can forbid hexes or force a walk to stop in them.
    */
@@ -223,13 +240,14 @@ export function makeHexGrid(data: BoardData): Board {
   const feature = (v: Vec): TerrainFeature | undefined => terrain[vecKey(v)]?.feature;
   const elevation = (v: Vec): number => terrain[vecKey(v)]?.elevation ?? 0;
   const isBlocked = (v: Vec) => blocked.has(vecKey(v)) || isImpassableFeature(feature(v));
+  const isDeadly = (v: Vec) => isDeadlyFeature(feature(v));
 
   const distance = (a: Vec, b: Vec) => cubeDistance(offsetToCube(a), offsetToCube(b));
 
   /** The hexes a walk may step to from `cell` under `rules` (none out of a stopping hex). */
   const walkSteps = (cell: Vec, isStart: boolean, rules?: WalkRules): Vec[] => {
     if (!isStart && rules?.stops?.(cell)) return [];
-    const ns = rules?.phaseThrough ? phaseNeighbors(cell) : neighbors(cell);
+    const ns = rules?.phaseThrough ? phaseNeighbors(cell) : neighbors(cell).filter((n) => !isDeadly(n));
     return rules?.passable ? ns.filter((n) => rules.passable!(n)) : ns;
   };
 
@@ -277,6 +295,7 @@ export function makeHexGrid(data: BoardData): Board {
     height,
     inBounds,
     isBlocked,
+    isDeadly,
     elevation,
     feature,
     distance,

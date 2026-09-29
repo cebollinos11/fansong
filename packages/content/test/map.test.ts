@@ -36,7 +36,7 @@ describe('mapDefSchema', () => {
     ['elevation above max', (m: MapDef) => (m.hexes[0] = { elevation: 4 })],
     ['negative elevation', (m: MapDef) => (m.hexes[0] = { elevation: -1 })],
     ['fractional elevation', (m: MapDef) => (m.hexes[0] = { elevation: 1.5 })],
-    ['unknown feature', (m: MapDef) => ((m.hexes[0] as unknown as { feature: string }).feature = 'lava')],
+    ['unknown feature', (m: MapDef) => ((m.hexes[0] as unknown as { feature: string }).feature = 'swamp')],
     ['stray hex key', (m: MapDef) => ((m.hexes[0] as unknown as { blocked: boolean }).blocked = true)],
     ['bad id', (m: MapDef) => (m.id = 'Not A Slug')],
     ['blank name', (m: MapDef) => (m.name = '   ')],

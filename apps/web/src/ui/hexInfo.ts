@@ -8,6 +8,7 @@ const FEATURE_TEXT = {
   rock: 'Rocks — impassable, blocks sight',
   building: 'Building — impassable, blocks sight',
   forest: 'Forest — blocks sight through it',
+  lava: 'Lava — only flyers may cross or land; anyone else pushed in dies, Tough or not; a flyer knocked down here falls in',
 } as const;
 
 export interface HexInfo {

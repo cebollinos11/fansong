@@ -77,6 +77,22 @@ describe('validateMap', () => {
     expect(errors).toContain('player 1 deploy zone: hex (11,1) is impassable');
   });
 
+  it('rejects deploy hexes and objectives on lava', () => {
+    const map = baseMap();
+    setHex(map, { x: 0, y: 1 }, { elevation: 0, feature: 'lava' });
+    setHex(map, { x: 6, y: 6 }, { elevation: 0, feature: 'lava' });
+    map.objectives.flags = [{ x: 6, y: 6 }, { x: 6, y: 5 }];
+    const { errors } = validateMap(map);
+    expect(errors).toContain('player 0 deploy zone: hex (0,1) is lava');
+    expect(errors).toContain('player 0 flag base: hex (6,6) is lava');
+  });
+
+  it('a wall of lava cuts the deploy zones apart like rock', () => {
+    const map = baseMap();
+    for (const v of column(5, map.height)) setHex(map, v, { elevation: 0, feature: 'lava' });
+    expect(validateMap(map).errors).toEqual(['deploy hexes are not all connected by passable ground']);
+  });
+
   it('requires room for a full warband in each deploy zone', () => {
     const map = baseMap();
     map.deployZones[1] = column(11, MAP_LIMITS.minDeployHexes - 1);

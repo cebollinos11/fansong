@@ -30,6 +30,7 @@ const FEATURE_COLORS: Record<TerrainFeature, number> = {
   forest: 0x2f6b3a,
   rock: 0x7b7771,
   building: 0x9a8466,
+  lava: 0xd9531e,
 };
 
 const SQRT3 = Math.sqrt(3);

@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   airborne,
+  isDeadlyFeature,
   makeHexGrid,
   MORALE_RADIUS,
   vecKey,
@@ -16,7 +17,7 @@ import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTe
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
 import { Effects } from './effects.js';
-import { featureLayout } from './features.js';
+import { cellNoise, featureLayout } from './features.js';
 import {
   activationResolveMs,
   activationRollMs,
@@ -31,6 +32,9 @@ import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { BoardChunks } from './chunks.js';
 import {
   hexElevation,
+  LAVA_SINK,
+  lavaRimColor,
+  lavaTopColor,
   surfaceY,
   TILE_BOTTOM,
   TILE_TOP,
@@ -134,6 +138,10 @@ const CHUNK_CELLS = 8;
 const TILE_RIM_START = 0.94;
 /** How far a legacy blocked cell stands above its elevation. */
 const BLOCKED_RISE = 0.4;
+/** Lava's glow swells between BASE − DEPTH and BASE + DEPTH of its colour, over 2π × MS milliseconds. */
+const LAVA_PULSE_BASE = 0.88;
+const LAVA_PULSE_DEPTH = 0.12;
+const LAVA_PULSE_MS = 650;
 
 /**
  * One draw call for many copies of a mesh: each `place` positions a scratch
@@ -361,6 +369,9 @@ const SLOW_MO_SCALE = 0.3; // board time runs this fast at the start of a grueso
 const FEAR_WAVE_MS = 800; // time for a gruesome kill's fear to reach the edge of its radius
 const SHATTER_FADE_MS = 200; // a unit that shatters into motes is gone this fast
 const PUSH_OFF_MS = 900; // a unit shoved off the table slides, topples and drops for this long
+const LAVA_DEATH_MS = 1100; // a unit going into lava slides in, then sinks glowing for this long
+const EMBER_COLORS = [0xffe08a, 0xffb13a, 0xff6a1a];
+const SMOKE_COLORS = [0x3a3431, 0x55504c, 0x2a2624];
 const STICK_MS = 500; // an arrow that lands stays in its target this long
 const BLINKS = 3; // a knocked-down unit blinks this many times as it lands
 const BLINK_MS = 160; // one blink: hidden for the first half, shown for the second
@@ -516,9 +527,19 @@ interface UnitObj {
    * the push that shoved it off the table (it slides that way, topples by
    * `tilt` and sinks).
    */
-  fade: { start: number; end: number; flee: THREE.Vector3 | null; drop?: THREE.Vector3; tilt?: number } | null;
+  fade: {
+    start: number;
+    end: number;
+    flee: THREE.Vector3 | null;
+    drop?: THREE.Vector3;
+    tilt?: number;
+    /** Going into lava: the world offset it slides to (zero when it falls in where it hovers), then it sinks. */
+    melt?: THREE.Vector3;
+  } | null;
   /** Set by a UnitPushedOff event: the direction it is shoved off the table. */
   pushedOff: THREE.Vector3 | null;
+  /** Set by a lava death (pushed in or knocked out of the air): the world offset to the lava it goes into. */
+  intoLava: THREE.Vector3 | null;
   /** A knock the cutout takes and springs back from (a clash, a brace, a shudder of fear); `shake` wobbles instead. */
   jolt: { dir: THREE.Vector3; start: number; end: number; shake: boolean } | null;
   /** A rim glow traced around the figure (a Tough save), when no click cue is showing. */
@@ -682,6 +703,8 @@ export class BoardView {
   /** Board tile and feature chunks, raycast for cell picking (`userData.cells` maps each triangle to its cell). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
+  /** The unlit material of the board's lava tops, pulsed each frame (null with no board built). */
+  private lavaMaterial: THREE.MeshBasicMaterial | null = null;
   private width = 0;
   private height = 0;
   private disposed = false;
@@ -772,19 +795,25 @@ export class BoardView {
     // only needs a wall where it drops to a lower neighbour or off the board, and
     // only as tall as that drop: the rest would be hidden against its neighbours.
     const board = state.board;
-    const topOf = (v: Vec) => surfaceY(hexElevation(board, v)) + (blocked.has(vecKey(v)) ? BLOCKED_RISE : 0);
+    const isLava = (v: Vec) => isDeadlyFeature(board.terrain?.[vecKey(v)]?.feature);
+    const topOf = (v: Vec) =>
+      surfaceY(hexElevation(board, v)) + (blocked.has(vecKey(v)) ? BLOCKED_RISE : 0) - (isLava(v) ? LAVA_SINK : 0);
     const up = new THREE.Vector3(0, 1, 0);
     const corner = (c: { x: number; z: number }, i: number, r: number, y: number) =>
       new THREE.Vector3(c.x + r * Math.cos((i * Math.PI) / 3), y, c.z + r * Math.sin((i * Math.PI) / 3));
     const chunks = new BoardChunks(CHUNK_CELLS);
+    // Lava tops go in their own unlit chunks, so they glow and can pulse.
+    const lavaChunks = new BoardChunks(CHUNK_CELLS);
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const cell = { x, y };
         const isBlocked = blocked.has(vecKey(cell));
+        const lava = isLava(cell);
         const elev = hexElevation(board, cell);
-        const topColor = isBlocked ? BLOCKED_COLOR : tileTopColor(cell, elev);
+        const topColor = isBlocked ? BLOCKED_COLOR : lava ? lavaTopColor(cellNoise(cell, 7)) : tileTopColor(cell, elev);
         const sideColor = isBlocked ? topColor : tileSideColor(cell, elev);
-        const rimColor = tileRimColor(topColor);
+        const rimColor = lava ? lavaRimColor() : tileRimColor(topColor);
+        const topChunks = lava ? lavaChunks : chunks;
         const c = this.cellToWorld(cell);
         const top = topOf(cell);
         const centre = new THREE.Vector3(c.x, top, c.z);
@@ -795,9 +824,9 @@ export class BoardView {
           const inner1 = corner(c, i + 1, HEX_SIZE * TILE_RIM_START, top);
           const outer0 = corner(c, i, HEX_SIZE, top);
           const outer1 = corner(c, i + 1, HEX_SIZE, top);
-          chunks.triangle(cell, centre, inner1, inner0, up, topColor);
-          chunks.triangle(cell, inner0, outer1, outer0, up, rimColor);
-          chunks.triangle(cell, inner0, inner1, outer1, up, rimColor);
+          topChunks.triangle(cell, centre, inner1, inner0, up, topColor);
+          topChunks.triangle(cell, inner0, outer1, outer0, up, rimColor);
+          topChunks.triangle(cell, inner0, inner1, outer1, up, rimColor);
 
           // The edge between those corners faces the neighbour at its midpoint's angle.
           const angle = ((i + 0.5) * Math.PI) / 3;
@@ -813,6 +842,8 @@ export class BoardView {
       }
     }
     this.addChunks(chunks, new THREE.MeshStandardMaterial({ vertexColors: true }));
+    this.lavaMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.addChunks(lavaChunks, this.lavaMaterial);
 
     this.buildFeatures(board);
     if (resized) this.positionCamera(state);
@@ -838,6 +869,7 @@ export class BoardView {
     for (const g of geometries) g.dispose();
     for (const m of materials) m.dispose();
     this.tiles.length = 0;
+    this.lavaMaterial = null;
   }
 
   /** Low-poly rocks, buildings and trees; pickable as the hex they stand on. */
@@ -1147,6 +1179,14 @@ export class BoardView {
         if (obj && by && fate?.type === 'UnitKilled') {
           obj.pushedOff = obj.targetPos.clone().sub(by.targetPos).setY(0).normalize();
         }
+      } else if (e.type === 'UnitPushedIntoLava') {
+        // Pushed into the lava hex beside it: it slides in there as it dies.
+        const obj = this.units.get(e.unitId);
+        if (obj) obj.intoLava = this.unitWorld(e.to).sub(obj.targetPos).setY(0);
+      } else if (e.type === 'UnitFellIntoLava') {
+        // Knocked out of the air over lava: it drops straight into the melt beneath it.
+        const obj = this.units.get(e.unitId);
+        if (obj) obj.intoLava = new THREE.Vector3();
       } else if (e.type === 'UnitKnockedDown') {
         // A Tough unit freezes mid-death for a beat before it drops.
         const at = settle + (toughSaved.has(e.unitId) ? TOUGH_HITCH_MS : 0);
@@ -1727,6 +1767,7 @@ export class BoardView {
       routed: false,
       fade: null,
       pushedOff: null,
+      intoLava: null,
       jolt: null,
       glow: null,
       blink: null,
@@ -1974,6 +2015,14 @@ export class BoardView {
       this.setHeading(obj, flee.clone());
       obj.animator.moveFor(ROUT_MS);
       obj.fade = { start: this.now, end: this.now + ROUT_MS, flee };
+    } else if (obj.intoLava) {
+      // Into the lava: it slides (or drops) into the melt and sinks, glowing, in
+      // a spray of embers and a puff of smoke. No body is left to mark.
+      const melt = obj.intoLava;
+      obj.fade = { start: this.now, end: this.now + LAVA_DEATH_MS, flee: null, melt };
+      const pool = obj.group.position.clone().add(melt).setY(this.groundY(obj) - LAVA_SINK);
+      this.at(LAVA_DEATH_MS * 0.25, () => this.lavaSplash(pool));
+      this.at(LAVA_DEATH_MS * 0.3, () => this.releaseWisp(obj));
     } else if (obj.pushedOff) {
       // Shoved off the table: it slides over the edge, topples the way it was
       // pushed and drops out of sight, kicking up dust at the lip.
@@ -2011,6 +2060,7 @@ export class BoardView {
     obj.fade = null;
     obj.routed = false;
     obj.pushedOff = null;
+    obj.intoLava = null;
     this.effects.unmark(obj.id);
     obj.animator.stop();
     obj.group.visible = true;
@@ -2125,8 +2175,13 @@ export class BoardView {
         off.addScaledVector(obj.fade.drop, Math.min(1, f * 1.8) * HEX_SIZE * 1.1);
         sink = Math.max(0, f - 0.4) ** 2 * 3;
       }
-      // Pushed off, it stays solid until it is well over the edge.
-      const gone = obj.fade.drop ? Math.max(0, f - 0.5) * 2 : f;
+      if (obj.fade.melt) {
+        // Slide into the pool, then sink into it.
+        off.addScaledVector(obj.fade.melt, Math.min(1, f * 3));
+        sink = Math.max(0, f - 0.25) * 0.8;
+      }
+      // Pushed off, it stays solid until it is well over the edge; in lava, until it is sinking.
+      const gone = obj.fade.drop ? Math.max(0, f - 0.5) * 2 : obj.fade.melt ? Math.max(0, f - 0.3) / 0.7 : f;
       obj.sprite.material.opacity = 1 - gone;
       obj.base.material.opacity = 1 - (obj.fade.drop ? f : gone);
       obj.group.visible = f < 1;
@@ -2146,6 +2201,11 @@ export class BoardView {
       obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);
       // A basic material's colour multiplies the texture; > 1 washes it toward white.
       obj.sprite.material.color.setScalar(1 + obj.flash * 2.5);
+    }
+    if (obj.fade?.melt) {
+      // Sinking into lava it glows hotter and hotter: orange, then a searing yellow-white.
+      const f = THREE.MathUtils.clamp((this.now - obj.fade.start) / (obj.fade.end - obj.fade.start), 0, 1);
+      obj.sprite.material.color.setRGB(1 + 1.5 * f, 1 - 0.35 * f, 1 - 0.8 * f);
     }
   }
 
@@ -2956,6 +3016,37 @@ export class BoardView {
   }
 
   /** 6c. Leave a faint token where a unit fell, until the round ends. */
+  /** A body hitting lava: a flash ring, embers flung up and a puff of dark smoke. */
+  private lavaSplash(at: THREE.Vector3): void {
+    this.effects.ring(at.clone().setY(at.y + 0.02), 0xff8a2a, 0.1, HEX_SIZE * 0.9, { life: 0.5, additive: true });
+    this.effects.burst({
+      at: at.clone().setY(at.y + 0.05),
+      count: 26,
+      colors: EMBER_COLORS,
+      speed: [0.5, 1.4],
+      up: 1.6,
+      gravity: 2.2,
+      drag: 1.2,
+      life: [0.5, 1.1],
+      size: [0.04, 0.09],
+      blend: 'add',
+      jitter: HEX_SIZE * 0.3,
+    });
+    this.effects.burst({
+      at: at.clone().setY(at.y + 0.1),
+      count: 10,
+      colors: SMOKE_COLORS,
+      speed: [0.05, 0.25],
+      up: 0.5,
+      drag: 1.5,
+      life: [0.9, 1.5],
+      size: [0.14, 0.24],
+      grow: 2.5,
+      opacity: 0.55,
+      jitter: HEX_SIZE * 0.25,
+    });
+  }
+
   private markFallen(obj: UnitObj): void {
     const cell = this.worldToCell(obj.targetPos);
     const y = cell ? this.surfaceAt(cell) : this.groundY(obj);
@@ -3136,6 +3227,8 @@ export class BoardView {
     this.animateRoutes();
     this.effects.update(dtMs);
     this.rolls.update(this.now, this.projectUnit);
+    // Lava breathes: a slow swell in its glow, on the wall clock so a hit-stop doesn't freeze it.
+    this.lavaMaterial?.color.setScalar(LAVA_PULSE_BASE + LAVA_PULSE_DEPTH * Math.sin(this.wallNow / LAVA_PULSE_MS));
 
     // Fade and retire tracers.
     for (let i = this.tracers.length - 1; i >= 0; i--) {

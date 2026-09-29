@@ -257,7 +257,13 @@ absent when unused.
 - **Terrain** — each hex has an **elevation** 0–3 and at most one **feature**:
   - `rock`, `building` — impassable, block line of sight;
   - `forest` — passable; blocks sight *through* it, but a unit inside a forest
-    hex can see out and be seen.
+    hex can see out and be seen;
+  - `lava` — impassable on foot, but a flyer may cross it and land on it; it
+    blocks no sight and gives no cover, and lies flat (no elevation). A unit
+    on the ground **pushed into lava dies** — Tough doesn't save it — and the
+    kill goes to the pusher (a Savage's shove is gruesome). A flyer knocked down
+    while over lava falls in and dies. Units beside the lava can fight a flyer
+    hovering over it as usual. No deploy hex or objective may be lava.
 
   Moves need a real path around obstacles (at most `move` steps). **High
   ground:** a standing combatant on a strictly higher hex gets **+1** to its
@@ -277,6 +283,7 @@ absent when unused.
   | Rocky Pass | rocks, chokepoints, a ridge | king-of-the-hill |
   | Twin Towers | two raised plateaus | capture-the-flag |
   | Crossroads | three objective zones | king-of-the-hill, conquest |
+  | Ember Rift | a lava river crossed by three narrow bridges | king-of-the-hill, conquest, capture-the-flag |
 
 - **Game modes** (chosen in Setup or with `--mode`; the map must support it):
   - **annihilation** — the default: destroy or rout the enemy warband.
@@ -293,11 +300,12 @@ absent when unused.
     be pushed onto — your base with the enemy flag to win. A flying carrier is
     weighed down and walks until it drops the flag.
 
-  The heuristic AI plays every mode (zones, flags, Kings, high ground and cover),
+  The heuristic AI plays every mode (zones, flags, Kings, high ground, cover
+  and lava — it goes for foes with lava at their backs and keeps its own off it),
   and a self-play matrix runs every built-in map × every mode it supports.
 - **Map editor** — the web app's Setup screen has a **Map editor…** button: pick
   a size, then paint elevation (raise / lower / set / erase), buildings (click or
-  drag a footprint), forest and rocks (brush radius 0–2, drag-fill), deploy
+  drag a footprint), forest, rocks and lava (brush radius 0–2, drag-fill), deploy
   zones, flag bases, the hill and conquest zones. Undo/redo, inline validation,
   save to the browser (localStorage) or export/import `.json`. Valid custom maps
   show up in the Setup map picker for local games; online matches use built-in

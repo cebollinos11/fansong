@@ -460,6 +460,13 @@ export type GameEvent =
   | { type: 'UnitSupported'; unitId: string; supporterId: string }
   /** Pushed off the edge of the map; the kill (or a Tough save) follows. */
   | { type: 'UnitPushedOff'; unitId: string }
+  /**
+   * Pushed into lava at `to`; the kill follows, and no Tough save helps. The
+   * unit's position stays where it stood: it never lives on the lava hex.
+   */
+  | { type: 'UnitPushedIntoLava'; unitId: string; to: Vec }
+  /** A flyer knocked down over lava falls into it rather than lying there; the kill follows. */
+  | { type: 'UnitFellIntoLava'; unitId: string }
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }

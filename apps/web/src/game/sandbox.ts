@@ -1,10 +1,12 @@
 import {
+  isDeadlyFeature,
   isImpassableFeature,
   isOccupied,
   MAX_ELEVATION,
   normalizeTerrain,
   reduce,
   rollDice,
+  vecEq,
   vecKey,
   type CombatResult,
   type Command,
@@ -34,12 +36,17 @@ import { profileRange, type WarbandUnit } from '@fansong/content';
 
 // --- Placement and units ----------------------------------------------------
 
-/** Why a unit can't stand on `pos` (ignoring `ignoreId`), or null if it can. */
-export function placementProblem(state: GameState, pos: Vec, ignoreId?: string): string | null {
+/**
+ * Why a unit can't stand on `pos` (ignoring `ignoreId`), or null if it can. Only
+ * a `flying` unit may stand on lava.
+ */
+export function placementProblem(state: GameState, pos: Vec, ignoreId?: string, flying = false): string | null {
   const { width, height } = state.board;
   if (pos.x < 0 || pos.y < 0 || pos.x >= width || pos.y >= height) return 'off the board';
   if (state.board.blocked.includes(vecKey(pos))) return 'that hex is blocked';
-  if (isImpassableFeature(state.board.terrain?.[vecKey(pos)]?.feature)) return 'that hex is impassable';
+  const feature = state.board.terrain?.[vecKey(pos)]?.feature;
+  if (isImpassableFeature(feature)) return 'that hex is impassable';
+  if (isDeadlyFeature(feature) && !flying) return 'only a flyer can stand on lava';
   if (isOccupied(state, pos, ignoreId)) return 'that hex is occupied';
   return null;
 }
@@ -62,7 +69,7 @@ export function nextUnitId(state: GameState, owner: Owner): string {
  * can't take it.
  */
 export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, pos: Vec): GameState {
-  const problem = placementProblem(state, pos);
+  const problem = placementProblem(state, pos, undefined, profile.flying === true);
   if (problem) throw new Error(`Can't spawn there: ${problem}.`);
   const s = structuredClone(state);
   const unit: Unit = {
@@ -126,7 +133,7 @@ export function clearUnits(state: GameState, owner?: Owner): GameState {
 
 /** Teleport a unit to `pos` — no move action, no free hacks, no flag pickup. */
 export function teleportUnit(state: GameState, id: string, pos: Vec): GameState {
-  const problem = placementProblem(state, pos, id);
+  const problem = placementProblem(state, pos, id, state.units.find((u) => u.id === id)?.traits.flying ?? false);
   if (problem) throw new Error(`Can't move there: ${problem}.`);
   const s = structuredClone(state);
   const unit = s.units.find((u) => u.id === id);
@@ -269,7 +276,10 @@ export interface HexPaint {
   blocked?: boolean;
 }
 
-/** Repaint one hex. Refuses to bury a unit under an impassable feature or a block. */
+/**
+ * Repaint one hex. Refuses to bury a unit under an impassable feature or a
+ * block, or to pour lava under a unit that isn't flying.
+ */
 export function paintHex(state: GameState, pos: Vec, paint: HexPaint): GameState {
   const { width, height } = state.board;
   if (pos.x < 0 || pos.y < 0 || pos.x >= width || pos.y >= height) return state;
@@ -278,6 +288,10 @@ export function paintHex(state: GameState, pos: Vec, paint: HexPaint): GameState
   if (occupied && (paint.blocked || (paint.feature && isImpassableFeature(paint.feature)))) {
     throw new Error('Move the unit off that hex first.');
   }
+  const walker = state.units.some((u) => !u.dead && vecEq(u.pos, pos) && !u.traits.flying);
+  if (walker && paint.feature && isDeadlyFeature(paint.feature)) {
+    throw new Error('Only a flyer can stand on lava: move the unit off that hex first.');
+  }
   const s = structuredClone(state);
   const hex: HexTerrain = { ...(s.board.terrain?.[key] ?? {}) };
   if (paint.elevation !== undefined) hex.elevation = Math.max(0, Math.min(MAX_ELEVATION, paint.elevation));
@@ -285,6 +299,8 @@ export function paintHex(state: GameState, pos: Vec, paint: HexPaint): GameState
     if (paint.feature === null) delete hex.feature;
     else hex.feature = paint.feature;
   }
+  // Lava lies flat: it never has any elevation.
+  if (isDeadlyFeature(hex.feature)) delete hex.elevation;
   const terrain = normalizeTerrain({ ...(s.board.terrain ?? {}), [key]: hex });
   if (terrain) s.board.terrain = terrain;
   else delete s.board.terrain;

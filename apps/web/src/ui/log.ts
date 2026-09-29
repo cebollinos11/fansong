@@ -174,6 +174,8 @@ interface Fight {
   prevented: boolean;
   tough: boolean;
   pushedOff: boolean;
+  /** The loser went into lava: pushed in, or knocked out of the air over it. */
+  lava: boolean;
   recoiled: boolean;
   supportedBy: UnitRef | null;
   armor: UnitRef | null;
@@ -193,7 +195,7 @@ const bonus = (label: string, n: number | undefined): [string, number | undefine
 const penalty = (label: string, n: number | undefined): [string, number | undefined] => [label, n ? -n : n];
 
 function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
-  const base = { item, gruesome: false, prevented: false, tough: false, pushedOff: false, recoiled: false, supportedBy: null, armor: null, mastery: null };
+  const base = { item, gruesome: false, prevented: false, tough: false, pushedOff: false, lava: false, recoiled: false, supportedBy: null, armor: null, mastery: null };
   switch (e.type) {
     case 'AttackResolved':
     case 'FreeHackResolved': {
@@ -322,6 +324,11 @@ function absorb(f: Fight, e: GameEvent, state: GameState): boolean {
       if (!involved(e.unitId)) return false;
       f.pushedOff = true;
       return true;
+    case 'UnitPushedIntoLava':
+    case 'UnitFellIntoLava':
+      if (!involved(e.unitId)) return false;
+      f.lava = true;
+      return true;
     case 'UnitRecoiled':
       if (!involved(e.unitId)) return false;
       f.recoiled = true;
@@ -351,9 +358,11 @@ function finishFight(f: Fight): void {
     [label, short, cls] = f.tough ? ['knocked down (Tough)', 'down', 'down'] : ['killed', 'killed', 'kill'];
     if (f.mastery) label += ' by Combat Mastery';
   } else if (result.endsWith('KnockedDown')) {
-    [label, short, cls] = ['knocked down', 'down', 'down'];
+    [label, short, cls] = f.lava ? ['knocked into the lava — killed', 'killed', 'kill'] : ['knocked down', 'down', 'down'];
   } else if (result.endsWith('Recoiled')) {
-    if (f.pushedOff) {
+    if (f.lava) {
+      [label, short, cls] = ['pushed into the lava — killed', 'killed', 'kill'];
+    } else if (f.pushedOff) {
       [label, short, cls] = f.tough
         ? ['pushed off the edge, knocked down (Tough)', 'down', 'down']
         : ['pushed off the edge — killed', 'killed', 'kill'];
@@ -614,6 +623,12 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
         break;
       case 'UnitPushedOff':
         add({ icon: '↩', parts: [unit(ref(state, e.unitId)), ' is pushed off the edge'], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'UnitPushedIntoLava':
+        add({ icon: '🔥', parts: [unit(ref(state, e.unitId)), ' is pushed into the lava'], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'UnitFellIntoLava':
+        add({ icon: '🔥', parts: [unit(ref(state, e.unitId)), ' falls into the lava'], category: 'combat', unitIds: [e.unitId] });
         break;
       case 'UnitKilled':
         add({

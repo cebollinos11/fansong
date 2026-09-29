@@ -22,6 +22,12 @@ walls. They are listed strongest first.
 
 ### 1. Deadly drops (chasm, deep water, lava, cliff edge)
 
+> **Lava is implemented** (see the README's terrain section and the Ember Rift
+> map). It differs from the sketch below in two ways: Tough does *not* save a
+> unit pushed in, and flyers *may* end a move on it — but a flyer knocked down
+> over lava falls in and dies. Chasm or deep water can reuse the same rules
+> (`isDeadlyFeature` in `packages/engine/src/board.ts`).
+
 A unit pushed into one dies, the same as being pushed off the map (Tough turns
 it into a fall). This is probably the single best addition. Every melee next to
 a hazard becomes a fight over which way the loser gets pushed, and "stand with

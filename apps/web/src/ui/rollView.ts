@@ -235,7 +235,15 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
           ? { text: 'Gruesome!', detail: `${odd} — savagely shoved off the edge`, on: [loser.unitId], tone: 'kill' }
           : { text: 'Pushed off!', detail: `${odd} — off the edge of the map`, on: [loser.unitId], tone: 'kill' };
     }
+    if (after.some((x) => x.type === 'UnitPushedIntoLava' && x.unitId === loser.unitId)) {
+      return e.gruesome
+        ? { text: 'Gruesome!', detail: `${odd} — savagely shoved into the lava`, on: [loser.unitId], tone: 'kill' }
+        : { text: 'Into the lava!', detail: `${odd} — pushed into the lava`, on: [loser.unitId], tone: 'kill' };
+    }
     return { text: 'Pushed back', detail: odd, on: [loser.unitId], tone: 'down' };
+  }
+  if (after.some((x) => x.type === 'UnitFellIntoLava' && x.unitId === loser.unitId)) {
+    return { text: 'Into the lava!', detail: `${detail} — knocked out of the air`, on: [loser.unitId], tone: 'kill' };
   }
   const cornered = winner.die % 2 === 1 ? ' — no room to fall back' : '';
   return { text: 'Knocked down', detail: `${detail}${cornered}`, on: [loser.unitId], tone: 'down' };

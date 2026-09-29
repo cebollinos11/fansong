@@ -314,13 +314,14 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
       attackerEnded = true;
       break;
     case 'attackerKnockedDown':
-      knockDown(events, attacker);
+      knockDown(s, events, attacker, target.id, board);
       attackerEnded = true; // a knocked-down attacker's activation ends
       break;
     case 'attackerRecoiled':
       push(s, events, attacker, attackerPush, target.id, board, gruesome);
       // Pushed back or braced it is still standing, so it may act again; pushed
-      // off the map it is dead (or, Tough, knocked down at the edge).
+      // off the map it is dead (or, Tough, knocked down at the edge), and pushed
+      // into lava it is dead for sure.
       attackerEnded = attacker.dead || attacker.knockedDown;
       break;
     case 'clash':
@@ -726,7 +727,10 @@ function meleeScoring(
 export interface CombatOdds {
   /** The target is hurt: killed, knocked down or pushed back. */
   win: number;
-  /** Among {@link win}, the target is killed outright (before any Tough save). */
+  /**
+   * Among {@link win}, the target is killed outright (before any Tough save) —
+   * lava included: pushed into it, or knocked out of the air over it.
+   */
   kill: number;
   /** The attacker is hurt instead — by the target, or by its guard's riposte. */
   lose: number;
@@ -811,6 +815,9 @@ export function combatOdds(
     through = 1 - lose - slain;
   }
 
+  // Lava turns a push, or a flyer's knockdown over it, into a kill.
+  const pushedIn = pushOutcome(s, board, target, attacker).kind === 'lava';
+  const fallsIn = board.isDeadly(target.pos) && airborne(s, target);
   let win = 0;
   let kill = 0;
   let hurt = 0;
@@ -836,7 +843,12 @@ export function combatOdds(
       );
       if (result.startsWith('defender')) {
         win++;
-        if (result === 'defenderKilled') kill++;
+        if (
+          result === 'defenderKilled' ||
+          (result === 'defenderRecoiled' && pushedIn) ||
+          (result === 'defenderKnockedDown' && fallsIn)
+        )
+          kill++;
       } else if (result.startsWith('attacker') && !options.ranged) hurt++;
     }
   }
@@ -899,11 +911,22 @@ function hitDefender(
   pushed: Push | null,
 ): void {
   if (result === 'defenderKilled') strike(s, victim, byId, events, board, gruesome);
-  else if (result === 'defenderKnockedDown') knockDown(events, victim);
+  else if (result === 'defenderKnockedDown') knockDown(s, events, victim, byId, board);
   else if (result === 'defenderRecoiled' && pushed) push(s, events, victim, pushed, byId, board, gruesome);
 }
 
-function knockDown(events: GameEvent[], unit: Unit): void {
+/**
+ * Knock `unit` down (mutates `s`) — `byId` dealt the blow, or null. A flyer
+ * brought down over lava falls into it instead and dies: no Tough save, and it
+ * counts as a kill by `byId` (gruesome when a Savage struck it down).
+ */
+function knockDown(s: GameState, events: GameEvent[], unit: Unit, byId: string | null, board: Board): void {
+  if (board.isDeadly(unit.pos)) {
+    events.push({ type: 'UnitFellIntoLava', unitId: unit.id });
+    const savage = byId !== null && (unitById(s, byId)?.traits.savage ?? false);
+    strike(s, unit, byId, events, board, savage, true);
+    return;
+  }
   unit.knockedDown = true;
   unit.guarding = false; // flat on the ground is no stance to hold
   events.push({ type: 'UnitKnockedDown', unitId: unit.id });
@@ -911,7 +934,7 @@ function knockDown(events: GameEvent[], unit: Unit): void {
 
 /**
  * Whether `result` is a gruesome kill: one that tripled the loser, or any kill
- * by a Savage winner — a push off the map included (`aggressorPush` /
+ * by a Savage winner — a push off the map or into lava included (`aggressorPush` /
  * `defenderPush`: where a recoil would send each side; null when it can't kill).
  */
 function gruesomeKill(
@@ -929,9 +952,9 @@ function gruesomeKill(
     case 'attackerKilled':
       return defender.traits.savage || isGruesome(defenderScore, aggressorScore);
     case 'defenderRecoiled':
-      return aggressor.traits.savage && defenderPush?.kind === 'off';
+      return aggressor.traits.savage && pushKills(defenderPush);
     case 'attackerRecoiled':
-      return defender.traits.savage && aggressorPush?.kind === 'off';
+      return defender.traits.savage && pushKills(aggressorPush);
     default:
       return false;
   }
@@ -942,27 +965,37 @@ function gruesomeKill(
  * - `back`: the hex is free, so it recoils into it;
  * - `supported`: a standing friend holds that hex and braces it — it stays put, on its feet;
  * - `off`: the hex is off the map, so the push kills it;
+ * - `lava`: the hex is empty lava and `unit` is not airborne, so the push kills
+ *   it — and no Tough save helps (an airborne flyer just recoils over it);
  * - `blocked`: impassable terrain, an enemy or a knocked-down friend — it falls instead.
  */
-type Push = { kind: 'back'; to: Vec } | { kind: 'supported'; by: Unit } | { kind: 'off' } | { kind: 'blocked' };
+type Push =
+  | { kind: 'back'; to: Vec }
+  | { kind: 'supported'; by: Unit }
+  | { kind: 'off' }
+  | { kind: 'lava'; to: Vec }
+  | { kind: 'blocked' };
 
 function pushOutcome(s: GameState, board: Board, unit: Unit, by: Unit): Push {
   const to = board.stepAway(by.pos, unit.pos);
   if (!board.inBounds(to)) return { kind: 'off' };
   if (board.isBlocked(to)) return { kind: 'blocked' };
   const there = s.units.find((u) => !u.dead && u.id !== unit.id && u.pos.x === to.x && u.pos.y === to.y);
-  if (!there) return { kind: 'back', to };
+  if (!there) return board.isDeadly(to) && !airborne(s, unit) ? { kind: 'lava', to } : { kind: 'back', to };
   return there.owner === unit.owner && !there.knockedDown ? { kind: 'supported', by: there } : { kind: 'blocked' };
 }
 
 /** Whether a push has somewhere to resolve other than a fall (see {@link pushOutcome}). */
 const canBePushed = (p: Push) => p.kind !== 'blocked';
 
+/** Whether a push is a killing one: off the map, or into lava. */
+const pushKills = (p: Push | null) => p?.kind === 'off' || p?.kind === 'lava';
+
 /**
  * Resolve a winning odd-die push on `unit` (mutates `s`): recoil into the free
- * hex, stand braced against a supporting friend, or go off the map — a combat
- * kill by `byId`, `gruesome` when a Savage did the shoving (a Tough unit is
- * knocked down at the edge instead).
+ * hex, stand braced against a supporting friend, or go off the map or into lava
+ * — a combat kill by `byId`, `gruesome` when a Savage did the shoving (at the
+ * edge a Tough unit is knocked down instead; lava it does not survive).
  */
 function push(
   s: GameState,
@@ -978,6 +1011,11 @@ function push(
   else if (p.kind === 'off') {
     events.push({ type: 'UnitPushedOff', unitId: unit.id });
     strike(s, unit, byId, events, board, gruesome);
+  } else if (p.kind === 'lava') {
+    // It keeps its last position in the state, so nothing (a dropped flag
+    // included) ever lies on the lava; the event says where it went in.
+    events.push({ type: 'UnitPushedIntoLava', unitId: unit.id, to: { x: p.to.x, y: p.to.y } });
+    strike(s, unit, byId, events, board, gruesome, true);
   }
 }
 
@@ -992,28 +1030,45 @@ function recoil(s: GameState, events: GameEvent[], unit: Unit, to: Vec): void {
 }
 
 /**
- * A killing blow from combat: apply it (honouring Tough), and if the unit
- * actually dies, resolve the morale fallout — after a `gruesome` kill nearby
- * friends test nerve, and the warband may rout; those that break and run take
- * free hacks like any leaver. Tough saves that downgrade the blow to a
- * knockdown are not a death, so they raise no morale check.
+ * A killing blow from combat: apply it (honouring Tough, unless the death is
+ * `certain` — lava), and if the unit actually dies, resolve the morale fallout —
+ * after a `gruesome` kill nearby friends test nerve, and the warband may rout;
+ * those that break and run take free hacks like any leaver. Tough saves that
+ * downgrade the blow to a knockdown are not a death, so they raise no morale
+ * check.
  */
-function strike(s: GameState, unit: Unit, byId: string | null, events: GameEvent[], board: Board, gruesome: boolean): void {
-  if (!resolveKill(unit, byId, events)) return;
+function strike(
+  s: GameState,
+  unit: Unit,
+  byId: string | null,
+  events: GameEvent[],
+  board: Board,
+  gruesome: boolean,
+  certain = false,
+): void {
+  if (!resolveKill(s, unit, byId, events, board, certain)) return;
   const hacks: FreeHacks = (runner) => resolveFreeHacks(s, events, runner, board);
   resolveCombatMorale(s, events, unit, board, gruesome, hacks);
 }
 
 /**
  * Apply a killing blow, honouring Tough: a tough unit that is not already
- * knocked down is knocked down instead (its one free save). Returns whether the
- * unit actually died. Morale-free — callers that represent a *combat* death use
- * {@link strike}.
+ * knocked down is knocked down instead (its one free save) — unless the death is
+ * `certain`, or the unit hovers over lava, where being knocked down is death
+ * anyway. Returns whether the unit actually died. Morale-free — callers that
+ * represent a *combat* death use {@link strike}.
  */
-function resolveKill(unit: Unit, byId: string | null, events: GameEvent[]): boolean {
-  if (unit.traits.tough && !unit.knockedDown) {
+function resolveKill(
+  s: GameState,
+  unit: Unit,
+  byId: string | null,
+  events: GameEvent[],
+  board: Board,
+  certain: boolean,
+): boolean {
+  if (unit.traits.tough && !unit.knockedDown && !certain && !board.isDeadly(unit.pos)) {
     events.push({ type: 'ToughnessSaved', unitId: unit.id });
-    knockDown(events, unit);
+    knockDown(s, events, unit, byId, board);
     return false;
   }
   unit.dead = true;

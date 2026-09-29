@@ -51,7 +51,7 @@ export type ZoneId =
   | { kind: 'conquest'; index: 0 | 1 | 2 };
 
 /** Features painted in bulk (brush or drag-fill) rather than stamped. */
-export type AreaFeature = 'forest' | 'rock';
+export type AreaFeature = 'forest' | 'rock' | 'lava';
 
 /** Longest side (in hexes) of a dragged building footprint. */
 export const MAX_FOOTPRINT_SIDE = 4;

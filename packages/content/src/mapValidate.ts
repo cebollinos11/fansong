@@ -1,5 +1,6 @@
 import {
   GAME_MODES,
+  isDeadlyFeature,
   isImpassableFeature,
   makeHexGrid,
   vecKey,
@@ -67,9 +68,11 @@ export function validateMap(
   // Anything past here indexes hexes; bail if the grid itself is malformed.
   if (errors.length > 0) return { ok: false, errors };
 
+  // Walkable ground: not rock or building, and not lava (only a flyer can stand
+  // there, so no deployment or objective may sit on it).
   const passable = (v: Vec) => {
     const hex = mapHexAt(map, v);
-    return hex !== undefined && !isImpassableFeature(hex.feature);
+    return hex !== undefined && !isImpassableFeature(hex.feature) && !isDeadlyFeature(hex.feature);
   };
 
   /** Bounds, passability and duplicates of one hex set; returns its keys. */
@@ -82,7 +85,8 @@ export function validateMap(
       if (keys.has(key)) errors.push(`${label}: duplicate hex ${fmt(v)}`);
       keys.add(key);
       if (mapHexAt(map, v) === undefined) errors.push(`${label}: hex ${fmt(v)} is off the map`);
-      else if (!passable(v)) errors.push(`${label}: hex ${fmt(v)} is impassable`);
+      else if (!passable(v))
+        errors.push(`${label}: hex ${fmt(v)} is ${isDeadlyFeature(mapHexAt(map, v)!.feature) ? 'lava' : 'impassable'}`);
     }
     return keys;
   };
@@ -185,7 +189,9 @@ function walkableFromDeploy(map: MapDef): Set<string> | undefined {
     if (hex.feature) terrain[vecKey({ x: i % map.width, y: Math.floor(i / map.width) })] = { feature: hex.feature };
   });
   const board = makeHexGrid({ width: map.width, height: map.height, blocked: [], terrain });
-  const first = [...map.deployZones[0], ...map.deployZones[1]].find((v) => board.inBounds(v) && !board.isBlocked(v));
+  const first = [...map.deployZones[0], ...map.deployZones[1]].find(
+    (v) => board.inBounds(v) && !board.isBlocked(v) && !board.isDeadly(v),
+  );
   if (!first) return undefined;
   const reach = board.reachableWithin(first, map.width * map.height);
   reach.add(vecKey(first));

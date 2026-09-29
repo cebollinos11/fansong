@@ -278,6 +278,50 @@ function crossroads(): MapDef {
 }
 
 // ---------------------------------------------------------------------------
+// Ember Rift — a river of lava runs down the middle of a scorched plain,
+// crossed only by three narrow stone bridges: one at the centre and one near
+// each board edge, each landing on a raised bridgehead. Lava blocks no sight,
+// so shooters trade fire across it, and a flyer crosses anywhere — but anyone
+// on foot must fight over a bridge, where a push to either side is death.
+// Basalt outcrops and a few small lava pools dot the banks. The bridges (with
+// their bridgeheads) are the conquest zones, the centre one also the
+// king-of-the-hill zone, and each side's flag sits well back on its own bank,
+// so a carrier — on foot, flag in hand — has to bring it over a bridge.
+function emberRift(): MapDef {
+  const W = 14;
+  const H = 12;
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  const same = (a: Vec, b: Vec) => a.x === b.x && a.y === b.y;
+  const isAt = (list: Vec[]) => (v: Vec) => list.some((b) => [b, mirror(b)].some((u) => same(u, v)));
+  // Each crossing, west to east: bridgehead, two bridge hexes over the river
+  // (columns 6–7), bridgehead. The south crossing mirrors the north one, and
+  // the centre crossing mirrors itself.
+  const north = [{ x: 5, y: 2 }, { x: 6, y: 2 }, { x: 7, y: 2 }, { x: 8, y: 2 }];
+  const crossings = [north, [{ x: 5, y: 6 }, { x: 6, y: 6 }, { x: 7, y: 5 }, { x: 8, y: 5 }], north.map(mirror).reverse()];
+  const inRiver = (v: Vec) => v.x === 6 || v.x === 7;
+  const onCrossing = (v: Vec) => crossings.some((c) => c.some((u) => same(u, v)));
+  const isPool = isAt([{ x: 3, y: 3 }, { x: 4, y: 8 }, { x: 4, y: 9 }]);
+  const isOutcrop = isAt([{ x: 2, y: 1 }, { x: 4, y: 5 }, { x: 3, y: 10 }]);
+  const flags = [{ x: 2, y: 6 }, mirror({ x: 2, y: 6 })];
+
+  const map = build('ember-rift', 'Ember Rift', W, H, (v) => {
+    if (inRiver(v)) return onCrossing(v) ? { elevation: 0 } : { elevation: 0, feature: 'lava' };
+    // A bridgehead rises a step, so whoever holds it has the high ground over the bridge.
+    if (onCrossing(v)) return { elevation: 1 };
+    if (isPool(v)) return { elevation: 0, feature: 'lava' };
+    if (isOutcrop(v)) return { elevation: 1, feature: 'rock' };
+    return { elevation: 0 };
+  });
+  const sorted = (vs: Vec[]) => [...vs].sort((a, b) => a.y - b.y || a.x - b.x);
+  map.objectives = {
+    flags: [flags[0]!, flags[1]!],
+    hill: sorted(crossings[1]!),
+    conquest: [sorted(crossings[0]!), sorted(crossings[1]!), sorted(crossings[2]!)],
+  };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
 // The Stone Crown — a 40×40 set-piece that uses every kind of ground and hosts
 // every mode. At its heart a sheer mesa rises to level 3, ringed by standing
 // stones with four gates: its summit is the king-of-the-hill zone and the
@@ -435,6 +479,7 @@ const MAPS: MapDef[] = [
   rockyPass(),
   twinTowers(),
   crossroads(),
+  emberRift(),
   stoneCrown(),
 ];
 

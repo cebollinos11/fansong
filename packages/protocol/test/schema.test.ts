@@ -114,7 +114,7 @@ describe('boardDataSchema terrain', () => {
       { '1,1': { elevation: 4 } },
       { '1,1': { elevation: -1 } },
       { '1,1': { elevation: 1.5 } },
-      { '1,1': { feature: 'lava' } },
+      { '1,1': { feature: 'swamp' } },
       { '1,1': { elevation: 1, extra: true } },
       { 'a,b': { elevation: 1 } },
     ];

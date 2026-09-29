@@ -61,6 +61,7 @@ type ToolId =
   | 'building'
   | 'forest'
   | 'rock'
+  | 'lava'
   | 'deploy0'
   | 'deploy1'
   | 'flag0'
@@ -101,6 +102,11 @@ const FEATURE_TOOLS: ToolDef[] = [
     id: 'rock',
     label: 'Rock',
     title: 'Click to paint rocks with the brush (click a rock to clear them); drag to fill a region',
+  },
+  {
+    id: 'lava',
+    label: 'Lava',
+    title: 'Click to paint lava with the brush (click lava to clear it); drag to fill a region. Only flyers may cross it; anyone else pushed in dies',
   },
 ];
 
@@ -167,6 +173,7 @@ function toolFor(id: ToolId, level: number): EditorTool {
       return { kind: 'building' };
     case 'forest':
     case 'rock':
+    case 'lava':
       return { kind: 'area', feature: id };
     case 'set':
       return { kind: 'elevation', brush: { kind: 'set', value: level } };
@@ -192,7 +199,7 @@ function toolFor(id: ToolId, level: number): EditorTool {
  * `@fansong/content`); the board is rendered through the same {@link BoardCanvas}
  * as play, rebuilt after each edit. Clicking a hex selects it and, with a
  * painting tool active, applies that tool's brush there as one undo step.
- * Drag tools (buildings, forest, rocks, zones) stamp/fill the dragged region on release instead.
+ * Drag tools (buildings, forest, rocks, lava, zones) stamp/fill the dragged region on release instead.
  * Deploy zones and objectives are drawn as tinted overlays. Undo/redo (buttons
  * or Ctrl+Z / Ctrl+Y) walk the history; the map name is committed on blur/Enter
  * as one undo step; `validateMap` problems are listed inline as the map changes.

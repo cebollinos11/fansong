@@ -22,6 +22,7 @@ import {
   shortRange,
   standingInZone,
   unitById,
+  unitMove,
   vecKey,
   type Board,
   type Command,
@@ -54,6 +55,10 @@ export function chooseCommand(state: GameState): Command {
   for (const command of commands) {
     let score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
     if (command.type === 'Move') score -= disengageCost(state, board, command.unitId);
+    if (command.type === 'Move') score += lavaMoveEdge(state, board, unitById(state, command.unitId)!, command.to);
+    if (command.type === 'Attack') {
+      score += lavaAttackEdge(state, board, unitById(state, command.attackerId)!, unitById(state, command.targetId)!);
+    }
     if (score > bestScore) {
       bestScore = score;
       best = command;
@@ -75,6 +80,55 @@ function disengageCost(state: GameState, board: Board, unitId: string): number {
   // A flyer lifts away without drawing a hack, so leaving contact costs it nothing.
   if (airborne(state, mover)) return 0;
   return adjacentEnemies(state, mover, board).filter((e) => !e.knockedDown).length * DISENGAGE_COST;
+}
+
+/**
+ * Whether losing a melee to `by` would send `unit` into lava: shoved into an
+ * empty lava hex while on the ground, or knocked out of the air over one. Only
+ * half of a lost melee is a push (an odd die), but either way it is a death no
+ * Tough save stops, so it is worth weighing both ways.
+ */
+function lavaAtRisk(state: GameState, board: Board, unit: Unit, by: Vec, at: Vec = unit.pos): boolean {
+  if (airborne(state, unit)) return board.isDeadly(at);
+  const behind = board.stepAway(by, at);
+  if (!board.inBounds(behind) || !board.isDeadly(behind)) return false;
+  return !state.units.some((u) => !u.dead && u.id !== unit.id && u.pos.x === behind.x && u.pos.y === behind.y);
+}
+
+/** Score for a blow that could put the foe in the lava, or cost us ours in it. */
+const LAVA_ATTACK_EDGE = 2_000;
+
+/** Attack a foe with lava at its back; think twice before swinging from where a loss drops us in. */
+function lavaAttackEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
+  return (
+    (lavaAtRisk(state, board, target, attacker.pos) ? LAVA_ATTACK_EDGE : 0) -
+    (lavaAtRisk(state, board, attacker, target.pos) ? LAVA_ATTACK_EDGE : 0)
+  );
+}
+
+/** Per foe: a move's worth of pinning it against lava, or of giving it the chance to do so to us. */
+const LAVA_MOVE_EDGE = 400;
+
+/**
+ * Where to stand around lava: beside a grounded foe that has lava behind it
+ * (away from us) is a good place to fight from; beside a foe with lava behind
+ * *us* — or, for a flyer, hovering over lava within reach of a foe — is a bad
+ * one. Worth a few hexes of approach, never a free hack.
+ */
+function lavaMoveEdge(state: GameState, board: Board, mover: Unit, to: Vec): number {
+  let edge = 0;
+  for (const e of enemiesOf(state, mover.owner)) {
+    if (e.dead) continue;
+    const d = board.distance(e.pos, to);
+    if (d === 1) {
+      if (!e.knockedDown && lavaAtRisk(state, board, mover, e.pos, to)) edge -= LAVA_MOVE_EDGE;
+      if (lavaAtRisk(state, board, e, to)) edge += LAVA_MOVE_EDGE;
+    } else if (airborne(state, mover) && board.isDeadly(to) && d <= Math.max(unitMove(e) + 1, e.traits.ranged)) {
+      // A flyer over lava is one knockdown from death: keep off it within a foe's reach.
+      edge -= LAVA_MOVE_EDGE;
+    }
+  }
+  return edge;
 }
 
 /** Score cost per point a shot loses to range or cover — worth about one point of target Combat. */
@@ -505,7 +559,7 @@ function kingMoveScore(state: GameState, board: Board, plan: KingPlan, mover: Un
   return 100_000 - kingHuntDistance(board, plan, to, enemies) * 100 + height;
 }
 
-/** Walking distance (steps over passable hexes) from every reachable hex to `target`. */
+/** Walking distance (steps over passable hexes, never lava) from every reachable hex to `target`. */
 function distanceField(board: Board, target: Vec): Map<string, number> {
   const field = new Map<string, number>([[vecKey(target), 0]]);
   let frontier = [target];
@@ -514,7 +568,7 @@ function distanceField(board: Board, target: Vec): Map<string, number> {
     for (const v of frontier) {
       for (const n of board.neighbors(v)) {
         const key = vecKey(n);
-        if (field.has(key)) continue;
+        if (field.has(key) || board.isDeadly(n)) continue;
         field.set(key, d);
         next.push(n);
       }

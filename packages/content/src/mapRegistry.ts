@@ -1,4 +1,5 @@
 import crossroads from '../maps/crossroads.json';
+import emberRift from '../maps/ember-rift.json';
 import oldForest from '../maps/old-forest.json';
 import openField from '../maps/open-field.json';
 import rockyPass from '../maps/rocky-pass.json';
@@ -20,7 +21,7 @@ import { validateMap } from './mapValidate.js';
  * Order is the display order of the Setup map picker; the first map is the
  * default.
  */
-const RAW_MAPS: unknown[] = [openField, rollingHills, oldForest, ruinedVillage, rockyPass, twinTowers, crossroads, stoneCrown];
+const RAW_MAPS: unknown[] = [openField, rollingHills, oldForest, ruinedVillage, rockyPass, twinTowers, crossroads, emberRift, stoneCrown];
 
 function load(json: unknown): MapDef {
   const map = parseMap(json);

@@ -80,6 +80,14 @@ describe('terrain brushes', () => {
     expect(JSON.stringify(map)).toBe(before);
   });
 
+  it('lava lies flat: painting it levels the hex, and it cannot be raised', () => {
+    let m = paintElevation(newEditorMap(6, 6), [v(1, 1)], { kind: 'set', value: 2 });
+    m = paintFeature(m, [v(1, 1)], 'lava');
+    expect(mapHexAt(m, v(1, 1))).toEqual({ elevation: 0, feature: 'lava' });
+    m = paintElevation(m, [v(1, 1)], { kind: 'raise' });
+    expect(mapHexAt(m, v(1, 1))).toEqual({ elevation: 0, feature: 'lava' });
+  });
+
   it('features place, replace and remove (sparse); erase flattens', () => {
     let m = paintElevation(newEditorMap(6, 6), [v(1, 1)], { kind: 'set', value: 2 });
     m = paintFeature(m, [v(1, 1), v(9, 9)], 'rock');

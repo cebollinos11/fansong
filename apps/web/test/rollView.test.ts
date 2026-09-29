@@ -69,6 +69,16 @@ describe('opposed roll cards', () => {
     expect(tough.verdict).toMatchObject({ text: 'Tough!', tone: 'save' });
   });
 
+  it('calls a unit going into lava, pushed in or knocked out of the air', () => {
+    const killed: GameEvent = { type: 'UnitKilled', unitId: 'd', byId: 'a' };
+    const push = attack({ attackDie: 3, result: 'defenderRecoiled' });
+    const pushed = describeCombat(push, [{ type: 'UnitPushedIntoLava', unitId: 'd', to: { x: 1, y: 1 } }, killed]);
+    expect(pushed.verdict).toMatchObject({ text: 'Into the lava!', on: ['d'], tone: 'kill' });
+    const down = attack({ attackDie: 4, result: 'defenderKnockedDown' });
+    const fell = describeCombat(down, [{ type: 'UnitFellIntoLava', unitId: 'd' }, killed]);
+    expect(fell.verdict).toMatchObject({ text: 'Into the lava!', detail: '7 beats 5 — knocked out of the air', tone: 'kill' });
+  });
+
   it('explains a knocked-down defender whose higher total did nothing', () => {
     const r = describeCombat(attack({ attackScore: 4, defenseScore: 6, result: 'clash' }));
     expect(r.b).toMatchObject({ outcome: 'tie', note: 'Down: only a 6 strikes back' });

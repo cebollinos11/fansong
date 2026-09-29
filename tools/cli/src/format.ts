@@ -65,6 +65,10 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `    ${name(state, e.unitId)} holds its ground, supported by ${name(state, e.supporterId)}`;
     case 'UnitPushedOff':
       return `    ${name(state, e.unitId)} is pushed off the edge of the map`;
+    case 'UnitPushedIntoLava':
+      return `    ${name(state, e.unitId)} is pushed into the lava at (${e.to.x},${e.to.y})`;
+    case 'UnitFellIntoLava':
+      return `    ${name(state, e.unitId)} is knocked out of the sky into the lava`;
     case 'UnitKilled':
       return `    ☠ ${name(state, e.unitId)} is killed`;
     case 'ActivationEnded':
@@ -90,13 +94,14 @@ const FEATURE_GLYPH: Record<TerrainFeature, string> = {
   rock: '^',
   building: 'B',
   forest: 'T',
+  lava: '~',
 };
 
 /**
  * ASCII render of the flat-top hex board (offset "odd-q" coordinates: odd columns
  * sit half a cell lower, so vertical neighbours interlock). A cell's glyph is its
  * unit's initial (P0 upper-case, P1 lower-case); otherwise '#' is legacy blocked
- * terrain, '^' rock, 'B' building, 'T' forest and '·' an empty cell. A raised hex
+ * terrain, '^' rock, 'B' building, 'T' forest, '~' lava and '·' an empty cell. A raised hex
  * shows its elevation (1–3) as a digit right after the glyph.
  */
 export function renderBoard(state: GameState): string {
