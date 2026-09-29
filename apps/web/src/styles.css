@@ -814,6 +814,65 @@ button.ghost {
   }
 }
 
+/* A gruesome kill's headline: slammed across the view over a dark band, in ash and bone rather than red. */
+.roll-verdict.stamp {
+  padding: 8px 64px 11px;
+  background: linear-gradient(90deg, transparent, rgba(8, 5, 12, 0.88) 18%, rgba(8, 5, 12, 0.88) 82%, transparent);
+  rotate: -2deg;
+  animation: roll-verdict-stamp 0.45s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+
+.verdict-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.42em;
+  text-transform: uppercase;
+  color: #b9a3ff;
+}
+
+.roll-verdict.stamp .verdict-text {
+  font-size: clamp(28px, 5.5vw, 52px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f3eee4;
+  -webkit-text-stroke: 2px #140c1c;
+  text-shadow:
+    0 4px 0 #000,
+    0 0 30px rgba(150, 110, 255, 0.55);
+}
+
+.roll-verdict.stamp .verdict-detail {
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@keyframes roll-verdict-stamp {
+  0% {
+    opacity: 0;
+    scale: 2.8;
+  }
+  55% {
+    opacity: 1;
+    scale: 0.93;
+  }
+  75% {
+    scale: 1.03;
+  }
+  100% {
+    scale: 1;
+  }
+}
+
+/* Darkens the edges of the board while a gruesome kill plays (BoardView drives its opacity). */
+.board-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, transparent 35%, rgba(4, 2, 8, 0.55) 72%, rgba(4, 2, 8, 0.88) 100%);
+}
+
 .hud {
   background: var(--panel);
   border-left: 1px solid var(--line);

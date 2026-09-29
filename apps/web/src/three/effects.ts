@@ -61,7 +61,11 @@ export type FxTexture =
   | 'skull'
   | 'blades'
   | 'arc'
-  | 'fallen';
+  | 'fallen'
+  | 'slash'
+  | 'alarm'
+  | 'scorch'
+  | 'wall';
 
 interface Fx {
   obj: THREE.Object3D;
@@ -279,8 +283,11 @@ export class Effects {
   private readonly thickRing = new THREE.RingGeometry(0.55, 1, 56);
   private readonly plane = new THREE.PlaneGeometry(1, 1);
   private readonly beamGeo = new THREE.CylinderGeometry(1, 1, 1, 8, 1, true);
+  private readonly wallGeo = new THREE.CylinderGeometry(1, 1, 1, 64, 1, true);
   /** Persistent ground marks, by key (a fallen unit's id). */
   private readonly marks = new Map<string, THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>>();
+  /** Keys of the marks a new round doesn't clear (see {@link clearMarks}). */
+  private readonly lasting = new Set<string>();
 
   constructor() {
     this.group.add(this.paint.points, this.glow.points);
@@ -381,6 +388,93 @@ export class Effects {
     }, () => mat.dispose());
   }
 
+  /** A steady ring of `radius` on the ground that fades in, pulses gently, and is gone at the end of its life. */
+  halo(at: THREE.Vector3, color: number, radius: number, env: Envelope): void {
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(this.thinRing, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.copy(at);
+    mesh.scale.setScalar(radius);
+    mesh.renderOrder = 1;
+    const peak = env.opacity ?? 0.5;
+    this.add(mesh, env.life, (k) => {
+      const fade = Math.min(1, k / 0.2) * Math.min(1, (1 - k) / 0.08);
+      const pulse = 0.7 + 0.3 * Math.sin(k * env.life * Math.PI * 4);
+      mat.opacity = peak * fade * pulse;
+    }, () => mat.dispose());
+  }
+
+  /**
+   * A pale wall of light standing on the ground, spreading from radius `from`
+   * to `to` as {@link ring} does (so the two keep pace) and sinking as it fades.
+   */
+  wall(
+    at: THREE.Vector3,
+    color: number,
+    from: number,
+    to: number,
+    height: number,
+    env: Envelope,
+  ): void {
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      map: this.texture('wall'),
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const mesh = new THREE.Mesh(this.wallGeo, mat);
+    mesh.renderOrder = 2;
+    const peak = env.opacity ?? 0.8;
+    this.add(mesh, env.life, (k) => {
+      const e = 1 - Math.pow(1 - k, 3);
+      const r = Math.max(0.001, from + (to - from) * e);
+      const h = height * (1 - 0.5 * k);
+      mesh.scale.set(r, h, r);
+      mesh.position.copy(at).setY(at.y + h / 2);
+      mat.opacity = peak * (1 - k);
+    }, () => mat.dispose());
+  }
+
+  /**
+   * A bright slash across the view: `length` along the screen angle `rotation`
+   * (as {@link screenAngle} gives it), flaring wide as it lands, then fading.
+   * Full length from its first frame, so it reads even while a hit-stop holds it.
+   */
+  streak(
+    at: THREE.Vector3,
+    rotation: number,
+    length: number,
+    width: number,
+    env: Envelope & { color?: number },
+  ): void {
+    const mat = new THREE.SpriteMaterial({
+      map: this.texture('slash'),
+      color: env.color ?? 0xffffff,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      rotation,
+      blending: THREE.AdditiveBlending,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(at);
+    sprite.renderOrder = 3;
+    const peak = env.opacity ?? 1;
+    this.add(sprite, env.life, (k) => {
+      const flare = 1 + 0.8 * Math.max(0, 1 - k / 0.12);
+      sprite.scale.set(width * flare, length, 1);
+      mat.opacity = peak * Math.min(1, (1 - k) / 0.5);
+    }, () => mat.dispose());
+  }
+
   /**
    * Any other short-lived object: `step` gets the 0..1 progress each frame and
    * `dispose` frees what the object owns once its `life` (seconds) runs out.
@@ -391,9 +485,13 @@ export class Effects {
     this.items.push({ obj, age: 0, life, step, dispose });
   }
 
-  /** Lay a lasting mark on the ground under `key`, replacing any it had. */
-  mark(key: string, tex: FxTexture, at: THREE.Vector3, size: number, opacity: number): void {
+  /**
+   * Lay a mark on the ground under `key`, replacing any it had. A `lasting` one
+   * outlives the round (see {@link clearMarks}) and lies under the others.
+   */
+  mark(key: string, tex: FxTexture, at: THREE.Vector3, size: number, opacity: number, lasting = false): void {
     this.unmark(key);
+    if (lasting) this.lasting.add(key);
     const mat = new THREE.MeshBasicMaterial({
       map: this.texture(tex),
       transparent: true,
@@ -406,6 +504,7 @@ export class Effects {
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.copy(at);
     mesh.scale.setScalar(size);
+    mesh.renderOrder = lasting ? 0 : 1;
     mesh.userData.opacity = opacity;
     this.marks.set(key, mesh);
     this.group.add(mesh);
@@ -417,10 +516,12 @@ export class Effects {
     this.group.remove(mesh);
     mesh.material.dispose();
     this.marks.delete(key);
+    this.lasting.delete(key);
   }
 
-  clearMarks(): void {
-    for (const key of [...this.marks.keys()]) this.unmark(key);
+  /** Lift the round's marks; `all` lifts the lasting ones too. */
+  clearMarks(all = false): void {
+    for (const key of [...this.marks.keys()]) if (all || !this.lasting.has(key)) this.unmark(key);
   }
 
   /** Advance every effect by `dtMs` of board time. */
@@ -453,11 +554,11 @@ export class Effects {
 
   dispose(): void {
     this.clear();
-    this.clearMarks();
+    this.clearMarks(true);
     this.glow.dispose();
     this.paint.dispose();
     for (const t of this.textures.values()) t.dispose();
-    for (const g of [this.thinRing, this.thickRing, this.plane, this.beamGeo]) g.dispose();
+    for (const g of [this.thinRing, this.thickRing, this.plane, this.beamGeo, this.wallGeo]) g.dispose();
   }
 
   private retire(i: number): void {
@@ -646,6 +747,94 @@ function drawTexture(g: CanvasRenderingContext2D, kind: FxTexture): void {
         g.lineTo(c + 30 * flip, c + 30);
         g.stroke();
       }
+      return;
+    }
+    case 'slash': {
+      // A long blade of light pointing up, sharp at both ends: a soft glow round a hard core.
+      const glow = g.createLinearGradient(0, 0, 128, 0);
+      glow.addColorStop(0, 'rgba(255,255,255,0)');
+      glow.addColorStop(0.5, 'rgba(255,255,255,0.7)');
+      glow.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = glow;
+      g.beginPath();
+      g.moveTo(c, 0);
+      g.quadraticCurveTo(c + 40, c, c, 128);
+      g.quadraticCurveTo(c - 40, c, c, 0);
+      g.fill();
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      g.moveTo(c, 4);
+      g.quadraticCurveTo(c + 10, c, c, 124);
+      g.quadraticCurveTo(c - 10, c, c, 4);
+      g.fill();
+      return;
+    }
+    case 'alarm': {
+      // An exclamation mark, outlined so it reads over anything.
+      g.lineWidth = 12;
+      g.beginPath();
+      g.moveTo(c - 15, 12);
+      g.lineTo(c + 15, 12);
+      g.lineTo(c + 8, 82);
+      g.lineTo(c - 8, 82);
+      g.closePath();
+      g.stroke();
+      g.fill();
+      g.beginPath();
+      g.arc(c, 104, 13, 0, Math.PI * 2);
+      g.stroke();
+      g.fill();
+      return;
+    }
+    case 'scorch': {
+      // A charred blotch with cracks running out of it: where a gruesome kill burned into the ground.
+      const burn = g.createRadialGradient(c, c, 0, c, c, 62);
+      burn.addColorStop(0, 'rgba(14,11,10,0.95)');
+      burn.addColorStop(0.55, 'rgba(26,22,20,0.8)');
+      burn.addColorStop(1, 'rgba(26,22,20,0)');
+      g.fillStyle = burn;
+      g.fillRect(0, 0, 128, 128);
+      for (let i = 0; i < 9; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = 28 + Math.random() * 22;
+        const r = 9 + Math.random() * 11;
+        const x = c + Math.cos(a) * d;
+        const y = c + Math.sin(a) * d;
+        const blot = g.createRadialGradient(x, y, 0, x, y, r);
+        blot.addColorStop(0, 'rgba(22,19,17,0.7)');
+        blot.addColorStop(1, 'rgba(22,19,17,0)');
+        g.fillStyle = blot;
+        g.fillRect(x - r, y - r, r * 2, r * 2);
+      }
+      g.strokeStyle = 'rgba(6,5,5,0.9)';
+      g.lineWidth = 3;
+      for (let i = 0; i < 7; i++) {
+        let a = (i / 7) * Math.PI * 2 + Math.random() * 0.5;
+        g.beginPath();
+        g.moveTo(c + Math.cos(a) * 14, c + Math.sin(a) * 14);
+        for (let r = 24; r <= 58; r += 11) {
+          a += (Math.random() - 0.5) * 0.5;
+          g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
+        }
+        g.stroke();
+      }
+      // Pale ash flecks.
+      g.fillStyle = 'rgba(150,142,134,0.55)';
+      for (let i = 0; i < 18; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * 44;
+        g.fillRect(c + Math.cos(a) * d, c + Math.sin(a) * d, 2, 2);
+      }
+      return;
+    }
+    case 'wall': {
+      // Brightest at the foot, thinning to nothing at the top (the canvas's top is the wall's).
+      const grad = g.createLinearGradient(0, 0, 0, 128);
+      grad.addColorStop(0, 'rgba(255,255,255,0)');
+      grad.addColorStop(0.7, 'rgba(255,255,255,0.35)');
+      grad.addColorStop(1, 'rgba(255,255,255,1)');
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 128, 128);
       return;
     }
   }

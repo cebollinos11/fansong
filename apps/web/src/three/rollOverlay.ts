@@ -38,6 +38,9 @@ export const NERVE_ROLL_MS = NERVE_RESOLVE_MS + 500;
 export const ROLL_LINGER_MS = 900;
 const LEAVE_MS = 250; // fade-out at the end of a card's life
 const VERDICT_MS = 1700;
+const STAMP_MS = 2600; // a gruesome kill's headline stays up longer
+/** Where a gruesome kill's headline sits, as a fraction of the view's height: above the fight, clear of the dice. */
+const STAMP_TOP = 0.15;
 
 /** World heights (above a unit's base) that cards and verdicts anchor at. */
 const CARD_HEIGHT = 1.5;
@@ -103,6 +106,8 @@ interface Verdict {
   on: string[];
   /** Fixed to the bottom centre (a combat's conclusion) rather than over its unit. */
   pin: boolean;
+  /** A gruesome kill's headline, stamped across the upper middle of the view. */
+  stamp: boolean;
   start: number;
   endAt: number;
 }
@@ -223,15 +228,18 @@ export class RollOverlay {
    * Big floating text: over the affected unit(s) (mid-board when `on` is
    * empty), or — with `place` 'bottom' — across the bottom centre, between the
    * two combat cards, where a fight's conclusion always reads the same way.
+   * A gruesome kill's verdict is stamped as a headline over the fight instead.
    */
   addVerdict(v: RollVerdict, now: number, place: 'unit' | 'bottom' = 'unit'): void {
     this.now = now;
-    const pin = place === 'bottom';
-    const el = h('div', `roll-verdict ${v.tone}${pin ? ' pinned' : ''}`);
+    const stamp = v.gruesome === true;
+    const pin = !stamp && place === 'bottom';
+    const el = h('div', `roll-verdict ${v.tone}${pin ? ' pinned' : ''}${stamp ? ' stamp' : ''}`);
+    if (stamp) el.append(h('div', 'verdict-kicker', 'Gruesome kill'));
     el.append(h('div', 'verdict-text', v.text));
     if (v.detail) el.append(h('div', 'verdict-detail', v.detail));
     this.layer.append(el);
-    this.verdicts.push({ el, on: v.on, pin, start: now, endAt: now + VERDICT_MS });
+    this.verdicts.push({ el, on: v.on, pin, stamp, start: now, endAt: now + (stamp ? STAMP_MS : VERDICT_MS) });
   }
 
   /**
@@ -333,12 +341,14 @@ export class RollOverlay {
         return false;
       }
       const f = (now - v.start) / (v.endAt - v.start);
-      const rise = 28 * f;
+      const rise = v.stamp ? 0 : 28 * f;
       const w = v.el.offsetWidth;
       const hgt = v.el.offsetHeight;
       let x = width / 2;
       let y = height * 0.32;
-      if (v.pin) {
+      if (v.stamp) {
+        y = Math.max(hgt / 2 + 4, height * STAMP_TOP);
+      } else if (v.pin) {
         y = height - VERDICT_BOTTOM - hgt / 2;
       } else {
         const points = v.on.map((id) => project(id, VERDICT_HEIGHT)).filter((p) => p !== null);

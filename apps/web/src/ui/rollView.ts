@@ -33,6 +33,8 @@ export interface RollVerdict {
   /** Unit(s) it floats over: the one affected, or both on a clash. */
   on: string[];
   tone: 'kill' | 'down' | 'neutral' | 'save';
+  /** A gruesome kill: stamped across the view as a headline rather than shown as an ordinary verdict. */
+  gruesome?: true;
 }
 
 export interface OpposedRoll {
@@ -171,6 +173,11 @@ function armorSave(after: readonly GameEvent[]): string | undefined {
   return next?.type === 'ArmorHeld' ? next.unitId : undefined;
 }
 
+/** A gruesome kill's headline, named for how the victim died. */
+function gory(text: string, detail: string, victim: RollSide): RollVerdict {
+  return { text, detail, on: [victim.unitId], tone: 'kill', gruesome: true };
+}
+
 function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly GameEvent[]): RollVerdict {
   const hitsB = e.result.startsWith('defender');
   const hitsA = e.type !== 'GuardRiposte' && e.result.startsWith('attacker');
@@ -186,7 +193,7 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
     if (after.some((x) => x.type === 'ToughnessSaved' && x.unitId === loser.unitId)) {
       return { text: 'Tough!', detail: `${ties} — mastery's kill, knocked down instead`, on: [loser.unitId], tone: 'save' };
     }
-    if (e.gruesome) return { text: 'Gruesome!', detail: `${ties} — a savage master's kill`, on: [loser.unitId], tone: 'kill' };
+    if (e.gruesome) return gory('Savaged!', `${ties} — a savage master's kill`, loser);
     return { text: 'Mastery!', detail: `${ties} — a master's tie kills`, on: [loser.unitId], tone: 'kill' };
   }
   if (!hitsA && !hitsB) {
@@ -211,8 +218,8 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
     if (e.gruesome) {
       // Gruesome without tripling: the winner is Savage, and every kill it deals is.
       const tripled = winner.total > loser.total && winner.total >= loser.total * 3;
-      const why = tripled ? `${winner.total} triples ${loser.total}` : `${detail} — a savage kill`;
-      return { text: 'Gruesome!', detail: why, on: [loser.unitId], tone: 'kill' };
+      if (!tripled) return gory('Savaged!', `${detail} — a savage kill`, loser);
+      return gory(e.type === 'ShotResolved' ? 'Skewered!' : 'Cloven!', `${winner.total} triples ${loser.total}`, loser);
     }
     const already = !doubled ? ' — already down' : '';
     return { text: 'Slain!', detail: `${detail}${already}`, on: [loser.unitId], tone: 'kill' };
@@ -232,18 +239,20 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
       return saved
         ? { text: 'Tough!', detail: `${odd} — off the edge, knocked down instead`, on: [loser.unitId], tone: 'save' }
         : e.gruesome
-          ? { text: 'Gruesome!', detail: `${odd} — savagely shoved off the edge`, on: [loser.unitId], tone: 'kill' }
+          ? gory('Hurled into the abyss!', `${odd} — savagely shoved off the edge`, loser)
           : { text: 'Pushed off!', detail: `${odd} — off the edge of the map`, on: [loser.unitId], tone: 'kill' };
     }
     if (after.some((x) => x.type === 'UnitPushedIntoLava' && x.unitId === loser.unitId)) {
       return e.gruesome
-        ? { text: 'Gruesome!', detail: `${odd} — savagely shoved into the lava`, on: [loser.unitId], tone: 'kill' }
+        ? gory('Into the fire!', `${odd} — savagely shoved into the lava`, loser)
         : { text: 'Into the lava!', detail: `${odd} — pushed into the lava`, on: [loser.unitId], tone: 'kill' };
     }
     return { text: 'Pushed back', detail: odd, on: [loser.unitId], tone: 'down' };
   }
   if (after.some((x) => x.type === 'UnitFellIntoLava' && x.unitId === loser.unitId)) {
-    return { text: 'Into the lava!', detail: `${detail} — knocked out of the air`, on: [loser.unitId], tone: 'kill' };
+    return e.gruesome
+      ? gory('Into the fire!', `${detail} — savagely knocked out of the air`, loser)
+      : { text: 'Into the lava!', detail: `${detail} — knocked out of the air`, on: [loser.unitId], tone: 'kill' };
   }
   const cornered = winner.die % 2 === 1 ? ' — no room to fall back' : '';
   return { text: 'Knocked down', detail: `${detail}${cornered}`, on: [loser.unitId], tone: 'down' };

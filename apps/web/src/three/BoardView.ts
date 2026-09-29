@@ -105,6 +105,11 @@ export interface HexOverlay {
 }
 
 const OWNER_COLORS = [0x4f9dff, 0xff6b5b] as const; // P0 blue, P1 red
+const BACKGROUND = 0x11151c;
+const SILHOUETTE_BACKGROUND = 0x050308;
+// Physical lighting divides indirect light by π, so ~π is "full" ambient.
+const AMBIENT_LIGHT = 2.6;
+const KEY_LIGHT = 1.1;
 const BLOCKED_COLOR = 0x4a4038;
 
 // Flat-top hex layout. Cells are offset "odd-q" coords (x = column, y = row);
@@ -371,10 +376,43 @@ const REASSEMBLE_GATHER_MS = 650; // the bones drawing in, before the unit start
 const REASSEMBLE_STAGGER_MS = 250; // between one unit's reassembly and the next
 const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the player's view
 const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
-const HIT_STOP_MS = 90; // a gruesome kill freezes the action this long on impact
+const HIT_STOP_MS = 220; // a gruesome kill freezes the action this long on impact
+const SILHOUETTE_MS = 120; // the start of that freeze is a flat silhouette: the victim white, all else dark (wall clock)
 const SLOW_MO_MS = 1100; // then plays on in slow motion for this long (wall clock), easing back to full speed
 const SLOW_MO_SCALE = 0.3; // board time runs this fast at the start of a gruesome kill's slow motion
 const FEAR_WAVE_MS = 800; // time for a gruesome kill's fear to reach the edge of its radius
+const FEAR_WALL_HEIGHT = 1.4; // the pale wall that fear spreads as
+const FEAR_WALL_COLOR = 0xc8b4ff;
+const HALO_COLOR = 0x9a6ad0; // the faint ring showing how far a coming gruesome kill's fear will reach
+// A gruesome kill that is coming (the events say so before it plays): the build-up to it.
+const DREAD_SPAN_MARGIN = 1.8; // its close-up is tighter than an ordinary fight's...
+const DREAD_MIN_SPAN = 4.2;
+const DREAD_MAX_ZOOM = 0.38;
+const DREAD_FRAME_SLOW = 1.6; // ...and the camera takes this much longer to get there
+const DREAD_DOLLY = 0.93; // then keeps creeping in to this fraction of its distance until the blow lands
+const WINDUP_MS = 320; // the killer holds its swing (or its draw) at the peak this long
+const DREAD_COLOR = 0xcdb8ff; // the power gathering in the killer as it does
+const SPOT_IN_MS = 400; // the rest of the board darkens this fast as the build-up starts...
+const SPOT_OUT_MS = 600; // ...and comes back this fast once the killer's triumph is over
+const SPOT_DIM = 0.6; // how much a unit out of the spotlight darkens
+const SPOT_LIGHT_DIM = 0.55; // how much the light on the board drops
+const SHIVER_MS = 380; // a friend who will have to test its nerve shivers this often through the build-up
+const PUSH_IN = 0.9; // on impact the camera lurches in to this fraction of its distance...
+const PUSH_IN_MS = 260;
+const ROLL = 0.05; // ...and tilts this far (radians), easing back
+const ROLL_MS = 900; // wall clock
+const SLASH_COLOR = 0xf2ecff;
+const SLASH_S = 1.3; // seconds of board time a killing slash hangs in the air
+const THROW_MS = 700; // the victim is hurled back...
+const THROW_DIST = 1.3;
+const THROW_HEIGHT = 0.7;
+const THROW_SPIN = 2.4; // radians it turns over in the air
+const THROW_BREAK = 0.55; // ...and breaks apart this far into its flight
+const VICTORY_AT_MS = 750; // after the kill the camera goes to the killer for its triumph...
+const VICTORY_HOLD_MS = 1300; // ...and holds on it this long before the nerve checks
+const FLEE_SLOW_MS = 900; // a friend who breaks and runs from a gruesome kill runs in slow motion this long (wall clock)
+const FLEE_SLOW_SCALE = 0.45;
+const SCORCH_SIZE = HEX_SIZE * 1.5; // the scorch a gruesome kill leaves, which lasts the whole game
 const SHATTER_FADE_MS = 200; // a unit that shatters into motes is gone this fast
 const PUSH_OFF_MS = 900; // a unit shoved off the table slides, topples and drops for this long
 const LAVA_DEATH_MS = 1100; // a unit going into lava slides in, then sinks glowing for this long
@@ -543,9 +581,14 @@ interface UnitObj {
     tilt?: number;
     /** Going into lava: the world offset it slides (and drops) to (zero when it falls in where it hovers), then it sinks. */
     melt?: THREE.Vector3;
+    /** Hurled by a gruesome kill: the way it flies, and how far it turns over before it breaks apart. */
+    thrown?: THREE.Vector3;
+    spin?: number;
   } | null;
   /** Set by a UnitPushedOff event: the direction it is shoved off the table. */
   pushedOff: THREE.Vector3 | null;
+  /** Set by a gruesome kill that leaves it on the board: the direction it is hurled. */
+  thrown: THREE.Vector3 | null;
   /** Set by a lava death (pushed in or knocked out of the air): the world offset to the lava it goes into, height included. */
   intoLava: THREE.Vector3 | null;
   /** A knock the cutout takes and springs back from (a clash, a brace, a shudder of fear); `shake` wobbles instead. */
@@ -624,10 +667,23 @@ export class BoardView {
   private wallNow = 0;
   /** Board time stands still until the wall clock reaches this (a hit-stop). */
   private freezeUntil = 0;
-  /** Board time runs slow (see {@link SLOW_MO_SCALE}) between these wall-clock times, easing back to full speed. */
-  private slowMo = { start: 0, end: 0 };
+  /** Board time runs slow (from `scale`) between these wall-clock times, easing back to full speed. */
+  private slowMo = { start: 0, end: 0, scale: SLOW_MO_SCALE };
   /** Camera shakes in progress, on the wall clock. */
   private shakes: { start: number; end: number; amp: number; kind: 'nudge' | 'rumble'; dir: THREE.Vector3 }[] = [];
+  /** A tilt of the camera about its line of sight (a gruesome kill's impact), on the wall clock. */
+  private cameraRoll: { start: number; end: number; amp: number } | null = null;
+  /**
+   * The board darkened around a gruesome kill, on board time: how lit each unit
+   * stays (1 fully, 0 not at all; units not listed darken fully).
+   */
+  private spotlight: { lit: Map<string, number>; start: number; end: number } | null = null;
+  /** The impact frame of a gruesome kill, until this wall-clock time: its victim white, all else dark. */
+  private silhouette: { until: number; victim: string; killer: string | null } | null = null;
+  private readonly ambient = new THREE.HemisphereLight(0xeef2ff, 0x5a5448, AMBIENT_LIGHT);
+  private readonly keyLight = new THREE.DirectionalLight(0xffffff, KEY_LIGHT);
+  /** Darkens the edges of the view while a gruesome kill plays. */
+  private readonly vignette: HTMLElement;
   /** Deferred animation steps, run once board time reaches `at` (ms). */
   private readonly timeline: { at: number; fn: () => void }[] = [];
   /** Board time (ms) since the view was created; drives all animation. */
@@ -741,18 +797,15 @@ export class BoardView {
     this.renderer.domElement.style.width = '100%';
     this.renderer.domElement.style.height = '100%';
 
-    this.scene.background = new THREE.Color(0x11151c);
+    this.scene.background = new THREE.Color(BACKGROUND);
     this.scene.add(this.backdrop.group);
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
 
-    // Physical lighting divides indirect light by π, so ~π is "full" ambient.
-    const ambient = new THREE.HemisphereLight(0xeef2ff, 0x5a5448, 2.6);
-    const key = new THREE.DirectionalLight(0xffffff, 1.1);
-    key.position.set(6, 14, 8);
+    this.keyLight.position.set(6, 14, 8);
     this.scene.add(
-      ambient,
-      key,
+      this.ambient,
+      this.keyLight,
       this.overlayGroup,
       this.highlightGroup,
       this.previewGroup,
@@ -783,6 +836,10 @@ export class BoardView {
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
 
+    // Under the dice and verdicts, so they stay bright while the board darkens.
+    this.vignette = document.createElement('div');
+    this.vignette.className = 'board-vignette';
+    this.container.appendChild(this.vignette);
     this.rolls = new RollOverlay(
       this.container,
       (id) => this.units.get(id)?.owner,
@@ -1084,6 +1141,10 @@ export class BoardView {
     let nerveAt: number | null = null; // start of the current run of nerve checks
     let pair: [string, string] | null = null; // the two sides of the latest blow
     let gruesome = false; // whether the latest blow was a gruesome kill
+    let ranged = false; // whether the latest blow was a shot
+    let aftermath = t; // when the latest gruesome kill's aftermath (its killer's triumph) is over
+    const dreaded = new Set<string>(); // friends shaken by a gruesome kill in this batch, who flee in slow motion
+    let fleeSlowed = false; // whether the first of them to run has slowed time yet
     const toughSaved = new Set<string>(); // units whose killing blow Tough turned into a knockdown
     let reassembling = false; // whether this batch's Reassembling stand-ups are already laid out
     const hold = (id: string, until: number) => {
@@ -1099,6 +1160,14 @@ export class BoardView {
         if (obj) {
           // A runner breaks once its nerve check (and any hack at its back) has shown.
           if (e.type === 'UnitFled') t = Math.max(t, settle);
+          // The first friend to break from a gruesome kill runs in slow motion, trailing dread.
+          if (e.type === 'UnitFled' && dreaded.has(e.unitId)) {
+            if (!fleeSlowed) this.at(t, () => this.slowMotion(FLEE_SLOW_MS, FLEE_SLOW_SCALE));
+            fleeSlowed = true;
+            this.at(t, () => {
+              obj.glow = { color: FEAR_WALL_COLOR, start: this.now, end: this.now + GLOW_MS };
+            });
+          }
           const cells = e.path ?? this.walkCells(e.from, e.to);
           // An opponent's route shows first, so the eye knows where it is headed.
           if (e.type === 'UnitMoved' && this.localSeats?.includes(obj.owner) !== true) {
@@ -1150,10 +1219,14 @@ export class BoardView {
         const roll = describeCombat(e, after);
         pair = e.type === 'GuardRiposte' ? [e.guardId, e.attackerId] : [e.attackerId, e.targetId];
         gruesome = e.gruesome === true;
+        ranged = e.type === 'ShotResolved';
+        // A gruesome kill is known before it plays: build up to it.
+        const dread = gruesome ? dreadOf(e, pair, after) : null;
         // A blow plays in three beats: frame the pair, show their dice, then
         // strike while the cards are still up in the corners.
-        t += this.pause(this.frameCombat(pair, t));
+        t += this.pause(this.frameCombat(pair, t, dread !== null));
         const start = t;
+        const windup = dread ? WINDUP_MS : 0;
         const cards = OPPOSED_ROLL_MS; // the cards show their outcome at once; a beat to read it
         // Whoever pair[0] is — attacker, shooter, hacker, riposting guard — the
         // blow only reaches pair[1] on a defender-side result. Anything else is
@@ -1170,11 +1243,17 @@ export class BoardView {
         // A riposte or free hack tied by a master on the receiving end plays as
         // an exchange too: the swing is turned aside and the master's answer kills.
         const mastered = e.type !== 'AttackResolved' && after[0]?.type === 'MasteryStruck' && after[0].unitId === pair[1];
+        const framed = this.planned; // a shot the camera rides replaces it
+        // The killing blow (the last one, in an exchange) hangs at its peak before it lands.
         const s = mastered
-          ? this.exchange(pair[0], pair[1], start + cards, { land: true })
+          ? this.exchange(pair[0], pair[1], start + cards, { land: true, windup })
           : e.type === 'AttackResolved' && armored !== pair[1] && this.answered(e)
-            ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') || armored === pair[0] })
-            : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land, cover });
+            ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') || armored === pair[0], windup })
+            : this.strike(pair[0], pair[1], ranged ? 'ranged' : 'melee', start + cards, { land, cover, windup });
+        if (dread) {
+          aftermath = this.dreadPlay(dread, start, s.hit, this.planned === framed);
+          for (const id of dread.shaken) dreaded.add(id);
+        }
         const [first, second] = pair;
         if (e.result === 'clash' && !armored && e.type !== 'ShotResolved') this.at(s.hit, () => this.clashFx(first, second));
         if (e.type === 'GuardRiposte') {
@@ -1187,11 +1266,11 @@ export class BoardView {
         this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now, 'bottom'));
         lastHit = s.hit;
         settle = s.hit;
-        t = s.end;
+        t = Math.max(s.end, dread ? aftermath : 0);
       } else if (e.type === 'NerveCheck') {
         // A run of checks (every nearby friend, or a whole routing warband) rolls at once.
         if (nerveAt === null) {
-          const base = Math.max(lastHit, settle) + NERVE_LEAD_MS;
+          const base = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
           this.at(base, () => this.rolls.retireAll());
           // Widen out to hold every unit about to roll: their dice must not fall
           // outside a close-up on the two who just fought.
@@ -1224,13 +1303,13 @@ export class BoardView {
         t += WAR_CRY_MS;
         lastHit = settle = t;
       } else if (e.type === 'LeaderFallen') {
-        const at = Math.max(lastHit, settle) + NERVE_LEAD_MS;
+        const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
         this.at(at, () =>
           this.rolls.addVerdict({ text: 'The Leader falls!', detail: 'friends who saw it test nerve', on: [], tone: 'kill' }, this.now),
         );
         settle = at;
       } else if (e.type === 'WarbandBroken') {
-        const at = Math.max(lastHit, settle) + NERVE_LEAD_MS;
+        const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
         this.at(at, () =>
           this.rolls.addVerdict({ text: `P${e.player}'s warband breaks!`, on: [], tone: 'kill' }, this.now),
         );
@@ -1286,12 +1365,16 @@ export class BoardView {
         if (obj) {
           // A shove off the map is gruesome only when a Savage did the shoving.
           const fearful = gruesome;
-          // The fear checks a gruesome kill causes follow straight after it.
-          const next = after.findIndex((x) => x.type !== 'NerveCheck');
-          const shaken = (next < 0 ? after : after.slice(0, next)).flatMap((x) =>
-            x.type === 'NerveCheck' ? [x.unitId] : [],
-          );
-          this.at(lastHit, () => this.killFx(obj, fearful, shaken));
+          const shaken = shakenBy(after);
+          const killer = pair && pair.includes(e.unitId) ? (pair[0] === e.unitId ? pair[1] : pair[0]) : null;
+          const by = killer ? this.units.get(killer) : undefined;
+          // A gruesome kill that leaves the body on the board hurls it away from its killer.
+          if (fearful && by && !obj.pushedOff && !obj.intoLava) {
+            const away = obj.targetPos.clone().sub(by.targetPos).setY(0);
+            obj.thrown = away.lengthSq() > 1e-6 ? away.normalize() : null;
+          }
+          const shot = ranged;
+          this.at(lastHit, () => this.killFx(obj, fearful, shaken, killer, shot));
         }
       } else if (e.type === 'UnitRouted') {
         const obj = this.units.get(e.unitId);
@@ -1394,9 +1477,10 @@ export class BoardView {
   /**
    * Frame a blow on its two combatants: centre them and move in close enough to
    * read the fight, so the dice cards and then the strike play out in a close-up.
+   * A `dread`ful one (a gruesome kill coming) is framed tighter, and slower.
    * Returns how long the move takes, which the caller plays the blow after.
    */
-  private frameCombat(unitIds: string[], at: number): number {
+  private frameCombat(unitIds: string[], at: number, dread = false): number {
     if (this.cameraMode !== 'cinematic' || this.downPos) return 0;
     const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
@@ -1406,9 +1490,83 @@ export class BoardView {
     const centre = middle(points);
     // Close enough to fill the view with the pair, but never further out than the opening shot.
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
-    const dur = this.scheduleMove(at, centre, this.closeUp(span * COMBAT_SPAN_MARGIN));
+    const dist = dread ? this.closeUp(span * DREAD_SPAN_MARGIN, true) : this.closeUp(span * COMBAT_SPAN_MARGIN);
+    const dur = this.scheduleMove(at, centre, dist, dread ? DREAD_FRAME_SLOW : 1);
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
+  }
+
+  /**
+   * Lay out what surrounds a gruesome kill whose blow starts `start` ms from now
+   * and lands at `hit`: the build-up (see {@link dreadFx}) while the camera
+   * creeps in on the pair (with `dolly`: not when it rides a shot in), a lurch in
+   * on the victim as the blow lands, then the killer's triumph in close-up.
+   * Returns when that triumph is over.
+   */
+  private dreadPlay(d: Dread, start: number, hit: number, dolly: boolean): number {
+    const cinematic = this.cameraMode === 'cinematic' && !this.downPos;
+    const killer = this.units.get(d.killer);
+    const victim = this.units.get(d.victim);
+    if (cinematic && dolly) {
+      const view = this.plannedCamera();
+      const dist = view.dist * DREAD_DOLLY;
+      this.at(start, () => this.moveCamera(view.target, dist, hit - start, true));
+      this.planned = { target: view.target, dist };
+    }
+    if (cinematic && victim) {
+      // Halfway to the victim, so the killer stays in the shot.
+      const view = this.plannedCamera();
+      const to = victim.targetPos.clone().setY(0).lerp(view.target, 0.5);
+      this.at(hit, () => this.moveCamera(to, this.camera.position.distanceTo(this.controls.target) * PUSH_IN, PUSH_IN_MS));
+      this.planned = { target: to, dist: view.dist * PUSH_IN };
+    }
+    let triumph = hit + VICTORY_AT_MS;
+    if (cinematic && killer) triumph += this.scheduleMove(triumph, killer.targetPos, this.closeUp(0));
+    this.at(triumph, () => this.exult(d.killer));
+    const end = triumph + VICTORY_HOLD_MS;
+    this.at(start, () => this.dreadFx(d, hit - start, end - start));
+    return end;
+  }
+
+  /**
+   * The build-up to a gruesome kill landing in `toHit` ms: the board darkens
+   * round its killer and victim (for `total` ms, through the killer's triumph),
+   * a faint ring shows how far its fear will reach, and every friend inside it
+   * who will have to test its nerve shivers.
+   */
+  private dreadFx(d: Dread, toHit: number, total: number): void {
+    const lit = new Map<string, number>([
+      [d.killer, 1],
+      [d.victim, 1],
+    ]);
+    for (const id of d.shaken) lit.set(id, 0.5);
+    this.spotlight = { lit, start: this.now, end: this.now + total };
+    const victim = this.units.get(d.victim);
+    if (victim) {
+      const ground = victim.group.position.clone().setY(this.groundY(victim) + 0.03);
+      this.effects.halo(ground, HALO_COLOR, MORALE_RADIUS * HEX_STEP, { life: toHit / 1000, opacity: 0.45 });
+    }
+    for (const id of d.shaken) {
+      const friend = this.units.get(id);
+      if (!friend) continue;
+      for (let at = Math.random() * 120; at < toHit; at += SHIVER_MS) {
+        this.at(at, () => {
+          const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+          this.joltUnit(friend, camRight, 0.03, true, SHIVER_MS);
+        });
+      }
+    }
+  }
+
+  /** A killer's triumph over a gruesome kill: its victory clip (or its rally, or a flourish of its weapon) in a glow of dread. */
+  private exult(id: string): void {
+    const obj = this.units.get(id);
+    if (!obj || obj.state.dead || obj.fade) return;
+    const clip = obj.anims.victory ?? obj.anims.leading ?? obj.anims.melee?.[0] ?? obj.anims.ranged?.[0];
+    if (clip && !obj.shown.knocked) obj.animator.play(clip);
+    obj.glow = { color: DREAD_COLOR, start: this.now, end: this.now + GLOW_MS };
+    const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
+    this.effects.ring(ground, DREAD_COLOR, 0.2, HEX_SIZE * 1.2, { life: 0.6, opacity: 0.7, additive: true });
   }
 
   /**
@@ -1483,11 +1641,11 @@ export class BoardView {
    * View distance that keeps `span` world units across the view: the close-up a
    * fight plays in. Never nearer than {@link COMBAT_MAX_ZOOM} of the opening
    * framing, and never further out than that framing (a distant pair just gets
-   * less of a move in).
+   * less of a move in). A `tight` one (a gruesome kill's) may come closer.
    */
-  private closeUp(span: number): number {
-    const fit = this.fitDistance(Math.max(span, COMBAT_MIN_SPAN));
-    const nearest = Math.max(this.controls.minDistance, this.homeDist * COMBAT_MAX_ZOOM);
+  private closeUp(span: number, tight = false): number {
+    const fit = this.fitDistance(Math.max(span, tight ? DREAD_MIN_SPAN : COMBAT_MIN_SPAN));
+    const nearest = Math.max(this.controls.minDistance, this.homeDist * (tight ? DREAD_MAX_ZOOM : COMBAT_MAX_ZOOM));
     return THREE.MathUtils.clamp(fit, nearest, this.homeDist);
   }
 
@@ -1522,15 +1680,16 @@ export class BoardView {
 
   /**
    * Schedule a camera move `at` ms from now, to `target` (the pivot, on the
-   * ground) and `dist` (view distance; null keeps the current one). Returns its length.
+   * ground) and `dist` (view distance; null keeps the current one), taking
+   * `slow` times as long as usual. Returns its length.
    */
-  private scheduleMove(at: number, target: THREE.Vector3, dist: number | null): number {
+  private scheduleMove(at: number, target: THREE.Vector3, dist: number | null, slow = 1): number {
     const from = this.plannedCamera();
     const travel = new THREE.Vector3(target.x - from.target.x, 0, target.z - from.target.z).length();
     const zoom = dist === null ? 0 : Math.abs(dist - from.dist);
     // Already looking at it: no nudge, and no wait for one.
     if (travel + zoom < CAMERA_STILL) return 0;
-    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + (travel + zoom) * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
+    const dur = slow * THREE.MathUtils.clamp(PAN_MIN_MS + (travel + zoom) * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
     this.planned = { target: new THREE.Vector3(target.x, 0, target.z), dist: dist ?? from.dist };
     this.at(at, () => this.moveCamera(target, dist, dur));
     return dur;
@@ -1647,9 +1806,7 @@ export class BoardView {
     }
     this.rolls.clear();
     this.effects.clear();
-    this.shakes = [];
-    this.freezeUntil = 0;
-    this.slowMo = { start: 0, end: 0 };
+    this.resetTime();
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
       obj.pulse = null;
@@ -1670,11 +1827,9 @@ export class BoardView {
     this.busyUntil = this.now;
     this.rolls.clear();
     this.effects.clear();
-    this.effects.clearMarks();
+    this.effects.clearMarks(true);
     this.clearRoutes();
-    this.shakes = [];
-    this.freezeUntil = 0;
-    this.slowMo = { start: 0, end: 0 };
+    this.resetTime();
     for (const obj of this.units.values()) {
       obj.holdUntil = 0;
       obj.pulse = null;
@@ -1686,6 +1841,16 @@ export class BoardView {
       obj.mirror.rotation.z = 0;
       obj.animator.moveFor(0, { reset: true });
     }
+  }
+
+  /** Drop every hit-stop, slow motion, shake, tilt and darkening in progress. */
+  private resetTime(): void {
+    this.shakes = [];
+    this.cameraRoll = null;
+    this.freezeUntil = 0;
+    this.slowMo = { start: 0, end: 0, scale: SLOW_MO_SCALE };
+    this.spotlight = null;
+    this.silhouette = null;
   }
 
   /** Return the camera to the framing it had when the board was built. */
@@ -1744,6 +1909,7 @@ export class BoardView {
     this.starMaterial?.map?.dispose();
     this.starMaterial?.dispose();
     this.rolls.dispose();
+    this.vignette.remove();
     this.effects.dispose();
     this.ringGeo.dispose();
     this.dashedRingGeo.dispose();
@@ -1852,6 +2018,7 @@ export class BoardView {
       routed: false,
       fade: null,
       pushedOff: null,
+      thrown: null,
       intoLava: null,
       jolt: null,
       glow: null,
@@ -1912,6 +2079,8 @@ export class BoardView {
    * lunge or missile, and the target's reaction timed to the clip's hit frame.
    * `land` is false for a blow the target turns aside — it still defends, but
    * nothing connects; a shot that misses with `cover` hits the cover instead.
+   * A `windup` (a gruesome kill's) holds the swing or the draw at its peak that
+   * many ms longer, gathering dread, before it lets go.
    * Returns the hit and end times, relative to now.
    */
   private strike(
@@ -1919,17 +2088,26 @@ export class BoardView {
     targetId: string,
     range: 'melee' | 'ranged',
     at: number,
-    opts: { land?: boolean; cover?: boolean } = {},
+    opts: { land?: boolean; cover?: boolean; windup?: number } = {},
   ): { hit: number; end: number } {
     const a = this.units.get(attackerId);
     const d = this.units.get(targetId);
     if (!a || !d) return { hit: at, end: at };
     const options: RangedClip[] | undefined = range === 'melee' ? a.anims.melee : a.anims.ranged;
-    const clip = options?.[Math.floor(Math.random() * options.length)];
-    const dur = clip ? clipDuration(clip) : 400;
-    const hit = clip?.hitMs ?? dur / 2;
+    const picked = options?.[Math.floor(Math.random() * options.length)];
+    const windup = opts.windup ?? 0;
+    // The moment it lets go: the blow landing, or the missile leaving the shooter.
+    const release = (c: RangedClip) =>
+      (c.hitMs ?? clipDuration(c) / 2) - (range === 'ranged' ? (c.missileMs ?? 150) : 0);
+    const clip = picked && windup > 0 ? holdPeak(picked, release(picked), windup) : picked;
+    const dur = clip ? clipDuration(clip) : 400 + windup;
+    const hit = clip?.hitMs ?? (clip ? dur / 2 : 200 + windup);
     const land = opts.land ?? true;
     const ending: ShotEnding = land ? 'hit' : opts.cover ? 'cover' : 'miss';
+    if (windup > 0) {
+      const peak = (clip ? release(clip) : hit) - windup;
+      this.at(at + Math.max(0, peak), () => this.gatherFx(a, windup));
+    }
 
     this.at(at, () => {
       const toTarget = d.group.position.clone().sub(a.group.position).setY(0);
@@ -1997,7 +2175,7 @@ export class BoardView {
     attackerId: string,
     targetId: string,
     at: number,
-    opts: { land?: boolean } = {},
+    opts: { land?: boolean; windup?: number } = {},
   ): { hit: number; end: number } {
     const swing = this.strike(attackerId, targetId, 'melee', at, { land: false });
     return this.strike(targetId, attackerId, 'melee', swing.end + RIPOSTE_GAP_MS, opts);
@@ -2119,6 +2297,18 @@ export class BoardView {
       this.at(PUSH_OFF_MS * 0.3, () => this.dust(lip, 14, 0.9));
       this.at(PUSH_OFF_MS * 0.25, () => this.releaseWisp(obj));
       this.at(PUSH_OFF_MS, () => this.markFallen(obj));
+    } else if (obj.thrown) {
+      // Hurled by a gruesome kill: it flies back from its killer, turning over
+      // as it goes, and bursts into motes in mid-air as its soul rises.
+      const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+      const spin = (obj.thrown.dot(camRight) >= 0 ? -1 : 1) * THROW_SPIN;
+      obj.animator.play(obj.shown.knocked ? this.deathClip(obj, 'rest') : obj.anims.death, { hold: true });
+      obj.fade = { start: this.now, end: this.now + THROW_MS, flee: null, thrown: obj.thrown, spin };
+      this.at(THROW_MS * THROW_BREAK, () => {
+        this.shatter(obj);
+        this.releaseWisp(obj);
+        this.markFallen(obj);
+      });
     } else {
       // Wesnoth plays the death clip, then fades; without one it just fades.
       // A downed unit finishes its fall from the down pose. As the fade begins
@@ -2145,8 +2335,10 @@ export class BoardView {
     obj.fade = null;
     obj.routed = false;
     obj.pushedOff = null;
+    obj.thrown = null;
     obj.intoLava = null;
     this.effects.unmark(obj.id);
+    this.effects.unmark(`scorch:${obj.id}`);
     obj.animator.stop();
     obj.group.visible = true;
     obj.sprite.material.alphaTest = 0.5;
@@ -2266,10 +2458,23 @@ export class BoardView {
         off.addScaledVector(obj.fade.melt, slide);
         sink = Math.max(0, f - 0.25) * 0.8 - obj.fade.melt.y * slide;
       }
-      // Pushed off, it stays solid until it is well over the edge; in lava, until it is sinking.
-      const gone = obj.fade.drop ? Math.max(0, f - 0.5) * 2 : obj.fade.melt ? Math.max(0, f - 0.3) / 0.7 : f;
+      if (obj.fade.thrown) {
+        // Flung back in an arc, turning over, rising until it bursts.
+        off.addScaledVector(obj.fade.thrown, (1 - (1 - f) ** 2) * THROW_DIST);
+        sink = -THROW_HEIGHT * Math.sin((Math.PI / 2) * Math.min(1, f / THROW_BREAK));
+        obj.tilt.rotation.z = (obj.fade.spin ?? 0) * f;
+      }
+      // Pushed off, it stays solid until it is well over the edge; in lava, until
+      // it is sinking; hurled, until it bursts (its motes take over from there).
+      const gone = obj.fade.drop
+        ? Math.max(0, f - 0.5) * 2
+        : obj.fade.melt
+          ? Math.max(0, f - 0.3) / 0.7
+          : obj.fade.thrown
+            ? f < THROW_BREAK ? 0 : 1
+            : f;
       obj.sprite.material.opacity = 1 - gone;
-      obj.base.material.opacity = 1 - (obj.fade.drop ? f : gone);
+      obj.base.material.opacity = 1 - (obj.fade.drop || obj.fade.thrown ? f : gone);
       obj.group.visible = f < 1;
     }
     // A flyer floats above its hex with a slow bob, and settles to earth when
@@ -2283,11 +2488,9 @@ export class BoardView {
     obj.facing.visible = !obj.blink || ((this.now - obj.blink.start) % BLINK_MS) >= BLINK_MS / 2;
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
 
-    if (obj.flash > 0) {
-      obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);
-      // A basic material's colour multiplies the texture; > 1 washes it toward white.
-      obj.sprite.material.color.setScalar(1 + obj.flash * 2.5);
-    }
+    if (obj.flash > 0) obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);
+    // A basic material's colour multiplies the texture; > 1 washes it toward white.
+    obj.sprite.material.color.setScalar((1 + obj.flash * 2.5) * this.unitLight(obj.id));
     if (obj.fade?.melt) {
       // Sinking into lava it glows hotter and hotter: orange, then a searing yellow-white.
       const f = THREE.MathUtils.clamp((this.now - obj.fade.start) / (obj.fade.end - obj.fade.start), 0, 1);
@@ -2800,19 +3003,83 @@ export class BoardView {
     this.freezeUntil = Math.max(this.freezeUntil, this.wallNow + ms);
   }
 
-  /** Play the action in slow motion for `ms` (wall clock) once any hit-stop ends. */
-  private slowMotion(ms: number): void {
+  /** Play the action in slow motion for `ms` (wall clock) once any hit-stop ends, starting at `scale` of full speed. */
+  private slowMotion(ms: number, scale = SLOW_MO_SCALE): void {
     const start = Math.max(this.wallNow, this.freezeUntil);
-    this.slowMo = { start, end: Math.max(this.slowMo.end, start + ms) };
+    this.slowMo = { start, end: Math.max(this.slowMo.end, start + ms), scale };
   }
 
   /** How fast board time runs against the wall clock right now: still in a hit-stop, slow in a slow motion. */
   private timeScale(): number {
     if (this.wallNow < this.freezeUntil) return 0;
-    const { start, end } = this.slowMo;
+    const { start, end, scale } = this.slowMo;
     if (this.wallNow >= end || this.wallNow < start) return 1;
     const k = (this.wallNow - start) / (end - start);
-    return SLOW_MO_SCALE + (1 - SLOW_MO_SCALE) * k * k;
+    return scale + (1 - scale) * k * k;
+  }
+
+  /** How dark the board is around a gruesome kill right now: 0 not at all, 1 fully. */
+  private spotAmount(): number {
+    const s = this.spotlight;
+    if (!s || this.now < s.start) return 0;
+    if (this.now >= s.end) {
+      this.spotlight = null;
+      return 0;
+    }
+    return Math.min(1, (this.now - s.start) / SPOT_IN_MS, (s.end - this.now) / SPOT_OUT_MS);
+  }
+
+  /** The brightness a unit's cutout is drawn at: dimmed outside a gruesome kill's spotlight. */
+  private unitLight(id: string): number {
+    const k = this.spotAmount();
+    if (k === 0) return 1;
+    return 1 - SPOT_DIM * k * (1 - (this.spotlight?.lit.get(id) ?? 0));
+  }
+
+  /**
+   * Grade the frame for a gruesome kill: the light on the board drops and the
+   * edges of the view darken with its spotlight, and on its impact frame the
+   * scene goes flat — its victim white, the killer outlined, everything else dark.
+   */
+  private grade(): void {
+    const k = this.spotAmount();
+    const sil = this.silhouette && this.wallNow < this.silhouette.until ? this.silhouette : null;
+    if (!sil) this.silhouette = null;
+    const light = sil ? 0.06 : 1 - SPOT_LIGHT_DIM * k;
+    this.ambient.intensity = AMBIENT_LIGHT * light;
+    this.keyLight.intensity = KEY_LIGHT * light;
+    this.backdrop.group.visible = !sil;
+    (this.scene.background as THREE.Color).setHex(sil ? SILHOUETTE_BACKGROUND : BACKGROUND);
+    this.vignette.style.opacity = String(sil ? 1 : k);
+    if (!sil) return;
+    for (const obj of this.units.values()) {
+      if (obj.id === sil.victim) {
+        obj.sprite.material.color.setScalar(20);
+        obj.outline.visible = false;
+      } else {
+        obj.sprite.material.color.setScalar(0.03);
+        if (obj.id === sil.killer && obj.atlas) {
+          const u = obj.outline.material.uniforms;
+          obj.outline.visible = true;
+          u.uColor!.value.setHex(0xffffff);
+          u.uOpacity!.value = 1;
+          u.uWidth!.value = OUTLINE_HOVER_PX;
+        }
+      }
+    }
+  }
+
+  /** How far the camera is tilted about its line of sight right now (a gruesome kill's impact). */
+  private rollAngle(): number {
+    const r = this.cameraRoll;
+    if (!r) return 0;
+    if (this.wallNow >= r.end) {
+      this.cameraRoll = null;
+      return 0;
+    }
+    // Snaps over, then eases back upright.
+    const k = (this.wallNow - r.start) / (r.end - r.start);
+    return r.amp * (k < 0.12 ? k / 0.12 : (1 - (k - 0.12) / 0.88) ** 2);
   }
 
   /** A blow that connects: a small white spark where it lands. */
@@ -2949,17 +3216,33 @@ export class BoardView {
     obj.blink = { start: this.now, end: this.now + BLINKS * BLINK_MS };
   }
 
-  /** 6d, 7a–7c. A killing blow: a shockwave — and for a gruesome one, a hit-stop and slow motion, ash, a skull and a wave of fear. */
-  private killFx(obj: UnitObj, gruesome: boolean, shakenIds: string[]): void {
+  /**
+   * 6d, 7a–7f. A killing blow: a shockwave — and for a gruesome one (dealt by
+   * `killerId`, with a shot if `ranged`), a hit-stop opening on a flat
+   * silhouette, slow motion, the killing stroke hanging in the air, a lurch of
+   * the camera, ash, a skull, a wall of fear and a scorch that stays.
+   */
+  private killFx(obj: UnitObj, gruesome: boolean, shakenIds: string[], killerId: string | null = null, ranged = false): void {
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.035);
     this.effects.ring(ground, 0xffffff, 0.2, 1.1, { life: 0.5, opacity: 0.85, additive: true });
     if (!gruesome) return;
-    // 7a: the heavy version — a freeze on impact easing out of slow motion, a bigger double shockwave,
-    // a hard shake and a burst of ash and dark shards.
+    // 7a: the heavy version — a freeze on impact (its first instants a flat
+    // silhouette) easing out of slow motion, a bigger double shockwave, a hard
+    // shake with a tilt of the camera, and a burst of ash and dark shards.
     this.hitStop(HIT_STOP_MS);
+    this.silhouette = { until: this.wallNow + SILHOUETTE_MS, victim: obj.id, killer: killerId };
     this.slowMotion(SLOW_MO_MS);
     this.effects.ring(ground, 0xffffff, 0.3, 2.2, { life: 0.7, opacity: 0.9, additive: true });
     this.shakeCamera('rumble', 0.1, 380);
+    const killer = killerId ? this.units.get(killerId) : undefined;
+    if (killer) {
+      this.slashFx(killer, obj, ranged);
+      if (this.cameraMode !== 'off' && !this.downPos) {
+        const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+        const side = obj.group.position.clone().sub(killer.group.position).dot(camRight);
+        this.cameraRoll = { start: this.wallNow, end: this.wallNow + ROLL_MS, amp: side >= 0 ? -ROLL : ROLL };
+      }
+    }
     const chest = this.chest(obj);
     this.effects.burst({
       at: chest,
@@ -2989,11 +3272,12 @@ export class BoardView {
     });
     // 7c: a pale skull blooms over the hex.
     this.effects.icon('skull', chest.clone().setY(chest.y + 0.55), 0.75, { life: 1.1, rise: 0.3, opacity: 0.92 });
-    // 7b: fear spreads out to the edge of its reach, and every friend it
-    // reaches — each about to test its nerve — shudders as it passes.
+    // 7b: fear spreads out to the edge of its reach as a pale wall, and every
+    // friend it reaches — each about to test its nerve — starts and shudders as it passes.
     const reach = MORALE_RADIUS * HEX_STEP;
     this.effects.ring(ground, FEAR_COLOR, 0.2, reach, { life: FEAR_WAVE_MS / 1000, opacity: 0.55, thick: true });
     this.effects.ring(ground, FEAR_COLOR, 0.1, reach, { life: FEAR_WAVE_MS / 1000, opacity: 0.9 });
+    this.effects.wall(ground, FEAR_WALL_COLOR, 0.2, reach, FEAR_WALL_HEIGHT, { life: FEAR_WAVE_MS / 1000, opacity: 0.7 });
     for (const id of shakenIds) {
       const friend = this.units.get(id);
       if (!friend) continue;
@@ -3003,8 +3287,64 @@ export class BoardView {
       this.at(when, () => {
         const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
         this.joltUnit(friend, camRight, 0.05, true, 420);
+        const head = friend.group.position.clone().setY(friend.group.position.y + TILE_TOP + BADGE_HEIGHT + friend.hover + 0.1);
+        this.effects.icon('alarm', head, 0.4, { life: 1.1, rise: 0.15, color: FEAR_WALL_COLOR });
       });
     }
+    // 7f: a scorch burned into the ground where it died, lasting the rest of the
+    // game (not in lava, which took the body).
+    if (!obj.intoLava) {
+      const cell = this.worldToCell(obj.targetPos);
+      const y = cell ? this.surfaceAt(cell) : this.groundY(obj);
+      this.effects.mark(`scorch:${obj.id}`, 'scorch', obj.targetPos.clone().setY(y + 0.008), SCORCH_SIZE, 0.8, true);
+    }
+  }
+
+  /** 7d. A killer gathering itself for a gruesome blow over `ms`: dread closing in on it, motes rising, a rim of light. */
+  private gatherFx(obj: UnitObj, ms: number): void {
+    const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
+    this.effects.ring(ground, DREAD_COLOR, HEX_SIZE * 1.4, 0.3, { life: ms / 1000, opacity: 0.8, additive: true });
+    this.effects.burst({
+      at: this.chest(obj),
+      count: 18,
+      colors: [DREAD_COLOR, 0xffffff, HALO_COLOR],
+      speed: [0.1, 0.35],
+      up: 0.4,
+      gravity: -0.8, // they drift upward
+      drag: 1,
+      life: [0.4, 0.8],
+      size: [0.03, 0.06],
+      blend: 'add',
+      jitter: 0.45,
+    });
+    obj.glow = { color: DREAD_COLOR, start: this.now, end: this.now + ms + 300 };
+    this.shakeCamera('rumble', 0.015, ms);
+  }
+
+  /**
+   * 7e. The killing stroke, left hanging in the air through the slow motion: a
+   * slash across the victim, or for a shot, a streak down its whole flight.
+   */
+  private slashFx(killer: UnitObj, victim: UnitObj, ranged: boolean): void {
+    const at = this.chest(victim);
+    const along = this.screenAngle(killer.group.position, victim.group.position);
+    if (ranged) {
+      const from = killer.group.position.clone().setY(killer.targetPos.y + TILE_TOP + BASE_HEIGHT + 0.55 + killer.hover);
+      const mid = from.clone().lerp(at, 0.5);
+      this.effects.streak(mid, this.screenAngle(from, at), this.viewLength(from, at), 0.14, { life: SLASH_S, color: SLASH_COLOR, opacity: 0.9 });
+      this.effects.streak(at, along + Math.PI / 2, 0.9, 0.22, { life: SLASH_S * 0.8, color: SLASH_COLOR });
+    } else {
+      const tilt = Math.random() < 0.5 ? -0.6 : 0.6;
+      this.effects.streak(at, along + tilt, 1.7, 0.32, { life: SLASH_S, color: SLASH_COLOR });
+      this.effects.streak(at.clone().setY(at.y + 0.12), along + tilt * 1.25, 1.2, 0.12, { life: SLASH_S * 0.8, color: DREAD_COLOR, opacity: 0.8 });
+    }
+  }
+
+  /** How long the segment a–b looks across the view: its length with the part along the line of sight taken out. */
+  private viewLength(a: THREE.Vector3, b: THREE.Vector3): number {
+    const forward = this.camera.getWorldDirection(new THREE.Vector3());
+    const d = b.clone().sub(a);
+    return d.addScaledVector(forward, -d.dot(forward)).length();
   }
 
   /** 6b. Break a dying unit into motes sampled from its own pixels, which drift up and away. */
@@ -3309,6 +3649,7 @@ export class BoardView {
 
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
+    this.grade();
     this.animateMissiles();
     this.animateRoutes();
     this.effects.update(dtMs);
@@ -3333,11 +3674,14 @@ export class BoardView {
       }
     }
 
-    // Shake the camera for this frame only, so the orbit controls never see it.
+    // Shake and tilt the camera for this frame only, so the orbit controls never see it.
     const shake = this.shakeOffset();
+    const roll = this.rollAngle();
     this.camera.position.add(shake);
+    this.camera.rotateZ(roll);
     this.backdrop.update(this.camera, lavaTime);
     this.renderer.render(this.scene, this.camera);
+    this.camera.rotateZ(-roll);
     this.camera.position.sub(shake);
   };
 
@@ -3674,6 +4018,59 @@ export class BoardView {
     if (x < 0 || y < 0 || x >= this.width || y >= this.height) return null;
     return { x, y };
   }
+}
+
+/** A gruesome kill about to play: who deals it, who dies, and which friends of the dead will test their nerve. */
+interface Dread {
+  killer: string;
+  victim: string;
+  shaken: string[];
+}
+
+type Blow = Extract<GameEvent, { type: 'AttackResolved' | 'ShotResolved' | 'GuardRiposte' | 'FreeHackResolved' }>;
+
+const isBlow = (e: GameEvent): e is Blow =>
+  e.type === 'AttackResolved' || e.type === 'ShotResolved' || e.type === 'GuardRiposte' || e.type === 'FreeHackResolved';
+
+/**
+ * The gruesome kill a gruesome blow between `pair` makes, or null when its
+ * victim lives after all (Tough turned the blow into a knockdown). `after` is
+ * the rest of the batch: the victim's death, and the nerve checks it causes,
+ * come before the next blow.
+ */
+function dreadOf(e: Blow, pair: [string, string], after: readonly GameEvent[]): Dread | null {
+  const victim = e.result.startsWith('defender') ? pair[1] : pair[0];
+  const killer = victim === pair[1] ? pair[0] : pair[1];
+  const next = after.findIndex(isBlow);
+  const until = next < 0 ? after : after.slice(0, next);
+  const k = until.findIndex((x) => x.type === 'UnitKilled' && x.unitId === victim);
+  if (k < 0) return null;
+  return { killer, victim, shaken: shakenBy(until.slice(k + 1)) };
+}
+
+/** The units testing their nerve over a death: the run of checks that comes straight after it. */
+function shakenBy(after: readonly GameEvent[]): string[] {
+  const next = after.findIndex((x) => x.type !== 'NerveCheck');
+  return (next < 0 ? after : after.slice(0, next)).flatMap((x) => (x.type === 'NerveCheck' ? [x.unitId] : []));
+}
+
+/**
+ * `clip` with the frame showing just before `at` ms (the top of a swing, a bow
+ * at full draw) held `ms` longer, and its moment of impact moved with it.
+ */
+function holdPeak<C extends Clip>(clip: C, at: number, ms: number): C {
+  const hitMs = clip.hitMs ?? clipDuration(clip) / 2;
+  let end = 0;
+  let held = false;
+  const frames = clip.frames.map(([image, d]): [string, number] => {
+    end += d;
+    if (held || end < at) return [image, d];
+    held = true;
+    return [image, d + ms];
+  });
+  const last = frames[frames.length - 1];
+  if (!held && last) last[1] += ms;
+  return { ...clip, frames, hitMs: hitMs + ms };
 }
 
 /** Whether a sprite's move clip actually animates (a few Wesnoth ones just hold the base image). */
