@@ -285,7 +285,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     mastery: target.traits.mastery,
   };
   const result = computeCombatResult(attackSide, defenseSide);
-  const gruesome = gruesomeKill(result, attacker, target, attackScore, defenseScore, attackerPush, targetPush);
+  const gruesome = gruesomeKill(s, board, result, attacker, target, attackScore, defenseScore, attackerPush, targetPush);
 
   events.push({
     type: 'AttackResolved',
@@ -314,7 +314,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
       attackerEnded = true;
       break;
     case 'attackerKnockedDown':
-      knockDown(s, events, attacker, target.id, board);
+      knockDown(s, events, attacker, target.id, board, gruesome);
       attackerEnded = true; // a knocked-down attacker's activation ends
       break;
     case 'attackerRecoiled':
@@ -381,7 +381,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     armored: target.traits.armored,
   };
   const result = defenderOnly(computeCombatResult(shotSide, targetSide));
-  const gruesome = gruesomeKill(result, attacker, target, attackScore, defenseScore, null, targetPush);
+  const gruesome = gruesomeKill(s, board, result, attacker, target, attackScore, defenseScore, null, targetPush);
 
   events.push({
     type: 'ShotResolved',
@@ -517,7 +517,7 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   const result = defenderOnly(lands || master ? computeCombatResult(guardSide, attackerSide) : 'clash', master);
   // An attacker braced by a friend is not driven back, so its blow still lands.
   const prevented = result.startsWith('defender') && !(result === 'defenderRecoiled' && attackerPush.kind === 'supported');
-  const gruesome = gruesomeKill(result, guard, attacker, guardScore, attackerScore, null, attackerPush);
+  const gruesome = gruesomeKill(s, board, result, guard, attacker, guardScore, attackerScore, null, attackerPush);
 
   events.push({
     type: 'GuardRiposte',
@@ -589,7 +589,7 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
     };
     const master = masteryStruck(hackSide, leaverSide);
     const result = defenderOnly(computeCombatResult(hackSide, leaverSide), master);
-    const gruesome = gruesomeKill(result, hacker, mover, attackScore, defenseScore, null, null);
+    const gruesome = gruesomeKill(s, board, result, hacker, mover, attackScore, defenseScore, null, null);
 
     events.push({
       type: 'FreeHackResolved',
@@ -815,9 +815,11 @@ export function combatOdds(
     through = 1 - lose - slain;
   }
 
-  // Lava turns a push, or a flyer's knockdown over it, into a kill.
-  const pushedIn = pushOutcome(s, board, target, attacker).kind === 'lava';
-  const fallsIn = board.isDeadly(target.pos) && airborne(s, target);
+  // Lava turns a push, or a flyer's knockdown over it, into a kill. A target
+  // with nowhere to be pushed falls instead, as in play.
+  const targetPush = pushOutcome(s, board, target, attacker);
+  const pushedIn = targetPush.kind === 'lava';
+  const fallsIn = fallsIntoLava(s, board, target);
   let win = 0;
   let kill = 0;
   let hurt = 0;
@@ -836,7 +838,7 @@ export function combatOdds(
           score: defenseBase + d,
           die: d,
           knockedDown: target.knockedDown,
-          canRecoil: true,
+          canRecoil: canBePushed(targetPush),
           armored: target.traits.armored,
           mastery: targetMastery,
         },
@@ -911,20 +913,26 @@ function hitDefender(
   pushed: Push | null,
 ): void {
   if (result === 'defenderKilled') strike(s, victim, byId, events, board, gruesome);
-  else if (result === 'defenderKnockedDown') knockDown(s, events, victim, byId, board);
+  else if (result === 'defenderKnockedDown') knockDown(s, events, victim, byId, board, gruesome);
   else if (result === 'defenderRecoiled' && pushed) push(s, events, victim, pushed, byId, board, gruesome);
 }
 
 /**
  * Knock `unit` down (mutates `s`) — `byId` dealt the blow, or null. A flyer
  * brought down over lava falls into it instead and dies: no Tough save, and it
- * counts as a kill by `byId` (gruesome when a Savage struck it down).
+ * counts as a kill by `byId` (`gruesome` as the roll said: a Savage struck it down).
  */
-function knockDown(s: GameState, events: GameEvent[], unit: Unit, byId: string | null, board: Board): void {
-  if (board.isDeadly(unit.pos)) {
+function knockDown(
+  s: GameState,
+  events: GameEvent[],
+  unit: Unit,
+  byId: string | null,
+  board: Board,
+  gruesome = false,
+): void {
+  if (fallsIntoLava(s, board, unit)) {
     events.push({ type: 'UnitFellIntoLava', unitId: unit.id });
-    const savage = byId !== null && (unitById(s, byId)?.traits.savage ?? false);
-    strike(s, unit, byId, events, board, savage, true);
+    strike(s, unit, byId, events, board, gruesome, true);
     return;
   }
   unit.knockedDown = true;
@@ -932,12 +940,20 @@ function knockDown(s: GameState, events: GameEvent[], unit: Unit, byId: string |
   events.push({ type: 'UnitKnockedDown', unitId: unit.id });
 }
 
+/** Whether knocking `unit` down would drop it out of the air into lava. */
+function fallsIntoLava(s: GameState, board: Board, unit: Unit): boolean {
+  return board.isDeadly(unit.pos) && airborne(s, unit);
+}
+
 /**
  * Whether `result` is a gruesome kill: one that tripled the loser, or any kill
  * by a Savage winner — a push off the map or into lava included (`aggressorPush` /
- * `defenderPush`: where a recoil would send each side; null when it can't kill).
+ * `defenderPush`: where a recoil would send each side; null when it can't kill),
+ * and so is a knockdown that drops a flyer into the lava beneath it.
  */
 function gruesomeKill(
+  s: GameState,
+  board: Board,
   result: CombatResult,
   aggressor: Unit,
   defender: Unit,
@@ -955,6 +971,10 @@ function gruesomeKill(
       return aggressor.traits.savage && pushKills(defenderPush);
     case 'attackerRecoiled':
       return defender.traits.savage && pushKills(aggressorPush);
+    case 'defenderKnockedDown':
+      return aggressor.traits.savage && fallsIntoLava(s, board, defender);
+    case 'attackerKnockedDown':
+      return defender.traits.savage && fallsIntoLava(s, board, aggressor);
     default:
       return false;
   }

@@ -176,6 +176,22 @@ describe('a flyer over lava', () => {
     expect(state.units[1]!.dead).toBe(true);
   });
 
+  it('is gruesome when a Savage knocks it in, in the event as in the morale', () => {
+    const make = (seed: number) => {
+      const c = overLava(seed);
+      c.warbands[0][0]!.savage = true;
+      return c;
+    };
+    const { events } = attackFor(make, 'defenderKnockedDown');
+    expect((events.find((e) => e.type === 'AttackResolved') as Attack).gruesome).toBe(true);
+    expect(events).toContainEqual({ type: 'UnitFellIntoLava', unitId: 'p1u0' });
+  });
+
+  it('is not gruesome when knocked in by anyone else', () => {
+    const { events } = attackFor((seed) => overLava(seed), 'defenderKnockedDown');
+    expect((events.find((e) => e.type === 'AttackResolved') as Attack).gruesome).toBeUndefined();
+  });
+
   it('attacking out of the lava and being knocked down there kills the attacker', () => {
     const make = (seed: number) => {
       const c = config(seed, { '2,2': lava });
@@ -200,5 +216,13 @@ describe('odds with lava', () => {
     const hovering = combatOdds(acting(config(1, { '3,2': lava }, { flying: true })), 'p0u0', 'p1u0');
     const flying = combatOdds(acting(config(1, {}, { flying: true })), 'p0u0', 'p1u0');
     expect(hovering.kill).toBeGreaterThan(flying.kill);
+  });
+
+  it('count a flyer over lava with no room to be pushed as dead on any win: it falls in', () => {
+    const c = config(1, { '3,2': lava }, { flying: true });
+    c.warbands[0].push({ name: 'Wall', quality: 3, combat: 3, pos: { x: 4, y: 3 } });
+    const odds = combatOdds(acting(c), 'p0u0', 'p1u0');
+    expect(odds.win).toBeGreaterThan(0);
+    expect(odds.kill).toBeCloseTo(odds.win);
   });
 });

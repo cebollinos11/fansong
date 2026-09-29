@@ -533,12 +533,12 @@ interface UnitObj {
     flee: THREE.Vector3 | null;
     drop?: THREE.Vector3;
     tilt?: number;
-    /** Going into lava: the world offset it slides to (zero when it falls in where it hovers), then it sinks. */
+    /** Going into lava: the world offset it slides (and drops) to (zero when it falls in where it hovers), then it sinks. */
     melt?: THREE.Vector3;
   } | null;
   /** Set by a UnitPushedOff event: the direction it is shoved off the table. */
   pushedOff: THREE.Vector3 | null;
-  /** Set by a lava death (pushed in or knocked out of the air): the world offset to the lava it goes into. */
+  /** Set by a lava death (pushed in or knocked out of the air): the world offset to the lava it goes into, height included. */
   intoLava: THREE.Vector3 | null;
   /** A knock the cutout takes and springs back from (a clash, a brace, a shudder of fear); `shake` wobbles instead. */
   jolt: { dir: THREE.Vector3; start: number; end: number; shake: boolean } | null;
@@ -1180,9 +1180,10 @@ export class BoardView {
           obj.pushedOff = obj.targetPos.clone().sub(by.targetPos).setY(0).normalize();
         }
       } else if (e.type === 'UnitPushedIntoLava') {
-        // Pushed into the lava hex beside it: it slides in there as it dies.
+        // Pushed into the lava hex beside it: it slides in there as it dies,
+        // dropping to the lava's level when it is shoved off higher ground.
         const obj = this.units.get(e.unitId);
-        if (obj) obj.intoLava = this.unitWorld(e.to).sub(obj.targetPos).setY(0);
+        if (obj) obj.intoLava = this.unitWorld(e.to).sub(obj.targetPos);
       } else if (e.type === 'UnitFellIntoLava') {
         // Knocked out of the air over lava: it drops straight into the melt beneath it.
         const obj = this.units.get(e.unitId);
@@ -2020,7 +2021,7 @@ export class BoardView {
       // a spray of embers and a puff of smoke. No body is left to mark.
       const melt = obj.intoLava;
       obj.fade = { start: this.now, end: this.now + LAVA_DEATH_MS, flee: null, melt };
-      const pool = obj.group.position.clone().add(melt).setY(this.groundY(obj) - LAVA_SINK);
+      const pool = obj.group.position.clone().add(melt).setY(this.groundY(obj) + melt.y - LAVA_SINK);
       this.at(LAVA_DEATH_MS * 0.25, () => this.lavaSplash(pool));
       this.at(LAVA_DEATH_MS * 0.3, () => this.releaseWisp(obj));
     } else if (obj.pushedOff) {
@@ -2176,9 +2177,10 @@ export class BoardView {
         sink = Math.max(0, f - 0.4) ** 2 * 3;
       }
       if (obj.fade.melt) {
-        // Slide into the pool, then sink into it.
-        off.addScaledVector(obj.fade.melt, Math.min(1, f * 3));
-        sink = Math.max(0, f - 0.25) * 0.8;
+        // Slide (and drop, off higher ground) into the pool, then sink into it.
+        const slide = Math.min(1, f * 3);
+        off.addScaledVector(obj.fade.melt, slide);
+        sink = Math.max(0, f - 0.25) * 0.8 - obj.fade.melt.y * slide;
       }
       // Pushed off, it stays solid until it is well over the edge; in lava, until it is sinking.
       const gone = obj.fade.drop ? Math.max(0, f - 0.5) * 2 : obj.fade.melt ? Math.max(0, f - 0.3) / 0.7 : f;
