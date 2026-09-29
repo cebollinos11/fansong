@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   configFromSetup,
   DEFAULT_BOARD,
@@ -26,6 +26,7 @@ import { parseReplay } from '../game/replay-io.js';
 import { MODE_LABELS } from './editorView.js';
 import { browserStorage, customMapLookup, playableCustomMaps } from '../game/customMaps.js';
 import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy } from '../game/armies.js';
+import { loadSetupPrefs, saveSetupPrefs } from '../game/setupPrefs.js';
 import { MapThumb, Picker, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
 
 interface Props {
@@ -116,23 +117,37 @@ export function modeFor(map: MapDef, wanted: GameMode): GameMode {
 }
 
 export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOpenArmies, onOpenSandbox, onOpenPresets }: Props): JSX.Element {
-  const [mode, setMode] = useState<Mode>(initial.seats[1] === 'ai' ? 'vsAI' : 'hotseat');
-  const [p0, setP0] = useState(initial.presets[0]);
-  const [p1, setP1] = useState(initial.presets[1]);
+  // The choices made last time on this screen, where they are still on offer.
+  const [saved] = useState(() => loadSetupPrefs(browserStorage()));
+  const [mode, setMode] = useState<Mode>(saved.mode ?? (initial.seats[1] === 'ai' ? 'vsAI' : 'hotseat'));
   const [seed, setSeed] = useState(initial.seed);
   // Custom maps saved from the editor (read once; the editor is a separate screen).
   const [customMaps] = useState(() => playableCustomMaps(browserStorage()));
   // Saved army-builder armies that can be played (read once, like custom maps).
   const [armies] = useState(() => playableArmies(browserStorage()));
   const unitsOf = (choice: string) => (choiceWarband(choice, armies) ?? PRESETS[FALLBACK_PRESET]!).units;
+  const savedSide = (owner: 0 | 1): string | undefined => {
+    const choice = saved.sides?.[owner];
+    return choice !== undefined && choiceWarband(choice, armies) ? choice : undefined;
+  };
+  const [p0, setP0] = useState(() => savedSide(0) ?? initial.presets[0]);
+  const [p1, setP1] = useState(() => savedSide(1) ?? initial.presets[1]);
   const [mapId, setMapId] = useState(() => {
-    const id = initial.mapId ?? DEFAULT_MAP_ID;
+    const id = saved.mapId ?? initial.mapId ?? DEFAULT_MAP_ID;
     return getMap(id) || customMaps.some((m) => m.id === id) ? id : DEFAULT_MAP_ID;
   });
-  const [wantedMode, setWantedMode] = useState<GameMode>(initial.mode ?? 'annihilation');
-  const [kings, setKings] = useState<[number, number]>(
-    () => initial.kings ?? [defaultKing(unitsOf(initial.presets[0])), defaultKing(unitsOf(initial.presets[1]))],
-  );
+  const [wantedMode, setWantedMode] = useState<GameMode>(saved.gameMode ?? initial.mode ?? 'annihilation');
+  const [kings, setKings] = useState<[number, number]>(() => {
+    // A side's saved King only if that side's saved warband came back and still has that unit.
+    const king = (owner: 0 | 1, side: string): number => {
+      const k = savedSide(owner) === side ? saved.kings?.[owner] : initial.kings?.[owner];
+      return k !== undefined && k < unitsOf(side).length ? k : defaultKing(unitsOf(side));
+    };
+    return [king(0, p0), king(1, p1)];
+  });
+  useEffect(() => {
+    saveSetupPrefs(browserStorage(), { mode, sides: [p0, p1], mapId, gameMode: wantedMode, kings });
+  }, [mode, p0, p1, mapId, wantedMode, kings]);
   const [replayError, setReplayError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
