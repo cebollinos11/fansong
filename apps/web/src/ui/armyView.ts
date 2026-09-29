@@ -47,6 +47,12 @@ export function withStat(unit: WarbandUnit, stat: EditableStat, value: number): 
   return { ...unit, [stat]: clampStat(stat, value) };
 }
 
+/** A copy of `unit` tinted `tint`, or untinted (the key dropped) for `undefined`. */
+export function withTint(unit: WarbandUnit, tint: string | undefined): WarbandUnit {
+  const { tint: _old, ...rest } = unit;
+  return tint === undefined ? rest : { ...rest, tint };
+}
+
 /** The on/off traits the editors offer, in display order. */
 export const TOGGLE_TRAITS = [
   'slow',

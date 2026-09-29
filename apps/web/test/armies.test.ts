@@ -13,7 +13,7 @@ import {
   saveArmy,
 } from '../src/game/armies.js';
 import type { MapStorage } from '../src/game/customMaps.js';
-import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitCost, traitPatch, traitReplaced, traitsOf, uniqueName, withStat, withTrait } from '../src/ui/armyView.js';
+import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitCost, traitPatch, traitReplaced, traitsOf, uniqueName, withStat, withTint, withTrait } from '../src/ui/armyView.js';
 
 function memoryStorage(initial: Record<string, string> = {}): MapStorage & { data: Record<string, string> } {
   const data = { ...initial };
@@ -157,6 +157,14 @@ describe('army builder helpers', () => {
     const bow = PRESETS['hollow-watch']!.units[2]!;
     expect(templateUnit(bow, [bow])).toMatchObject({ name: 'Longbow 2', look: 'Longbow', shooter: 'long' });
     expect(armyFromPreset('thorn-patrol').units.map((u) => u.look)).toEqual(['Thorn-Bow', 'Thorn-Blade', 'Thorn-Spear']);
+  });
+
+  it('tints a unit and drops the key when the tint is switched off', () => {
+    const unit = { name: 'A', quality: 3, combat: 3 };
+    const tinted = withTint(unit, '#336699');
+    expect(tinted.tint).toBe('#336699');
+    expect(withTint(tinted, undefined)).toEqual(unit);
+    expect('tint' in withTint(tinted, undefined)).toBe(false);
   });
 
   it('reorders units', () => {

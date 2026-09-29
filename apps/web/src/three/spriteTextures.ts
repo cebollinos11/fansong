@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MAGENTA, parseTint, tintPixel } from './spriteTint.js';
 import { spriteUrl } from './unitSprites.js';
 
 /**
@@ -8,12 +9,6 @@ import { spriteUrl } from './unitSprites.js';
  * palette and recolours those pixels per side. We replicate that mapping
  * (data/core/team-colors.cfg + src/color_range.cpp) on a canvas.
  */
-
-/** Wesnoth's reference palette; entry 0 is the average shade. */
-const MAGENTA = [
-  0xf49ac1, 0x3f0016, 0x55002a, 0x690039, 0x7b0045, 0x8c0051, 0x9e005d, 0xb10069, 0xc30074, 0xd6007f,
-  0xec008c, 0xee3d96, 0xef5ba1, 0xf172ac, 0xf287b6, 0xf6adcd, 0xf8c1d9, 0xfad5e5, 0xfde9f1,
-];
 
 /** A Wesnoth colour range: the team's mid, highlight and shadow shades. */
 interface ColorRange {
@@ -111,17 +106,18 @@ function loadImage(path: string): Promise<HTMLImageElement> {
 }
 
 /**
- * A team-coloured atlas of `frames` (the first is the base image), cached per
- * (sprite, owner). Frames that fail to load are skipped, not fatal.
+ * A team-coloured atlas of `frames` (the first is the base image), with the
+ * rest of each frame blended toward `tint` if given; cached per (sprite, owner,
+ * tint). Frames that fail to load are skipped, not fatal.
  */
-export function loadSpriteAtlas(sprite: string, frames: string[], owner: 0 | 1): Promise<SpriteAtlas> {
-  const key = `${owner}:${sprite}`;
+export function loadSpriteAtlas(sprite: string, frames: string[], owner: 0 | 1, tint?: string): Promise<SpriteAtlas> {
+  const key = `${owner}:${tint ?? ''}:${sprite}`;
   let p = atlases.get(key);
   if (!p) {
     p = Promise.all(frames.map((f) => loadImage(f).catch(() => null))).then((imgs) => {
       const loaded = frames.flatMap((f, i) => (imgs[i] ? [[f, imgs[i]!] as const] : []));
       if (loaded.length === 0 || loaded[0]![0] !== frames[0]) throw new Error(`failed to load sprite ${sprite}`);
-      return buildAtlas(loaded, MAPPINGS[owner]);
+      return buildAtlas(loaded, MAPPINGS[owner], tint ? parseTint(tint) : null);
     });
     atlases.set(key, p);
   }
@@ -131,6 +127,7 @@ export function loadSpriteAtlas(sprite: string, frames: string[], owner: 0 | 1):
 function buildAtlas(
   frames: readonly (readonly [string, HTMLImageElement])[],
   mapping: Map<number, [number, number, number]>,
+  tint: [number, number, number] | null,
 ): SpriteAtlas {
   const cellW = Math.max(...frames.map(([, img]) => img.naturalWidth));
   const cellH = Math.max(...frames.map(([, img]) => img.naturalHeight));
@@ -151,7 +148,7 @@ function buildAtlas(
     const x = (i % cols) * (cellW + PAD) + Math.floor((cellW - img.naturalWidth) / 2);
     const y = Math.floor(i / cols) * (cellH + PAD) + Math.floor((cellH - img.naturalHeight) / 2);
     ctx.drawImage(img, x, y);
-    const bounds = recolor(ctx, x, y, img.naturalWidth, img.naturalHeight, mapping);
+    const bounds = recolor(ctx, x, y, img.naturalWidth, img.naturalHeight, mapping, tint);
     const cx = (i % cols) * (cellW + PAD);
     const cy = Math.floor(i / cols) * (cellH + PAD);
     if (i === 0 && bounds) {
@@ -197,8 +194,8 @@ function buildAtlas(
 }
 
 /**
- * Recolour one drawn frame in place (magenta -> team) and strip its drop
- * shadow. Returns the opaque bounds in canvas pixels, or null if it's empty.
+ * Recolour one drawn frame in place (magenta -> team, anything else -> tinted,
+ * if there's a tint) and strip its drop shadow. Returns the opaque bounds in canvas pixels, or null if it's empty.
  */
 function recolor(
   ctx: CanvasRenderingContext2D,
@@ -207,6 +204,7 @@ function recolor(
   w: number,
   h: number,
   mapping: Map<number, [number, number, number]>,
+  tint: [number, number, number] | null,
 ): { minX: number; minY: number; maxX: number; maxY: number } | null {
   const data = ctx.getImageData(x0, y0, w, h);
   const px = data.data;
@@ -227,6 +225,7 @@ function recolor(
       }
       const to = mapping.get((px[i]! << 16) | (px[i + 1]! << 8) | px[i + 2]!);
       if (to) [px[i], px[i + 1], px[i + 2]] = to;
+      else if (tint) [px[i], px[i + 1], px[i + 2]] = tintPixel(px[i]!, px[i + 1]!, px[i + 2]!, tint);
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;

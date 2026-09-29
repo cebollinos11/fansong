@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { profileMove, profileRange, unitCost, warbandCost, type MapDef, type Warband, type WarbandUnit } from '@fansong/content';
+import { tintPixels } from '../three/spriteTint.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
 import { mapThumb } from './mapThumb.js';
 
@@ -164,14 +165,64 @@ export function MapThumb({ map, className = 'map-thumb' }: { map: MapDef; classN
   );
 }
 
-/** A unit's sprite, drawn as its look (or its name). */
+/** A unit's sprite, drawn as its look (or its name) and in its tint. */
 export function UnitSprite({ unit, className = 'unit-sprite' }: { unit: WarbandUnit; className?: string }): JSX.Element {
-  return <LookSprite look={unit.look ?? unit.name} className={className} />;
+  return <LookSprite look={unit.look ?? unit.name} tint={unit.tint} className={className} />;
 }
 
-/** The sprite for a look name. */
-export function LookSprite({ look, className = 'unit-sprite' }: { look: string; className?: string }): JSX.Element {
-  return <img className={className} src={spriteUrl(spriteFor(look))} alt="" loading="lazy" />;
+/** The sprite for a look name, tinted if given a tint. */
+export function LookSprite({
+  look,
+  tint,
+  className = 'unit-sprite',
+}: {
+  look: string;
+  tint?: string;
+  className?: string;
+}): JSX.Element {
+  const plain = spriteUrl(spriteFor(look));
+  const [tinted, setTinted] = useState<{ key: string; url: string } | null>(null);
+  const key = `${tint}:${plain}`;
+  useEffect(() => {
+    if (!tint) return;
+    let live = true;
+    void tintedSpriteUrl(plain, tint).then((url) => live && setTinted({ key, url }), () => {});
+    return () => {
+      live = false;
+    };
+  }, [plain, tint, key]);
+  // Until the tinted copy is ready, show the plain sprite rather than nothing.
+  const src = tint && tinted?.key === key ? tinted.url : plain;
+  return <img className={className} src={src} alt="" loading="lazy" />;
+}
+
+const tintedUrls = new Map<string, Promise<string>>();
+
+/** A data URL of the sprite at `url` with `tint` blended in, cached per (sprite, tint). */
+function tintedSpriteUrl(url: string, tint: string): Promise<string> {
+  const key = `${tint}:${url}`;
+  let p = tintedUrls.get(key);
+  if (!p) {
+    p = new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error(`failed to load sprite ${url}`));
+      img.src = url;
+    }).then((img) => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      tintPixels(data.data, tint);
+      ctx.putImageData(data, 0, 0);
+      return canvas.toDataURL();
+    });
+    p.catch(() => tintedUrls.delete(key));
+    tintedUrls.set(key, p);
+  }
+  return p;
 }
 
 /** Every unit of a warband, side by side. */

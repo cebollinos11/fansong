@@ -117,6 +117,19 @@ describe('parseWarband', () => {
     });
   });
 
+  it('keeps a well-formed tint, lower-cased, and drops a malformed one', () => {
+    const w = parseWarband({
+      name: 'T',
+      units: [
+        { name: 'A', quality: 3, combat: 3, tint: '#C03030' },
+        { name: 'B', quality: 3, combat: 3, tint: 'red' },
+        { name: 'C', quality: 3, combat: 3, tint: '#c030' },
+      ],
+    });
+    expect(w.units.map((u) => u.tint)).toEqual(['#c03030', undefined, undefined]);
+    expect('tint' in w.units[1]!).toBe(false);
+  });
+
   it('turns a legacy numeric Move (baseline 3) into Slow or Fast', () => {
     const w = parseWarband({
       name: 'Old',

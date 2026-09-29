@@ -43,6 +43,8 @@ export interface UnitSpec {
   king?: boolean;
   /** Cosmetic: the unit this one is drawn as (see {@link Unit.look}). */
   look?: string;
+  /** Cosmetic: a colour blended into its sprite (see {@link Unit.tint}). */
+  tint?: string;
 }
 
 export interface GameConfig {
@@ -98,6 +100,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
   };
   // Only carried when set, so states (and replay hashes) without looks are unchanged.
   if (spec.look !== undefined) unit.look = spec.look;
+  if (spec.tint !== undefined) unit.tint = spec.tint;
   return unit;
 }
 

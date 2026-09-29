@@ -1988,6 +1988,24 @@ button.army-item.active {
   display: block;
 }
 
+.army-tint {
+  white-space: nowrap;
+}
+
+.army-tint input[type='color'] {
+  width: 32px;
+  height: 26px;
+  padding: 0 2px;
+  margin-left: 4px;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.army-tint input[type='color']:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .army input.army-unit-name {
   width: 130px;
 }

@@ -311,6 +311,7 @@ function templateOf(u: Unit): WarbandUnit {
   const shooter = shooterForRange(ranged);
   if (shooter) t.shooter = shooter;
   if (u.look !== undefined) t.look = u.look;
+  if (u.tint !== undefined) t.tint = u.tint;
   return t;
 }
 

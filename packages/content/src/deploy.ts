@@ -73,6 +73,7 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     sharpshooter: unit.sharpshooter,
   };
   if (unit.look !== undefined) spec.look = unit.look;
+  if (unit.tint !== undefined) spec.tint = unit.tint;
   return spec;
 }
 

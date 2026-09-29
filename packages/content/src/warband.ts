@@ -8,6 +8,16 @@ export interface WarbandUnit extends Profile {
    * drawn by its own name. Free — it has no cost and no rules effect.
    */
   look?: string;
+  /**
+   * Cosmetic: a colour (`"#rrggbb"`) blended into the unit's sprite, leaving its
+   * team colours alone. Omitted = untinted. Free, like {@link look}.
+   */
+  tint?: string;
+}
+
+/** Whether `v` is a tint colour: `#` and six hex digits. */
+export function isTint(v: unknown): v is string {
+  return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v);
 }
 
 /** A roster: a name plus its units. Points are derived, never stored, and never capped. */
@@ -142,6 +152,7 @@ export function parseWarband(raw: unknown): Warband {
     if (u.armored === true) unit.armored = true;
     if (u.sharpshooter === true) unit.sharpshooter = true;
     if (typeof u.look === 'string') unit.look = u.look;
+    if (isTint(u.tint)) unit.tint = u.tint.toLowerCase();
     return unit;
   });
   return { name: raw.name, units };

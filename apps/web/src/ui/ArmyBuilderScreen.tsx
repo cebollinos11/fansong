@@ -22,8 +22,8 @@ import {
 } from '../game/armies.js';
 import { browserStorage } from '../game/customMaps.js';
 import { downloadJson } from '../game/replay-io.js';
-import { spriteFor, spriteUrl } from '../three/unitSprites.js';
-import { LookSprite, Picker, unitItem, warbandItem } from './Picker.js';
+import { DEFAULT_TINT } from '../three/spriteTint.js';
+import { LookSprite, Picker, UnitSprite, unitItem, warbandItem } from './Picker.js';
 import { TraitEditor } from './TraitEditor.js';
 import {
   ARMY_RULES_TEXT,
@@ -37,6 +37,7 @@ import {
   STAT_LABELS,
   templateUnit,
   withStat,
+  withTint,
   withTrait,
 } from './armyView.js';
 
@@ -267,6 +268,7 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
         <th />
         <th>Name</th>
         <th>Looks like</th>
+        <th title="A colour blended into the unit's sprite (its team colours stay as they are)">Tint</th>
         {EDITABLE_STATS.map((s) => (
           <th key={s} title={STAT_LABELS[s].title}>
             {STAT_LABELS[s].short}
@@ -309,10 +311,12 @@ export function UnitRow({
   onRemove: () => void;
 }): JSX.Element {
   const valid = statErrors(unit).length === 0;
+  // The colour last picked, so switching the tint off and on again brings it back.
+  const [lastTint, setLastTint] = useState(unit.tint ?? DEFAULT_TINT);
   return (
     <tr>
       <td>
-        <img className="army-sprite" src={spriteUrl(spriteFor(unit.look ?? unit.name))} alt="" />
+        <UnitSprite unit={unit} className="army-sprite" />
       </td>
       <td>
         <input
@@ -335,6 +339,25 @@ export function UnitRow({
         >
           <span className="picker-look-name">{unit.look !== undefined && LOOKS.includes(unit.look) ? unit.look : '(default)'}</span>
         </Picker>
+      </td>
+      <td className="army-tint">
+        <input
+          type="checkbox"
+          checked={unit.tint !== undefined}
+          aria-label="Tint the sprite"
+          title={unit.tint !== undefined ? 'Remove the tint' : 'Tint the sprite'}
+          onChange={(e) => onChange(withTint(unit, e.target.checked ? lastTint : undefined))}
+        />
+        <input
+          type="color"
+          value={unit.tint ?? lastTint}
+          disabled={unit.tint === undefined}
+          aria-label="Tint colour"
+          onChange={(e) => {
+            setLastTint(e.target.value);
+            onChange(withTint(unit, e.target.value));
+          }}
+        />
       </td>
       {EDITABLE_STATS.map((s) => (
         <td key={s}>

@@ -41,6 +41,9 @@ export const vecSchema = z
   .object({ x: z.number().int(), y: z.number().int() })
   .strict();
 
+/** A unit's cosmetic sprite tint: `#` and six hex digits. */
+export const tintSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
 // --- Commands (untrusted input — validated strictly) ----------------------
 
 export const chooseActivationSchema = z
@@ -153,6 +156,7 @@ export const unitSchema = z
     owner: ownerSchema,
     name: z.string(),
     look: z.string().optional(),
+    tint: tintSchema.optional(),
     quality: z.number(),
     combat: z.number(),
     pos: vecSchema,
@@ -412,6 +416,7 @@ export const unitSpecSchema = z
     sharpshooter: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
+    tint: tintSchema.optional(),
   })
   .strict()
   .refine((u) => !(u.slow && u.fast), { message: 'a unit cannot be both slow and fast' });
@@ -473,6 +478,7 @@ export const warbandUnitSchema = z
     armored: z.boolean().optional(),
     sharpshooter: z.boolean().optional(),
     look: z.string().max(64).optional(),
+    tint: tintSchema.optional(),
   })
   .strict();
 

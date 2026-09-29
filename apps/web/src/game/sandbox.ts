@@ -96,6 +96,7 @@ export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, 
     warCried: false,
   };
   if (profile.look !== undefined) unit.look = profile.look;
+  if (profile.tint !== undefined) unit.tint = profile.tint;
   s.units.push(unit);
   s.startCount[owner] += 1;
   return s;

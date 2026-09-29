@@ -440,6 +440,8 @@ interface UnitObj {
   name: string;
   /** The {@link spriteFor} path this unit is drawn with. */
   spriteName: string;
+  /** The tint baked into its sprite, if any. */
+  tint: string | undefined;
   group: THREE.Group;
   /** Turns the cutout to face the camera (yaw only, so it stays upright); carries the melee lunge. */
   facing: THREE.Group;
@@ -846,6 +848,7 @@ export class BoardView {
       if (
         obj &&
         (obj.spriteName !== spriteFor(u.look ?? u.name) ||
+          obj.tint !== u.tint ||
           obj.owner !== u.owner ||
           obj.size !== (u.traits.big ? BIG_SCALE : 1) ||
           obj.flying !== u.traits.flying)
@@ -855,7 +858,7 @@ export class BoardView {
         obj = undefined;
       }
       if (!obj) {
-        obj = this.createUnit(u.id, u.owner, u.look ?? u.name, u.traits.big, u.traits.flying);
+        obj = this.createUnit(u.id, u.owner, u.look ?? u.name, u.tint, u.traits.big, u.traits.flying);
         this.units.set(u.id, obj);
         obj.group.position.copy(this.unitWorld(u.pos));
       }
@@ -1563,7 +1566,7 @@ export class BoardView {
 
   // --- internals ----------------------------------------------------------
 
-  private createUnit(id: string, owner: 0 | 1, name: string, big = false, flying = false): UnitObj {
+  private createUnit(id: string, owner: 0 | 1, name: string, tint: string | undefined, big = false, flying = false): UnitObj {
     const group = new THREE.Group();
 
     const base = new THREE.Mesh(
@@ -1633,6 +1636,7 @@ export class BoardView {
       owner,
       name,
       spriteName,
+      tint,
       group,
       facing,
       tilt,
@@ -1670,7 +1674,7 @@ export class BoardView {
       cue: null,
     };
 
-    loadSpriteAtlas(spriteName, framesOf(spriteName), owner).then(
+    loadSpriteAtlas(spriteName, framesOf(spriteName), owner, tint).then(
       (atlas) => {
         if (this.disposed) return;
         obj.atlas = atlas;

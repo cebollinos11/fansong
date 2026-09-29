@@ -110,6 +110,11 @@ export interface Unit {
    */
   look?: string;
   /**
+   * Cosmetic: a colour (`"#rrggbb"`) blended into the unit's sprite, sparing its
+   * team colours. Omitted = untinted. No rule reads it.
+   */
+  tint?: string;
+  /**
    * Quality target number. A die is a success when `die >= quality`
    * (so *lower* Quality is better). Used for activation dice.
    */
