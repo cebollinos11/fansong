@@ -1,12 +1,11 @@
 import { makeHexGrid, vecKey, type BoardData, type Vec } from '@fansong/engine';
-import { hexElevation, LAVA_SINK, surfaceY } from './terrain.js';
+import { hexElevation, surfaceY } from './terrain.js';
 
 // Pure low-poly layout for terrain features (no three.js), so it can be unit-tested.
 // BoardView turns each piece into a mesh: rocks are jittered dodecahedron clusters,
 // buildings are boxes joined by connector boxes where two building hexes touch,
 // forests are a few cone-and-trunk trees around the hex rim (leaving the
-// centre, where a unit stands, readable), and lava carries a couple of flat
-// plates of dark crust drifting on the melt.
+// centre, where a unit stands, readable). Lava has no pieces: its shader draws it.
 
 export type FeaturePiece =
   | { kind: 'rock'; cell: Vec; x: number; y: number; z: number; radius: number; squash: number; rotY: number; color: number }
@@ -19,7 +18,6 @@ const WALL_COLOR = 0x9a8466;
 const ROOF_COLOR = 0x6e4b3a;
 const LEAF_COLORS = [0x2f6b3a, 0x3a7a42, 0x285c33] as const;
 const TRUNK_COLOR = 0x4a3526;
-const CRUST_COLORS = [0x2b1b16, 0x3a2219] as const;
 
 /** Building body height above its hex surface, and the roof slab on top. */
 export const BUILDING_HEIGHT = 0.55;
@@ -98,25 +96,8 @@ export function featureLayout(
           );
         }
       } else if (feature === 'lava') {
-        // Two slabs of crust, squashed nearly flat so they float on the melt.
-        const surface = base - LAVA_SINK;
-        for (let i = 0; i < 2; i++) {
-          const ang = cellNoise(cell, 70 + i) * Math.PI * 2;
-          const dist = (0.3 + 0.25 * cellNoise(cell, 80 + i)) * hexSize;
-          const radius = (0.16 + 0.1 * cellNoise(cell, 90 + i)) * hexSize;
-          const squash = 0.12;
-          pieces.push({
-            kind: 'rock',
-            cell,
-            x: c.x + Math.cos(ang) * dist,
-            y: surface + radius * squash * 0.3,
-            z: c.z + Math.sin(ang) * dist,
-            radius,
-            squash,
-            rotY: cellNoise(cell, 100 + i) * Math.PI * 2,
-            color: CRUST_COLORS[i]!,
-          });
-        }
+        // Nothing stands in lava: its crust and embers are drawn by its shader (see lava.ts).
+        continue;
       } else {
         // Forest: three trees on the rim, rotated per cell so a wood doesn't tile.
         const turn = cellNoise(cell, 0) * Math.PI * 2;

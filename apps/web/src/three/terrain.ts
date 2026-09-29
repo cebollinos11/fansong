@@ -5,11 +5,6 @@ import { vecKey, type BoardData, type Vec } from '@fansong/engine';
 /** How far a lava pool's surface sits below its hex's level, so the ground around it reads as a bank. */
 export const LAVA_SINK = 0.07;
 
-/** Molten lava, from its deepest orange to its brightest yellow, and the dark crust at a pool's rim. */
-const LAVA_DEEP = 0xe0461a;
-const LAVA_BRIGHT = 0xffa53a;
-const LAVA_CRUST = 0x5a1c0c;
-
 /** Tiles are 0.2 tall and flat ones sit centred on y = 0, so their top is at 0.1. */
 export const TILE_TOP = 0.1;
 export const TILE_BOTTOM = -0.1;
@@ -62,14 +57,4 @@ export function tileSideColor(v: Vec, elevation: number): number {
 /** Rim colour around a hex top: a darker shade of it, so the grid reads where tiles meet. */
 export function tileRimColor(top: number): number {
   return scale(top, 0.6);
-}
-
-/** Top-face colour of a lava hex: molten orange, a touch brighter or deeper per hex so a pool doesn't tile. `t` is 0..1 noise. */
-export function lavaTopColor(t: number): number {
-  return mix(LAVA_DEEP, LAVA_BRIGHT, 0.25 + 0.5 * t);
-}
-
-/** Rim colour around a lava hex top: cooling crust at the pool's edge. */
-export function lavaRimColor(): number {
-  return LAVA_CRUST;
 }

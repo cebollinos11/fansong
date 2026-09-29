@@ -17,6 +17,7 @@ import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTe
 import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type SpriteAnimations } from './unitAnimations.js';
 import { UnitAnimator } from './unitAnimator.js';
 import { Effects } from './effects.js';
+import { LavaEmbers, lavaPixel, LavaSurface, type Ember } from './lava.js';
 import { cellNoise, featureLayout } from './features.js';
 import {
   activationResolveMs,
@@ -33,8 +34,6 @@ import { BoardChunks } from './chunks.js';
 import {
   hexElevation,
   LAVA_SINK,
-  lavaRimColor,
-  lavaTopColor,
   surfaceY,
   TILE_BOTTOM,
   TILE_TOP,
@@ -138,10 +137,12 @@ const CHUNK_CELLS = 8;
 const TILE_RIM_START = 0.94;
 /** How far a legacy blocked cell stands above its elevation. */
 const BLOCKED_RISE = 0.4;
-/** Lava's glow swells between BASE − DEPTH and BASE + DEPTH of its colour, over 2π × MS milliseconds. */
-const LAVA_PULSE_BASE = 0.88;
-const LAVA_PULSE_DEPTH = 0.12;
-const LAVA_PULSE_MS = 650;
+/** How far a lava hex's open melt reaches before it can crust over toward a bank, as a fraction of its radius. */
+const LAVA_POOL = 0.5;
+/** Embers rising from each lava hex. */
+const LAVA_EMBERS = 3;
+/** The glow at the foot of a wall that drops into lava. */
+const LAVA_WALL_GLOW = 0xc2481a;
 
 /**
  * One draw call for many copies of a mesh: each `place` positions a scratch
@@ -703,8 +704,10 @@ export class BoardView {
   /** Board tile and feature chunks, raycast for cell picking (`userData.cells` maps each triangle to its cell). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
-  /** The unlit material of the board's lava tops, pulsed each frame (null with no board built). */
-  private lavaMaterial: THREE.MeshBasicMaterial | null = null;
+  /** The shader on the board's lava tops, its frame set each frame (null with no board built). */
+  private lavaSurface: LavaSurface | null = null;
+  /** Embers rising off the board's lava (null with no lava on it). */
+  private lavaEmbers: LavaEmbers | null = null;
   private width = 0;
   private height = 0;
   private disposed = false;
@@ -802,48 +805,80 @@ export class BoardView {
     const corner = (c: { x: number; z: number }, i: number, r: number, y: number) =>
       new THREE.Vector3(c.x + r * Math.cos((i * Math.PI) / 3), y, c.z + r * Math.sin((i * Math.PI) / 3));
     const chunks = new BoardChunks(CHUNK_CELLS);
-    // Lava tops go in their own unlit chunks, so they glow and can pulse.
+    // Lava tops go in their own chunks under the lava shader, which reads each
+    // vertex's red channel as its heat (see lava.ts).
     const lavaChunks = new BoardChunks(CHUNK_CELLS);
+    const embers: Ember[] = [];
+    // Edge i runs from corner i to i + 1 and faces the neighbour at its midpoint's angle.
+    const outs = [0, 1, 2, 3, 4, 5].map((i) => new THREE.Vector3(Math.cos(((i + 0.5) * Math.PI) / 3), 0, Math.sin(((i + 0.5) * Math.PI) / 3)));
     for (let y = 0; y < this.height; y++) {
       for (let x = 0; x < this.width; x++) {
         const cell = { x, y };
         const isBlocked = blocked.has(vecKey(cell));
         const lava = isLava(cell);
         const elev = hexElevation(board, cell);
-        const topColor = isBlocked ? BLOCKED_COLOR : lava ? lavaTopColor(cellNoise(cell, 7)) : tileTopColor(cell, elev);
+        const topColor = isBlocked ? BLOCKED_COLOR : tileTopColor(cell, elev);
         const sideColor = isBlocked ? topColor : tileSideColor(cell, elev);
-        const rimColor = lava ? lavaRimColor() : tileRimColor(topColor);
-        const topChunks = lava ? lavaChunks : chunks;
+        const rimColor = tileRimColor(topColor);
         const c = this.cellToWorld(cell);
         const top = topOf(cell);
         const centre = new THREE.Vector3(c.x, top, c.z);
+        // The neighbour across each edge (null off the board).
+        const across = outs.map((out) => this.worldToCell(new THREE.Vector3(c.x + HEX_STEP * out.x, 0, c.z + HEX_STEP * out.z)));
+        // A lava corner runs hot only if every hex meeting at it is lava, so a
+        // pool reads as one flow and crusts over only along its banks.
+        const bank = across.map((n) => !n || !isLava(n));
+        const heat = (i: number) => (bank[(i + 5) % 6] || bank[i % 6] ? 0x000000 : 0xffffff);
+        const hot = 0xffffff;
         for (let i = 0; i < 6; i++) {
           // Corners i and i + 1 run counter-clockwise seen from above, so each
           // triangle lists them in the opposite order to face up.
-          const inner0 = corner(c, i, HEX_SIZE * TILE_RIM_START, top);
-          const inner1 = corner(c, i + 1, HEX_SIZE * TILE_RIM_START, top);
           const outer0 = corner(c, i, HEX_SIZE, top);
           const outer1 = corner(c, i + 1, HEX_SIZE, top);
-          topChunks.triangle(cell, centre, inner1, inner0, up, topColor);
-          topChunks.triangle(cell, inner0, outer1, outer0, up, rimColor);
-          topChunks.triangle(cell, inner0, inner1, outer1, up, rimColor);
+          if (lava) {
+            const pool0 = corner(c, i, HEX_SIZE * LAVA_POOL, top);
+            const pool1 = corner(c, i + 1, HEX_SIZE * LAVA_POOL, top);
+            lavaChunks.triangle(cell, centre, pool1, pool0, up, hot);
+            lavaChunks.triangle(cell, pool0, outer1, outer0, up, [hot, heat(i + 1), heat(i)]);
+            lavaChunks.triangle(cell, pool0, pool1, outer1, up, [hot, hot, heat(i + 1)]);
+          } else {
+            const inner0 = corner(c, i, HEX_SIZE * TILE_RIM_START, top);
+            const inner1 = corner(c, i + 1, HEX_SIZE * TILE_RIM_START, top);
+            chunks.triangle(cell, centre, inner1, inner0, up, topColor);
+            chunks.triangle(cell, inner0, outer1, outer0, up, rimColor);
+            chunks.triangle(cell, inner0, inner1, outer1, up, rimColor);
+          }
 
-          // The edge between those corners faces the neighbour at its midpoint's angle.
-          const angle = ((i + 0.5) * Math.PI) / 3;
-          const out = new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle));
-          const beyond = this.worldToCell(new THREE.Vector3(c.x + HEX_STEP * out.x, 0, c.z + HEX_STEP * out.z));
+          const beyond = across[i];
           const floor = beyond ? topOf(beyond) : TILE_BOTTOM;
           if (floor >= top - 1e-6) continue;
           const low0 = outer0.clone().setY(floor);
           const low1 = outer1.clone().setY(floor);
-          chunks.triangle(cell, outer0, low1, low0, out, sideColor);
-          chunks.triangle(cell, outer0, outer1, low1, out, sideColor);
+          // A wall dropping into lava glows at its foot.
+          const foot = beyond && isLava(beyond) ? LAVA_WALL_GLOW : sideColor;
+          chunks.triangle(cell, outer0, low1, low0, outs[i]!, [sideColor, foot, foot]);
+          chunks.triangle(cell, outer0, outer1, low1, outs[i]!, [sideColor, sideColor, foot]);
+        }
+        if (lava) {
+          for (let k = 0; k < LAVA_EMBERS; k++) {
+            const ang = cellNoise(cell, 110 + k) * Math.PI * 2;
+            const dist = 0.6 * HEX_SIZE * Math.sqrt(cellNoise(cell, 120 + k));
+            embers.push({
+              at: new THREE.Vector3(c.x + Math.cos(ang) * dist, top, c.z + Math.sin(ang) * dist),
+              seed: [cellNoise(cell, 130 + k), cellNoise(cell, 140 + k), cellNoise(cell, 150 + k)],
+            });
+          }
         }
       }
     }
     this.addChunks(chunks, new THREE.MeshStandardMaterial({ vertexColors: true }));
-    this.lavaMaterial = new THREE.MeshBasicMaterial({ vertexColors: true });
-    this.addChunks(lavaChunks, this.lavaMaterial);
+    this.lavaSurface = new LavaSurface(HEX_COL_STEP, HEX_ROW_STEP);
+    this.addChunks(lavaChunks, this.lavaSurface.material);
+    if (embers.length > 0) {
+      this.lavaEmbers = new LavaEmbers(embers, lavaPixel(HEX_COL_STEP));
+      this.lavaEmbers.scale = this.particleScale();
+      this.scene.add(this.lavaEmbers.points);
+    }
 
     this.buildFeatures(board);
     if (resized) this.positionCamera(state);
@@ -869,7 +904,12 @@ export class BoardView {
     for (const g of geometries) g.dispose();
     for (const m of materials) m.dispose();
     this.tiles.length = 0;
-    this.lavaMaterial = null;
+    this.lavaSurface = null;
+    if (this.lavaEmbers) {
+      this.scene.remove(this.lavaEmbers.points);
+      this.lavaEmbers.dispose();
+      this.lavaEmbers = null;
+    }
   }
 
   /** Low-poly rocks, buildings and trees; pickable as the hex they stand on. */
@@ -3229,8 +3269,11 @@ export class BoardView {
     this.animateRoutes();
     this.effects.update(dtMs);
     this.rolls.update(this.now, this.projectUnit);
-    // Lava breathes: a slow swell in its glow, on the wall clock so a hit-stop doesn't freeze it.
-    this.lavaMaterial?.color.setScalar(LAVA_PULSE_BASE + LAVA_PULSE_DEPTH * Math.sin(this.wallNow / LAVA_PULSE_MS));
+    // Lava flows on the wall clock, so a hit-stop doesn't freeze it; wrapped
+    // hourly to keep the shaders' float maths precise.
+    const lavaTime = (this.wallNow / 1000) % 3600;
+    if (this.lavaSurface) this.lavaSurface.time = this.wallNow;
+    if (this.lavaEmbers) this.lavaEmbers.time = lavaTime;
 
     // Fade and retire tracers.
     for (let i = this.tracers.length - 1; i >= 0; i--) {
@@ -3377,6 +3420,12 @@ export class BoardView {
     return obj.atlas.alphaAt(map.offset.x + hit.uv.x * map.repeat.x, map.offset.y + hit.uv.y * map.repeat.y) > 0;
   }
 
+  /** Pixels per world unit at unit distance, which keeps point sprites sized in world units. */
+  private particleScale(): number {
+    const h = (this.container.clientHeight || 1) * this.renderer.getPixelRatio();
+    return h / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
+  }
+
   private resize(): void {
     const w = this.container.clientWidth || 1;
     const h = this.container.clientHeight || 1;
@@ -3384,6 +3433,7 @@ export class BoardView {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.effects.setViewport(h * this.renderer.getPixelRatio(), this.camera.fov);
+    if (this.lavaEmbers) this.lavaEmbers.scale = this.particleScale();
     this.refitOpening();
   }
 

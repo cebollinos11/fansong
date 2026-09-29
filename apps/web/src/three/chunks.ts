@@ -18,15 +18,25 @@ export class BoardChunks {
   /** `size` is the cells per side of a block. */
   constructor(private readonly size: number) {}
 
-  /** One triangle of `cell`, wound counter-clockwise seen from its front, with a flat normal. */
-  triangle(cell: Vec, a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, normal: THREE.Vector3, color: number): void {
+  /**
+   * One triangle of `cell`, wound counter-clockwise seen from its front, with a
+   * flat normal. `color` is one colour for the whole triangle, or one per vertex.
+   */
+  triangle(
+    cell: Vec,
+    a: THREE.Vector3,
+    b: THREE.Vector3,
+    c: THREE.Vector3,
+    normal: THREE.Vector3,
+    color: number | readonly [number, number, number],
+  ): void {
     const chunk = this.chunkOf(cell);
-    this.color.setHex(color);
-    for (const p of [a, b, c]) {
+    [a, b, c].forEach((p, i) => {
+      this.color.setHex(typeof color === 'number' ? color : color[i]!);
       chunk.positions.push(p.x, p.y, p.z);
       chunk.normals.push(normal.x, normal.y, normal.z);
       chunk.colors.push(this.color.r, this.color.g, this.color.b);
-    }
+    });
     chunk.cells.push(cell);
   }
 
