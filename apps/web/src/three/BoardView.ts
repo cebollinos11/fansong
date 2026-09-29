@@ -369,10 +369,6 @@ const SHOT_LEAD_MS = 260; // swing to the shooter before it looses its missile
 const START_MIN_SPAN = 8; // world units kept in view (~8 hexes), however tightly they're deployed
 const START_FIT_STEPS = 18; // halvings used to find the closest framing that still holds every unit
 
-// Camera limits: stay above the table, and never tip over the top into a flip.
-const CAMERA_MIN_POLAR = 0.12; // radians from straight down
-const CAMERA_MAX_POLAR = 1.3; // ~75°, just above the tabletop
-
 /** Round fractional cube coords to the nearest hex (matches the engine's board). */
 function cubeRound(fq: number, fr: number, fs: number): { q: number; r: number } {
   let q = Math.round(fq);
@@ -683,14 +679,12 @@ export class BoardView {
       this.effects.group,
     );
 
-    // Left-drag orbits, right-drag (or shift/ctrl + left) pans across the table,
-    // wheel zooms. A press that barely moves is still a click (see handlePointerUp).
+    // Left-drag turns around the table (the pitch is fixed, see positionCamera),
+    // right-drag (or shift/ctrl + left) pans across it, wheel zooms. A press that barely moves is still a click (see handlePointerUp).
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
     this.controls.screenSpacePanning = false; // pan along the ground, not the view plane
-    this.controls.minPolarAngle = CAMERA_MIN_POLAR;
-    this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
     this.controls.zoomToCursor = true;
     // A hand on the camera takes it back: drop the scripted move, and adopt the
     // framing the player leaves it in as theirs.
@@ -3248,6 +3242,11 @@ export class BoardView {
       this.controls.target.copy(start.target);
       this.camera.position.copy(start.target).addScaledVector(dir, start.dist);
     }
+    // Lock the pitch to this angle: the player can turn around the table, but
+    // not tip the view up or down.
+    const pitch = Math.acos(this.camera.position.clone().sub(this.controls.target).normalize().y);
+    this.controls.minPolarAngle = pitch;
+    this.controls.maxPolarAngle = pitch;
     this.homeDist = start ? start.dist : table;
     this.playerView = { target: this.controls.target.clone(), dist: this.homeDist };
     this.opening = start ? { points, ...start } : null;
