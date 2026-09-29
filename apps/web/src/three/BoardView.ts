@@ -265,7 +265,6 @@ const BASE_RADIUS = 0.36;
 const BASE_HEIGHT = 0.06;
 const SPRITE_PX = 1.8 / 72; // world units per sprite pixel (a 72px Wesnoth hex ≈ 1.8)
 const BIG_SCALE = 1.3; // how much taller a Big unit's cutout stands (see the Big trait)
-const SPRITE_LEAN = 0.18; // lean back (top away from the camera, radians) so the steep view doesn't squash it
 
 // Flying: the cutout floats above its hex (its base ring stays on the ground as a
 // shadow) with a slow bob — unless it is knocked down or dying, when it comes to earth.
@@ -605,6 +604,12 @@ export class BoardView {
   private pannedTo: string | null = null;
   /** The distance of the opening shot (see {@link positionCamera}); combat never pulls further out than this. */
   private homeDist = 0;
+  /**
+   * How far the cutouts lean back (top away from the camera, radians): the
+   * camera's angle above the table, so they sit square to the screen rather
+   * than foreshortened (see {@link positionCamera}, which locks that angle).
+   */
+  private spriteLean = 0;
   /**
    * The opening shot and the units it was fitted to, while it still stands: a
    * canvas that changes shape re-fits it (see {@link refitOpening}), until the
@@ -1598,7 +1603,7 @@ export class BoardView {
     const mirror = new THREE.Group();
     mirror.add(outline, sprite);
     const tilt = new THREE.Group();
-    tilt.rotation.x = -SPRITE_LEAN;
+    tilt.rotation.x = -this.spriteLean;
     tilt.add(mirror);
     const facing = new THREE.Group();
     facing.position.y = TILE_TOP + BASE_HEIGHT;
@@ -1974,10 +1979,13 @@ export class BoardView {
     if (Math.abs(side) > 0.05) obj.faceRight = side > 0;
     obj.mirror.scale.x = obj.faceRight ? 1 : -1;
 
+    // Every cutout turns by the camera's heading, not towards its position, so
+    // they all stand parallel to the screen instead of fanning round the lens.
     obj.facing.rotation.y = Math.atan2(
-      this.camera.position.x - obj.group.position.x,
-      this.camera.position.z - obj.group.position.z,
+      this.camera.position.x - this.controls.target.x,
+      this.camera.position.z - this.controls.target.z,
     );
+    obj.tilt.rotation.x = -this.spriteLean;
     // A ring pulse marks what the camera is about to move to.
     if (obj.pulse && this.now >= obj.pulse.end) obj.pulse = null;
     const cue = obj.fade ? null : obj.cue;
@@ -2083,7 +2091,7 @@ export class BoardView {
     // Ride just over the head of whatever is drawn, crouched or posed.
     const rect = atlas.frames.get(obj.shownImage ?? '') ?? atlas.frames.get(obj.animator.base);
     const head = (atlas.anchorY - (rect?.top ?? 0)) * SPRITE_PX * obj.size * obj.tilt.scale.y;
-    stars.position.set(0, head * Math.cos(SPRITE_LEAN) + STAR_CLEARANCE, -head * Math.sin(SPRITE_LEAN));
+    stars.position.set(0, head * Math.cos(this.spriteLean) + STAR_CLEARANCE, -head * Math.sin(this.spriteLean));
     const spin = (this.now / 1000) * STAR_SPIN;
     stars.children.forEach((star, i) => {
       const a = spin + (i / STAR_COUNT) * Math.PI * 2;
@@ -2790,7 +2798,7 @@ export class BoardView {
     const rect = atlas && (atlas.frames.get(obj.shownImage ?? '') ?? atlas.frames.get(obj.animator.base));
     if (!atlas || !rect) return;
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
-    const toCam = this.camera.position.clone().sub(obj.group.position).setY(0).normalize();
+    const toCam = this.camera.position.clone().sub(this.controls.target).setY(0).normalize();
     const flip = obj.faceRight ? 1 : -1;
     const px = SPRITE_PX * obj.size;
     const stride = Math.max(2, Math.round(atlas.cellW / 26));
@@ -2806,8 +2814,8 @@ export class BoardView {
         const at = origin
           .clone()
           .addScaledVector(camRight, lx)
-          .addScaledVector(toCam, -ly * Math.sin(SPRITE_LEAN))
-          .setY(origin.y + ly * Math.cos(SPRITE_LEAN));
+          .addScaledVector(toCam, -ly * Math.sin(this.spriteLean))
+          .setY(origin.y + ly * Math.cos(this.spriteLean));
         this.effects.burst({
           at,
           count: 1,
@@ -2849,7 +2857,7 @@ export class BoardView {
     mirror.scale.x = obj.mirror.scale.x;
     mirror.add(mesh);
     const tilt = new THREE.Group();
-    tilt.rotation.x = -SPRITE_LEAN;
+    tilt.rotation.x = -this.spriteLean;
     tilt.add(mirror);
     const root = new THREE.Group();
     root.add(tilt);
@@ -3247,6 +3255,7 @@ export class BoardView {
     const pitch = Math.acos(this.camera.position.clone().sub(this.controls.target).normalize().y);
     this.controls.minPolarAngle = pitch;
     this.controls.maxPolarAngle = pitch;
+    this.spriteLean = Math.PI / 2 - pitch;
     this.homeDist = start ? start.dist : table;
     this.playerView = { target: this.controls.target.clone(), dist: this.homeDist };
     this.opening = start ? { points, ...start } : null;
