@@ -179,6 +179,32 @@ function dashedRing(): THREE.BufferGeometry {
  * Glow around a cutout's figure: lights the clear pixels within `uWidth` sprite
  * pixels of an opaque one, reading the same atlas cell the cutout shows.
  */
+/**
+ * Vertex-shader tail that draws a cutout at the depth of its feet (the quad's
+ * origin) rather than of the leaning quad itself: the top of the figure leans
+ * back into the hex behind, and would otherwise sink into a rock or a raised
+ * tile standing there. Measured from a little way in front of the feet, so the
+ * figure's own base and hex never cover it either; what stands in the hexes in
+ * front still does.
+ */
+const FEET_DEPTH_GLSL = /* glsl */ `
+  {
+    vec3 feet = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vec2 toCam = cameraPosition.xz - feet.xz;
+    feet.xz += toCam / max(length(toCam), 1e-4) * ${(HEX_SIZE * 0.7).toFixed(3)};
+    vec4 feetClip = projectionMatrix * viewMatrix * vec4(feet, 1.0);
+    gl_Position.z = feetClip.z / feetClip.w * gl_Position.w;
+  }`;
+
+/** Draw a built-in material's cutout at its feet's depth (see {@link FEET_DEPTH_GLSL}). */
+function standAtFeet<M extends THREE.Material>(material: M): M {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>${FEET_DEPTH_GLSL}`);
+  };
+  material.customProgramCacheKey = () => 'feet-depth';
+  return material;
+}
+
 function outlineMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -195,6 +221,7 @@ function outlineMaterial(): THREE.ShaderMaterial {
       void main() {
         vUv = uv;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        ${FEET_DEPTH_GLSL}
       }`,
     fragmentShader: /* glsl */ `
       uniform sampler2D map;
@@ -1623,7 +1650,7 @@ export class BoardView {
     // not blended, so overlapping cutouts need no sorting.
     const sprite = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide }),
+      standAtFeet(new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide })),
     );
     sprite.userData.unitId = id;
     sprite.userData.isCutout = true;
