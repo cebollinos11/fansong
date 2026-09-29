@@ -18,6 +18,7 @@ import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type
 import { UnitAnimator } from './unitAnimator.js';
 import { Effects } from './effects.js';
 import { LavaEmbers, lavaPixel, LavaSurface, type Ember } from './lava.js';
+import { Backdrop, type BackdropKind } from './backdrop.js';
 import { cellNoise, featureLayout } from './features.js';
 import {
   activationResolveMs,
@@ -729,6 +730,8 @@ export class BoardView {
   private readonly ringGeo = new THREE.RingGeometry(RING_INNER, RING_OUTER, 40);
   private readonly dashedRingGeo = dashedRing();
   private clock = new THREE.Clock();
+  /** The sky and ground around the table (see {@link setBackdrop}). */
+  private backdrop = new Backdrop('void', HEX_COL_STEP, HEX_ROW_STEP, TILE_BOTTOM);
 
   constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -739,6 +742,7 @@ export class BoardView {
     this.renderer.domElement.style.height = '100%';
 
     this.scene.background = new THREE.Color(0x11151c);
+    this.scene.add(this.backdrop.group);
 
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
 
@@ -892,7 +896,30 @@ export class BoardView {
     }
 
     this.buildFeatures(board);
+    this.placeBackdrop();
     if (resized) this.positionCamera(state);
+  }
+
+  /** Stand the board in another backdrop. */
+  setBackdrop(kind: BackdropKind): void {
+    if (kind === this.backdrop.kind) return;
+    this.scene.remove(this.backdrop.group);
+    this.backdrop.dispose();
+    this.backdrop = new Backdrop(kind, HEX_COL_STEP, HEX_ROW_STEP, TILE_BOTTOM);
+    this.scene.add(this.backdrop.group);
+    this.placeBackdrop();
+  }
+
+  /** Tell the backdrop where the board lies, so its ground can meet the board's edge and grid. */
+  private placeBackdrop(): void {
+    if (!this.board) return;
+    const first = this.cellToWorld({ x: 0, y: 0 });
+    const last = this.cellToWorld({ x: this.width - 1, y: this.height - 1 });
+    this.backdrop.setBoard(
+      { x: (first.x + last.x) / 2, z: (first.z + last.z) / 2 + HEX_ROW_STEP / 4 },
+      { x: (last.x - first.x) / 2 + HEX_SIZE, z: (last.z - first.z) / 2 + HEX_ROW_STEP * 0.75 },
+      first,
+    );
   }
 
   /** Add a board's merged chunks to the scene and to the pickable tiles (see {@link pickCell}). */
@@ -1702,6 +1729,7 @@ export class BoardView {
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
     this.setPlanPreview(null);
+    this.backdrop.dispose();
     this.reachFillGeo?.dispose();
     this.reachFillMat?.dispose();
     this.provokeFillMat?.dispose();
@@ -3308,6 +3336,7 @@ export class BoardView {
     // Shake the camera for this frame only, so the orbit controls never see it.
     const shake = this.shakeOffset();
     this.camera.position.add(shake);
+    this.backdrop.update(this.camera, lavaTime);
     this.renderer.render(this.scene, this.camera);
     this.camera.position.sub(shake);
   };

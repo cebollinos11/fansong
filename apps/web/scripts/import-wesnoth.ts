@@ -9,7 +9,7 @@
  *   - src/three/unitAnimations.json  — the clip manifest (see unitAnimations.ts)
  *   - public/sprites/units/…         — every frame the manifest references
  *   - public/sprites/projectiles/…   — missiles for ranged attacks
- *   - public/sprites/terrain/…       — the animated lava texture
+ *   - public/sprites/terrain/…       — the animated lava texture and the meadow's grass hexes
  *
  * This is a small WML reader, not a WML engine: it understands the tags,
  * attributes, image-path expansion (`x-[1~3].png:[100*3]`), the frame-sequence
@@ -21,6 +21,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSyn
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { LAVA_FRAMES } from '../src/three/lava.js';
+import { MEADOW_TILES } from '../src/three/backdrop.js';
 import { FALLBACK_SPRITE, UNIT_SPRITES } from '../src/three/unitSprites.js';
 import type { Clip, SpriteAnimations } from '../src/three/unitAnimations.js';
 
@@ -415,6 +416,8 @@ for (const sprite of sprites) {
 
 // Lava: Wesnoth's animated 342×180 pool texture, one image per frame (see src/three/lava.ts).
 for (let i = 1; i <= LAVA_FRAMES; i++) files.add(`terrain/unwalkable/lava${String(i).padStart(2, '0')}.png`);
+// Grass: the hexes the meadow backdrop is scattered from (see src/three/backdrop.ts).
+for (const f of MEADOW_TILES) files.add(f);
 
 for (const f of files) {
   const src = join(IMAGES, f);

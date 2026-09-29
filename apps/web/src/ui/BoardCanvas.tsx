@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { unitById, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
+import { BACKDROP_LABELS, BACKDROPS, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
@@ -122,6 +123,26 @@ function saveElevation(degrees: number): void {
   }
 }
 
+const BACKDROP_KEY = 'fansong.backdrop';
+
+/** The remembered backdrop (none unless changed; storage may be unavailable). */
+function loadBackdrop(): BackdropKind {
+  try {
+    const saved = localStorage.getItem(BACKDROP_KEY);
+    return BACKDROPS.find((b) => b === saved) ?? 'void';
+  } catch {
+    return 'void';
+  }
+}
+
+function saveBackdrop(kind: BackdropKind): void {
+  try {
+    localStorage.setItem(BACKDROP_KEY, kind);
+  } catch {
+    // Not remembered; the button still works for this session.
+  }
+}
+
 /** React wrapper that mounts a {@link BoardView} and keeps it in sync with props. */
 export function BoardCanvas(props: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -129,6 +150,7 @@ export function BoardCanvas(props: Props): JSX.Element {
   const [hover, setHover] = useState<Vec | null>(null);
   const [cameraMode, setCameraMode] = useState(loadCameraMode);
   const [elevation, setElevation] = useState(loadElevation);
+  const [backdrop, setBackdrop] = useState(loadBackdrop);
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
   const handlers = useRef({
     onUnitClick: props.onUnitClick,
@@ -156,6 +178,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     const saved = loadElevation();
     if (saved === null) setElevation(Math.round(view.elevation));
     else view.setElevation(saved);
+    view.setBackdrop(loadBackdrop());
     viewRef.current = view;
     return () => {
       view.dispose();
@@ -400,6 +423,19 @@ export function BoardCanvas(props: Props): JSX.Element {
           />
           <span>{elevation ?? '–'}°</span>
         </label>
+        <button
+          type="button"
+          className="board-follow"
+          title="What the table stands in; click for the next backdrop"
+          onClick={() => {
+            const next = BACKDROPS[(BACKDROPS.indexOf(backdrop) + 1) % BACKDROPS.length]!;
+            setBackdrop(next);
+            saveBackdrop(next);
+            viewRef.current?.setBackdrop(next);
+          }}
+        >
+          Backdrop: {BACKDROP_LABELS[backdrop]}
+        </button>
       </div>
     </div>
   );
