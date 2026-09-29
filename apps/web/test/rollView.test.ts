@@ -235,9 +235,9 @@ describe('opposed roll cards', () => {
     ]);
   });
 
-  it('stamps a tripled blow as cleaving its victim, and a tripled shot as skewering it', () => {
+  it('stamps a tripled blow or shot as a gruesome kill', () => {
     const r = describeCombat(attack({ attackScore: 9, defenseScore: 3, result: 'defenderKilled', gruesome: true }));
-    expect(r.verdict).toEqual({ text: 'Cloven!', detail: '9 triples 3', on: ['d'], tone: 'kill', gruesome: true });
+    expect(r.verdict).toEqual({ text: 'Gruesome Kill!', detail: '9 triples 3', on: ['d'], tone: 'kill', gruesome: true });
     const shot = describeCombat({
       type: 'ShotResolved',
       attackerId: 'a',
@@ -249,24 +249,24 @@ describe('opposed roll cards', () => {
       result: 'defenderKilled',
       gruesome: true,
     });
-    expect(shot.verdict).toMatchObject({ text: 'Skewered!', detail: '9 triples 3', gruesome: true });
+    expect(shot.verdict).toMatchObject({ text: 'Gruesome Kill!', detail: '9 triples 3', gruesome: true });
   });
 
-  it("stamps a Savage's merely doubled kill as savaged, and says why", () => {
+  it("stamps a Savage's merely doubled kill as gruesome, and says why", () => {
     const r = describeCombat(attack({ attackScore: 6, defenseScore: 3, result: 'defenderKilled', gruesome: true }));
-    expect(r.verdict).toEqual({ text: 'Savaged!', detail: '6 doubles 3 — a savage kill', on: ['d'], tone: 'kill', gruesome: true });
+    expect(r.verdict).toEqual({ text: 'Gruesome Kill!', detail: '6 doubles 3 — a savage kill', on: ['d'], tone: 'kill', gruesome: true });
   });
 
-  it('stamps a savage shove by where it sent the victim: off the edge, or into the fire', () => {
+  it('stamps a savage shove that kills as gruesome, and says where it sent the victim', () => {
     const killed: GameEvent = { type: 'UnitKilled', unitId: 'd', byId: 'a' };
     const push = attack({ attackDie: 3, result: 'defenderRecoiled', gruesome: true });
     const off = describeCombat(push, [{ type: 'UnitPushedOff', unitId: 'd' }, killed]);
-    expect(off.verdict).toMatchObject({ text: 'Hurled into the abyss!', on: ['d'], gruesome: true });
+    expect(off.verdict).toMatchObject({ text: 'Gruesome Kill!', on: ['d'], gruesome: true });
     const lava = describeCombat(push, [{ type: 'UnitPushedIntoLava', unitId: 'd', to: { x: 1, y: 1 } }, killed]);
-    expect(lava.verdict).toMatchObject({ text: 'Into the fire!', gruesome: true });
+    expect(lava.verdict).toMatchObject({ text: 'Gruesome Kill!', gruesome: true });
     const down = attack({ result: 'defenderKnockedDown', gruesome: true });
     const fell = describeCombat(down, [{ type: 'UnitFellIntoLava', unitId: 'd' }, killed]);
-    expect(fell.verdict).toMatchObject({ text: 'Into the fire!', detail: '7 beats 5 — savagely knocked out of the air', gruesome: true });
+    expect(fell.verdict).toMatchObject({ text: 'Gruesome Kill!', detail: '7 beats 5 — savagely knocked out of the air', gruesome: true });
   });
 
   it('never stamps a kill that Tough turned into a knockdown', () => {

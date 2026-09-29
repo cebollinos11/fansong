@@ -235,7 +235,6 @@ export class RollOverlay {
     const stamp = v.gruesome === true;
     const pin = !stamp && place === 'bottom';
     const el = h('div', `roll-verdict ${v.tone}${pin ? ' pinned' : ''}${stamp ? ' stamp' : ''}`);
-    if (stamp) el.append(h('div', 'verdict-kicker', 'Gruesome kill'));
     el.append(h('div', 'verdict-text', v.text));
     if (v.detail) el.append(h('div', 'verdict-detail', v.detail));
     this.layer.append(el);
