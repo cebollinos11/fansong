@@ -4,6 +4,7 @@ import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from
 import { BACKDROP_LABELS, BACKDROPS, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
+import { InfoLines } from './StatIcons.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 
@@ -378,9 +379,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       {hexInfo ? (
         <div ref={tipRef} className="hex-tooltip">
           <strong>{hexInfo.title}</strong>
-          {hexInfo.lines.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
+          <InfoLines lines={hexInfo.lines} />
         </div>
       ) : null}
       <div className="board-tools">

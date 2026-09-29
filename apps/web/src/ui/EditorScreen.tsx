@@ -36,6 +36,7 @@ import {
   type EditorTool,
 } from './editorView.js';
 import { describeHex } from './hexInfo.js';
+import { InfoLines } from './StatIcons.js';
 import {
   browserStorage,
   deleteCustomMap,
@@ -555,9 +556,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
           {selectedInfo ? (
             <>
               <strong>{selectedInfo.title}</strong>
-              {[...selectedInfo.lines, ...selectedMarks].map((line) => (
-                <div key={line}>{line}</div>
-              ))}
+              <InfoLines lines={[...selectedInfo.lines, ...selectedMarks]} />
             </>
           ) : (
             <p className="muted">Click a hex to select it.</p>

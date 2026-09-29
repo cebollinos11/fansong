@@ -11,9 +11,19 @@ const FEATURE_TEXT = {
   lava: 'Lava — only flyers may cross or land; anyone else pushed in dies, Tough or not; a flyer knocked down here falls in',
 } as const;
 
+/** A unit's core numbers, drawn as stat icons rather than text. */
+export interface HexStats {
+  quality: number;
+  combat: number;
+  move: number;
+}
+
+/** A tooltip line: plain text, or a unit's stats. */
+export type HexLine = string | HexStats;
+
 export interface HexInfo {
   title: string;
-  lines: string[];
+  lines: HexLine[];
 }
 
 /**
@@ -26,7 +36,7 @@ export function describeHex(state: GameState, cell: Vec, plan: PlanPreview | nul
   if (cell.x < 0 || cell.y < 0 || cell.x >= board.width || cell.y >= board.height) return null;
   const key = vecKey(cell);
   const terrain = board.terrain?.[key];
-  const lines: string[] = [];
+  const lines: HexLine[] = [];
   const elevation = terrain?.elevation ?? 0;
   lines.push(elevation > 0 ? `Elevation ${elevation} — high ground` : 'Elevation 0');
   if (board.blocked.includes(key)) lines.push('Blocked — impassable, blocks sight');
@@ -39,7 +49,7 @@ export function describeHex(state: GameState, cell: Vec, plan: PlanPreview | nul
       unit.inspired ? 'inspired' : null,
     ].filter(Boolean);
     lines.push([`${unit.name} (P${unit.owner})`, ...marks].join(' · '));
-    lines.push(`Q${unit.quality} · C${unit.combat} · M${unitMove(unit)}`);
+    lines.push({ quality: unit.quality, combat: unit.combat, move: unitMove(unit) });
     // The abilities decide how the unit must be fought, so the tooltip names them.
     const traits = traitLine(unit);
     if (traits) lines.push(traits);

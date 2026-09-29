@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   MAX_ELEVATION,
   TERRAIN_FEATURES,
@@ -19,6 +19,7 @@ import {
 import { playableArmies } from '../game/armies.js';
 import { Picker, unitItem, unitLine } from './Picker.js';
 import { traitPatch } from './armyView.js';
+import { StatIcon } from './StatIcons.js';
 import { TraitEditor } from './TraitEditor.js';
 import { browserStorage } from '../game/customMaps.js';
 import * as sandboxOps from '../game/sandbox.js';
@@ -333,7 +334,7 @@ function NumberField({
   max,
   onChange,
 }: {
-  label: string;
+  label: ReactNode;
   value: number;
   min: number;
   max: number;
@@ -367,8 +368,8 @@ function ProfileFields({
   return (
     <>
       <div className="sb-row">
-        <NumberField label="Q" value={profile.quality} min={1} max={6} onChange={(quality) => onChange({ quality })} />
-        <NumberField label="C" value={profile.combat} min={0} max={9} onChange={(combat) => onChange({ combat })} />
+        <NumberField label={<StatIcon stat="quality" />} value={profile.quality} min={1} max={6} onChange={(quality) => onChange({ quality })} />
+        <NumberField label={<StatIcon stat="combat" />} value={profile.combat} min={0} max={9} onChange={(combat) => onChange({ combat })} />
       </div>
       <TraitEditor
         unit={profile}

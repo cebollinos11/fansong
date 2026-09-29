@@ -8,8 +8,6 @@ import {
   listMaps,
   PRESET_IDS,
   PRESETS,
-  profileMove,
-  profileRange,
   supportedModes,
   validateArmy,
   validateWarband,
@@ -27,7 +25,8 @@ import { MODE_LABELS } from './editorView.js';
 import { browserStorage, customMapLookup, playableCustomMaps } from '../game/customMaps.js';
 import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy } from '../game/armies.js';
 import { loadSetupPrefs, saveSetupPrefs } from '../game/setupPrefs.js';
-import { MapThumb, Picker, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
+import { StatIcons } from './StatIcons.js';
+import { MapThumb, Picker, profileStats, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
 
 interface Props {
   initial: MatchSetup;
@@ -396,8 +395,7 @@ export function Roster({
             </label>
           )}
           <span className="stats">
-            Q{u.quality} C{u.combat} M{profileMove(u)}
-            {u.shooter ? ` R${profileRange(u)}` : ''}
+            <StatIcons stats={profileStats(u)} />
             {u.tough ? ' Tough' : ''}
             {u.guard ? ' Guard' : ''}
             {u.leader ? ' Leader' : ''}

@@ -24,6 +24,7 @@ import { browserStorage } from '../game/customMaps.js';
 import { downloadJson } from '../game/replay-io.js';
 import { DEFAULT_TINT } from '../three/spriteTint.js';
 import { LookSprite, Picker, UnitSprite, unitItem, warbandItem } from './Picker.js';
+import { StatIcon } from './StatIcons.js';
 import { TraitEditor } from './TraitEditor.js';
 import {
   ARMY_RULES_TEXT,
@@ -270,8 +271,8 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
         <th>Looks like</th>
         <th title="A colour blended into the unit's sprite (its team colours stay as they are)">Tint</th>
         {EDITABLE_STATS.map((s) => (
-          <th key={s} title={STAT_LABELS[s].title}>
-            {STAT_LABELS[s].short}
+          <th key={s}>
+            <StatIcon stat={s} />
           </th>
         ))}
         <th>Traits</th>

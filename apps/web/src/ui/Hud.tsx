@@ -6,6 +6,7 @@ import { seatLabel, traitTags, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import type { BattleLog } from './log.js';
 import { modeHud } from './modeView.js';
+import { StatIcons } from './StatIcons.js';
 
 interface Props {
   state: GameState;
@@ -241,9 +242,7 @@ function UnitInspector({
         ) : null}
       </h3>
       <div className="inspector-stats">
-        <span title="Activation dice succeed on this or higher — lower is better">Quality {u.quality}</span>
-        <span title="Added to the d6 in fights — higher is better">Combat {u.combat}</span>
-        <span title="Hexes per Move action">Move {unitMove(u)}</span>
+        <StatIcons stats={{ quality: u.quality, combat: u.combat, move: unitMove(u) }} />
       </div>
       {/* Ranged, Tough and Guard change how a unit must be fought far more than
           its stats do, so they are shown wherever a unit is described. */}

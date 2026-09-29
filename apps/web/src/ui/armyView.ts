@@ -27,9 +27,9 @@ export const ARMY_RULES_TEXT = `No point limit — ${ARMY_RULES.minUnits} to ${A
 export const EDITABLE_STATS = ['quality', 'combat'] as const;
 export type EditableStat = (typeof EDITABLE_STATS)[number];
 
-export const STAT_LABELS: Record<EditableStat, { short: string; title: string }> = {
-  quality: { short: 'Q', title: 'Quality — activation dice succeed on this or higher (lower is better)' },
-  combat: { short: 'C', title: 'Combat — added to the d6 in fights (higher is better)' },
+export const STAT_LABELS: Record<EditableStat, { title: string }> = {
+  quality: { title: 'Quality — activation dice succeed on this or higher (lower is better)' },
+  combat: { title: 'Combat — added to the d6 in fights (higher is better)' },
 };
 
 /** Every look a unit can take: the sprites of the preset units, by preset unit name. */

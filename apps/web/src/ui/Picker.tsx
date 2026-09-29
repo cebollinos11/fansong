@@ -3,6 +3,7 @@ import { profileMove, profileRange, unitCost, warbandCost, type MapDef, type War
 import { tintPixels } from '../three/spriteTint.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
 import { mapThumb } from './mapThumb.js';
+import { StatIcons, type UnitStats } from './StatIcons.js';
 
 /** One choice in a {@link Picker}: a card with a picture, a name and a line of detail. */
 export interface PickerItem {
@@ -236,10 +237,19 @@ export function WarbandStrip({ warband }: { warband: Warband }): JSX.Element {
   );
 }
 
-/** A unit's core numbers, e.g. `Q4 C3 M5 R8 · 14 pts`. */
-export function unitLine(u: WarbandUnit, cost: number | null = unitCost(u)): string {
-  const stats = `Q${u.quality} C${u.combat} M${profileMove(u)}${u.shooter ? ` R${profileRange(u)}` : ''}`;
-  return cost === null ? stats : `${stats} · ${cost} pts`;
+/** A profile's core numbers, ready for {@link StatIcons}. */
+export function profileStats(u: WarbandUnit): UnitStats {
+  return { quality: u.quality, combat: u.combat, move: profileMove(u), ...(u.shooter ? { range: profileRange(u) } : {}) };
+}
+
+/** A unit's core numbers as icons, then its cost (e.g. `· 14 pts`). */
+export function unitLine(u: WarbandUnit, cost: number | null = unitCost(u)): JSX.Element {
+  return (
+    <span className="unit-line">
+      <StatIcons stats={profileStats(u)} />
+      {cost === null ? null : <span>· {cost} pts</span>}
+    </span>
+  );
 }
 
 /** A gallery card for a unit. */

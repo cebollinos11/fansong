@@ -2806,3 +2806,88 @@ button.trait-add[aria-expanded='true'] {
     width: 100%;
   }
 }
+
+/* --- Stat icons: a unit's numbers inside little badges (StatIcons.tsx) ---- */
+.stat-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  vertical-align: middle;
+}
+
+.stat-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  vertical-align: middle;
+}
+
+.stat-icon svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  stroke-width: 1.2;
+}
+
+.stat-icon-value {
+  position: relative;
+  font: 700 11px/1 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.7);
+}
+
+/* Quality: an ivory die, so its number reads dark. */
+.stat-quality svg {
+  fill: #e9dfc6;
+  stroke: #7a6642;
+}
+.stat-quality .stat-icon-value {
+  color: #2a2116;
+  text-shadow: none;
+}
+
+/* Combat: a red shield. */
+.stat-combat svg {
+  fill: #b33a30;
+  stroke: #5e1a15;
+}
+.stat-combat .stat-icon-value {
+  top: -1px;
+}
+
+/* Move: a green arrow, its number nudged off the point. */
+.stat-move svg {
+  fill: #3d8a4c;
+  stroke: #1d4a26;
+}
+.stat-move .stat-icon-value {
+  left: -1px;
+}
+
+/* Range: a blue target. */
+.stat-range svg {
+  fill: #2f6db3;
+  stroke: #173a63;
+}
+.stat-range .stat-icon-ring {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.35);
+}
+
+.hex-tooltip .stat-icons,
+.editor-selection .stat-icons {
+  display: flex;
+  margin: 2px 0;
+}
+
+.unit-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}

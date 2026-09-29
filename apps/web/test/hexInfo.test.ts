@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { unitMove, type GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { describeHex, oddsLine } from '../src/ui/hexInfo.js';
+import { describeHex, oddsLine, type HexLine } from '../src/ui/hexInfo.js';
 import type { PlanPreview } from '../src/game/planView.js';
 
 const SETUP: MatchSetup = {
@@ -38,13 +38,13 @@ describe('describeHex', () => {
     const u = state.units[0]!;
     const info = describeHex(state, u.pos);
     expect(info?.lines).toContain(`${u.name} (P${u.owner})`);
-    expect(info?.lines).toContain(`Q${u.quality} · C${u.combat} · M${unitMove(u)}`);
+    expect(info?.lines).toContainEqual({ quality: u.quality, combat: u.combat, move: unitMove(u) });
   });
 
   it('spells out the abilities that change how a unit must be fought', () => {
     const plain = state.units[0]!;
     // A unit with no abilities says nothing extra.
-    expect(describeHex(state, plain.pos)?.lines.at(-1)).toBe(`Q${plain.quality} · C${plain.combat} · M${unitMove(plain)}`);
+    expect(describeHex(state, plain.pos)?.lines.at(-1)).toEqual({ quality: plain.quality, combat: plain.combat, move: unitMove(plain) });
 
     const armed: GameState = {
       ...state,
@@ -68,7 +68,7 @@ describe('describeHex', () => {
 describe('describeHex with a plan', () => {
   const state = { ...createMatchFromPresets(SETUP), actionsRemaining: 3 };
   const cell = { x: 4, y: 4 };
-  const lines = (plan: PlanPreview): string[] => describeHex(state, cell, plan)!.lines;
+  const lines = (plan: PlanPreview): HexLine[] => describeHex(state, cell, plan)!.lines;
 
   const base = { path: [cell], waypoints: [cell], provokes: 0 };
 
@@ -106,9 +106,9 @@ describe('describeHex with a plan', () => {
     const target = state.units.find((u) => u.owner === 1)!;
     const live = { ...state, phase: 'acting' as const, activeUnitId: attacker.id };
     const attack = describeHex(live, cell, { ...base, kind: 'attack', cost: 2, targetId: target.id })!.lines;
-    expect(attack.some((l) => /^Win \d+%.* · lose \d+%$/.test(l))).toBe(true);
+    expect(attack.some((l) => typeof l === 'string' && /^Win \d+%.* · lose \d+%$/.test(l))).toBe(true);
     const shot = describeHex(live, cell, { ...base, kind: 'shoot', cost: 2, targetId: target.id })!.lines;
-    expect(shot.some((l) => /^Win \d+%.* · no risk$/.test(l))).toBe(true);
+    expect(shot.some((l) => typeof l === 'string' && /^Win \d+%.* · no risk$/.test(l))).toBe(true);
     // No odds for a walk, nor without an activating unit to fight.
     expect(lines({ ...base, kind: 'attack', cost: 2, targetId: target.id }).join(' ')).not.toContain('Win');
   });
