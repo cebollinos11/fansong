@@ -445,6 +445,7 @@ const COMBAT_CARD_LINGER_MS = 3000; // a blow's dice cards stay up at least this
 const COMBAT_SPAN_MARGIN = 2.2; // how much of the close-up the two combatants take up
 const COMBAT_MIN_SPAN = 5; // world units kept in view (~5 hexes), however close the pair stand
 const COMBAT_MAX_ZOOM = 0.45; // never closer than this fraction of the opening framing
+const FRAME_LIFT = 0.55; // a close-up centres this high above a unit's base (mid-body, scaled by its size), not on its feet
 const SHOT_LEAD_MS = 260; // swing to the shooter before it looses its missile
 
 // The opening shot: the camera starts on the deployed warbands rather than the
@@ -1469,7 +1470,7 @@ export class BoardView {
     const centre = middle(points);
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
     const dist = Math.max(end.dist, this.closeUp(span * COMBAT_SPAN_MARGIN));
-    const dur = this.scheduleMove(at, centre, dist);
+    const dur = this.scheduleMove(at, this.pivotFor(this.bodyMiddle(unitIds) ?? centre), dist);
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1491,7 +1492,7 @@ export class BoardView {
     // Close enough to fill the view with the pair, but never further out than the opening shot.
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
     const dist = dread ? this.closeUp(span * DREAD_SPAN_MARGIN, true) : this.closeUp(span * COMBAT_SPAN_MARGIN);
-    const dur = this.scheduleMove(at, centre, dist, dread ? DREAD_FRAME_SLOW : 1);
+    const dur = this.scheduleMove(at, this.pivotFor(this.bodyMiddle(unitIds) ?? centre), dist, dread ? DREAD_FRAME_SLOW : 1);
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1516,12 +1517,14 @@ export class BoardView {
     if (cinematic && victim) {
       // Halfway to the victim, so the killer stays in the shot.
       const view = this.plannedCamera();
-      const to = victim.targetPos.clone().setY(0).lerp(view.target, 0.5);
+      const to = this.pivotFor(this.bodyAt(victim, victim.targetPos)).lerp(view.target, 0.5);
       this.at(hit, () => this.moveCamera(to, this.camera.position.distanceTo(this.controls.target) * PUSH_IN, PUSH_IN_MS));
       this.planned = { target: to, dist: view.dist * PUSH_IN };
     }
     let triumph = hit + VICTORY_AT_MS;
-    if (cinematic && killer) triumph += this.scheduleMove(triumph, killer.targetPos, this.closeUp(0));
+    if (cinematic && killer) {
+      triumph += this.scheduleMove(triumph, this.pivotFor(this.bodyAt(killer, killer.targetPos)), this.closeUp(0));
+    }
     this.at(triumph, () => this.exult(d.killer));
     const end = triumph + VICTORY_HOLD_MS;
     this.at(start, () => this.dreadFx(d, hit - start, end - start));
@@ -1613,7 +1616,8 @@ export class BoardView {
     if (points.length === 0) return 0;
     const centre = middle(points);
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
-    const dur = this.scheduleMove(at, centre, this.closeUp(Math.max(span * COMBAT_SPAN_MARGIN, REASSEMBLE_MIN_SPAN)));
+    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre);
+    const dur = this.scheduleMove(at, pivot, this.closeUp(Math.max(span * COMBAT_SPAN_MARGIN, REASSEMBLE_MIN_SPAN)));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1624,6 +1628,31 @@ export class BoardView {
       .map((id) => this.units.get(id))
       .filter((obj): obj is UnitObj => !!obj && !obj.fade)
       .map((obj) => obj.group.position.clone());
+  }
+
+  /** Mid-body of a unit standing at `base` (its group position): what a close-up centres on, rather than its feet. */
+  private bodyAt(obj: UnitObj, base: THREE.Vector3): THREE.Vector3 {
+    return base.clone().setY(base.y + TILE_TOP + BASE_HEIGHT + obj.hover + FRAME_LIFT * obj.size);
+  }
+
+  /** The middle of the given units' bodies (the dying and the missing left out), or null when there are none. */
+  private bodyMiddle(unitIds: string[]): THREE.Vector3 | null {
+    const bodies = unitIds
+      .map((id) => this.units.get(id))
+      .filter((obj): obj is UnitObj => !!obj && !obj.fade)
+      .map((obj) => this.bodyAt(obj, obj.group.position));
+    return bodies.length > 0 ? middle(bodies) : null;
+  }
+
+  /**
+   * The orbit pivot (on the ground) that puts `point` in the middle of the view:
+   * the camera looks down at an angle, so it is where the line of sight through
+   * `point` meets the ground, a little beyond it.
+   */
+  private pivotFor(point: THREE.Vector3): THREE.Vector3 {
+    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    if (dir.y < 1e-3) return point.clone().setY(0);
+    return point.clone().addScaledVector(dir, -point.y / dir.y).setY(0);
   }
 
   /** Pulse a unit's ring just before the camera moves to it, so the eye has somewhere to land. */
@@ -2156,9 +2185,10 @@ export class BoardView {
       const span = a.group.position.distanceTo(d.group.position);
       if (span <= RIDE_MAX_SPAN && flight >= RIDE_MIN_MS) {
         const close = this.closeUp(0);
-        this.at(at, () => this.moveCamera(a.group.position, close, Math.min(launch, SHOT_LEAD_MS)));
-        this.at(at + launch, () => this.moveCamera(d.group.position, null, flight, true));
-        this.planned = { target: d.group.position.clone().setY(0), dist: close };
+        this.at(at, () => this.moveCamera(this.pivotFor(this.bodyAt(a, a.group.position)), close, Math.min(launch, SHOT_LEAD_MS)));
+        const landing = this.pivotFor(this.bodyAt(d, d.group.position));
+        this.at(at + launch, () => this.moveCamera(landing, null, flight, true));
+        this.planned = { target: landing, dist: close };
       }
     }
     return { hit: at + hit, end: at + dur };
