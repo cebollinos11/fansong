@@ -151,6 +151,7 @@ export function parseWarband(raw: unknown): Warband {
     if (u.leader === true) unit.leader = true;
     if (u.armored === true) unit.armored = true;
     if (u.sharpshooter === true) unit.sharpshooter = true;
+    if (u.mastery === true) unit.mastery = true;
     if (typeof u.look === 'string') unit.look = u.look;
     if (isTint(u.tint)) unit.tint = u.tint.toLowerCase();
     return unit;

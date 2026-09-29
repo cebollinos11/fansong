@@ -13,11 +13,11 @@ function acting(c: GameConfig): GameState {
   return s;
 }
 
-const melee = (foe: Record<string, unknown> = {}): GameConfig => ({
+const melee = (foe: Record<string, unknown> = {}, blade: Record<string, unknown> = {}): GameConfig => ({
   seed: 1,
   board: { width: 5, height: 3 },
   warbands: [
-    [{ name: 'Blade', quality: 3, combat: 3, pos: { x: 1, y: 1 } }],
+    [{ name: 'Blade', quality: 3, combat: 3, pos: { x: 1, y: 1 }, ...blade }],
     [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 1 }, ...foe }],
   ],
 });
@@ -33,6 +33,7 @@ function sampled(c: GameConfig, prep: (s: GameState) => void, runs = 1500): { wi
     const riposte = events.find((e): e is Extract<GameEvent, { type: 'GuardRiposte' }> => e.type === 'GuardRiposte');
     const attack = events.find((e): e is Extract<GameEvent, { type: 'AttackResolved' }> => e.type === 'AttackResolved');
     if (riposte?.prevented) lose++;
+    else if (riposte?.result === 'attackerKilled') win++; // a master cut the guard down
     else if (attack?.result.startsWith('defender')) win++;
     else if (attack?.result.startsWith('attacker')) lose++;
   }
@@ -65,6 +66,26 @@ describe('combatOdds', () => {
     expect(guarded.lose).toBeGreaterThan(15 / 36);
     expect(Math.abs(guarded.win - seenGuarded.win)).toBeLessThan(0.04);
     expect(Math.abs(guarded.lose - seenGuarded.lose)).toBeLessThan(0.04);
+  });
+
+  it('matches what the reducer rolls when Combat Mastery turns ties into kills', () => {
+    const guardUp = (s: GameState) => {
+      s.units.find((u) => u.id === 'p1u0')!.guarding = true;
+    };
+    const cases: [Record<string, unknown>, Record<string, unknown>, (s: GameState) => void][] = [
+      [{}, { mastery: true }, () => {}],
+      [{ mastery: true }, {}, () => {}],
+      [{ guard: true, mastery: true }, {}, guardUp],
+      [{ guard: true }, { mastery: true }, guardUp],
+    ];
+    for (const [foe, blade, prep] of cases) {
+      const s = acting(melee(foe, blade));
+      prep(s);
+      const odds = combatOdds(s, 'p0u0', 'p1u0');
+      const seen = sampled(melee(foe, blade), prep);
+      expect(Math.abs(odds.win - seen.win)).toBeLessThan(0.04);
+      expect(Math.abs(odds.lose - seen.lose)).toBeLessThan(0.04);
+    }
   });
 
   it('never risks the shooter, and scores from the hex a charge ends on', () => {

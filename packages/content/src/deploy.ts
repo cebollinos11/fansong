@@ -71,6 +71,7 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     leader: unit.leader,
     armored: unit.armored,
     sharpshooter: unit.sharpshooter,
+    mastery: unit.mastery,
   };
   if (unit.look !== undefined) spec.look = unit.look;
   if (unit.tint !== undefined) spec.tint = unit.tint;

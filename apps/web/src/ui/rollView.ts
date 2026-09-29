@@ -100,8 +100,9 @@ function outcomes(a: number, b: number): [RollSide['outcome'], RollSide['outcome
 /**
  * Describe an attack, shot, riposte or free hack. `after` is the rest of the
  * event batch, scanned for an armor save that turned a 1-point loss into a
- * clash, for a Tough save that turns the would-be kill into a knockdown, and
- * for where a push ended (braced by a friend, off the map).
+ * clash, for Combat Mastery turning a tie into a kill, for a Tough save that
+ * turns the would-be kill into a knockdown, and for where a push ended (braced
+ * by a friend, off the map).
  */
 export function describeCombat(e: Combat, after: readonly GameEvent[] = []): OpposedRoll {
   let a: RollSide;
@@ -127,9 +128,16 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
   // knocked-down unit only strikes back on a natural 6. (A win the loser's
   // armor turned aside still reads as a win; the verdict says why.)
   const armored = armorSave(after);
+  const master = masteryStrike(after);
   if (armored) {
     const loser = armored === a.unitId ? a : b;
     loser.note = 'Armor holds';
+  } else if (master) {
+    // A tie, but the master's is the side that counts.
+    const [winner, loser] = master === a.unitId ? [a, b] : [b, a];
+    winner.outcome = 'win';
+    loser.outcome = 'lose';
+    winner.note = 'Combat Mastery';
   } else if (e.result === 'clash' && b.outcome === 'win') {
     b.outcome = 'tie';
     a.outcome = 'tie';
@@ -151,6 +159,12 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
   return { kind: 'opposed', a, b, verdict: combatVerdict(e, a, b, after) };
 }
 
+/** The unit whose Combat Mastery turned this tie into a kill, if any: a `MasteryStruck` straight after the roll. */
+function masteryStrike(after: readonly GameEvent[]): string | undefined {
+  const next = after[0];
+  return next?.type === 'MasteryStruck' ? next.unitId : undefined;
+}
+
 /** The unit whose armor turned this roll into a clash, if any: an `ArmorHeld` straight after the roll. */
 function armorSave(after: readonly GameEvent[]): string | undefined {
   const next = after[0];
@@ -164,6 +178,16 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
   if (armored) {
     const [winner, loser] = armored === a.unitId ? [b, a] : [a, b];
     return { text: 'Armor holds!', detail: `${winner.total} beats ${loser.total} by only 1`, on: [loser.unitId], tone: 'save' };
+  }
+  const master = masteryStrike(after);
+  if (master) {
+    const [winner, loser] = master === a.unitId ? [a, b] : [b, a];
+    const ties = `${winner.total} ties ${loser.total}`;
+    if (after.some((x) => x.type === 'ToughnessSaved' && x.unitId === loser.unitId)) {
+      return { text: 'Tough!', detail: `${ties} — mastery's kill, knocked down instead`, on: [loser.unitId], tone: 'save' };
+    }
+    if (e.gruesome) return { text: 'Gruesome!', detail: `${ties} — a savage master's kill`, on: [loser.unitId], tone: 'kill' };
+    return { text: 'Mastery!', detail: `${ties} — a master's tie kills`, on: [loser.unitId], tone: 'kill' };
   }
   if (!hitsA && !hitsB) {
     const detail = a.total === b.total ? `${a.total} ties ${b.total}` : undefined;

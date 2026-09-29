@@ -210,7 +210,7 @@ still not done.
 ## 7. Special rules (traits)
 
 FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted,
-Opportunist, Savage, Armored and Sharpshooter (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist, Savage, Armored and Sharpshooter have no direct equivalent in the
+Opportunist, Savage, Armored, Sharpshooter and Combat Mastery (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist, Savage, Armored, Sharpshooter and Combat Mastery have no direct equivalent in the
 original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
@@ -236,7 +236,7 @@ short paraphrase, and the exact effects should be checked before building one.
 
 **Melee:**
 - **Combat Master:** enemies get no outnumbering bonus against it. This needs
-  §3.2 first.
+  §3.2 first. (Not the same as FanSong's Combat Mastery, below.)
 - **Hatred:** a bonus against one named enemy type.
 - **Savage:** more lethal against some opponents.
 - **Poison:** extra harm on some die results. It has no effect on undead.
@@ -276,6 +276,16 @@ short paraphrase, and the exact effects should be checked before building one.
   have cost (a push, a knockdown, or a kill, a double of 2 over 1 included),
   and whether it is standing or knocked down. The roll resolves as a `clash`
   and an `ArmorHeld` event follows it (`armorHeld` in combat.ts).
+- ✅ **Done — Combat Mastery** *(FanSong's own)*. *Implemented:* a `mastery`
+  trait, priced as two favorable traits. A melee it ties against a foe without
+  Combat Mastery kills that foe —
+  a blow (attacking or defending), a riposte or a free hack, on either side of
+  it: a guard or a hacker that ties a master is cut down, not just a master
+  who ties them. Two masters tie as anyone does, only a true tie counts (not a
+  loss armor turned aside), and a knocked-down master needs the natural 6 any
+  fallen unit needs to strike back. It is an ordinary kill: Tough saves
+  against it, and it is gruesome only if the master is Savage. Shots ignore
+  it. A `MasteryStruck` event follows the roll (`masteryStruck` in combat.ts).
 - **Rabble:** a cheap mob model that fights better next to friends of its own
   kind *(revised)*.
 - **Swarm:** a mob that is hard to kill outright.

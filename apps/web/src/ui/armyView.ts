@@ -68,6 +68,7 @@ export const TOGGLE_TRAITS = [
   'leader',
   'armored',
   'sharpshooter',
+  'mastery',
 ] as const;
 export type ToggleTrait = (typeof TOGGLE_TRAITS)[number];
 
@@ -115,6 +116,7 @@ export const TRAIT_INFO: Record<TraitKey, { label: string; desc: string }> = {
   },
   armored: { label: 'Armored', desc: 'a combat it loses by exactly 1 point does it no harm, even knocked down' },
   sharpshooter: { label: 'Sharpshooter', desc: '+1 to every shot it takes (only matters with a Shooter trait)' },
+  mastery: { label: 'Combat Mastery', desc: 'a melee it ties against a foe without Combat Mastery kills that foe. Costs as two traits' },
 };
 
 /** A trait's tooltip: its name and what it does. */

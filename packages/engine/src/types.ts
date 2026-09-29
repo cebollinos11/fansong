@@ -97,6 +97,15 @@ export interface UnitTraits {
   armored: boolean;
   /** Sharpshooter: a deadly eye. It scores +1 on every shot it takes (see `sharpshooterBonus` in combat.ts). */
   sharpshooter: boolean;
+  /**
+   * Combat Mastery: a melee it ties against a foe without Combat Mastery kills
+   * that foe — a blow attacking or defending, a riposte or a free hack, on either
+   * side of it (see `masteryStruck` in combat.ts). Two masters tie as anyone
+   * does. Knocked down, it needs the natural 6 any fallen unit needs to strike
+   * back. It is an ordinary kill: Tough saves against it, and it is not gruesome
+   * unless the master is Savage. Reported by a `MasteryStruck` event.
+   */
+  mastery: boolean;
 }
 
 export interface Unit {
@@ -425,6 +434,11 @@ export type GameEvent =
    * and its armor turned the blow aside: the roll's result is a clash.
    */
   | { type: 'ArmorHeld'; unitId: string }
+  /**
+   * Straight after a melee roll that tied: `unitId`'s Combat Mastery turned the
+   * tie into a kill of its opponent (the kill itself follows).
+   */
+  | { type: 'MasteryStruck'; unitId: string }
   | {
       type: 'NerveCheck';
       unitId: string;

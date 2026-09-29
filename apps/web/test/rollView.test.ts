@@ -112,6 +112,34 @@ describe('opposed roll cards', () => {
     expect(r.verdict).toMatchObject({ text: 'Attack goes through', tone: 'neutral' });
   });
 
+  it("calls a master's tie a kill, naming the mastery", () => {
+    const tie = attack({ attackScore: 6, defenseScore: 6, result: 'defenderKilled' });
+    const r = describeCombat(tie, [{ type: 'MasteryStruck', unitId: 'a' }]);
+    expect(r.a).toMatchObject({ outcome: 'win', note: 'Combat Mastery' });
+    expect(r.b).toMatchObject({ outcome: 'lose' });
+    expect(r.verdict).toEqual({ text: 'Mastery!', detail: "6 ties 6 — a master's tie kills", on: ['d'], tone: 'kill' });
+    const saved = describeCombat(tie, [{ type: 'MasteryStruck', unitId: 'a' }, { type: 'ToughnessSaved', unitId: 'd' }]);
+    expect(saved.verdict).toMatchObject({ text: 'Tough!', on: ['d'], tone: 'save' });
+  });
+
+  it('shows a guard cut down when an attacking master ties its riposte', () => {
+    const riposte: GameEvent = {
+      type: 'GuardRiposte',
+      guardId: 'g',
+      attackerId: 'a',
+      guardDie: 3,
+      attackerDie: 3,
+      guardScore: 6,
+      attackerScore: 6,
+      result: 'attackerKilled',
+      prevented: false,
+    };
+    const r = describeCombat(riposte, [{ type: 'MasteryStruck', unitId: 'a' }]);
+    expect(r.a).toMatchObject({ unitId: 'g', outcome: 'lose' });
+    expect(r.b).toMatchObject({ unitId: 'a', outcome: 'win', note: 'Combat Mastery' });
+    expect(r.verdict).toMatchObject({ text: 'Mastery!', on: ['g'], tone: 'kill' });
+  });
+
   it('lists outnumbering as its own modifier, leaving Combat intact', () => {
     const r = describeCombat(attack({ defenseScore: 4, defenseOutnumbered: 1 }));
     expect(r.b.mods).toEqual([

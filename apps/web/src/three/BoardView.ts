@@ -1052,8 +1052,12 @@ export class BoardView {
         // and is turned aside before the answer comes back — landing when the
         // attacker lost the roll, turned aside in its turn when they clashed.
         const cover = e.type === 'ShotResolved' && (e.coverPenalty ?? 0) > 0;
-        const s =
-          e.type === 'AttackResolved' && armored !== pair[1] && this.answered(e)
+        // A riposte or free hack tied by a master on the receiving end plays as
+        // an exchange too: the swing is turned aside and the master's answer kills.
+        const mastered = e.type !== 'AttackResolved' && after[0]?.type === 'MasteryStruck' && after[0].unitId === pair[1];
+        const s = mastered
+          ? this.exchange(pair[0], pair[1], start + cards, { land: true })
+          : e.type === 'AttackResolved' && armored !== pair[1] && this.answered(e)
             ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') || armored === pair[0] })
             : this.strike(pair[0], pair[1], e.type === 'ShotResolved' ? 'ranged' : 'melee', start + cards, { land, cover });
         const [first, second] = pair;

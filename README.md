@@ -81,7 +81,8 @@ action; the AI, the tests, and any future UI all pick from that list.
   kill** — the only kind of death that makes nearby friends test their nerve.
   Every kill a **Savage** unit deals is gruesome, whatever the scores. An
   **Armored** unit that loses any combat by exactly 1 point — standing or
-  knocked down — is unharmed: its armor turns the blow aside.
+  knocked down — is unharmed: its armor turns the blow aside. A melee tie
+  kills the side without **Combat Mastery** when the other side has it.
 - **Contact:** a unit that walks next to an enemy stops there, and a unit
   leaving contact takes a **free hack** from each standing enemy it was
   touching (it can't hit back; a knockdown stops it in its tracks).
@@ -104,8 +105,8 @@ seed replays identically).
   `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
   favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling,
   Mounted, Opportunist, Savage, Armored, Sharpshooter) adds
-  3 to Special Abilities and each unfavorable one (Slow) takes 3 off. Leader
-  counts as two favorable traits (+6).
+  3 to Special Abilities and each unfavorable one (Slow) takes 3 off. Leader and
+  Combat Mastery each count as two favorable traits (+6).
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
   3 or 7.
 - **Validation** (`validateWarband`) — checks stat ranges and roster size,

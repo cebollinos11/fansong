@@ -99,6 +99,18 @@ describe('fight lines', () => {
     expect(items(log)[0]!.tone).toBeUndefined();
   });
 
+  it('says a tie killed by Combat Mastery, naming the master in the breakdown', () => {
+    const log = appendEvents(emptyLog(), s, [
+      { type: 'AttackResolved', ...blow, defenseScore: blow.attackScore, result: 'attackerKilled' },
+      { type: 'MasteryStruck', unitId: d.id },
+      { type: 'UnitKilled', unitId: a.id, byId: d.id },
+    ]);
+    expect(lines(log)).toEqual([
+      `⚔ ${a.name} attacks ${d.name} ${blow.attackScore}–${blow.attackScore} → ${a.name} killed by Combat Mastery`,
+    ]);
+    expect(items(log)[0]!.detail).toContain(`Combat Mastery: ${d.name}'s tie kills a foe without it.`);
+  });
+
   it('names the attacker when the blow backfires', () => {
     const log = appendEvents(emptyLog(), s, [
       { type: 'AttackResolved', ...blow, result: 'attackerRecoiled' },

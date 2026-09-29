@@ -12,6 +12,7 @@ import {
   getLegalCommands,
   kingOf,
   makeHexGrid,
+  masteryEdge,
   mountedMeleeBonus,
   opportunistBonus,
   sharpshooterBonus,
@@ -308,6 +309,7 @@ function scoreCommand(
       score += (attacker.combat - target.combat) * 50; // favour favourable match-ups
       // Gang up: hit a foe we outnumber, not while we are the outnumbered one.
       score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
+      score += masteryEdge(attacker, target) * 50; // a tie kills for the lone master
       // Power blow or two swings? Press the attack only when the odds are against us.
       score += pressedEdge(meleeEdge(state, board, attacker, target) < 0, command.power === true);
       if (kings) {
@@ -618,6 +620,7 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
       if (command.type === 'Attack') {
         score += (attacker.combat - target.combat) * 50;
         score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
+        score += masteryEdge(attacker, target) * 50;
         score += pressedEdge(meleeEdge(state, board, attacker, target) < 0, command.power === true);
       } else {
         const penalty = shotPenalty(state, board, attacker, target);

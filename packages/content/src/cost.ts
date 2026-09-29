@@ -43,6 +43,8 @@ export interface Profile {
   armored?: boolean;
   /** Sharpshooter: +1 to every shot it takes. */
   sharpshooter?: boolean;
+  /** Combat Mastery: a melee it ties against a foe without it kills that foe. */
+  mastery?: boolean;
 }
 
 /** The kinds of Shooter trait: short range, plain Shooter, and long range. */
@@ -95,7 +97,8 @@ export const COST_WEIGHTS = {
   /**
    * Each favorable trait adds this much, before the Quality multiplier: Fast,
    * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Mounted, Opportunist, Savage, Armored and Sharpshooter.
-   * Leader lifts the whole warband, so it counts as two favorable traits.
+   * Leader lifts the whole warband and Combat Mastery turns every melee tie
+   * into a kill, so each counts as two favorable traits.
    */
   favorable: 3,
   /** Each unfavorable trait adds this much (a rebate), before the Quality multiplier: Slow. */
@@ -119,7 +122,7 @@ export function traitCounts(p: Profile): { favorable: number; unfavorable: numbe
     p.savage,
     p.armored,
     p.sharpshooter,
-  ].filter(Boolean).length + (p.leader ? 2 : 0);
+  ].filter(Boolean).length + (p.leader ? 2 : 0) + (p.mastery ? 2 : 0);
   const unfavorable = p.slow ? 1 : 0;
   return { favorable, unfavorable };
 }

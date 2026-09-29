@@ -147,6 +147,7 @@ export const unitTraitsSchema = z
     leader: z.boolean(),
     armored: z.boolean(),
     sharpshooter: z.boolean(),
+    mastery: z.boolean(),
   })
   .strict();
 
@@ -339,6 +340,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('ToughnessSaved'), unitId: z.string() }),
   z.object({ type: z.literal('ArmorHeld'), unitId: z.string() }),
+  z.object({ type: z.literal('MasteryStruck'), unitId: z.string() }),
   z.object({
     type: z.literal('NerveCheck'),
     unitId: z.string(),
@@ -414,6 +416,7 @@ export const unitSpecSchema = z
     leader: z.boolean().optional(),
     armored: z.boolean().optional(),
     sharpshooter: z.boolean().optional(),
+    mastery: z.boolean().optional(),
     king: z.boolean().optional(),
     look: z.string().max(64).optional(),
     tint: tintSchema.optional(),
@@ -477,6 +480,7 @@ export const warbandUnitSchema = z
     leader: z.boolean().optional(),
     armored: z.boolean().optional(),
     sharpshooter: z.boolean().optional(),
+    mastery: z.boolean().optional(),
     look: z.string().max(64).optional(),
     tint: tintSchema.optional(),
   })

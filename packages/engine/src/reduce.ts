@@ -11,6 +11,7 @@ import {
   highGroundBonus,
   COVER_PENALTY,
   isGruesome,
+  masteryStruck,
   mountedMeleeBonus,
   opportunistBonus,
   sharpshooterBonus,
@@ -252,9 +253,13 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     // The guard strikes before the blow lands, so a power blow's penalty never
     // reaches the riposte — only the swing it was bought for.
     const prevented = resolveRiposte(s, events, target, attacker, board);
-    if (prevented) {
+    // The attacker can also fall to a fleeing master's tie in the rout a
+    // guard's death sets off (see `resolveFreeHacks`).
+    const attackerDown = prevented || attacker.dead || attacker.knockedDown;
+    // A master who ties the riposte cuts the guard down: that was the blow.
+    if (attackerDown || target.dead) {
       if (checkGameOver(s, events)) return;
-      endActivation(s, events);
+      if (attackerDown || s.actionsRemaining <= 0) endActivation(s, events);
       return;
     }
   }
@@ -269,6 +274,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     knockedDown: attacker.knockedDown,
     canRecoil: canBePushed(attackerPush),
     armored: attacker.traits.armored,
+    mastery: attacker.traits.mastery,
   };
   const defenseSide: CombatSide = {
     score: defenseScore,
@@ -276,6 +282,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     knockedDown: target.knockedDown,
     canRecoil: canBePushed(targetPush),
     armored: target.traits.armored,
+    mastery: target.traits.mastery,
   };
   const result = computeCombatResult(attackSide, defenseSide);
   const gruesome = gruesomeKill(result, attacker, target, attackScore, defenseScore, attackerPush, targetPush);
@@ -293,6 +300,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     ...(gruesome ? { gruesome } : {}),
   });
   armorEvent(events, armorHeld(attackSide, defenseSide), attacker, target);
+  masteryEvent(events, masteryStruck(attackSide, defenseSide), attacker, target);
 
   let attackerEnded = false;
   switch (result) {
@@ -320,6 +328,8 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
   }
 
   if (checkGameOver(s, events)) return;
+  // A rout the blow set off can bring the attacker down too (see `resolveFreeHacks`).
+  attackerEnded ||= attacker.dead || attacker.knockedDown;
   if (attackerEnded || s.actionsRemaining <= 0) endActivation(s, events);
 }
 
@@ -485,18 +495,27 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   // wounds itself parrying, so only attacker-harming outcomes stand: losing the
   // exchange merely lets the blow in, and is reported — like a shot that draws
   // no return fire — as a clash.
-  const guardSide: CombatSide = { score: guardScore, die: guardDie, knockedDown: guard.knockedDown, canRecoil: false };
+  const guardSide: CombatSide = {
+    score: guardScore,
+    die: guardDie,
+    knockedDown: guard.knockedDown,
+    canRecoil: false,
+    mastery: guard.traits.mastery,
+  };
   const attackerSide: CombatSide = {
     score: attackerScore,
     die: attackerDie,
     knockedDown: attacker.knockedDown,
     canRecoil: canBePushed(attackerPush),
     armored: attacker.traits.armored,
+    mastery: attacker.traits.mastery,
   };
   const lands = canStrikeBack(guard.knockedDown, guardDie);
-  const result = defenderOnly(lands ? computeCombatResult(guardSide, attackerSide) : 'clash');
+  // The one way a guard *is* hurt parrying: an attacker's Combat Mastery on a tie.
+  const master = masteryStruck(guardSide, attackerSide);
+  const result = defenderOnly(lands || master ? computeCombatResult(guardSide, attackerSide) : 'clash', master);
   // An attacker braced by a friend is not driven back, so its blow still lands.
-  const prevented = result !== 'clash' && !(result === 'defenderRecoiled' && attackerPush.kind === 'supported');
+  const prevented = result.startsWith('defender') && !(result === 'defenderRecoiled' && attackerPush.kind === 'supported');
   const gruesome = gruesomeKill(result, guard, attacker, guardScore, attackerScore, null, attackerPush);
 
   events.push({
@@ -526,8 +545,10 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   });
   // A guard never wounds itself parrying, so only the attacker's armor counts.
   if (lands) armorEvent(events, targetOnly(armorHeld(guardSide, attackerSide)), guard, attacker);
+  masteryEvent(events, master, guard, attacker);
 
-  hitDefender(s, events, result, attacker, guard.id, board, gruesome, attackerPush);
+  if (result === 'attackerKilled') strike(s, guard, attacker.id, events, board, gruesome);
+  else hitDefender(s, events, result, attacker, guard.id, board, gruesome, attackerPush);
   return prevented;
 }
 
@@ -544,11 +565,18 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
   // A flyer lifts straight up out of contact — no ground blade can catch it.
   if (airborne(s, mover)) return true;
   for (const hacker of adjacentEnemies(s, mover, board)) {
-    if (hacker.knockedDown) continue;
+    // A hacker already cut down, or put to flight, by an earlier hack's rout has no swing.
+    if (hacker.knockedDown || hacker.dead || board.distance(hacker.pos, mover.pos) !== 1) continue;
     const roll = rollMelee(s, board, hacker, mover);
     const { attackDie, defenseDie, attackScore, defenseScore } = roll;
-    // Only the leaver can be hurt; the hacker never is.
-    const hackSide: CombatSide = { score: attackScore, die: attackDie, knockedDown: false, canRecoil: false };
+    // Only the leaver can be hurt — unless it is a master who ties the hacker.
+    const hackSide: CombatSide = {
+      score: attackScore,
+      die: attackDie,
+      knockedDown: false,
+      canRecoil: false,
+      mastery: hacker.traits.mastery,
+    };
     // A leaver always has somewhere to "recoil": the way it was going.
     const leaverSide: CombatSide = {
       score: defenseScore,
@@ -556,8 +584,10 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
       knockedDown: mover.knockedDown,
       canRecoil: true,
       armored: mover.traits.armored,
+      mastery: mover.traits.mastery,
     };
-    const result = defenderOnly(computeCombatResult(hackSide, leaverSide));
+    const master = masteryStruck(hackSide, leaverSide);
+    const result = defenderOnly(computeCombatResult(hackSide, leaverSide), master);
     const gruesome = gruesomeKill(result, hacker, mover, attackScore, defenseScore, null, null);
 
     events.push({
@@ -573,6 +603,14 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
       ...(gruesome ? { gruesome } : {}),
     });
     armorEvent(events, targetOnly(armorHeld(hackSide, leaverSide)), hacker, mover);
+    masteryEvent(events, master, hacker, mover);
+    // A master slipping away cuts down the hacker, and carries on — unless the
+    // rout that death sets off wins the game or brings the master down too.
+    if (result === 'attackerKilled') {
+      strike(s, hacker, mover.id, events, board, gruesome);
+      if (mover.dead || mover.knockedDown || checkGameOver(s, events)) return false;
+      continue;
+    }
 
     // A kill (or a Tough save onto the ground) and a knockdown both stop the
     // move; a recoil is just the leaver slipping away, so it carries on.
@@ -730,26 +768,47 @@ export function combatOdds(
     ? shotScoring(s, board, attacker, target, penalty)
     : meleeScoring(s, board, attacker, target, penalty);
 
+  // Mastery only ever turns melee ties into kills; a shot knows nothing of it.
+  const attackerMastery = !options.ranged && attacker.traits.mastery;
+  const targetMastery = !options.ranged && target.traits.mastery;
+
   // A guard's riposte stops the blow whenever it harms the attacker, unless a
-  // braced attacker merely holds its ground against the push.
+  // braced attacker merely holds its ground against the push. An attacker's
+  // Combat Mastery tying the riposte cuts the guard down before any blow.
   let through = 1;
   let lose = 0;
+  let slain = 0;
   if (!options.ranged && target.guarding && target.traits.guard) {
     const riposte = meleeScoring(s, board, target, attacker);
     const braced = pushOutcome(s, board, attacker, target).kind === 'supported';
     let stopped = 0;
     for (let g = 1; g <= 6; g++) {
       for (let a = 1; a <= 6; a++) {
-        if (!canStrikeBack(target.knockedDown, g)) continue;
-        const result = computeCombatResult(
-          { score: riposte.attackBase + g, die: g, knockedDown: target.knockedDown, canRecoil: false },
-          { score: riposte.defenseBase + a, die: a, knockedDown: attacker.knockedDown, canRecoil: true, armored: attacker.traits.armored },
-        );
-        if (result.startsWith('defender') && !(result === 'defenderRecoiled' && braced)) stopped++;
+        const guardSide: CombatSide = {
+          score: riposte.attackBase + g,
+          die: g,
+          knockedDown: target.knockedDown,
+          canRecoil: false,
+          mastery: targetMastery,
+        };
+        const attackerSide: CombatSide = {
+          score: riposte.defenseBase + a,
+          die: a,
+          knockedDown: attacker.knockedDown,
+          canRecoil: true,
+          armored: attacker.traits.armored,
+          mastery: attackerMastery,
+        };
+        const master = masteryStruck(guardSide, attackerSide);
+        if (!canStrikeBack(target.knockedDown, g) && !master) continue;
+        const result = computeCombatResult(guardSide, attackerSide);
+        if (result === 'attackerKilled' && master === 'defense') slain++;
+        else if (result.startsWith('defender') && !(result === 'defenderRecoiled' && braced)) stopped++;
       }
     }
     lose = stopped / 36;
-    through = 1 - lose;
+    slain /= 36;
+    through = 1 - lose - slain;
   }
 
   let win = 0;
@@ -758,8 +817,22 @@ export function combatOdds(
   for (let a = 1; a <= 6; a++) {
     for (let d = 1; d <= 6; d++) {
       const result = computeCombatResult(
-        { score: attackBase + a, die: a, knockedDown: attacker.knockedDown, canRecoil: true, armored: attacker.traits.armored },
-        { score: defenseBase + d, die: d, knockedDown: target.knockedDown, canRecoil: true, armored: target.traits.armored },
+        {
+          score: attackBase + a,
+          die: a,
+          knockedDown: attacker.knockedDown,
+          canRecoil: true,
+          armored: attacker.traits.armored,
+          mastery: attackerMastery,
+        },
+        {
+          score: defenseBase + d,
+          die: d,
+          knockedDown: target.knockedDown,
+          canRecoil: true,
+          armored: target.traits.armored,
+          mastery: targetMastery,
+        },
       );
       if (result.startsWith('defender')) {
         win++;
@@ -767,18 +840,20 @@ export function combatOdds(
       } else if (result.startsWith('attacker') && !options.ranged) hurt++;
     }
   }
-  win = (through * win) / 36;
+  win = slain + (through * win) / 36;
   lose += (through * hurt) / 36;
-  return { win, kill: (through * kill) / 36, lose, clash: Math.max(0, 1 - win - lose) };
+  return { win, kill: slain + (through * kill) / 36, lose, clash: Math.max(0, 1 - win - lose) };
 }
 
 /**
  * An outcome for a combat where only the defender can be hurt (a shot, a
  * riposte, a free hack): anything that would harm the aggressor is reported as
  * the clash it effectively is, so no event ever names damage the rules never
- * dealt.
+ * dealt. The one exception is the defender's Combat Mastery (`master` is
+ * `'defense'`), whose tie kills the aggressor all the same.
  */
-function defenderOnly(result: CombatResult): CombatResult {
+function defenderOnly(result: CombatResult, master: 'attack' | 'defense' | null = null): CombatResult {
+  if (result === 'attackerKilled' && master === 'defense') return result;
   return result.startsWith('defender') ? result : 'clash';
 }
 
@@ -790,6 +865,11 @@ function targetOnly(held: 'attack' | 'defense' | null): 'defense' | null {
 /** Report whose armor turned the roll into a clash, if anyone's did. */
 function armorEvent(events: GameEvent[], held: 'attack' | 'defense' | null, aggressor: Unit, defender: Unit): void {
   if (held) events.push({ type: 'ArmorHeld', unitId: (held === 'attack' ? aggressor : defender).id });
+}
+
+/** Report whose Combat Mastery turned a tie into a kill, if anyone's did. */
+function masteryEvent(events: GameEvent[], master: 'attack' | 'defense' | null, aggressor: Unit, defender: Unit): void {
+  if (master) events.push({ type: 'MasteryStruck', unitId: (master === 'attack' ? aggressor : defender).id });
 }
 
 /** Drop the zero modifiers, so an event only ever carries the ones that applied. */

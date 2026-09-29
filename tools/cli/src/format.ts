@@ -47,6 +47,8 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `    ${name(state, e.unitId)} shrugs off the blow (Tough)`;
     case 'ArmorHeld':
       return `    ${name(state, e.unitId)}'s armor turns the blow aside (Armored)`;
+    case 'MasteryStruck':
+      return `    ${name(state, e.unitId)}'s mastery turns the tie into a kill (Combat Mastery)`;
     case 'NerveCheck':
       return `    ${name(state, e.unitId)} nerve check d${e.die} vs Q${e.quality} -> ${e.passed ? 'holds' : 'falters'}${e.inspirationLost ? ' (inspiration lost)' : ''}`;
     case 'WarbandBroken':

@@ -36,6 +36,8 @@ export interface UnitSpec {
   armored?: boolean;
   /** Sharpshooter: +1 to every shot it takes. */
   sharpshooter?: boolean;
+  /** Combat Mastery: a melee it ties against a foe without it kills that foe. */
+  mastery?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -93,6 +95,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       leader: spec.leader ?? false,
       armored: spec.armored ?? false,
       sharpshooter: spec.sharpshooter ?? false,
+      mastery: spec.mastery ?? false,
     },
     guarding: false,
     inspired: false,

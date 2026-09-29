@@ -177,6 +177,8 @@ interface Fight {
   recoiled: boolean;
   supportedBy: UnitRef | null;
   armor: UnitRef | null;
+  /** Whose Combat Mastery turned the tie into a kill. */
+  mastery: UnitRef | null;
 }
 
 /** "Knight: rolled 4 + 3 combat +1 high ground −1 outnumbered = 7". */
@@ -191,7 +193,7 @@ const bonus = (label: string, n: number | undefined): [string, number | undefine
 const penalty = (label: string, n: number | undefined): [string, number | undefined] => [label, n ? -n : n];
 
 function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
-  const base = { item, gruesome: false, prevented: false, tough: false, pushedOff: false, recoiled: false, supportedBy: null, armor: null };
+  const base = { item, gruesome: false, prevented: false, tough: false, pushedOff: false, recoiled: false, supportedBy: null, armor: null, mastery: null };
   switch (e.type) {
     case 'AttackResolved':
     case 'FreeHackResolved': {
@@ -305,6 +307,10 @@ function absorb(f: Fight, e: GameEvent, state: GameState): boolean {
       if (!involved(e.unitId)) return false;
       f.armor = ref(state, e.unitId);
       return true;
+    case 'MasteryStruck':
+      if (!involved(e.unitId)) return false;
+      f.mastery = ref(state, e.unitId);
+      return true;
     case 'ToughnessSaved':
       if (!involved(e.unitId)) return false;
       f.tough = true;
@@ -343,6 +349,7 @@ function finishFight(f: Fight): void {
   let braced = false;
   if (result.endsWith('Killed')) {
     [label, short, cls] = f.tough ? ['knocked down (Tough)', 'down', 'down'] : ['killed', 'killed', 'kill'];
+    if (f.mastery) label += ' by Combat Mastery';
   } else if (result.endsWith('KnockedDown')) {
     [label, short, cls] = ['knocked down', 'down', 'down'];
   } else if (result.endsWith('Recoiled')) {
@@ -385,6 +392,7 @@ function finishFight(f: Fight): void {
   ];
   item.brief = [`${FIGHT_ICON[f.kind]} `, unit(victim ?? defender.unit), ` ${short}`];
   item.detail = [breakdown(aggressor), breakdown(defender)];
+  if (f.mastery) item.detail.push(`Combat Mastery: ${f.mastery.name}'s tie kills a foe without it.`);
   if (f.gruesome) item.detail.push('Gruesome: a lopsided or savage kill that shakes nearby friends.');
   if (cls === 'kill') item.tone = 'danger';
 }
@@ -583,6 +591,9 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
       // Consequences with no fight line to join (none are expected; kept so nothing is lost).
       case 'ArmorHeld':
         add({ icon: '🛡', parts: [unit(ref(state, e.unitId)), "'s armor turns the blow aside"], category: 'combat', unitIds: [e.unitId] });
+        break;
+      case 'MasteryStruck':
+        add({ icon: '⚔', parts: [unit(ref(state, e.unitId)), "'s mastery turns the tie into a kill"], category: 'combat', unitIds: [e.unitId] });
         break;
       case 'ToughnessSaved':
         add({ icon: '🛡', parts: [unit(ref(state, e.unitId)), ' shrugs off the blow (Tough)'], category: 'combat', unitIds: [e.unitId] });

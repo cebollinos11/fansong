@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  combatOdds,
   createGame,
   getLegalCommands,
   makeHexGrid,
@@ -1042,6 +1043,161 @@ describe('Armored trait', () => {
     const { e, events } = find({}, {}, byOne);
     expect(e.result).not.toBe('clash');
     expect(events.some((x) => x.type === 'ArmorHeld')).toBe(false);
+  });
+});
+
+// --- Combat Mastery -------------------------------------------------------------
+
+describe('Combat Mastery trait', () => {
+  /** P0's Striker (p0u0) next to P1's Target (p1u0), each with two far friends so one death never ends the game. */
+  const config = (seed: number, striker: Partial<UnitSpec>, target: Partial<UnitSpec> = {}): GameConfig => ({
+    seed,
+    board: { width: 9, height: 5 },
+    warbands: [
+      [
+        { name: 'Striker', quality: 3, combat: 3, pos: { x: 3, y: 2 }, ...striker },
+        { name: 'Home1', quality: 4, combat: 3, pos: { x: 0, y: 0 } },
+        { name: 'Home2', quality: 4, combat: 3, pos: { x: 0, y: 4 } },
+      ],
+      [
+        { name: 'Target', quality: 4, combat: 3, pos: { x: 4, y: 2 }, ...target },
+        { name: 'Far1', quality: 4, combat: 3, pos: { x: 8, y: 0 } },
+        { name: 'Far2', quality: 4, combat: 3, pos: { x: 8, y: 4 } },
+      ],
+    ],
+  });
+
+  type Roll = Extract<GameEvent, { type: 'AttackResolved' | 'ShotResolved' | 'GuardRiposte' | 'FreeHackResolved' }>;
+  const tie = (e: Roll) =>
+    e.type === 'GuardRiposte' ? e.guardScore === e.attackerScore : e.attackScore === e.defenseScore;
+
+  /**
+   * The first seed where p0u0's `command` produces a roll of `type` passing
+   * `pick`; `prep` adjusts the state first (a guard stance, a knockdown).
+   */
+  function find(
+    striker: Partial<UnitSpec>,
+    target: Partial<UnitSpec>,
+    command: Command,
+    type: Roll['type'],
+    pick: (e: Roll) => boolean = tie,
+    prep: (s: GameState) => void = () => {},
+  ) {
+    for (let seed = 1; seed <= 3000; seed++) {
+      const s = acting(config(seed, striker, target), 'p0u0');
+      prep(s);
+      const { state, events } = reduce(s, command);
+      const e = events.find((x): x is Roll => x.type === type);
+      if (e && pick(e)) return { e, events, state };
+    }
+    throw new Error('no seed fits');
+  }
+
+  const attack: Command = { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' };
+  const leave: Command = { type: 'Move', unitId: 'p0u0', to: { x: 2, y: 2 } };
+  const unit = (state: GameState, id: string) => state.units.find((u) => u.id === id)!;
+  const guarding = (s: GameState) => void (unit(s, 'p1u0').guarding = true);
+  const down = (s: GameState) => void (unit(s, 'p1u0').knockedDown = true);
+  const defenseDie = (e: Roll) => (e.type === 'AttackResolved' ? e.defenseDie : 0);
+
+  it("kills the defender when a master's blow ties", () => {
+    const { e, events, state } = find({ mastery: true }, {}, attack, 'AttackResolved');
+    expect(e.result).toBe('defenderKilled');
+    expect(e).not.toHaveProperty('gruesome');
+    expect(events[events.indexOf(e) + 1]).toEqual({ type: 'MasteryStruck', unitId: 'p0u0' });
+    expect(unit(state, 'p1u0').dead).toBe(true);
+  });
+
+  it('kills the attacker when it ties a defending master', () => {
+    const { e, events, state } = find({}, { mastery: true }, attack, 'AttackResolved');
+    expect(e.result).toBe('attackerKilled');
+    expect(events[events.indexOf(e) + 1]).toEqual({ type: 'MasteryStruck', unitId: 'p1u0' });
+    expect(unit(state, 'p0u0').dead).toBe(true);
+    expect(state.activeUnitId).not.toBe('p0u0');
+  });
+
+  it('leaves a tie between two masters a clash', () => {
+    const { e, events } = find({ mastery: true }, { mastery: true }, attack, 'AttackResolved');
+    expect(e.result).toBe('clash');
+    expect(events.some((x) => x.type === 'MasteryStruck')).toBe(false);
+  });
+
+  it('is saved against by Tough like any kill', () => {
+    const { e, events, state } = find({ mastery: true }, { tough: true }, attack, 'AttackResolved');
+    expect(e.result).toBe('defenderKilled');
+    expect(events.some((x) => x.type === 'ToughnessSaved' && x.unitId === 'p1u0')).toBe(true);
+    expect(unit(state, 'p1u0')).toMatchObject({ dead: false, knockedDown: true });
+  });
+
+  it('only strikes from the ground on a natural 6', () => {
+    const miss = find({}, { mastery: true }, attack, 'AttackResolved', (e) => tie(e) && defenseDie(e) !== 6, down);
+    expect(miss.e.result).toBe('clash');
+    expect(miss.events.some((x) => x.type === 'MasteryStruck')).toBe(false);
+    const six = find({}, { mastery: true }, attack, 'AttackResolved', (e) => tie(e) && defenseDie(e) === 6, down);
+    expect(six.e.result).toBe('attackerKilled');
+  });
+
+  it('does nothing for a shot', () => {
+    const shooter = { ranged: 5, pos: { x: 1, y: 2 }, mastery: true };
+    const shoot: Command = { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' };
+    const { e, events } = find(shooter, { mastery: true }, shoot, 'ShotResolved');
+    expect(e.result).toBe('clash');
+    expect(events.some((x) => x.type === 'MasteryStruck')).toBe(false);
+  });
+
+  it("kills the attacker when a guarding master's riposte ties, stopping the attack", () => {
+    const { e, events, state } = find({}, { guard: true, mastery: true }, attack, 'GuardRiposte', tie, guarding);
+    expect(e).toMatchObject({ result: 'defenderKilled', prevented: true });
+    expect(events[events.indexOf(e) + 1]).toEqual({ type: 'MasteryStruck', unitId: 'p1u0' });
+    expect(unit(state, 'p0u0').dead).toBe(true);
+    expect(events.some((x) => x.type === 'AttackResolved')).toBe(false);
+  });
+
+  it('cuts down a guard whose riposte a master ties: that is the blow', () => {
+    const { e, events, state } = find({ mastery: true }, { guard: true }, attack, 'GuardRiposte', tie, guarding);
+    expect(e).toMatchObject({ result: 'attackerKilled', prevented: false });
+    expect(events[events.indexOf(e) + 1]).toEqual({ type: 'MasteryStruck', unitId: 'p0u0' });
+    expect(unit(state, 'p1u0').dead).toBe(true);
+    expect(unit(state, 'p0u0').dead).toBe(false);
+    expect(events.some((x) => x.type === 'AttackResolved')).toBe(false);
+  });
+
+  it("kills a unit leaving contact when a master's free hack ties", () => {
+    const { e, events, state } = find({}, { mastery: true }, leave, 'FreeHackResolved');
+    expect(e.result).toBe('defenderKilled');
+    expect(events[events.indexOf(e) + 1]).toEqual({ type: 'MasteryStruck', unitId: 'p1u0' });
+    expect(unit(state, 'p0u0').dead).toBe(true);
+    expect(events.some((x) => x.type === 'UnitMoved')).toBe(false);
+  });
+
+  it('cuts down the hacker when a leaving master ties, and walks on', () => {
+    const { e, events, state } = find({ mastery: true }, {}, leave, 'FreeHackResolved');
+    expect(e.result).toBe('attackerKilled');
+    expect(events[events.indexOf(e) + 1]).toEqual({ type: 'MasteryStruck', unitId: 'p0u0' });
+    expect(unit(state, 'p1u0').dead).toBe(true);
+    expect(unit(state, 'p0u0').pos).toEqual({ x: 2, y: 2 });
+  });
+
+  it('counts the tie as a kill in the odds', () => {
+    const odds = (striker: Partial<UnitSpec>, target: Partial<UnitSpec> = {}) =>
+      combatOdds(acting(config(1, striker, target), 'p0u0'), 'p0u0', 'p1u0');
+    const plain = odds({});
+    // Equal Combat: 6 of the 36 dice pairs tie.
+    expect(odds({ mastery: true }).kill - plain.kill).toBeCloseTo(6 / 36);
+    expect(odds({ mastery: true }).clash).toBeCloseTo(0);
+    expect(odds({}, { mastery: true }).lose - plain.lose).toBeCloseTo(6 / 36);
+    expect(odds({ mastery: true }, { mastery: true })).toEqual(plain);
+  });
+
+  it('counts a guard cut down by a tied riposte as a kill in the odds', () => {
+    const odds = (striker: Partial<UnitSpec>) => {
+      const s = acting(config(1, striker, { guard: true }), 'p0u0');
+      guarding(s);
+      return combatOdds(s, 'p0u0', 'p1u0');
+    };
+    const mastered = odds({ mastery: true });
+    expect(mastered.kill).toBeGreaterThan(odds({}).kill);
+    expect(mastered.win + mastered.lose + mastered.clash).toBeCloseTo(1);
   });
 });
 

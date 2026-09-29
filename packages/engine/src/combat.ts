@@ -16,6 +16,8 @@ export interface CombatSide {
   canRecoil: boolean;
   /** Armored: a loss by exactly 1 point does it no harm (see {@link armorHeld}). */
   armored?: boolean;
+  /** Combat Mastery: a tie against a foe without it kills that foe (see {@link masteryStruck}). */
+  mastery?: boolean;
 }
 
 /**
@@ -27,7 +29,9 @@ export interface CombatSide {
  *                               natural die decides: odd = pushed one hex, even =
  *                               knocked down (a loser pushed into a blocked hex
  *                               falls; see `canRecoil` and the push in `reduce.ts`)
- * - tie                      -> clash (no effect)
+ * - tie                      -> clash (no effect), unless exactly one side has
+ *                               Combat Mastery: then its foe is killed (see
+ *                               {@link masteryStruck})
  *
  * Modifiers (outnumbering, range, cover) can push a score to 0 or below, so a
  * kill needs a strict win *and* a double: any win over a score of 0 or less kills.
@@ -38,6 +42,8 @@ export interface CombatSide {
  */
 export function computeCombatResult(attack: CombatSide, defense: CombatSide): CombatResult {
   if (armorHeld(attack, defense)) return 'clash';
+  const master = masteryStruck(attack, defense);
+  if (master) return master === 'attack' ? 'defenderKilled' : 'attackerKilled';
   if (attack.score > defense.score) {
     return attack.score >= defense.score * 2 ? 'defenderKilled' : `defender${beaten(defense, attack.die)}`;
   }
@@ -62,6 +68,27 @@ export function armorHeld(attack: CombatSide, defense: CombatSide): 'attack' | '
     return attack.armored ? 'attack' : null;
   }
   return null;
+}
+
+/**
+ * Whose Combat Mastery turned a tie into a kill: `'attack'` or `'defense'` when
+ * the scores are level and that side alone has Combat Mastery (and, knocked
+ * down, rolled the natural 6 a fallen unit needs to strike back), else null. Two
+ * masters cancel out, and only a tie counts — not a loss armor turned aside.
+ */
+export function masteryStruck(attack: CombatSide, defense: CombatSide): 'attack' | 'defense' | null {
+  if (attack.score !== defense.score) return null;
+  if (attack.mastery && !defense.mastery && canStrikeBack(attack.knockedDown, attack.die)) return 'attack';
+  if (defense.mastery && !attack.mastery && canStrikeBack(defense.knockedDown, defense.die)) return 'defense';
+  return null;
+}
+
+/**
+ * How a melee match-up stands on Combat Mastery: +1 when only `unit` has it, -1
+ * when only `opponent` does, else 0. A heuristic for the AI, not a score modifier.
+ */
+export function masteryEdge(unit: Pick<Unit, 'traits'>, opponent: Pick<Unit, 'traits'>): number {
+  return Number(unit.traits.mastery) - Number(opponent.traits.mastery);
 }
 
 /**

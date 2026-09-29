@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { armorHeld, canStrikeBack, computeCombatResult, type CombatSide } from '../src/combat.js';
+import { armorHeld, canStrikeBack, computeCombatResult, masteryStruck, type CombatSide } from '../src/combat.js';
 
 /** A side with an even natural die (knockdown on a plain win) and room to recoil unless overridden. */
 const side = (score: number, o: Partial<CombatSide> = {}): CombatSide => ({
@@ -95,5 +95,37 @@ describe('Armored', () => {
   it('is not needed against a knocked-down defender that cannot strike back', () => {
     expect(armorHeld(armored(5), side(6, { knockedDown: true, die: 5 }))).toBeNull();
     expect(armorHeld(armored(5), side(6, { knockedDown: true, die: 6 }))).toBe('attack');
+  });
+});
+
+describe('Combat Mastery', () => {
+  const master = (score: number, o: Partial<CombatSide> = {}) => side(score, { mastery: true, ...o });
+
+  it("turns a tie into a kill of the foe without it, on either side", () => {
+    expect(computeCombatResult(master(5), side(5))).toBe('defenderKilled');
+    expect(computeCombatResult(side(5), master(5))).toBe('attackerKilled');
+    expect(masteryStruck(master(5), side(5))).toBe('attack');
+    expect(masteryStruck(side(5), master(5))).toBe('defense');
+  });
+
+  it('leaves a tie between two masters, or two plain units, a clash', () => {
+    expect(computeCombatResult(master(5), master(5))).toBe('clash');
+    expect(computeCombatResult(side(5), side(5))).toBe('clash');
+    expect(masteryStruck(master(5), master(5))).toBeNull();
+  });
+
+  it('changes nothing about a roll that is not a tie', () => {
+    expect(computeCombatResult(master(5), side(6, { die: 4 }))).toBe('attackerKnockedDown');
+    expect(computeCombatResult(side(7, { die: 4 }), master(5))).toBe('defenderKnockedDown');
+    expect(masteryStruck(master(6), side(5))).toBeNull();
+  });
+
+  it('needs a natural 6 when the master is knocked down', () => {
+    expect(computeCombatResult(side(5), master(5, { knockedDown: true, die: 5 }))).toBe('clash');
+    expect(computeCombatResult(side(5), master(5, { knockedDown: true, die: 6 }))).toBe('attackerKilled');
+  });
+
+  it('kills a knocked-down foe on a tie as readily as a standing one', () => {
+    expect(computeCombatResult(master(5), side(5, { knockedDown: true }))).toBe('defenderKilled');
   });
 });
