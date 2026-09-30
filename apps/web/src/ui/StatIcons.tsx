@@ -34,7 +34,12 @@ export function StatIcon({ stat, value }: { stat: StatKind; value?: number }): J
       <svg viewBox="0 0 24 24" aria-hidden="true">
         {SHAPES[stat]}
       </svg>
-      {value === undefined ? null : <span className="stat-icon-value">{value}</span>}
+      {value === undefined ? null : (
+        <span className="stat-icon-value">
+          {value}
+          {stat === 'quality' ? '+' : null}
+        </span>
+      )}
     </span>
   );
 }
