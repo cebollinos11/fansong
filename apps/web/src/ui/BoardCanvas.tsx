@@ -25,6 +25,8 @@ interface Props {
   previewFor?: (cell: Vec) => PlanPreview | null;
   selectableUnitIds: string[];
   selectedUnitId: string | null;
+  /** Enemy units done for the round, dimmed while the human decides. */
+  spentUnitIds?: string[];
   /** Units ringed because the reader is pointing at them elsewhere (a log line). */
   focusUnitIds?: string[];
   /** A route traced because the reader is pointing at it elsewhere (a log line's move). */
@@ -247,6 +249,10 @@ export function BoardCanvas(props: Props): JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const focusUnitIds = useMemo(() => props.focusUnitIds ?? [], [focusKey]);
 
+  const spentKey = props.spentUnitIds?.join(',') ?? '';
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const spentUnitIds = useMemo(() => props.spentUnitIds ?? [], [spentKey]);
+
   // Reconcile visuals on every relevant change.
   useEffect(() => {
     const vm: BoardViewModel = {
@@ -257,6 +263,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       shootTargetIds: props.shootTargetIds ?? [],
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
+      spentUnitIds,
       focusUnitIds,
       interactive: props.interactive,
       pickThrough: props.pickThrough,
@@ -275,6 +282,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.shootTargetIds,
     props.selectableUnitIds,
     props.selectedUnitId,
+    spentUnitIds,
     focusUnitIds,
     props.interactive,
     props.pickThrough,

@@ -155,6 +155,17 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // tints, rings, and resolves a click to.
   const plans = useMemo(() => buildPlanIndex(getActionPlans(state), state), [state]);
   const acting = myTurn && state.phase === 'acting';
+  // While the human picks a unit or gives it orders, the enemies that can no
+  // longer answer this round (acted already, or their side turned over) sit dimmed.
+  const spentUnitIds = useMemo(
+    () =>
+      myTurn && (state.phase === 'awaitingActivation' || state.phase === 'acting')
+        ? state.units
+            .filter((u) => !u.dead && u.owner !== state.active && (u.activatedThisRound || state.benched[u.owner]))
+            .map((u) => u.id)
+        : [],
+    [myTurn, state],
+  );
 
   /** Commit a plan: send its first command, then the rest as the board catches up. */
   const runPlan = useCallback((plan: ActionPlan) => {
@@ -394,6 +405,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         previewFor={hoverPreview}
         selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
         selectedUnitId={selectedUnitId ?? sandbox?.selectedUnitId ?? null}
+        spentUnitIds={spentUnitIds}
         interactive={myTurn || sandbox !== undefined}
         pickThrough={sandbox === undefined}
         localSeats={client.controlledSeats}

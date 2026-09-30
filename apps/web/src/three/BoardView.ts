@@ -59,6 +59,8 @@ export interface BoardViewModel {
   selectableUnitIds: string[];
   /** Unit the human has selected but not yet committed dice for. */
   selectedUnitId: string | null;
+  /** Enemy units already done for the round, drawn dimmed while the human decides. */
+  spentUnitIds?: string[];
   /** Units the reader is pointing at elsewhere (a log line), ringed above every other cue. */
   focusUnitIds?: string[];
   /** Whether the local human may currently interact. */
@@ -316,6 +318,10 @@ const CUE_SWELL = 0.06; // how much a breathing ring grows at its peak
 const CUE_HOVER_SCALE = 1.12; // the ring under the pointer, held open
 const OUTLINE_PX = 2; // outline width in sprite pixels, widened under the pointer
 const OUTLINE_HOVER_PX = 3;
+
+// An enemy that has already acted this round (or whose side turned over) has
+// its base go dark while the human picks and plans, so what can still answer stands out.
+const SPENT_BASE = new THREE.Color(0x2a2e36); // the colour its base fades toward
 
 // Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
 const BASE_RADIUS = 0.36;
@@ -611,6 +617,9 @@ interface UnitObj {
   walk: { path: THREE.Vector3[]; start: number; backward?: boolean } | null;
   /** 0..1 transient hit flash, decays each frame. */
   flash: number;
+  /** Whether the view model marks it spent, and how far (0..1) its base has darkened. */
+  spent: boolean;
+  spentShade: number;
   /** Ring pulse drawing the eye to a unit the camera is about to move to. */
   pulse: { start: number; end: number } | null;
   /** The ring as the view model wants it, which a finished pulse goes back to. */
@@ -1074,6 +1083,7 @@ export class BoardView {
       obj.name = u.name;
       obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead };
       obj.grounded = u.traits.flying && !airborne(state, u);
+      obj.spent = vm.spentUnitIds?.includes(u.id) ?? false;
 
       const isActive = state.activeUnitId === u.id;
       const isSelected = vm.selectedUnitId === u.id;
@@ -2069,6 +2079,8 @@ export class BoardView {
       lunge: null,
       walk: null,
       flash: 0,
+      spent: false,
+      spentShade: 0,
       pulse: null,
       ringRest: { visible: false, opacity: 0 },
       outline,
@@ -2522,7 +2534,9 @@ export class BoardView {
 
     if (obj.flash > 0) obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);
     // A basic material's colour multiplies the texture; > 1 washes it toward white.
+    obj.spentShade += ((obj.spent ? 1 : 0) - obj.spentShade) * lerp;
     obj.sprite.material.color.setScalar((1 + obj.flash * 2.5) * this.unitLight(obj.id));
+    obj.base.material.color.setHex(OWNER_COLORS[obj.owner]).lerp(SPENT_BASE, obj.spentShade * 0.75);
     if (obj.fade?.melt) {
       // Sinking into lava it glows hotter and hotter: orange, then a searing yellow-white.
       const f = THREE.MathUtils.clamp((this.now - obj.fade.start) / (obj.fade.end - obj.fade.start), 0, 1);
