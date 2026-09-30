@@ -393,7 +393,9 @@ const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the 
 const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
 const HIT_STOP_MS = 300; // a gruesome kill freezes the action this long on impact
 const IMPACT_STOP_MS = 160; // any other blow that tells (a kill, knockdown, save, clash or parry) freezes this long
-const SILHOUETTE_MS = 120; // the start of that freeze is a flat silhouette: the victim white, all else dark (wall clock)
+const IMPACT_WHITE = 20; // through that freeze the unit the blow met is drawn this bright: flat white
+const SILHOUETTE_MS = 120; // the start of a gruesome kill's freeze is a flat silhouette: the victim white, all else dark
+const SHOWN_FRAME_MAX_MS = 1000 / 30; // the most one frame counts toward a freeze, so a stalled frame can't swallow it
 const SLOW_MO_MS = 1100; // then plays on in slow motion for this long (wall clock), easing back to full speed
 const SLOW_MO_SCALE = 0.3; // board time runs this fast at the start of a gruesome kill's slow motion
 const FEAR_WAVE_MS = 800; // time for a gruesome kill's fear to reach the edge of its radius
@@ -702,10 +704,19 @@ export class BoardView {
   private readonly effects = new Effects();
   /** Wall-clock time (ms, at animation speed): unlike {@link now} it runs on through a hit-stop. */
   private wallNow = 0;
-  /** Board time stands still until the wall clock reaches this (a hit-stop). */
+  /**
+   * Time on screen (ms, at animation speed): the wall clock with each frame's
+   * share capped at {@link SHOWN_FRAME_MAX_MS}, so a frame that stalls (as the
+   * one after an impact can, raising its effects) doesn't use up a hit-stop
+   * the player never saw. Hit-stops, silhouettes and slow motion run on it.
+   */
+  private shownNow = 0;
+  /** Board time stands still until time on screen reaches this (a hit-stop). */
   private freezeUntil = 0;
-  /** Board time runs slow (from `scale`) between these wall-clock times, easing back to full speed. */
+  /** Board time runs slow (from `scale`) between these times on screen, easing back to full speed. */
   private slowMo = { start: 0, end: 0, scale: SLOW_MO_SCALE };
+  /** A hit-stop's impact frame, until this time on screen: the units the blow met drawn white. */
+  private impact: { until: number; ids: string[] } | null = null;
   /** Camera shakes in progress, on the wall clock. */
   private shakes: { start: number; end: number; amp: number; kind: 'nudge' | 'rumble'; dir: THREE.Vector3 }[] = [];
   /** A tilt of the camera about its line of sight (a gruesome kill's impact), on the wall clock. */
@@ -715,7 +726,7 @@ export class BoardView {
    * stays (1 fully, 0 not at all; units not listed darken fully).
    */
   private spotlight: { lit: Map<string, number>; start: number; end: number } | null = null;
-  /** The impact frame of a gruesome kill, until this wall-clock time: its victim white, all else dark. */
+  /** The impact frame of a gruesome kill, until this time on screen: its victim white, all else dark. */
   private silhouette: { until: number; victim: string; killer: string | null } | null = null;
   private readonly ambient = new THREE.HemisphereLight(0xeef2ff, 0x5a5448, AMBIENT_LIGHT);
   private readonly keyLight = new THREE.DirectionalLight(0xffffff, KEY_LIGHT);
@@ -1394,7 +1405,7 @@ export class BoardView {
         const at = settle + (toughSaved.has(e.unitId) ? TOUGH_HITCH_MS : 0);
         hold(e.unitId, at);
         // Struck down by the latest blow: the action catches on its impact.
-        if (pair?.includes(e.unitId)) this.at(lastHit, () => this.hitStop(IMPACT_STOP_MS));
+        if (pair?.includes(e.unitId)) this.at(lastHit, () => this.hitStop(IMPACT_STOP_MS, [e.unitId]));
         const obj = this.units.get(e.unitId);
         if (obj) {
           const fall = this.deathClip(obj, 'fall');
@@ -1998,6 +2009,7 @@ export class BoardView {
     this.slowMo = { start: 0, end: 0, scale: SLOW_MO_SCALE };
     this.spotlight = null;
     this.silhouette = null;
+    this.impact = null;
   }
 
   /** Return the camera to the framing it had when the board was built. */
@@ -3141,23 +3153,31 @@ export class BoardView {
     return out;
   }
 
-  /** Freeze the action for `ms` (wall clock), for the weight of a blow. */
-  private hitStop(ms: number): void {
-    this.freezeUntil = Math.max(this.freezeUntil, this.wallNow + ms);
+  /**
+   * Freeze the action for `ms` (time on screen), for the weight of a blow —
+   * the units it met (`struck`) held white on the frozen frame.
+   */
+  private hitStop(ms: number, struck: string[] = []): void {
+    this.freezeUntil = Math.max(this.freezeUntil, this.shownNow + ms);    if (struck.length === 0) return;
+    const live = this.impact && this.shownNow < this.impact.until ? this.impact : null;
+    this.impact = {
+      until: Math.max(live?.until ?? 0, this.shownNow + ms),
+      ids: [...new Set([...(live?.ids ?? []), ...struck])],
+    };
   }
 
-  /** Play the action in slow motion for `ms` (wall clock) once any hit-stop ends, starting at `scale` of full speed. */
+  /** Play the action in slow motion for `ms` (time on screen) once any hit-stop ends, starting at `scale` of full speed. */
   private slowMotion(ms: number, scale = SLOW_MO_SCALE): void {
-    const start = Math.max(this.wallNow, this.freezeUntil);
+    const start = Math.max(this.shownNow, this.freezeUntil);
     this.slowMo = { start, end: Math.max(this.slowMo.end, start + ms), scale };
   }
 
   /** How fast board time runs against the wall clock right now: still in a hit-stop, slow in a slow motion. */
   private timeScale(): number {
-    if (this.wallNow < this.freezeUntil) return 0;
+    if (this.shownNow < this.freezeUntil) return 0;
     const { start, end, scale } = this.slowMo;
-    if (this.wallNow >= end || this.wallNow < start) return 1;
-    const k = (this.wallNow - start) / (end - start);
+    if (this.shownNow >= end || this.shownNow < start) return 1;
+    const k = (this.shownNow - start) / (end - start);
     return scale + (1 - scale) * k * k;
   }
 
@@ -3186,8 +3206,13 @@ export class BoardView {
    */
   private grade(): void {
     const k = this.spotAmount();
-    const sil = this.silhouette && this.wallNow < this.silhouette.until ? this.silhouette : null;
+    const sil = this.silhouette && this.shownNow < this.silhouette.until ? this.silhouette : null;
     if (!sil) this.silhouette = null;
+    if (this.impact && this.shownNow >= this.impact.until) this.impact = null;
+    // Any other hit-stop's frame: the units the blow met go white, the board as it is.
+    if (!sil && this.impact) {
+      for (const id of this.impact.ids) this.units.get(id)?.sprite.material.color.setScalar(IMPACT_WHITE);
+    }
     const light = sil ? 0.06 : 1 - SPOT_LIGHT_DIM * k;
     this.ambient.intensity = AMBIENT_LIGHT * light;
     this.keyLight.intensity = KEY_LIGHT * light;
@@ -3247,7 +3272,7 @@ export class BoardView {
     const a = this.units.get(aId);
     const d = this.units.get(dId);
     if (!a || !d) return;
-    this.hitStop(IMPACT_STOP_MS);
+    this.hitStop(IMPACT_STOP_MS, [aId, dId]);
     const at = this.contact(a, d);
     const across = d.group.position.clone().sub(a.group.position).setY(0);
     // 1a: a burst of white-gold sparks and a four-point glint.
@@ -3370,14 +3395,14 @@ export class BoardView {
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.035);
     this.effects.ring(ground, 0xffffff, 0.2, 1.1, { life: 0.5, opacity: 0.85, additive: true });
     if (!gruesome) {
-      if (killerId) this.hitStop(IMPACT_STOP_MS);
+      if (killerId) this.hitStop(IMPACT_STOP_MS, [obj.id]);
       return;
     }
     // 7a: the heavy version — a freeze on impact (its first instants a flat
     // silhouette) easing out of slow motion, a bigger double shockwave, a hard
     // shake with a tilt of the camera, and a burst of ash and dark shards.
     this.hitStop(HIT_STOP_MS);
-    this.silhouette = { until: this.wallNow + SILHOUETTE_MS, victim: obj.id, killer: killerId };
+    this.silhouette = { until: this.shownNow + SILHOUETTE_MS, victim: obj.id, killer: killerId };
     this.slowMotion(SLOW_MO_MS);
     this.effects.ring(ground, 0xffffff, 0.3, 2.2, { life: 0.7, opacity: 0.9, additive: true });
     this.shakeCamera('rumble', 0.1, 380);
@@ -3631,7 +3656,7 @@ export class BoardView {
   private armorFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj) return;
-    this.hitStop(IMPACT_STOP_MS);
+    this.hitStop(IMPACT_STOP_MS, [id]);
     this.flashUnit(id, 0.35);
     const chest = this.chest(obj);
     this.effects.icon('shield', chest, 0.5, { life: 0.45, color: STEEL });
@@ -3654,7 +3679,7 @@ export class BoardView {
   private toughFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj) return;
-    this.hitStop(IMPACT_STOP_MS);
+    this.hitStop(IMPACT_STOP_MS, [id]);
     this.flashUnit(id, 0.5);
     const chest = this.chest(obj);
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
@@ -3736,7 +3761,7 @@ export class BoardView {
     const g = this.units.get(guardId);
     const a = this.units.get(attackerId);
     if (!g || !a) return;
-    this.hitStop(IMPACT_STOP_MS);
+    this.hitStop(IMPACT_STOP_MS, [attackerId]);
     const at = this.contact(g, a);
     this.effects.icon('arc', at, 0.85, {
       life: 0.4,
@@ -3784,8 +3809,8 @@ export class BoardView {
     // wall clock (and the camera shake) runs on.
     const wallDt = Math.min(rawDt, 0.25) * 1000 * this.animSpeed;
     this.wallNow += wallDt;
-    const dtMs = wallDt * this.timeScale();
-    this.now += dtMs;
+    this.shownNow += Math.min(rawDt * 1000, SHOWN_FRAME_MAX_MS) * this.animSpeed;
+    const dtMs = wallDt * this.timeScale();    this.now += dtMs;
     for (let i = 0; i < this.timeline.length; ) {
       const step = this.timeline[i]!;
       if (step.at <= this.now) {
