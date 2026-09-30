@@ -391,6 +391,10 @@ const REASSEMBLE_GATHER_MS = 650; // the bones drawing in, before the unit start
 const REASSEMBLE_STAGGER_MS = 250; // between one unit's reassembly and the next
 const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the player's view
 const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
+const KEY_PAN_SPEED = 0.9; // WASD pans this many view distances per second, so it feels the same at any zoom
+const KEY_PAN_EASE_IN = 0.12; // seconds for a WASD pan to come up to speed...
+const KEY_PAN_EASE_OUT = 0.16; // ...and to glide to a stop once the keys are let go
+const KEY_PAN_CODES = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] } as const;
 const HIT_STOP_MS = 300; // a gruesome kill freezes the action this long on impact
 const IMPACT_STOP_MS = 160; // any other blow that tells (a kill, knockdown, save, clash or parry) freezes this long
 const IMPACT_WHITE = 20; // through that freeze the unit the blow met is drawn this bright: flat white
@@ -826,6 +830,12 @@ export class BoardView {
   private height = 0;
   private disposed = false;
   private downPos: { x: number; y: number } | null = null;
+  /** The WASD keys held down (by `code`, so the keys sit in the same place on any layout). */
+  private readonly panKeys = new Set<keyof typeof KEY_PAN_CODES>();
+  /** The WASD pan's current velocity over the ground, in world units per second (x right, y forward on screen). */
+  private readonly panVel = new THREE.Vector2();
+  /** A WASD pan is steering the camera (keys held, or still gliding to a stop). */
+  private keyPanning = false;
   private hoverKey: string | null = null;
   /** The unit figure under the pointer, so a clickable one can answer it. */
   private hoverUnitId: string | null = null;
@@ -866,7 +876,7 @@ export class BoardView {
     );
 
     // Left-drag turns around the table (the pitch is fixed, see positionCamera),
-    // right-drag (or shift/ctrl + left) pans across it, wheel zooms. A press that barely moves is still a click (see handlePointerUp).
+    // right-drag (or shift/ctrl + left) or WASD pans across it, wheel zooms. A press that barely moves is still a click (see handlePointerUp).
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
@@ -885,6 +895,9 @@ export class BoardView {
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
     this.renderer.domElement.addEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.addEventListener('pointerleave', this.handlePointerLeave);
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
+    window.addEventListener('blur', this.handleBlur);
 
     // Under the dice and verdicts, so they stay bright while the board darkens.
     this.vignette = document.createElement('div');
@@ -1472,7 +1485,7 @@ export class BoardView {
    * caller delays the batch by (0 when no pan is needed).
    */
   private planPan(events: GameEvent[], at: number): number {
-    if (this.cameraMode === 'off' || this.downPos) return 0; // never fight a hand on the camera
+    if (this.cameraMode === 'off' || this.handOnCamera) return 0; // never fight a hand on the camera
     // Blows frame themselves (see frameCombat); this is about what leads up to them.
     const points: THREE.Vector3[] = [];
     for (const e of events) {
@@ -1504,7 +1517,7 @@ export class BoardView {
    * several units matter at once — a run of nerve checks, an objective taken.
    */
   private frameUnits(unitIds: string[], at: number): number {
-    if (this.cameraMode === 'off' || this.downPos) return 0;
+    if (this.cameraMode === 'off' || this.handOnCamera) return 0;
     const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
     const end = this.plannedCamera();
@@ -1548,7 +1561,7 @@ export class BoardView {
    * Returns how long the move takes, which the caller plays the blow after.
    */
   private frameCombat(unitIds: string[], at: number, dread = false): number {
-    if (this.cameraMode !== 'cinematic' || this.downPos) return 0;
+    if (this.cameraMode !== 'cinematic' || this.handOnCamera) return 0;
     const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
 
@@ -1611,7 +1624,7 @@ export class BoardView {
    * Returns when that triumph is over.
    */
   private dreadPlay(d: Dread, start: number, hit: number): number {
-    const cinematic = this.cameraMode === 'cinematic' && !this.downPos;
+    const cinematic = this.cameraMode === 'cinematic' && !this.handOnCamera;
     const victim = this.units.get(d.victim);
     if (cinematic) {
       const view = this.plannedCamera();
@@ -1707,7 +1720,7 @@ export class BoardView {
    */
   private frameReassembly(unitIds: string[], at: number): number {
     if (this.cameraMode !== 'cinematic') return this.frameUnits(unitIds, at);
-    if (this.downPos) return 0;
+    if (this.handOnCamera) return 0;
     const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
     const centre = middle(points);
@@ -1859,7 +1872,7 @@ export class BoardView {
   private panToSelected(id: string | null): void {
     if (id === this.pannedTo) return;
     this.pannedTo = id;
-    if (id === null || this.cameraMode === 'off' || this.downPos) return;
+    if (id === null || this.cameraMode === 'off' || this.handOnCamera) return;
     const obj = this.units.get(id);
     if (!obj || obj.fade) return;
     const point = obj.group.position.clone();
@@ -1890,7 +1903,7 @@ export class BoardView {
    */
   private returnToPlayerView(): void {
     const view = this.playerView;
-    if (this.cameraMode === 'off' || !view || this.downPos) return;
+    if (this.cameraMode === 'off' || !view || this.handOnCamera) return;
     this.planned = null;
     const from = this.plannedCamera();
     const travel = new THREE.Vector3(view.target.x - from.target.x, 0, view.target.z - from.target.z).length();
@@ -1912,7 +1925,7 @@ export class BoardView {
    * is already turning to.
    */
   private moveCamera(target: THREE.Vector3, dist: number | null, dur: number, linear = false, yaw: number | null = null): void {
-    if (this.cameraMode === 'off' || this.downPos) return;
+    if (this.cameraMode === 'off' || this.handOnCamera) return;
     const from = this.currentView();
     this.cam = {
       fromTarget: from.target,
@@ -2052,6 +2065,9 @@ export class BoardView {
     this.renderer.domElement.removeEventListener('pointerup', this.handlePointerUp);
     this.renderer.domElement.removeEventListener('pointermove', this.handlePointerMove);
     this.renderer.domElement.removeEventListener('pointerleave', this.handlePointerLeave);
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
+    window.removeEventListener('blur', this.handleBlur);
     this.setPlanPreview(null);
     this.backdrop.dispose();
     this.reachFillGeo?.dispose();
@@ -3134,7 +3150,7 @@ export class BoardView {
     ms: number,
     dir = new THREE.Vector3(0, 1, 0),
   ): void {
-    if (this.cameraMode === 'off' || this.downPos) return;
+    if (this.cameraMode === 'off' || this.handOnCamera) return;
     this.shakes.push({ start: this.wallNow, end: this.wallNow + ms, amp, kind, dir: dir.clone().normalize() });
   }
 
@@ -3409,7 +3425,7 @@ export class BoardView {
     const killer = killerId ? this.units.get(killerId) : undefined;
     if (killer) {
       this.slashFx(killer, obj, ranged);
-      if (this.cameraMode !== 'off' && !this.downPos) {
+      if (this.cameraMode !== 'off' && !this.handOnCamera) {
         const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
         const side = obj.group.position.clone().sub(killer.group.position).dot(camRight);
         this.cameraRoll = { start: this.wallNow, end: this.wallNow + ROLL_MS, amp: side >= 0 ? -ROLL : ROLL };
@@ -3820,6 +3836,7 @@ export class BoardView {
     }
 
     this.stepCamera();
+    this.stepKeyPan(Math.min(rawDt, 0.1));
     this.clampCameraTarget();
     this.controls.update();
 
@@ -4083,7 +4100,7 @@ export class BoardView {
    */
   private refitOpening(): void {
     const open = this.opening;
-    if (!open || this.cam || this.downPos) return;
+    if (!open || this.cam || this.handOnCamera) return;
     const dist = this.camera.position.distanceTo(this.controls.target);
     if (this.controls.target.distanceTo(open.target) > 0.01 || Math.abs(dist - open.dist) > 0.01) return;
     const start = this.startView(open.points);
@@ -4140,6 +4157,58 @@ export class BoardView {
       y: ((1 - p.y) / 2) * this.container.clientHeight,
     };
   };
+
+  /** The player is steering the camera (a pointer on it, or WASD), so scripted moves keep off it. */
+  private get handOnCamera(): boolean {
+    return this.downPos !== null || this.keyPanning;
+  }
+
+  private handleKeyDown = (e: KeyboardEvent): void => {
+    if (!(e.code in KEY_PAN_CODES) || e.ctrlKey || e.metaKey || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    this.panKeys.add(e.code as keyof typeof KEY_PAN_CODES);
+    // A hand on the camera takes it back, as a drag does.
+    this.keyPanning = true;
+    this.cam = null;
+    this.planned = null;
+    this.opening = null;
+  };
+
+  private handleKeyUp = (e: KeyboardEvent): void => {
+    this.panKeys.delete(e.code as keyof typeof KEY_PAN_CODES);
+  };
+
+  /** Keys let go while the window is away never send their keyup. */
+  private handleBlur = (): void => {
+    this.panKeys.clear();
+  };
+
+  /**
+   * Slide the camera over the ground with WASD, relative to where it faces:
+   * the velocity eases toward the held direction and glides to a stop on release.
+   * Runs on the wall clock, so a hit-stop doesn't freeze it.
+   */
+  private stepKeyPan(dt: number): void {
+    if (!this.keyPanning) return;
+    const want = new THREE.Vector2();
+    for (const code of this.panKeys) want.add(new THREE.Vector2(...KEY_PAN_CODES[code]));
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    if (want.lengthSq() > 0) want.normalize().multiplyScalar(dist * KEY_PAN_SPEED);
+    const ease = want.lengthSq() > 0 ? KEY_PAN_EASE_IN : KEY_PAN_EASE_OUT;
+    this.panVel.lerp(want, 1 - Math.exp(-dt / ease));
+    if (want.lengthSq() === 0 && this.panVel.length() < dist * 0.005) {
+      this.panVel.set(0, 0);
+      this.keyPanning = false;
+      this.rememberPlayerView();
+      return;
+    }
+    const forward = this.controls.target.clone().sub(this.camera.position).setY(0).normalize();
+    const right = new THREE.Vector3(-forward.z, 0, forward.x);
+    const step = right.multiplyScalar(this.panVel.x * dt).addScaledVector(forward, this.panVel.y * dt);
+    this.controls.target.add(step);
+    this.camera.position.add(step);
+  }
 
   /** Keep the orbit pivot on the board so panning can't lose the table. */
   private clampCameraTarget(): void {

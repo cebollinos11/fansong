@@ -298,7 +298,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // Keyboard: Q/E step the selection back/forward through the units that can
   // activate, 1/2/3 commit that many dice to the selected unit and Escape drops
   // the selection; once acting, E ends the activation, which is otherwise the most-clicked
-  // button on the screen, G declares Guard and W war cries (each only offered
+  // button on the screen, G declares Guard and C war cries (each only offered
   // when legal). The
   // attack menu owns Escape while it is open.
   useEffect(() => {
@@ -327,7 +327,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         } else if (e.key.toLowerCase() === 'g' && interaction.canGuard && state.activeUnitId) {
           e.preventDefault();
           client.send({ type: 'Guard', unitId: state.activeUnitId });
-        } else if (e.key.toLowerCase() === 'w' && interaction.canWarCry && state.activeUnitId) {
+        } else if (e.key.toLowerCase() === 'c' && interaction.canWarCry && state.activeUnitId) {
           e.preventDefault();
           client.send({ type: 'WarCry', unitId: state.activeUnitId });
         }

@@ -183,7 +183,7 @@ export function Hud(props: Props): JSX.Element {
                     title="Press W — one action: every friend still to activate this round is inspired, its first activation die a sure 6"
                     onClick={props.onWarCry}
                   >
-                    War cry <kbd>W</kbd>
+                    War cry <kbd>C</kbd>
                   </button>
                 ) : null}
                 {interaction.canGuard ? (
