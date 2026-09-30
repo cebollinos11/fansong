@@ -1,4 +1,484 @@
 {
+ "bats/bat-se-3.png": {
+  "standing": {
+   "frames": [
+    [
+     "bats/bat-se-3.png",
+     50
+    ],
+    [
+     "bats/bat-se-2.png",
+     60
+    ],
+    [
+     "bats/bat-se-1.png",
+     80
+    ],
+    [
+     "bats/bat-se-2.png",
+     60
+    ],
+    [
+     "bats/bat-se-3.png",
+     50
+    ],
+    [
+     "bats/bat-se-4.png",
+     60
+    ],
+    [
+     "bats/bat-se-5.png",
+     80
+    ],
+    [
+     "bats/bat-se-4.png",
+     60
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "bats/bat-se-3.png",
+     50
+    ],
+    [
+     "bats/bat-se-2.png",
+     60
+    ],
+    [
+     "bats/bat-se-1.png",
+     80
+    ],
+    [
+     "bats/bat-se-2.png",
+     60
+    ],
+    [
+     "bats/bat-se-3.png",
+     50
+    ],
+    [
+     "bats/bat-se-4.png",
+     60
+    ],
+    [
+     "bats/bat-se-5.png",
+     80
+    ],
+    [
+     "bats/bat-se-4.png",
+     60
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "bats/bat-se-3.png",
+      30
+     ],
+     [
+      "bats/bat-se-2.png",
+      30
+     ],
+     [
+      "bats/bat-se-1.png",
+      30
+     ],
+     [
+      "bats/bat-se-2.png",
+      30
+     ],
+     [
+      "bats/bat-se-3.png",
+      30
+     ],
+     [
+      "bats/bat-se-4.png",
+      70
+     ],
+     [
+      "bats/bat-se-3.png",
+      50
+     ],
+     [
+      "bats/bat-se-2.png",
+      50
+     ],
+     [
+      "bats/bat-se-3.png",
+      40
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "bats/bat-se-3.png",
+     1
+    ],
+    [
+     "bats/bat-se-4.png",
+     100
+    ],
+    [
+     "bats/bat-se-4.png",
+     150
+    ],
+    [
+     "bats/bat-se-3.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "bats/bat-se-3.png",
+     1
+    ],
+    [
+     "bats/bat-se-4.png",
+     100
+    ],
+    [
+     "bats/bat-se-4.png",
+     150
+    ],
+    [
+     "bats/bat-se-3.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "dwarves/gryphon-rider.png": {
+  "standing": {
+   "frames": [
+    [
+     "dwarves/gryphon-rider-flying-1.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-2.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-3.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-4.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-5.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-6.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-7.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-8.png",
+     150
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "dwarves/gryphon-rider-flying-1.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-2.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-3.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-4.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-5.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-6.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-7.png",
+     150
+    ],
+    [
+     "dwarves/gryphon-rider-flying-8.png",
+     150
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "dwarves/gryphon-rider-flying-5.png",
+      100
+     ],
+     [
+      "dwarves/gryphon-rider-flying-4.png",
+      200
+     ],
+     [
+      "dwarves/gryphon-rider-flying-5.png",
+      100
+     ]
+    ],
+    "hitMs": 200
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "dwarves/gryphon-rider-flying-5.png",
+     1
+    ],
+    [
+     "dwarves/gryphon-rider-flying-4.png",
+     250
+    ],
+    [
+     "dwarves/gryphon-rider-flying-5.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "dwarves/gryphon-rider-flying-5.png",
+     1
+    ],
+    [
+     "dwarves/gryphon-rider-flying-4.png",
+     250
+    ],
+    [
+     "dwarves/gryphon-rider-flying-5.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "elves-wood/fighter/fighter.png": {
+  "move": {
+   "frames": [
+    [
+     "elves-wood/fighter/fighter-se-run1.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run2.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run3.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run4.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run5.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run6.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run7.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run8.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run9.png",
+     60
+    ],
+    [
+     "elves-wood/fighter/fighter-se-run10.png",
+     60
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "elves-wood/fighter/fighter-melee-1.png",
+      155
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-2.png",
+      80
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-3.png",
+      80
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-4.png",
+      125
+     ],
+     [
+      "elves-wood/fighter/fighter.png",
+      15
+     ]
+    ],
+    "hitMs": 275
+   },
+   {
+    "frames": [
+     [
+      "elves-wood/fighter/fighter-melee-1.png",
+      155
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-2.png",
+      80
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-3.png",
+      80
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-4.png",
+      125
+     ],
+     [
+      "elves-wood/fighter/fighter.png",
+      15
+     ]
+    ],
+    "hitMs": 275
+   },
+   {
+    "frames": [
+     [
+      "elves-wood/fighter/fighter-melee-1b.png",
+      90
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-2b.png",
+      90
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-3b.png",
+      125
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-4b.png",
+      80
+     ],
+     [
+      "elves-wood/fighter/fighter-melee-5b.png",
+      125
+     ],
+     [
+      "elves-wood/fighter/fighter.png",
+      15
+     ]
+    ],
+    "hitMs": 345
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "elves-wood/fighter/fighter-bow.png",
+      65
+     ],
+     [
+      "elves-wood/fighter/fighter-bow-attack1.png",
+      75
+     ],
+     [
+      "elves-wood/fighter/fighter-bow-attack2.png",
+      75
+     ],
+     [
+      "elves-wood/fighter/fighter-bow-attack3.png",
+      100
+     ],
+     [
+      "elves-wood/fighter/fighter-bow-attack4.png",
+      130
+     ],
+     [
+      "elves-wood/fighter/fighter-bow.png",
+      65
+     ]
+    ],
+    "hitMs": 445,
+    "missile": "projectiles/missile-n.png",
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "elves-wood/fighter/fighter-defend.png",
+     1
+    ],
+    [
+     "elves-wood/fighter/fighter-defend2.png",
+     250
+    ],
+    [
+     "elves-wood/fighter/fighter-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "elves-wood/fighter/fighter-bow-defend1.png",
+     1
+    ],
+    [
+     "elves-wood/fighter/fighter-bow-defend2.png",
+     250
+    ],
+    [
+     "elves-wood/fighter/fighter-bow-defend1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
  "goblins/knight.png": {
   "move": {
    "frames": [
@@ -2589,6 +3069,77 @@
    "hitMs": 126
   }
  },
+ "monsters/boar/piglet.png": {
+  "move": {
+   "frames": [
+    [
+     "monsters/boar/piglet-moving1.png",
+     75
+    ],
+    [
+     "monsters/boar/piglet-moving2.png",
+     75
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "monsters/boar/piglet-attack1.png",
+      100
+     ],
+     [
+      "monsters/boar/piglet-attack2.png",
+      150
+     ],
+     [
+      "monsters/boar/piglet-moving2.png",
+      150
+     ],
+     [
+      "monsters/boar/piglet.png",
+      1
+     ]
+    ],
+    "hitMs": 250
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "monsters/boar/piglet-defend.png",
+     1
+    ],
+    [
+     "monsters/boar/piglet-defend2.png",
+     250
+    ],
+    [
+     "monsters/boar/piglet-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "monsters/boar/piglet-defend.png",
+     1
+    ],
+    [
+     "monsters/boar/piglet-defend2.png",
+     250
+    ],
+    [
+     "monsters/boar/piglet-defend.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
  "monsters/boar/woodland.png": {
   "move": {
    "frames": [
@@ -4975,6 +5526,527 @@
      100
     ]
    ]
+  }
+ },
+ "undead-spirit/ghost-base.png": {
+  "standing": {
+   "frames": [
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/ghost-s-3.png",
+     250
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-spirit/ghost-s-2.png",
+      25
+     ],
+     [
+      "undead-spirit/ghost-s-attack-1.png",
+      175
+     ],
+     [
+      "undead-spirit/ghost-s-attack-2.png",
+      175
+     ],
+     [
+      "undead-spirit/ghost-s-attack-3.png",
+      100
+     ],
+     [
+      "undead-spirit/ghost-s-attack-2.png",
+      75
+     ],
+     [
+      "undead-spirit/ghost-s-attack-1.png",
+      75
+     ],
+     [
+      "undead-spirit/ghost-s-2.png",
+      25
+     ]
+    ],
+    "hitMs": 500
+   }
+  ],
+  "ranged": [
+   {
+    "frames": [
+     [
+      "undead-spirit/ghost-s-2.png",
+      25
+     ],
+     [
+      "undead-spirit/ghost-s-attack-1.png",
+      75
+     ],
+     [
+      "undead-spirit/ghost-s-attack-2.png",
+      150
+     ],
+     [
+      "undead-spirit/ghost-s-attack-1.png",
+      75
+     ],
+     [
+      "undead-spirit/ghost-s-2.png",
+      25
+     ]
+    ],
+    "hitMs": 200,
+    "missileMs": 150
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-spirit/ghost-s-2.png",
+     null
+    ]
+   ],
+   "hitMs": null
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-spirit/ghost-s-2.png",
+     null
+    ]
+   ],
+   "hitMs": null
+  }
+ },
+ "undead-spirit/nightgaunt.png": {
+  "move": {
+   "frames": [
+    [
+     "undead-spirit/nightgaunt-standing-s-1.png",
+     500
+    ],
+    [
+     "undead-spirit/nightgaunt-standing-s-2.png",
+     500
+    ],
+    [
+     "undead-spirit/nightgaunt-standing-s-3.png",
+     500
+    ],
+    [
+     "undead-spirit/nightgaunt-standing-s-2.png",
+     500
+    ],
+    [
+     "undead-spirit/nightgaunt-standing-s-1.png",
+     500
+    ],
+    [
+     "undead-spirit/nightgaunt-standing-s-2.png",
+     500
+    ],
+    [
+     "undead-spirit/nightgaunt-standing-s-3.png",
+     500
+    ],
+    [
+     "undead-spirit/nightgaunt-standing-s-2.png",
+     500
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-spirit/nightgaunt-attack-1.png",
+      200
+     ],
+     [
+      "undead-spirit/nightgaunt-attack-2.png",
+      200
+     ],
+     [
+      "undead-spirit/nightgaunt-attack-3a.png",
+      200
+     ],
+     [
+      "undead-spirit/nightgaunt-attack-4a.png",
+      125
+     ],
+     [
+      "undead-spirit/nightgaunt.png",
+      25
+     ]
+    ],
+    "hitMs": 525
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-spirit/nightgaunt-defend-1.png",
+     1
+    ],
+    [
+     "undead-spirit/nightgaunt-defend-2.png",
+     250
+    ],
+    [
+     "undead-spirit/nightgaunt-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-spirit/nightgaunt-defend-1.png",
+     1
+    ],
+    [
+     "undead-spirit/nightgaunt-defend-2.png",
+     250
+    ],
+    [
+     "undead-spirit/nightgaunt-defend-1.png",
+     1
+    ]
+   ],
+   "hitMs": 126
+  }
+ },
+ "undead-spirit/shadow-s-2.png": {
+  "standing": {
+   "frames": [
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ]
+   ]
+  },
+  "move": {
+   "frames": [
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-1.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-2.png",
+     250
+    ],
+    [
+     "undead-spirit/shadow-s-3.png",
+     250
+    ]
+   ]
+  },
+  "melee": [
+   {
+    "frames": [
+     [
+      "undead-spirit/shadow-s-2.png",
+      25
+     ],
+     [
+      "undead-spirit/shadow-s-attack-1.png",
+      75
+     ],
+     [
+      "undead-spirit/shadow-s-attack-2.png",
+      75
+     ],
+     [
+      "undead-spirit/shadow-s-attack-3.png",
+      50
+     ],
+     [
+      "undead-spirit/shadow-s-attack-4.png",
+      50
+     ],
+     [
+      "undead-spirit/shadow-s-attack-5.png",
+      75
+     ],
+     [
+      "undead-spirit/shadow-s-attack-6.png",
+      200
+     ],
+     [
+      "undead-spirit/shadow-s-attack-2.png",
+      100
+     ],
+     [
+      "undead-spirit/shadow-s-attack-1.png",
+      100
+     ],
+     [
+      "undead-spirit/shadow-s-2.png",
+      25
+     ]
+    ],
+    "hitMs": 500
+   }
+  ],
+  "defendMelee": {
+   "frames": [
+    [
+     "undead-spirit/shadow-s-2.png",
+     null
+    ]
+   ],
+   "hitMs": null
+  },
+  "defendRanged": {
+   "frames": [
+    [
+     "undead-spirit/shadow-s-2.png",
+     null
+    ]
+   ],
+   "hitMs": null
   }
  }
 }

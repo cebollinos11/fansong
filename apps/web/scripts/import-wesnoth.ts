@@ -36,6 +36,10 @@ const OUT_MANIFEST = join(WEB, 'src', 'three', 'unitAnimations.json');
 const POSE_OF: Record<string, string> = {
   'human-loyalists/lieutenant-crossbow.png': 'human-loyalists/lieutenant.png',
 };
+/** Clips whose WML names frames that Wesnoth doesn't ship; dropped instead of failing the import. */
+const SKIP_CLIPS: Record<string, (keyof SpriteAnimations)[]> = {
+  'undead-spirit/nightgaunt.png': ['death'], // nightgaunt-die-[1~5].png don't exist
+};
 const FRONT = new Set(['s', 'se', 'sw']);
 /** Missile macros that don't name an image directly. */
 const MISSILE_MACROS: Record<string, string> = {
@@ -404,6 +408,7 @@ for (const sprite of sprites) {
     continue;
   }
   const anims = buildAnimations(ut.node, source !== sprite);
+  for (const clip of SKIP_CLIPS[sprite] ?? []) delete anims[clip];
   manifest[sprite] = anims;
   for (const clips of Object.values(anims)) {
     for (const clip of [clips].flat() as (Clip & { missile?: string })[]) {

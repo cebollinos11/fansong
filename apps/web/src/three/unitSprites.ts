@@ -70,6 +70,16 @@ export const UNIT_SPRITES: Record<string, string> = {
   Boar: 'monsters/boar/woodland.png',
   'Giant Rat': 'monsters/giant-rat.png',
   Crocodile: 'monsters/croc/crocodile.png',
+
+  // Walkers — sprites with a real multi-frame Wesnoth walk cycle, offered as
+  // looks in the army builder (no preset fields them yet).
+  'Elvish Fighter': 'elves-wood/fighter/fighter.png',
+  Ghost: 'undead-spirit/ghost-base.png',
+  Shadow: 'undead-spirit/shadow-s-2.png',
+  Nightgaunt: 'undead-spirit/nightgaunt.png',
+  Piglet: 'monsters/boar/piglet.png',
+  'Vampire Bat': 'bats/bat-se-3.png',
+  'Gryphon Rider': 'dwarves/gryphon-rider.png',
 };
 
 /**
