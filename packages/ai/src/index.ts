@@ -5,10 +5,12 @@ import {
   bigMeleeBonus,
   bigTargetBonus,
   canWarCry,
+  combatOdds,
   enemiesOf,
   flyingMeleeBonus,
   flyingTargetBonus,
   flagAtBase,
+  isKing,
   getLegalCommands,
   kingOf,
   makeHexGrid,
@@ -46,7 +48,7 @@ export function chooseCommand(state: GameState): Command {
     throw new Error('chooseCommand called with no legal commands');
   }
   const board = makeHexGrid(state.board);
-  const zones = zonePlan(state, state.active);
+  const zones = zonePlan(state, board, state.active);
   const flags = flagPlan(state, board, state.active);
   const kings = kingPlan(state, board, state.active);
 
@@ -192,6 +194,97 @@ function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit)
   );
 }
 
+/** Traits that make a unit worth more to keep (or to kill), each counted once. */
+const VALUED_TRAITS = [
+  'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist',
+  'savage', 'leader', 'armored', 'sharpshooter', 'mastery',
+] as const;
+
+/**
+ * Rough worth of a unit, after the point-buy formula: Combat and traits,
+ * scaled by how reliably it activates (lower Quality is better).
+ */
+function unitValue(u: Unit): number {
+  let traits = u.traits.ranged > 0 ? 1 : 0;
+  for (const t of VALUED_TRAITS) if (u.traits[t]) traits++;
+  return ((u.combat + 1 + traits * 0.6) * (7 - u.quality)) / 4;
+}
+
+/** What a King is worth in kill-the-king, in {@link unitValue} terms: the game rides on it. */
+const KING_WORTH = 30;
+
+/** {@link unitValue}, except that a King is worth the game. */
+function worthOf(state: GameState, u: Unit): number {
+  return isKing(state, u.id) ? KING_WORTH : unitValue(u);
+}
+
+/** Score per unit of {@link blowValue}: wide enough to rank targets, far below the gap to a move. */
+const EV_SCALE = 10_000;
+
+/**
+ * What a blow or shot by `attacker` on `target` is worth, from the exact odds:
+ * a kill is the target's whole worth (a Tough save turns it into a knockdown),
+ * a lesser hit — knocked down or pushed — a share of it, and a lost melee costs
+ * a share of the attacker's. A single swing with a second action behind it
+ * counts that follow-up too, so it compares fairly against a pressed one.
+ */
+function blowValue(
+  state: GameState,
+  board: Board,
+  attacker: Unit,
+  target: Unit,
+  pressed: boolean,
+  ranged: boolean,
+  from?: Vec,
+  actions = state.actionsRemaining,
+): number {
+  const odds = combatOdds(state, attacker.id, target.id, { pressed, ranged, from });
+  const at = from ?? attacker.pos;
+  const vt = worthOf(state, target);
+  const killWorth = target.traits.tough && !target.knockedDown ? vt * 0.5 : vt;
+  // A push off the map is a kill: about half of a lesser win or loss is a push.
+  const hurtWorth = edgeBehind(board, target.pos, at) ? (killWorth + vt * 0.3) / 2 : vt * 0.3;
+  const lossWorth = worthOf(state, attacker) * (!ranged && edgeBehind(board, at, target.pos) ? 0.7 : 0.4);
+  const ev = odds.kill * killWorth + (odds.win - odds.kill) * hurtWorth - odds.lose * lossWorth;
+  return !pressed && actions >= 2 ? ev * 1.8 : ev;
+}
+
+/** Whether a unit at `at` pushed back by a foe at `by` would go off the edge of the map. */
+function edgeBehind(board: Board, at: Vec, by: Vec): boolean {
+  return !board.inBounds(board.stepAway(by, at));
+}
+
+/** Score per unit of {@link blowValue} for the charge a move sets up: a few hexes of approach at most. */
+const CHARGE_SCALE = 1_000;
+
+/**
+ * How good a fight `mover` walks into by ending its move at `to`: with an
+ * action left to strike, the best blow it could land from there — outnumbering
+ * and high ground included — so it charges where the odds favour it.
+ */
+function chargeEdge(state: GameState, board: Board, mover: Unit, to: Vec): number {
+  const left = state.actionsRemaining - 1;
+  if (left < 1) return 0;
+  let best = -Infinity;
+  for (const e of enemiesOf(state, mover.owner)) {
+    if (board.distance(e.pos, to) !== 1) continue;
+    best = Math.max(best, blowValue(state, board, mover, e, false, false, to, left));
+  }
+  return best === -Infinity ? 0 : best * CHARGE_SCALE;
+}
+
+/** Activation score per unit of {@link blowValue}: orders fighters, never lifts one above a war-crying Leader. */
+const ORDER_SCALE = 500;
+
+/** The best melee blow `unit` could strike from where it stands, as if activated with two actions. */
+function bestBlowNow(state: GameState, board: Board, unit: Unit): number {
+  let best = 0;
+  for (const e of adjacentEnemies(state, unit, board)) {
+    best = Math.max(best, blowValue(state, board, unit, e, false, false, undefined, 2));
+  }
+  return Math.min(best, 15);
+}
+
 /** A ranged mover's standoff score at `dist` from the nearest foe: short range beats long range. */
 function standoffScore(ranged: number, dist: number): number {
   return (dist <= shortRange(ranged) ? 125_000 : 120_000) + dist;
@@ -213,67 +306,111 @@ function nearestEnemyDistance(board: Board, from: Vec, enemies: Unit[]): number 
 interface ZoneView {
   hexes: Vec[];
   keys: Set<string>;
-  ours: number;
   theirs: number;
+  /** Walking distance from every reachable hex to the nearest hex of the zone. */
+  field: Map<string, number>;
+  /** Ids of the units sent to take (or contest) this zone — see {@link assignZones}. */
+  claimants: Set<string>;
 }
 
 /** The zones scored in the current mode, from `player`'s side (empty outside the zone modes). */
-function zonePlan(state: GameState, player: Owner): ZoneView[] {
-  return scoringZones(state).map((hexes) => {
+function zonePlan(state: GameState, board: Board, player: Owner): ZoneView[] {
+  const zones = scoringZones(state).map((hexes) => {
     const counts = standingInZone(state, hexes);
     return {
       hexes,
       keys: new Set(hexes.map(vecKey)),
-      ours: counts[player],
       theirs: counts[player === 0 ? 1 : 0],
+      field: zoneField(state, board, hexes),
+      claimants: new Set<string>(),
     };
   });
+  assignZones(state, zones, player);
+  return zones;
 }
+
+/**
+ * Walking distances to a zone's hexes, cached per map: terrain never changes
+ * mid-game, and on a big map the fields are the costliest part of a decision.
+ */
+const zoneFields = new Map<string, Map<string, number>>();
+
+function zoneField(state: GameState, board: Board, hexes: Vec[]): Map<string, number> {
+  const key = JSON.stringify(state.board) + JSON.stringify(hexes);
+  let field = zoneFields.get(key);
+  if (!field) {
+    if (zoneFields.size >= 16) zoneFields.clear();
+    field = distanceField(board, ...hexes);
+    zoneFields.set(key, field);
+  }
+  return field;
+}
+
+/**
+ * Share the warband out among the zones, all at once rather than each unit on
+ * its own: repeatedly pair the unit and zone that are closest by walking
+ * distance, first until every zone has enough units to outnumber the enemy's
+ * there, then again for a {@link ZONE_SPARES spare} or two to keep it. Units
+ * already in a zone are closest to it, so they are the first to stay; anyone
+ * left over hunts.
+ */
+function assignZones(state: GameState, zones: ZoneView[], player: Owner): void {
+  const spares = zones.length === 1 ? ZONE_SPARES.hill : ZONE_SPARES.conquest;
+  const free = aliveUnits(state, player);
+  const fill = (wanted: (z: ZoneView) => number) => {
+    for (;;) {
+      let best: { unit: Unit; zone: ZoneView } | undefined;
+      let bestDist = FAR;
+      for (const unit of free) {
+        for (const z of zones) {
+          if (z.claimants.size >= wanted(z)) continue;
+          const d = walk(z.field, unit.pos);
+          if (d < bestDist) {
+            best = { unit, zone: z };
+            bestDist = d;
+          }
+        }
+      }
+      if (!best) return;
+      best.zone.claimants.add(best.unit.id);
+      free.splice(free.indexOf(best.unit), 1);
+    }
+  };
+  fill((z) => z.theirs + 1);
+  fill((z) => z.theirs + 1 + spares);
+}
+
+/**
+ * Units sent to a zone beyond the bare majority, as a margin against a unit
+ * being knocked down or pushed out before the round is scored. The lone hill
+ * gets more: it is the whole game.
+ */
+const ZONE_SPARES = { hill: 2, conquest: 1 };
 
 function zoneIndexAt(zones: ZoneView[], pos: Vec): number {
   const key = vecKey(pos);
   return zones.findIndex((z) => z.keys.has(key));
 }
 
-function zoneDistance(board: Board, from: Vec, zone: ZoneView): number {
-  let min = Infinity;
-  for (const h of zone.hexes) {
-    const d = board.distance(from, h);
-    if (d < min) min = d;
-  }
-  return min;
+/** Walking distance from `from` to `zone` (`FAR` when it can't be reached on foot). */
+function zoneDistance(from: Vec, zone: ZoneView): number {
+  return walk(zone.field, from);
 }
 
 /**
- * Whether `unit` is holding a zone it is needed in: it stands in a zone that
- * its side would no longer hold outright without it.
+ * Whether `unit` should stay where it is: on its feet in the zone it was sent
+ * to (see {@link assignZones}), whether needed to hold it or as a spare.
  */
-function isHolding(zones: ZoneView[], unit: Unit): boolean {
-  if (unit.knockedDown) return false;
-  const z = zones[zoneIndexAt(zones, unit.pos)];
-  return !!z && z.ours - 1 <= z.theirs;
+function sitsInZone(zones: ZoneView[], unit: Unit): boolean {
+  return !unit.knockedDown && !!targetZone(zones, unit)?.keys.has(vecKey(unit.pos));
 }
 
 /**
- * The zone `unit` should head for: the nearest one its side does not yet hold
- * outright (ties → the one needing the most help, then the first). `undefined`
- * when every zone is held, so the unit goes back to hunting enemies.
+ * The zone `unit` was sent to (see {@link assignZones}), or `undefined` when it
+ * isn't needed at any zone, so it goes back to hunting enemies.
  */
-function targetZone(board: Board, zones: ZoneView[], unit: Unit): ZoneView | undefined {
-  let best: ZoneView | undefined;
-  let bestDist = Infinity;
-  let bestNeed = 0;
-  for (const z of zones) {
-    const need = z.theirs - z.ours + 1;
-    if (need <= 0) continue;
-    const d = zoneDistance(board, unit.pos, z);
-    if (d < bestDist || (d === bestDist && need > bestNeed)) {
-      best = z;
-      bestDist = d;
-      bestNeed = need;
-    }
-  }
-  return best;
+function targetZone(zones: ZoneView[], unit: Unit): ZoneView | undefined {
+  return zones.find((z) => z.claimants.has(unit.id));
 }
 
 /**
@@ -316,6 +453,81 @@ function diceScore(state: GameState, player: Owner, diceCount: number): number {
   return diceCount === 2 ? 3 : diceCount === 3 ? 2 : 1;
 }
 
+/** Worth of a unit's 1st, 2nd and 3rd action this activation (later ones matter less). */
+const ACTION_WORTH = [1, 0.8, 0.5];
+
+/** What a turnover costs per friend it benches: that friend's activation this round. */
+const BENCH_COST = 1;
+
+/**
+ * Expected worth of activating `unit` with `dice` dice: the actions its
+ * successes buy (less the one a knocked-down unit spends standing), less the
+ * chance of a turnover times the activations it would cost the friends still
+ * waiting. An inspired unit's first die is a sure success.
+ */
+function activationWorth(unit: Unit, dice: number, need: number, waiting: number): number {
+  const p = Math.min(1, Math.max(0, (7 - unit.quality) / 6));
+  const sure = unit.inspired ? 1 : 0;
+  const rolled = dice - sure;
+  let worth = 0;
+  for (let hits = 0; hits <= rolled; hits++) {
+    const prob = binomial(rolled, hits) * p ** hits * (1 - p) ** (rolled - hits);
+    const successes = hits + sure;
+    const failures = dice - successes;
+    let actions = 0;
+    for (let i = unit.knockedDown ? 1 : 0; i < successes; i++) actions += ACTION_WORTH[i]! * need;
+    if (unit.knockedDown && successes > 0) actions += 0.5; // back on its feet
+    worth += prob * (actions - (failures >= 2 ? waiting * BENCH_COST : 0));
+  }
+  return worth;
+}
+
+function binomial(n: number, k: number): number {
+  let r = 1;
+  for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i;
+  return r;
+}
+
+/** How much an idle unit's actions are worth: one holding a zone, or a King with no one near, has little to do. */
+const IDLE_NEED = 0.15;
+
+/**
+ * How much `unit` has to do with its actions this round, from 0 to 1: full
+ * unless it is sitting where it is needed with no foe to strike — a zone
+ * holder, or a King nobody is threatening.
+ */
+function unitNeed(state: GameState, board: Board, zones: ZoneView[], kings: KingPlan | undefined, unit: Unit): number {
+  const enemies = enemiesOf(state, unit.owner);
+  const d = nearestEnemyDistance(board, unit.pos, enemies);
+  if (d === 1 || (unit.traits.ranged >= 2 && d <= unit.traits.ranged)) return 1;
+  if (zones.length > 0 && sitsInZone(zones, unit)) return IDLE_NEED;
+  if (kings && unit.id === kings.ourKing?.id && d > THREAT_RANGE) return IDLE_NEED;
+  return 1;
+}
+
+/**
+ * Dice policy: the dice count with the best {@link activationWorth}, as a small
+ * tiebreak (at most ~25) that never reorders which unit goes. A turnover costs
+ * the activations of the friends still waiting, each weighed by how much it has
+ * to do; the last unit risks nothing, so it always rolls all three.
+ */
+function diceWorth(
+  state: GameState,
+  board: Board,
+  zones: ZoneView[],
+  kings: KingPlan | undefined,
+  unit: Unit,
+  diceCount: number,
+): number {
+  const need = (u: Unit) => unitNeed(state, board, zones, kings, u);
+  let waiting = 0;
+  for (const u of aliveUnits(state, unit.owner)) if (!u.activatedThisRound && u.id !== unit.id) waiting += need(u);
+  const own = need(unit);
+  const worth = (d: number) => activationWorth(unit, d, own, waiting);
+  const best = Math.max(worth(1), worth(2), worth(3));
+  return worth(diceCount) === best ? 20 + best : worth(diceCount);
+}
+
 function scoreCommand(
   state: GameState,
   board: Board,
@@ -330,7 +542,7 @@ function scoreCommand(
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
       if (kings) {
-        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceScore(state, player, command.diceCount);
+        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceWorth(state, board, zones, kings, unit, command.diceCount);
       }
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       // Zone modes: a unit already holding a zone has nowhere better to be, so
@@ -338,9 +550,9 @@ function scoreCommand(
       let dist = enemyDist;
       let holding = false;
       if (zones.length > 0) {
-        holding = isHolding(zones, unit);
-        const target = holding ? undefined : targetZone(board, zones, unit);
-        if (target) dist = zoneDistance(board, unit.pos, target);
+        holding = sitsInZone(zones, unit);
+        const target = holding ? undefined : targetZone(zones, unit);
+        if (target) dist = Math.min(zoneDistance(unit.pos, target), 99);
       }
       // A unit that can already fight this turn — in melee, or a shooter with a
       // foe in range — is the one worth activating first. That is about enemies,
@@ -348,24 +560,18 @@ function scoreCommand(
       const canMelee = enemyDist === 1;
       const canShoot = unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged;
       const canAttack = canMelee || canShoot;
-      // Prefer the unit that can already fight, else the one closest to a foe.
-      const unitScore = leaderFirst(state, unit, canAttack ? 100_000 : holding ? 1_000 : 10_000 - dist * 100);
+      // Prefer the unit that can already fight — the best fight first, such as
+      // a blow at a downed foe before it stands — else the one closest to a foe.
+      const fight = canMelee ? bestBlowNow(state, board, unit) * ORDER_SCALE : 0;
+      const unitScore = leaderFirst(state, unit, canAttack ? 100_000 + fight : holding ? 1_000 : 10_000 - dist * 100);
 
-      return unitScore + diceScore(state, player, command.diceCount);
+      return unitScore + diceWorth(state, board, zones, kings, unit, command.diceCount);
     }
 
     case 'Attack': {
       const target = unitById(state, command.targetId)!;
       const attacker = unitById(state, command.attackerId)!;
-      let score = 1_000_000;
-      if (target.knockedDown) score += 5_000; // likely a kill — finish it
-      score += (6 - target.combat) * 100; // focus-fire the weakest reachable foe
-      score += (attacker.combat - target.combat) * 50; // favour favourable match-ups
-      // Gang up: hit a foe we outnumber, not while we are the outnumbered one.
-      score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
-      score += masteryEdge(attacker, target) * 50; // a tie kills for the lone master
-      // Power blow or two swings? Press the attack only when the odds are against us.
-      score += pressedEdge(meleeEdge(state, board, attacker, target) < 0, command.power === true);
+      let score = 1_000_000 + blowValue(state, board, attacker, target, command.power === true, false) * EV_SCALE;
       if (kings) {
         // Our King only trades blows to end the game or finish a downed foe;
         // stuck in melee with nowhere safer, it still hits back rather than idle.
@@ -380,13 +586,7 @@ function scoreCommand(
       // melee blow, and better against a soft or already-downed target.
       const target = unitById(state, command.targetId)!;
       const shooter = unitById(state, command.attackerId)!;
-      let score = 900_000;
-      if (target.knockedDown) score += 5_000;
-      score += (6 - target.combat) * 100; // pick off the weakest reachable foe
-      const penalty = shotPenalty(state, board, shooter, target);
-      score -= penalty * SHOT_PENALTY_COST; // a close, clear shot
-      // Aimed shot or two shots? Steady the aim only when the shot is badly penalised.
-      score += pressedEdge(penalty >= 2, command.aimed === true);
+      let score = 900_000 + blowValue(state, board, shooter, target, command.aimed === true, true) * EV_SCALE;
       if (kings) score += kingTargetBonus(kings, target);
       return score;
     }
@@ -394,7 +594,7 @@ function scoreCommand(
     case 'Move': {
       const mover = unitById(state, command.unitId)!;
       if (zones.length > 0) {
-        const zoneScore = zoneMoveScore(board, zones, mover, command.to);
+        const zoneScore = zoneMoveScore(state, board, zones, mover, command.to);
         if (zoneScore !== undefined) return zoneScore;
       }
       if (kings) return kingMoveScore(state, board, kings, mover, command.to);
@@ -409,14 +609,14 @@ function scoreCommand(
         return 100_000 - dist * 100; // out of range: close the gap
       }
       // Melee: close the distance; always beats ending, never beats attacking.
-      return 100_000 - dist * 100;
+      return 100_000 - dist * 100 + chargeEdge(state, board, mover, command.to);
     }
 
     case 'Guard': {
       // A last-resort defensive stance: only when there's nothing better to do
       // (no attack, no useful move). Kept just above ending the activation —
       // and a zone holder's preferred way to sit tight.
-      if (zones.length > 0 && isHolding(zones, unitById(state, command.unitId)!)) return 10;
+      if (zones.length > 0 && sitsInZone(zones, unitById(state, command.unitId)!)) return 10;
       // Our King with nowhere safer to go waits on guard, ready to riposte.
       if (kings && command.unitId === kings.ourKing?.id) return 10;
       return 1;
@@ -431,20 +631,26 @@ function scoreCommand(
 }
 
 /**
- * Zone modes: the score of moving `mover` to `to`, or `undefined` when zones
- * don't matter to it (every zone is held) and the usual enemy-seeking applies.
- * A holder stays put — shuffling within its zone scores just under ending the
- * activation, leaving far under. Anyone else heads for its target zone: stepping in beats
- * any ordinary move (a shooter's standoff included), otherwise closer is better.
+ * Zone modes: the score of moving `mover` to `to`, or `undefined` when it
+ * wasn't sent to a zone (see {@link assignZones}) and the usual enemy-seeking
+ * applies. A unit already in its zone stays put — it only shifts within the
+ * zone to charge a foe at good odds, and leaving scores far under ending the
+ * activation. Anyone else heads for its zone: stepping in beats any ordinary
+ * move (a shooter's standoff included), otherwise closer is better, and a
+ * well-set charge on the way counts too.
  */
-function zoneMoveScore(board: Board, zones: ZoneView[], mover: Unit, to: Vec): number | undefined {
-  if (isHolding(zones, mover)) {
-    return zones[zoneIndexAt(zones, mover.pos)]!.keys.has(vecKey(to)) ? -1 : -1_000;
+function zoneMoveScore(state: GameState, board: Board, zones: ZoneView[], mover: Unit, to: Vec): number | undefined {
+  if (sitsInZone(zones, mover)) {
+    if (!zones[zoneIndexAt(zones, mover.pos)]!.keys.has(vecKey(to))) return -1_000;
+    // Shuffling within the zone is only worth it to take on a foe at good odds.
+    const charge = chargeEdge(state, board, mover, to);
+    return charge > 0 ? 50_000 + charge : -1;
   }
-  const target = targetZone(board, zones, mover);
+  const target = targetZone(zones, mover);
   if (!target) return undefined;
-  if (target.keys.has(vecKey(to))) return 130_000;
-  return 100_000 - zoneDistance(board, to, target) * 100;
+  const charge = chargeEdge(state, board, mover, to);
+  if (target.keys.has(vecKey(to))) return 130_000 + charge;
+  return 100_000 - zoneDistance(to, target) * 100 + charge;
 }
 
 /**
@@ -456,6 +662,8 @@ interface KingPlan {
   theirKing: Unit | undefined;
   /** Enemies within {@link THREAT_RANGE} of our King. */
   threats: Unit[];
+  /** Ids of the threats already in contact with our King. */
+  atKing: Set<string>;
   /** Living units' hexes, for line-of-sight checks (units block sight lanes). */
   occupied: Set<string>;
 }
@@ -478,31 +686,47 @@ function kingPlan(state: GameState, board: Board, player: Owner): KingPlan | und
   const theirKing = living(kingOf(state, enemy));
   const threats = ourKing ? enemiesOf(state, player).filter((e) => board.distance(e.pos, ourKing.pos) <= THREAT_RANGE) : [];
   const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
-  return { ourKing, theirKing, threats, occupied };
+  const atKing = new Set(threats.filter((t) => board.distance(t.pos, ourKing!.pos) === 1).map((t) => t.id));
+  return { ourKing, theirKing, threats, atKing, occupied };
 }
 
 /** Extra attack/shot score: the enemy King above all (it ends the game), then threats to ours. */
 function kingTargetBonus(plan: KingPlan, target: Unit): number {
   if (target.id === plan.theirKing?.id) return 300_000;
-  if (plan.threats.some((t) => t.id === target.id)) return 20_000;
+  if (plan.threats.some((t) => t.id === target.id)) return plan.atKing.has(target.id) ? 40_000 : 20_000;
   return 0;
 }
 
 /**
- * How far a non-King unit at `from` is from its quarry: the nearest threat to
- * our King if there is one (protect first), else the enemy King, else simply
- * the nearest enemy.
+ * How far a non-King unit at `from` is from its quarry: a threat to our King
+ * if there is one (protect first — the closer a threat is to the King, the
+ * sooner it must be met), else the enemy King, else simply the nearest enemy.
  */
 function kingHuntDistance(board: Board, plan: KingPlan, from: Vec, enemies: Unit[]): number {
-  if (plan.threats.length > 0) return nearestEnemyDistance(board, from, plan.threats);
+  const king = plan.ourKing;
+  if (king && plan.threats.length > 0) {
+    let min = Infinity;
+    for (const t of plan.threats) min = Math.min(min, board.distance(from, t.pos) + 2 * (board.distance(t.pos, king.pos) - 1));
+    return min;
+  }
   if (plan.theirKing) return board.distance(from, plan.theirKing.pos);
   return nearestEnemyDistance(board, from, enemies);
 }
 
-/** How safe a hex is for our King: out of reach of enemies (capped), then higher ground. */
+/** Beyond this many hexes from every enemy, our King counts itself as safe as it gets. */
+const KING_SAFE_DIST = 4;
+
+/**
+ * How safe a hex is for our King: out of reach of enemies (capped), off the
+ * edge of the map (one push there kills), then higher ground.
+ */
 function kingSafety(board: Board, v: Vec, enemies: Unit[]): number {
-  return Math.min(nearestEnemyDistance(board, v, enemies), 4) * 100 + board.elevation(v) * 10;
+  const edge = board.cellsWithin(v, 1).length < 6 ? KING_EDGE : 0;
+  return Math.min(nearestEnemyDistance(board, v, enemies), KING_SAFE_DIST) * 100 - edge + board.elevation(v) * 10;
 }
+
+/** What a hex on the map's edge costs the King's safety, in hundredths of a hex of distance. */
+const KING_EDGE = 150;
 
 /** Whether `mover`, standing at `from`, would have a clear shot at some enemy within `range`. */
 function hasShotFrom(board: Board, plan: KingPlan, mover: Unit, from: Vec, range: number, enemies: Unit[]): boolean {
@@ -559,10 +783,10 @@ function kingMoveScore(state: GameState, board: Board, plan: KingPlan, mover: Un
   return 100_000 - kingHuntDistance(board, plan, to, enemies) * 100 + height;
 }
 
-/** Walking distance (steps over passable hexes, never lava) from every reachable hex to `target`. */
-function distanceField(board: Board, target: Vec): Map<string, number> {
-  const field = new Map<string, number>([[vecKey(target), 0]]);
-  let frontier = [target];
+/** Walking distance (steps over passable hexes, never lava) from every reachable hex to the nearest of `targets`. */
+function distanceField(board: Board, ...targets: Vec[]): Map<string, number> {
+  const field = new Map<string, number>(targets.map((t) => [vecKey(t), 0]));
+  let frontier = targets;
   for (let d = 1; frontier.length > 0; d++) {
     const next: Vec[] = [];
     for (const v of frontier) {

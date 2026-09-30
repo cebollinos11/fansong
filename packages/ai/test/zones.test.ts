@@ -65,13 +65,39 @@ describe('AI in the zone modes', () => {
     expect(chooseCommand(plain).type).toBe('EndActivation');
   });
 
-  it('a spare unit on a securely held hill goes back to hunting', () => {
-    // Two on the hill against none: either may leave without losing it.
+  it('a spare on a held hill stays to keep it', () => {
+    // Two on the hill against none: one would do, but the other is its margin.
     const s = activate(hillGame([U('a', 5, 1), U('b', 6, 1)], [U('c', 5, 5)]), 'p0u0');
+    expect(chooseCommand(s).type).toBe('EndActivation');
+  });
+
+  it('a unit beyond the hill garrison goes hunting', () => {
+    // The hill wants one to hold it and two spares; the fourth, furthest away, hunts.
+    const s = activate(
+      hillGame([U('a', 5, 1), U('b', 6, 1), U('c', 4, 2), U('d', 0, 7)], [U('e', 5, 7)]),
+      'p0u3',
+    );
     const cmd = chooseCommand(s);
     expect(cmd.type).toBe('Move');
     const board = makeHexGrid(s.board);
-    expect(board.distance((cmd as Extract<Command, { type: 'Move' }>).to, { x: 5, y: 5 })).toBeLessThan(4);
+    const to = (cmd as Extract<Command, { type: 'Move' }>).to;
+    expect(board.distance(to, { x: 5, y: 7 })).toBeLessThan(board.distance({ x: 0, y: 7 }, { x: 5, y: 7 }));
+  });
+
+  it('conquest: units split between the empty zones instead of crowding one', () => {
+    const zones: [Vec[], Vec[], Vec[]] = [[{ x: 3, y: 3 }], [{ x: 4, y: 3 }], [{ x: 11, y: 7 }]];
+    const s = createGame({
+      seed: 1,
+      board: { width: 12, height: 8 },
+      // Both stand closest to zone 0; one of them should make for zone 1 instead.
+      warbands: [[U('a', 2, 3), U('b', 2, 4)], [U('c', 11, 0)]],
+      mode: 'conquest',
+      objectives: { conquest: zones },
+    });
+    const board = makeHexGrid(s.board);
+    const dest = (id: string) => (chooseCommand(activate(s, id)) as Extract<Command, { type: 'Move' }>).to;
+    const targets = [dest('p0u0'), dest('p0u1')].map((to) => zones.findIndex((z) => board.distance(to, z[0]!) === 0));
+    expect(targets.sort()).toEqual([0, 1]);
   });
 
   it('still attacks an adjacent enemy from the hill', () => {
