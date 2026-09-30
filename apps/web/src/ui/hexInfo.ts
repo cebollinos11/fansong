@@ -1,6 +1,6 @@
-import { combatOdds, unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
+import { airborne, combatOdds, unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
 import type { PlanPreview } from '../game/planView.js';
-import { traitLine } from './hudView.js';
+import { traitLine, traitTags } from './hudView.js';
 
 // Pure hex-tooltip text (no DOM), so it can be unit-tested.
 
@@ -18,8 +18,14 @@ export interface HexStats {
   move: number;
 }
 
-/** A tooltip line: plain text, or a unit's stats. */
-export type HexLine = string | HexStats;
+/** One of a unit's abilities spelled out, for a tooltip held long enough to read it. */
+export interface HexTrait {
+  trait: string;
+  help: string;
+}
+
+/** A tooltip line: plain text, a unit's stats, or one of its abilities spelled out. */
+export type HexLine = string | HexStats | HexTrait;
 
 export interface HexInfo {
   title: string;
@@ -29,9 +35,15 @@ export interface HexInfo {
 /**
  * Describe a board hex for the hover tooltip; null when the cell is off the
  * board. `plan` is what clicking here would commit, so the tooltip can price the
- * click before it is made.
+ * click before it is made. `detailed` (the pointer has rested on the hex) spells
+ * out what each of the unit's abilities does instead of just naming them.
  */
-export function describeHex(state: GameState, cell: Vec, plan: PlanPreview | null = null): HexInfo | null {
+export function describeHex(
+  state: GameState,
+  cell: Vec,
+  plan: PlanPreview | null = null,
+  detailed = false,
+): HexInfo | null {
   const { board } = state;
   if (cell.x < 0 || cell.y < 0 || cell.x >= board.width || cell.y >= board.height) return null;
   const key = vecKey(cell);
@@ -51,8 +63,13 @@ export function describeHex(state: GameState, cell: Vec, plan: PlanPreview | nul
     lines.push([`${unit.name} (P${unit.owner})`, ...marks].join(' · '));
     lines.push({ quality: unit.quality, combat: unit.combat, move: unitMove(unit) });
     // The abilities decide how the unit must be fought, so the tooltip names them.
-    const traits = traitLine(unit);
-    if (traits) lines.push(traits);
+    if (detailed) {
+      const grounded = unit.traits.flying && !airborne(state, unit);
+      lines.push(...traitTags(unit, grounded).map((t) => ({ trait: t.label, help: t.help })));
+    } else {
+      const traits = traitLine(unit);
+      if (traits) lines.push(traits);
+    }
   }
   if (plan) lines.push(...planLines(state, plan));
   return { title: `Hex (${cell.x}, ${cell.y})`, lines };

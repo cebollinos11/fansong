@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { unitById, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
+import { unitById, vecKey, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
 import { BACKDROP_LABELS, BACKDROPS, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
@@ -145,6 +145,9 @@ function saveBackdrop(kind: BackdropKind): void {
     // Not remembered; the button still works for this session.
   }
 }
+
+/** How long the pointer rests on a hex before the tooltip explains the unit's abilities. */
+const TRAIT_DETAIL_DELAY_MS = 1000;
 
 /** React wrapper that mounts a {@link BoardView} and keeps it in sync with props. */
 export function BoardCanvas(props: Props): JSX.Element {
@@ -317,7 +320,20 @@ export function BoardCanvas(props: Props): JSX.Element {
     viewRef.current?.setPlanPreview(planned ?? traced);
   }, [hover, previewFor, focusPath]);
 
-  const hexInfo = hover ? describeHex(props.state, hover, previewFor?.(hover) ?? null) : null;
+  // Resting on a hex for a moment spells out what the unit's abilities do; the
+  // quick glance keeps to their names so the tooltip stays out of the way.
+  // Held as the hex it was earned on, so moving on never flashes it on the next one.
+  const hoverKey = hover ? vecKey(hover) : null;
+  const [detailedKey, setDetailedKey] = useState<string | null>(null);
+  useEffect(() => {
+    setDetailedKey(null);
+    if (!hoverKey) return;
+    const timer = window.setTimeout(() => setDetailedKey(hoverKey), TRAIT_DETAIL_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [hoverKey]);
+
+  const detailed = hoverKey !== null && hoverKey === detailedKey;
+  const hexInfo = hover ? describeHex(props.state, hover, previewFor?.(hover) ?? null, detailed) : null;
 
   // The tooltip rides next to the pointer, flipping to its other side near an
   // edge. Placed straight on the DOM so a drifting pointer never re-renders.

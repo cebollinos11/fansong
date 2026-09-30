@@ -2905,6 +2905,15 @@ button.trait-add[aria-expanded='true'] {
   margin: 2px 0;
 }
 
+/* An ability spelled out once the pointer rests on a unit. */
+.hex-tooltip .info-trait {
+  margin-top: 2px;
+  color: var(--muted);
+}
+.hex-tooltip .info-trait strong {
+  color: var(--text);
+}
+
 .unit-line {
   display: inline-flex;
   align-items: center;

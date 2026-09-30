@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import type { HexTrait } from './hexInfo.js';
 
 /** The unit numbers shown as icon badges wherever a unit is described. */
 export type StatKind = 'quality' | 'combat' | 'move' | 'range';
@@ -64,12 +65,20 @@ export function StatIcons({ stats }: { stats: UnitStats }): JSX.Element {
   );
 }
 
-/** Tooltip lines as divs: text as it is, a unit's stats as icons. */
-export function InfoLines({ lines }: { lines: readonly (string | UnitStats)[] }): JSX.Element {
+/** Tooltip lines as divs: text as it is, a unit's stats as icons, an ability with what it does. */
+export function InfoLines({ lines }: { lines: readonly (string | UnitStats | HexTrait)[] }): JSX.Element {
   return (
     <>
       {lines.map((line, i) =>
-        typeof line === 'string' ? <div key={line}>{line}</div> : <StatIcons key={`stats-${i}`} stats={line} />,
+        typeof line === 'string' ? (
+          <div key={line}>{line}</div>
+        ) : 'trait' in line ? (
+          <div key={`trait-${line.trait}`} className="info-trait">
+            <strong>{line.trait}</strong> — {line.help}
+          </div>
+        ) : (
+          <StatIcons key={`stats-${i}`} stats={line} />
+        ),
       )}
     </>
   );

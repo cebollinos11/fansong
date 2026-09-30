@@ -3,6 +3,7 @@ import { unitMove, type GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { describeHex, oddsLine, type HexLine } from '../src/ui/hexInfo.js';
 import type { PlanPreview } from '../src/game/planView.js';
+import { TRAIT_HELP } from '../src/ui/hudView.js';
 
 const SETUP: MatchSetup = {
   presets: ['iron-wardens', 'ashfang-raiders'],
@@ -57,6 +58,16 @@ describe('describeHex', () => {
     const lines = describeHex(armed, plain.pos)?.lines ?? [];
     expect(lines).toContain(`${plain.name} (P${plain.owner}) · on guard`);
     expect(lines.at(-1)).toBe('Ranged 4 · Tough · Guard · Big');
+
+    // Held on the hex, each ability is spelled out in place of the one-line list.
+    const detailed = describeHex(armed, plain.pos, null, true)?.lines ?? [];
+    expect(detailed).not.toContain('Ranged 4 · Tough · Guard · Big');
+    expect(detailed.slice(-4)).toEqual([
+      { trait: 'Ranged 4', help: TRAIT_HELP.ranged },
+      { trait: 'Tough', help: TRAIT_HELP.tough },
+      { trait: 'Guard', help: TRAIT_HELP.guard },
+      { trait: 'Big', help: TRAIT_HELP.big },
+    ]);
   });
 
   it('is null off the board', () => {
