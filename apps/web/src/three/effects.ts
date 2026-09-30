@@ -317,6 +317,7 @@ export class Effects {
       transparent: true,
       opacity: env.opacity ?? 0.9,
       side: THREE.DoubleSide,
+      forceSinglePass: true,
       depthWrite: false,
       blending: env.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
     });
@@ -395,6 +396,7 @@ export class Effects {
       transparent: true,
       opacity: 0,
       side: THREE.DoubleSide,
+      forceSinglePass: true,
       depthWrite: false,
     });
     const mesh = new THREE.Mesh(this.thinRing, mat);
@@ -427,6 +429,7 @@ export class Effects {
       map: this.texture('wall'),
       transparent: true,
       side: THREE.DoubleSide,
+      forceSinglePass: true,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });

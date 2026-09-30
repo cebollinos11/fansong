@@ -139,6 +139,7 @@ function fillMaterial(color: number, opacity: number): THREE.MeshBasicMaterial {
     transparent: true,
     opacity,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
     depthWrite: false,
   });
 }
@@ -283,8 +284,16 @@ function outlineMaterial(): THREE.ShaderMaterial {
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
 }
+
+// Every unit owns its base and cutout materials, and three sorts opaque meshes
+// by material, so left alone they draw base, cutout, base, cutout… switching
+// shader on every draw. Ordering them groups all the bases, then all the
+// cutouts. Opaque, they are depth-tested, so the order changes nothing on screen.
+const BASE_ORDER = 1;
+const CUTOUT_ORDER = 2;
 
 const SELECT_COLOR = 0xffd54a;
 const FOCUS_COLOR = 0xffffff; // ring on a unit named by the hovered log line
@@ -1960,10 +1969,11 @@ export class BoardView {
     );
     base.position.y = TILE_TOP + BASE_HEIGHT / 2;
     base.userData.unitId = id;
+    base.renderOrder = BASE_ORDER;
 
     const ring = new THREE.Mesh(
       this.ringGeo,
-      new THREE.MeshBasicMaterial({ color: SELECT_COLOR, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ color: SELECT_COLOR, transparent: true, opacity: 0.9, side: THREE.DoubleSide, forceSinglePass: true }),
     );
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.12;
@@ -1974,10 +1984,11 @@ export class BoardView {
     // not blended, so overlapping cutouts need no sorting.
     const sprite = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      standAtFeet(new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide })),
+      standAtFeet(new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide, forceSinglePass: true })),
     );
     sprite.userData.unitId = id;
     sprite.userData.isCutout = true;
+    sprite.renderOrder = CUTOUT_ORDER;
     sprite.visible = false;
 
     // Shares the cutout's quad (and, once loaded, its texture window); never picked.
@@ -2359,6 +2370,8 @@ export class BoardView {
       m.transparent = true;
       m.needsUpdate = true;
     }
+    // Blended, it sorts by distance among the other see-through things again.
+    obj.base.renderOrder = obj.sprite.renderOrder = 0;
   }
 
   private revive(obj: UnitObj): void {
@@ -2377,6 +2390,8 @@ export class BoardView {
       m.opacity = 1;
       m.needsUpdate = true;
     }
+    obj.base.renderOrder = BASE_ORDER;
+    obj.sprite.renderOrder = CUTOUT_ORDER;
   }
 
   /** Per-frame unit animation: frame, facing, lunge, tilt, fade and flash. */
@@ -2808,6 +2823,7 @@ export class BoardView {
         transparent: true,
         opacity: o.opacity ?? 0.3,
         side: THREE.DoubleSide,
+        forceSinglePass: true,
         depthWrite: false,
       });
       const tiles = o.cells.map((c) => (tile: THREE.Object3D) => {
@@ -3435,6 +3451,7 @@ export class BoardView {
       alphaTest: 0.02,
       depthWrite: false,
       side: THREE.DoubleSide,
+      forceSinglePass: true,
       blending: THREE.AdditiveBlending,
     });
     const mesh = new THREE.Mesh(obj.sprite.geometry, mat); // the shared quad, not owned
