@@ -87,9 +87,11 @@ describe('launchFor with saved armies', () => {
     expect(launchProblem(launch, getMap)).toBeNull();
   });
 
-  it('reports an army too big for the map deploy zone', () => {
+  it('launches an army too big for the map deploy zone, spilling it onto nearby ground', () => {
     const huge: SavedArmy = { id: 'a2', warband: { name: 'Huge', units: Array.from({ length: 30 }, () => horde.units[0]!) } };
     const launch = launchFor('hotseat', [armyChoice('a2'), 'iron-wardens'], 7, 'twin-towers', undefined, [huge]);
-    expect(launchProblem(launch, getMap)).toMatch(/deploy zone/);
+    expect(launchProblem(launch, getMap)).toBeNull();
+    if (launch.kind !== 'local') throw new Error('expected local');
+    expect(configFromSetup(launch.setup).warbands[0]).toHaveLength(30);
   });
 });

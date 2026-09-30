@@ -101,7 +101,7 @@ export const lobbySeatSchema = z
   .strict();
 
 /** The room between games. `problem` says why these picks can't start a match
- *  (e.g. an army too big for the map's deploy zone), or is null. */
+ *  (e.g. an army too big for the whole map), or is null. */
 export const lobbySchema = z
   .object({
     mapId: z.string(),

@@ -1,4 +1,4 @@
-import { makeHexGrid, type GameConfig, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { makeHexGrid, vecKey, type GameConfig, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
 import { profileRange, unitCost } from './cost.js';
 import { flatMap, mapToBoard, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
@@ -111,13 +111,19 @@ export function layOutWarband(units: WarbandUnit[], owner: Owner, board: BoardSi
  * by column when above/below) and its models take a centred run of its hexes.
  *
  * On {@link DEFAULT_MAP} this is exactly {@link layOutWarband}'s placement.
- * Throws if the zone has fewer hexes than the warband has models.
+ *
+ * A warband too big for its zone fills the zone, then spills onto the nearest
+ * open ground outside it (see {@link overflowHexes}), never onto the enemy's
+ * zone or a hex in `taken`. Throws only if the board itself has no room left.
  */
-export function layOutInZone(units: WarbandUnit[], owner: Owner, map: MapDef): UnitSpec[] {
-  const zone = map.deployZones[owner];
+export function layOutInZone(units: WarbandUnit[], owner: Owner, map: MapDef, taken: Vec[] = []): UnitSpec[] {
   const enemy = map.deployZones[owner === 0 ? 1 : 0];
-  if (units.length > zone.length)
-    throw new Error(`deploy zone ${owner} of map "${map.id}" has ${zone.length} hexes for ${units.length} models`);
+  const zone = map.deployZones[owner].filter((v) => !taken.some((t) => t.x === v.x && t.y === v.y));
+  const overflow = units.length > zone.length ? overflowHexes(map, zone, [...enemy, ...taken], units.length - zone.length) : [];
+  if (zone.length + overflow.length < units.length)
+    throw new Error(
+      `map "${map.id}" has room for only ${zone.length + overflow.length} of player ${owner}'s ${units.length} models`,
+    );
 
   const grid = makeHexGrid({ width: map.width, height: map.height, blocked: [] });
   const depth = (v: Vec) =>
@@ -144,7 +150,36 @@ export function layOutInZone(units: WarbandUnit[], owner: Owner, map: MapDef): U
     for (let i = 0; i < count; i++) specs.push(toSpec(units[next + i]!, { ...rank[start + i]! }));
     next += count;
   }
+  overflow.slice(0, units.length - next).forEach((v, i) => specs.push(toSpec(units[next + i]!, { ...v })));
   return specs;
+}
+
+/**
+ * Up to `count` hexes for the models a deploy zone can't hold: the open hexes
+ * (no rock, building or lava) nearest `zone` by walking distance, searching out
+ * from it ring by ring, never entering `avoid`. Within a ring, hexes farther
+ * from the enemy (`avoid`) come first, then row-major.
+ */
+function overflowHexes(map: MapDef, zone: Vec[], avoid: Vec[], count: number): Vec[] {
+  const board = makeHexGrid({ ...mapToBoard(map), blocked: [] });
+  const open = (v: Vec) => !board.isBlocked(v) && !board.isDeadly(v);
+  const seen = new Set([...zone, ...avoid].map(vecKey));
+  const farFromEnemy = (v: Vec) => (avoid.length === 0 ? 0 : Math.min(...avoid.map((e) => board.distance(v, e))));
+  const out: Vec[] = [];
+  let ring = zone.filter(open);
+  while (out.length < count && ring.length > 0) {
+    const next: Vec[] = [];
+    for (const v of ring)
+      for (const n of board.neighbors(v)) {
+        if (seen.has(vecKey(n)) || !open(n)) continue;
+        seen.add(vecKey(n));
+        next.push(n);
+      }
+    next.sort((a, b) => farFromEnemy(b) - farFromEnemy(a) || a.y - b.y || a.x - b.x);
+    out.push(...next.slice(0, count - out.length));
+    ring = next;
+  }
+  return out;
 }
 
 /**
@@ -165,10 +200,11 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
     const map = opts.map;
     const check = validateMap(map, mode === 'annihilation' ? undefined : mode);
     if (!check.ok) throw new Error(`map "${map.id}" is invalid: ${check.errors.join('; ')}`);
+    const first = layOutInZone(p0.units, 0, map);
     config = {
       seed: opts.seed,
       board: mapToBoard(map),
-      warbands: [layOutInZone(p0.units, 0, map), layOutInZone(p1.units, 1, map)],
+      warbands: [first, layOutInZone(p1.units, 1, map, first.map((s) => s.pos))],
       initiativeLeader: opts.initiativeLeader ?? 0,
     };
     if (mode !== 'annihilation' && mode !== 'kill-the-king') config.objectives = objectivesFor(map, mode);

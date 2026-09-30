@@ -100,7 +100,7 @@ function explicitWarbands(sides: [string, string], armies: readonly SavedArmy[])
 
 /**
  * Why a local launch can't start, or `null` if it can: the exact match build the
- * game runs, so it also catches an army too big for the map's deploy zone.
+ * game runs, so it also catches an army too big for the whole map.
  */
 export function launchProblem(launch: Extract<Launch, { kind: 'local' }>, lookup: MapLookup): string | null {
   try {

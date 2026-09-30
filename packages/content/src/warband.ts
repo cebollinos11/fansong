@@ -42,7 +42,7 @@ export const DEFAULT_RULES: WarbandRules = {
 
 /**
  * Constraints for an army-builder army: a sane roster size.
- * Whether it fits a map's deploy zone is checked when the match is built.
+ * One too big for a map's deploy zone spills onto the nearest open ground.
  */
 export const ARMY_RULES: WarbandRules = {
   minUnits: 1,

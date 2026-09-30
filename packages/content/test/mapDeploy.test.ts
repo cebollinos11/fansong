@@ -98,9 +98,43 @@ describe('layOutInZone', () => {
     expect(p1.filter((s) => s.pos.y === 8).map((s) => s.pos.x)).toEqual([3, 4]);
   });
 
-  it('throws when the zone is too small for the warband', () => {
+  it('spills a warband too big for its zone onto the nearest open hexes', () => {
     const map: MapDef = { ...flatMap(8, 8), deployZones: [[{ x: 0, y: 0 }], [{ x: 7, y: 7 }]] };
-    expect(() => layOutInZone(units(2), 0, map)).toThrow(/1 hexes for 2 models/);
+    map.hexes[1] = { elevation: 0, feature: 'rock' }; // (1,0), next to the zone
+    const specs = layOutInZone(units(4), 0, map);
+    expect(specs[0]!.pos).toEqual({ x: 0, y: 0 });
+    const spill = specs.slice(1).map((s) => s.pos);
+    // (0,0)'s open neighbours are (0,1) and (1,1); the third model walks one hex further, round the rock.
+    expect(spill.slice(0, 2)).toEqual(expect.arrayContaining([{ x: 0, y: 1 }, { x: 1, y: 1 }]));
+    expect(Math.min(...spill.slice(2).map((v) => Math.max(v.x, v.y)))).toBe(2);
+    expect(new Set(specs.map((s) => vecKey(s.pos))).size).toBe(4);
+  });
+
+  it('keeps each side’s overflow off the other side’s models in a match', () => {
+    // Two 12-hex zones face each other across the middle; 20-model armies overflow both.
+    const column = (x: number) => Array.from({ length: 10 }, (_, y) => ({ x, y }));
+    const map: MapDef = {
+      ...flatMap(12, 10),
+      deployZones: [
+        [...column(5), { x: 4, y: 0 }, { x: 4, y: 1 }],
+        [...column(6), { x: 7, y: 8 }, { x: 7, y: 9 }],
+      ],
+    };
+    const army = { name: 'Horde', units: units(20) };
+    const config = buildMatch(army, army, { seed: 1, map });
+    const all = config.warbands.flat().map((s) => vecKey(s.pos));
+    expect(all).toHaveLength(40);
+    expect(new Set(all).size).toBe(40);
+    // Each zone is filled before anyone spills out of it.
+    map.deployZones.forEach((zone, p) =>
+      expect(config.warbands[p]!.map((s) => s.pos)).toEqual(expect.arrayContaining(zone)),
+    );
+    createGame(config);
+  });
+
+  it('throws only when the whole board has no room', () => {
+    const map: MapDef = { ...flatMap(2, 2), deployZones: [[{ x: 0, y: 0 }], [{ x: 1, y: 1 }]] };
+    expect(() => layOutInZone(units(4), 0, map)).toThrow(/room for only 3 of player 0's 4 models/);
   });
 });
 
