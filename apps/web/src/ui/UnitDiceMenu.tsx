@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import type { Owner } from '@fansong/engine';
 import { anchoredCard, type UnitProjector } from './anchorView.js';
-import { diceHint, dicePips } from './diceMenuView.js';
+import { diceHint } from './diceMenuView.js';
+import type { TraitTag } from './hudView.js';
 import { usePressGuard } from './pressGuard.js';
 
 /** World height above a unit's base that the menu's bottom edge rides at. */
@@ -15,6 +16,7 @@ interface Props {
   quality: number;
   /** Inspired by a war cry: the first die rolled is a sure 6. */
   inspired: boolean;
+  traits: readonly TraitTag[];
   choices: readonly number[];
   project: UnitProjector;
   onPick: (dice: number) => void;
@@ -25,7 +27,7 @@ interface Props {
  * offers the same choice, but a player who has just clicked a unit on the board
  * should not have to cross the screen to answer the question that click asked.
  */
-export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, choices, project, onPick }: Props): JSX.Element {
+export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, traits, choices, project, onPick }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   // The tap that picked the unit must not also pick a dice count.
   const { onPointerDown, guard } = usePressGuard();
@@ -67,29 +69,56 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, choic
       aria-label={`Commit dice to activate ${unitName}`}
     >
       <div className="dice-menu-title">
-        {unitName} <span className="dice-menu-quality">needs {quality}+</span>
+        <span>{unitName}</span>
+        <span className="dice-menu-quality">
+          {inspired ? '★ ' : ''}
+          {quality}+
+        </span>
       </div>
-      {inspired ? <div className="dice-menu-inspired">★ Inspired: first die is a sure 6</div> : null}
+      {traits.length > 0 ? (
+        <div className="dice-menu-traits">
+          {traits.map((t) => (
+            <span key={t.label} title={t.help}>
+              {t.label}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <div className="dice-menu-row">
-        {choices.map((n) => (
-          <button key={n} type="button" className="dice-pick" title={diceHint(n, inspired)} onClick={guard(() => onPick(n))}>
-            <span className="dice-pick-count">{n}</span>
-            <span className="dice-pick-label">{n === 1 ? 'die' : 'dice'}</span>
-            {inspired ? (
-              // Preview the roll: the war cry's 6 is already showing, the rest are
-              // still to be thrown.
-              <span className="dice-pick-pips" aria-hidden="true">
-                {dicePips(n, true).map((pip, i) => (
-                  <span key={i} className={`dice-pip ${pip}`}>
-                    {pip === 'sure' ? '6' : '?'}
-                  </span>
-                ))}
-              </span>
-            ) : null}
-            <kbd>{n}</kbd>
+        {choices.map((n, i) => (
+          <button
+            key={n}
+            type="button"
+            className="dice-pick"
+            title={diceHint(n, inspired)}
+            aria-label={`Roll ${n} ${n === 1 ? 'die' : 'dice'}`}
+            onClick={guard(() => onPick(n))}
+          >
+            {/* An inspired unit's first die is the war cry's sure 6, gold as in the roll. */}
+            <DieFace pips={n} sure={inspired && i === 0} />
           </button>
         ))}
       </div>
     </div>
+  );
+}
+
+/** Where each pip sits on a 24-unit face, for the counts the menu offers. */
+const PIP_SPOTS: Record<number, ReadonlyArray<readonly [number, number]>> = {
+  1: [[12, 12]],
+  2: [[7, 7], [17, 17]],
+  3: [[6, 6], [12, 12], [18, 18]],
+  4: [[7, 7], [17, 7], [7, 17], [17, 17]],
+};
+
+/** A die face showing how many dice the button commits. */
+function DieFace({ pips, sure }: { pips: number; sure: boolean }): JSX.Element {
+  return (
+    <svg className={`die-face${sure ? ' sure' : ''}`} viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="1" y="1" width="22" height="22" rx="5" />
+      {(PIP_SPOTS[pips] ?? []).map(([x, y]) => (
+        <circle key={`${x},${y}`} cx={x} cy={y} r="2.3" />
+      ))}
+    </svg>
   );
 }

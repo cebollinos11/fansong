@@ -1677,82 +1677,89 @@ button.secondary {
 }
 
 .dice-menu-title {
-  font-size: 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.03em;
-  text-align: center;
   white-space: nowrap;
 }
 
 .dice-menu-quality {
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
-.dice-menu-inspired {
-  font-size: 10px;
-  font-weight: 700;
-  text-align: center;
-  white-space: nowrap;
+/* Inspired by a war cry: the gold of the sure 6. */
+.dice-menu.inspired .dice-menu-quality {
   color: #ffae3c;
+}
+
+.dice-menu-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 132px;
+}
+
+.dice-menu-traits span {
+  font-size: 10px;
+  line-height: 14px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--accent);
+  cursor: help;
 }
 
 .dice-menu-row {
   display: flex;
+  justify-content: center;
   gap: 6px;
 }
 
 .dice-pick {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  min-width: 46px;
-  padding: 5px 8px 6px;
-  line-height: 1.1;
+  padding: 6px;
+  line-height: 0;
   background: var(--panel-2);
+  border-radius: 8px;
+  transition:
+    border-color 0.1s,
+    transform 0.1s;
 }
 
-.dice-pick-count {
-  font-size: 18px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+.dice-pick:hover:not(:disabled) {
+  border-color: var(--p0);
+  transform: translateY(-1px);
 }
 
-.dice-pick-label {
-  font-size: 10px;
-  color: var(--muted);
+.die-face {
+  display: block;
+  width: 26px;
+  height: 26px;
 }
 
-.dice-pick-pips {
-  display: flex;
-  gap: 2px;
-  margin-top: 2px;
+.die-face rect {
+  fill: #e9edf2;
 }
 
-/* A die still to be rolled, and the war cry's sure 6 (gold, as in the roll). */
-.dice-pip {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 12px;
-  text-align: center;
-  color: var(--muted);
-  border: 1px solid var(--line);
+.die-face circle {
+  fill: #1a1f27;
 }
 
-.dice-pip.sure {
-  color: #1a1206;
-  background: #ffae3c;
-  border-color: #ffae3c;
-  box-shadow: 0 0 6px rgba(255, 174, 60, 0.75);
+/* The war cry's sure 6, gold as in the roll. */
+.die-face.sure rect {
+  fill: #ffae3c;
 }
 
-.dice-pick kbd {
-  margin: 1px 0 0;
-  font-size: 10px;
+.die-face.sure circle {
+  fill: #1a1206;
+}
+
+.die-face.sure {
+  filter: drop-shadow(0 0 4px rgba(255, 174, 60, 0.75));
 }
 
 .gameover-actions {

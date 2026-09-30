@@ -3,14 +3,6 @@
  * (and the inspired guarantee it promises) is tested without a DOM.
  */
 
-/** One die in a choice's preview: an unknown roll, or the war cry's sure 6. */
-export type DicePip = 'roll' | 'sure';
-
-/** The dice a choice of `n` rolls; an inspired unit's first is a sure 6. */
-export function dicePips(n: number, inspired: boolean): DicePip[] {
-  return Array.from({ length: n }, (_, i) => (inspired && i === 0 ? 'sure' : 'roll'));
-}
-
 /** What committing this many dice buys, and what it risks. */
 export function diceHint(n: number, inspired: boolean): string {
   if (inspired) {

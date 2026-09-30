@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { unitById, vecKey, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
+import { airborne, unitById, vecKey, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
 import { BACKDROP_LABELS, BACKDROPS, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
 import { InfoLines } from './StatIcons.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
+import { traitTags } from './hudView.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 
 interface Props {
@@ -395,6 +396,7 @@ export function BoardCanvas(props: Props): JSX.Element {
           owner={diceMenuUnit.owner}
           quality={diceMenuUnit.quality}
           inspired={diceMenuUnit.inspired}
+          traits={traitTags(diceMenuUnit, diceMenuUnit.traits.flying && !airborne(props.state, diceMenuUnit))}
           choices={props.diceChoices ?? []}
           project={project}
           onPick={(n) => props.onChooseDice?.(n)}
