@@ -460,6 +460,12 @@ const COMBAT_SPAN_MARGIN = 2.2; // how much of the close-up the two combatants t
 const COMBAT_MIN_SPAN = 5; // world units kept in view (~5 hexes), however close the pair stand
 const COMBAT_MAX_ZOOM = 0.7; // never closer than this fraction of the player's own framing
 const FRAME_LIFT = 0.55; // a close-up centres this high above a unit's base (mid-body, scaled by its size), not on its feet
+// Two fighters standing in line with the camera hide one behind the other, so
+// a close-up turns around them — only as far as it takes to show both.
+const BODY_WIDTH = 0.6; // world width of a unit's body on screen: its torso, so weapons and shields may still overlap a little
+const BODY_HEIGHT = 1.3; // fallback height of a unit's body, for a cutout whose art hasn't loaded
+const SEPARATE_STEP = Math.PI / 60; // turns tried in steps of this (3°), nearest first
+const HEADING_RETURN = Math.PI / 6; // a fight that left the camera turned further than this (30°) turns back to the player's heading
 
 // The opening shot: the camera starts on the deployed warbands rather than the
 // bare table, so the fight — not the empty ground around it — fills the view.
@@ -524,6 +530,19 @@ type ShotEnding = 'hit' | 'miss' | 'cover';
 /** The middle of a set of points. */
 function middle(points: THREE.Vector3[]): THREE.Vector3 {
   return points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
+}
+
+/** The signed turn (radians, within ±π) from heading `from` to heading `to`. */
+function turnBetween(from: number, to: number): number {
+  return THREE.MathUtils.euclideanModulo(to - from + Math.PI, Math.PI * 2) - Math.PI;
+}
+
+/** Where the camera stands: the orbit pivot on the ground, the view distance, and its heading around the table. */
+interface View {
+  target: THREE.Vector3;
+  dist: number;
+  /** Azimuth of the camera around the pivot (radians, as {@link THREE.Spherical}'s theta). */
+  yaw: number;
 }
 
 /** The status flags that change how a unit is drawn. */
@@ -714,12 +733,14 @@ export class BoardView {
    * wait for the camera.
    */
   cameraMode: CameraMode = 'cinematic';
-  /** A camera move in progress: the orbit pivot glides while the view distance eases. */
+  /** A camera move in progress: the orbit pivot glides while the view distance and heading ease. */
   private cam: {
     fromTarget: THREE.Vector3;
     toTarget: THREE.Vector3;
     fromDist: number;
     toDist: number;
+    fromYaw: number;
+    toYaw: number;
     start: number;
     dur: number;
     /** Constant speed (a tracked projectile) rather than eased ends. */
@@ -729,9 +750,12 @@ export class BoardView {
    * Where the camera will stand once every move scheduled in this batch has run.
    * Each move is planned from here, not from where the camera happens to be now.
    */
-  private planned: { target: THREE.Vector3; dist: number } | null = null;
-  /** The framing the player last set by hand; given back whenever they can act again. */
-  private playerView: { target: THREE.Vector3; dist: number } | null = null;
+  private planned: View | null = null;
+  /**
+   * The framing the player last set by hand; given back whenever they can act
+   * again (its heading only when a fight turned the camera well away from it).
+   */
+  private playerView: View | null = null;
   /** Whether the player could act at the last update, to spot the moment they can again. */
   private wasInteractive = false;
   /** The selection the camera has already answered, so a pick is panned to once. */
@@ -1455,7 +1479,7 @@ export class BoardView {
     const ids = events.flatMap((e) =>
       e.type === 'ActivationChosen' || e.type === 'DiceRolled' || e.type === 'UnitMoved' ? [e.unitId] : [],
     );
-    const dur = this.scheduleMove(at, centre, this.fitAround(points, centre, end.dist));
+    const dur = this.scheduleMove(at, centre, this.fitAround(points, centre, end.dist, end.yaw));
     if (dur > 0) this.focusUnits(ids, at);
     return dur;
   }
@@ -1471,26 +1495,26 @@ export class BoardView {
     if (points.length === 0) return 0;
     const end = this.plannedCamera();
     if (this.inView(points, end)) return 0;
-    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? middle(points));
-    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, end.dist));
+    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? middle(points), end.yaw);
+    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, end.dist, end.yaw));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
 
   /**
    * The nearest view distance, no nearer than `near`, at which every point (and
-   * the dice card over it) sits comfortably in view around `target` — or as far
-   * out as the player could zoom when nothing nearer holds them.
+   * the dice card over it) sits comfortably in view around `target`, seen from
+   * heading `yaw` — or as far out as the player could zoom when nothing nearer holds them.
    */
-  private fitAround(points: THREE.Vector3[], target: THREE.Vector3, near: number): number {
+  private fitAround(points: THREE.Vector3[], target: THREE.Vector3, near: number, yaw: number): number {
     let lo = near; // may be too close
     let hi = this.controls.maxDistance;
     if (lo >= hi) return hi;
-    if (this.inView(points, { target, dist: lo })) return lo;
-    if (!this.inView(points, { target, dist: hi })) return hi;
+    if (this.inView(points, { target, dist: lo, yaw })) return lo;
+    if (!this.inView(points, { target, dist: hi, yaw })) return hi;
     for (let i = 0; i < FIT_STEPS; i++) {
       const mid = (lo + hi) / 2;
-      if (this.inView(points, { target, dist: mid })) hi = mid;
+      if (this.inView(points, { target, dist: mid, yaw })) hi = mid;
       else lo = mid;
     }
     return hi;
@@ -1505,6 +1529,7 @@ export class BoardView {
   /**
    * Frame a blow on its two combatants: centre them and move in close enough to
    * read the fight, so the dice cards and then the strike play out in a close-up.
+   * If one would stand in front of the other, turn around them until both show.
    * A `dread`ful one (a gruesome kill coming) is framed tighter, and slower.
    * Returns how long the move takes, which the caller plays the blow after.
    */
@@ -1514,7 +1539,8 @@ export class BoardView {
     if (points.length === 0) return 0;
 
     const centre = middle(points);
-    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre);
+    const yaw = this.separatingYaw(unitIds, this.plannedCamera().yaw);
+    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre, yaw);
     // Close enough to fill the view with the pair — unless the camera is nearly
     // there already, when a pan is enough. Only a gruesome kill always moves in.
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
@@ -1522,10 +1548,45 @@ export class BoardView {
       ? this.closeUp(span * DREAD_SPAN_MARGIN, true)
       : this.steadyZoom(this.closeUp(span * COMBAT_SPAN_MARGIN));
     // Both ends of a long shot stay in the frame from the start.
-    const dist = this.fitAround(points, pivot, close);
-    const dur = this.scheduleMove(at, pivot, dist, dread ? DREAD_FRAME_SLOW : 1);
+    const dist = this.fitAround(points, pivot, close, yaw);
+    const dur = this.scheduleMove(at, pivot, dist, dread ? DREAD_FRAME_SLOW : 1, yaw);
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
+  }
+
+  /**
+   * The heading nearest `yaw` from which the two units of `unitIds` don't cover
+   * one another on screen: `yaw` itself when they already stand clear, else the
+   * smallest turn around them that parts them — side by side, or one far enough
+   * up the screen behind the other. Anything but a pair keeps `yaw`.
+   */
+  private separatingYaw(unitIds: string[], yaw: number): number {
+    const [a, b] = unitIds.map((id) => this.units.get(id));
+    if (!a || !b || a.fade || b.fade || unitIds.length !== 2) return yaw;
+    const pitch = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target)).phi;
+    const offset = b.group.position.clone().sub(a.group.position);
+    const width = (BODY_WIDTH * (a.size + b.size)) / 2;
+    const overlap = (heading: number): boolean => {
+      // Across the screen: along the camera's right. Up it: ground further from
+      // the camera rises by sin(elevation) = cos(pitch), height by sin(pitch).
+      const across = offset.x * Math.cos(heading) - offset.z * Math.sin(heading);
+      const away = -(offset.x * Math.sin(heading) + offset.z * Math.cos(heading));
+      const up = away * Math.cos(pitch) + offset.y * Math.sin(pitch); // b's feet above a's
+      return Math.abs(across) < width && up < this.bodyHeight(a) && -up < this.bodyHeight(b);
+    };
+    if (!overlap(yaw)) return yaw;
+    for (let turn = SEPARATE_STEP; turn < Math.PI / 2; turn += SEPARATE_STEP) {
+      for (const heading of [yaw + turn, yaw - turn]) if (!overlap(heading)) return heading;
+    }
+    // Side on parts them most; when even that won't do, it is the best there is.
+    const side = Math.atan2(offset.x, offset.z) + Math.PI / 2;
+    return Math.abs(turnBetween(yaw, side)) <= Math.PI / 2 ? side : side + Math.PI;
+  }
+
+  /** How tall a unit's body stands on screen: its pose's art from the feet up. */
+  private bodyHeight(obj: UnitObj): number {
+    const rect = obj.atlas?.frames.get(obj.animator.base);
+    return obj.atlas && rect ? (obj.atlas.anchorY - rect.top) * SPRITE_PX * obj.size : BODY_HEIGHT * obj.size;
   }
 
   /**
@@ -1542,14 +1603,14 @@ export class BoardView {
       const view = this.plannedCamera();
       const dist = view.dist * DREAD_DOLLY;
       this.at(start, () => this.moveCamera(view.target, dist, hit - start, true));
-      this.planned = { target: view.target, dist };
+      this.planned = { ...view, dist };
     }
     if (cinematic && victim) {
       // Halfway to the victim, so the killer stays in the shot.
       const view = this.plannedCamera();
-      const to = this.pivotFor(this.bodyAt(victim, victim.targetPos)).lerp(view.target, 0.5);
+      const to = this.pivotFor(this.bodyAt(victim, victim.targetPos), view.yaw).lerp(view.target, 0.5);
       this.at(hit, () => this.moveCamera(to, this.camera.position.distanceTo(this.controls.target) * PUSH_IN, PUSH_IN_MS));
-      this.planned = { target: to, dist: view.dist * PUSH_IN };
+      this.planned = { ...view, target: to, dist: view.dist * PUSH_IN };
     }
     const triumph = hit + VICTORY_AT_MS;
     this.at(triumph, () => this.exult(d.killer));
@@ -1637,9 +1698,10 @@ export class BoardView {
     if (points.length === 0) return 0;
     const centre = middle(points);
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
-    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre);
+    const { yaw } = this.plannedCamera();
+    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre, yaw);
     const close = this.steadyZoom(this.closeUp(Math.max(span * COMBAT_SPAN_MARGIN, REASSEMBLE_MIN_SPAN)));
-    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, close));
+    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, close, yaw));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1669,10 +1731,10 @@ export class BoardView {
   /**
    * The orbit pivot (on the ground) that puts `point` in the middle of the view:
    * the camera looks down at an angle, so it is where the line of sight through
-   * `point` meets the ground, a little beyond it.
+   * `point` meets the ground, a little beyond it — seen from heading `yaw`.
    */
-  private pivotFor(point: THREE.Vector3): THREE.Vector3 {
-    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+  private pivotFor(point: THREE.Vector3, yaw: number): THREE.Vector3 {
+    const dir = this.viewDir(yaw);
     if (dir.y < 1e-3) return point.clone().setY(0);
     return point.clone().addScaledVector(dir, -point.y / dir.y).setY(0);
   }
@@ -1709,16 +1771,32 @@ export class BoardView {
   }
 
   /** Where the camera will be once everything already scheduled has played out. */
-  private plannedCamera(): { target: THREE.Vector3; dist: number } {
-    if (this.planned) return { target: this.planned.target.clone(), dist: this.planned.dist };
+  private plannedCamera(): View {
+    if (this.planned) return { ...this.planned, target: this.planned.target.clone() };
     return this.cam
-      ? { target: this.cam.toTarget.clone(), dist: this.cam.toDist }
-      : { target: this.controls.target.clone(), dist: this.camera.position.distanceTo(this.controls.target) };
+      ? { target: this.cam.toTarget.clone(), dist: this.cam.toDist, yaw: this.cam.toYaw }
+      : this.currentView();
+  }
+
+  /** Where the camera stands right now. */
+  private currentView(): View {
+    const offset = this.camera.position.clone().sub(this.controls.target);
+    return {
+      target: this.controls.target.clone(),
+      dist: offset.length(),
+      yaw: new THREE.Spherical().setFromVector3(offset).theta,
+    };
+  }
+
+  /** The direction from the pivot to the camera at heading `yaw`, at the fixed viewing angle. */
+  private viewDir(yaw: number): THREE.Vector3 {
+    const s = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
+    return new THREE.Vector3().setFromSpherical(s.set(1, s.phi, yaw));
   }
 
   /** Whether every point (and the dice card over its head) sits comfortably inside the view. */
-  private inView(points: THREE.Vector3[], from: { target: THREE.Vector3; dist: number }): boolean {
-    const offset = this.camera.position.clone().sub(this.controls.target).normalize().multiplyScalar(from.dist);
+  private inView(points: THREE.Vector3[], from: View): boolean {
+    const offset = this.viewDir(from.yaw).multiplyScalar(from.dist);
     const cam = this.camera.clone();
     cam.position.copy(from.target).add(offset);
     cam.lookAt(from.target);
@@ -1733,19 +1811,27 @@ export class BoardView {
 
   /**
    * Schedule a camera move `at` ms from now, to `target` (the pivot, on the
-   * ground) and `dist` (view distance; null keeps the current one), taking
-   * `slow` times as long as usual. Returns its length.
+   * ground), `dist` (view distance; null keeps the current one) and `yaw`
+   * (heading; null keeps it too), taking `slow` times as long as usual.
+   * Returns its length.
    */
-  private scheduleMove(at: number, target: THREE.Vector3, dist: number | null, slow = 1): number {
+  private scheduleMove(at: number, target: THREE.Vector3, dist: number | null, slow = 1, yaw: number | null = null): number {
     const from = this.plannedCamera();
     const travel = new THREE.Vector3(target.x - from.target.x, 0, target.z - from.target.z).length();
     const zoom = dist === null ? 0 : Math.abs(dist - from.dist);
+    // A turn counts as the distance the camera swings through.
+    const swing = yaw === null ? 0 : Math.abs(turnBetween(from.yaw, yaw)) * (dist ?? from.dist);
     // Already looking at it: no nudge, and no wait for one.
-    if (travel + zoom < CAMERA_STILL) return 0;
-    const dur = slow * THREE.MathUtils.clamp(PAN_MIN_MS + (travel + zoom) * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
-    this.planned = { target: new THREE.Vector3(target.x, 0, target.z), dist: dist ?? from.dist };
-    this.at(at, () => this.moveCamera(target, dist, dur));
+    if (travel + zoom + swing < CAMERA_STILL) return 0;
+    const dur = slow * this.moveMs(travel + zoom + swing);
+    this.planned = { target: new THREE.Vector3(target.x, 0, target.z), dist: dist ?? from.dist, yaw: yaw ?? from.yaw };
+    this.at(at, () => this.moveCamera(target, dist, dur, false, yaw));
     return dur;
+  }
+
+  /** How long a camera move covering `length` world units (pan, zoom and swing together) takes. */
+  private moveMs(length: number): number {
+    return THREE.MathUtils.clamp(PAN_MIN_MS + length * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
   }
 
   /**
@@ -1773,18 +1859,21 @@ export class BoardView {
     let hi = 1;
     for (let i = 0; i < SELECT_PAN_STEPS; i++) {
       const mid = (lo + hi) / 2;
-      if (this.inView([point], { target: from.target.clone().lerp(flat, mid), dist: from.dist })) hi = mid;
+      if (this.inView([point], { ...from, target: from.target.clone().lerp(flat, mid) })) hi = mid;
       else lo = mid;
     }
     const target = from.target.clone().lerp(flat, Math.min(1, hi + SELECT_PAN_SLACK));
     const travel = target.distanceTo(from.target);
     if (travel < CAMERA_STILL) return;
-    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + travel * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
-    this.playerView = { target: target.clone(), dist: from.dist };
-    this.moveCamera(target, null, dur);
+    this.playerView = { ...from, target: target.clone() };
+    this.moveCamera(target, null, this.moveMs(travel));
   }
 
-  /** Glide back to the framing the player set for themselves, if they've been moved off it. */
+  /**
+   * Glide back to the framing the player set for themselves, if they've been
+   * moved off it. A fight's turn around the table is only undone when it left
+   * them looking from well off their own heading; a small one they keep.
+   */
   private returnToPlayerView(): void {
     const view = this.playerView;
     if (this.cameraMode === 'off' || !view || this.downPos) return;
@@ -1792,29 +1881,33 @@ export class BoardView {
     const from = this.plannedCamera();
     const travel = new THREE.Vector3(view.target.x - from.target.x, 0, view.target.z - from.target.z).length();
     const zoom = Math.abs(view.dist - from.dist);
-    if (travel + zoom < CAMERA_STILL) return;
-    const dur = THREE.MathUtils.clamp(PAN_MIN_MS + (travel + zoom) * PAN_MS_PER_UNIT, PAN_MIN_MS, PAN_MAX_MS);
-    this.moveCamera(view.target, view.dist, dur);
+    const turn = Math.abs(turnBetween(from.yaw, view.yaw));
+    const swing = turn > HEADING_RETURN ? turn * view.dist : 0;
+    if (travel + zoom + swing < CAMERA_STILL) return;
+    this.moveCamera(view.target, view.dist, this.moveMs(travel + zoom + swing), false, swing > 0 ? view.yaw : null);
   }
 
   /** Take the camera as the player has just left it; that framing is theirs to get back. */
   private rememberPlayerView(): void {
-    this.playerView = {
-      target: this.controls.target.clone(),
-      dist: this.camera.position.distanceTo(this.controls.target),
-    };
+    this.playerView = this.currentView();
   }
 
-  /** Start a camera move now, from wherever the camera currently is. */
-  private moveCamera(target: THREE.Vector3, dist: number | null, dur: number, linear = false): void {
+  /**
+   * Start a camera move now, from wherever the camera currently is. A null
+   * `dist` keeps the current distance; a null `yaw` keeps the heading the camera
+   * is already turning to.
+   */
+  private moveCamera(target: THREE.Vector3, dist: number | null, dur: number, linear = false, yaw: number | null = null): void {
     if (this.cameraMode === 'off' || this.downPos) return;
-    const fromTarget = this.controls.target.clone();
-    const fromDist = this.camera.position.distanceTo(fromTarget);
+    const from = this.currentView();
     this.cam = {
-      fromTarget,
+      fromTarget: from.target,
       toTarget: new THREE.Vector3(target.x, 0, target.z),
-      fromDist,
-      toDist: dist ?? fromDist,
+      fromDist: from.dist,
+      toDist: dist ?? from.dist,
+      fromYaw: from.yaw,
+      // The short way round.
+      toYaw: from.yaw + turnBetween(from.yaw, yaw ?? this.cam?.toYaw ?? from.yaw),
       start: this.now,
       dur: Math.max(1, dur),
       ...(linear ? { linear: true } : {}),
@@ -1833,7 +1926,7 @@ export class BoardView {
       this.controls.minDistance,
       this.controls.maxDistance,
     );
-    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    const dir = this.viewDir(THREE.MathUtils.lerp(move.fromYaw, move.toYaw, eased));
     this.controls.target.copy(target);
     this.camera.position.copy(target).addScaledVector(dir, dist);
     if (k >= 1) this.cam = null;
@@ -3940,7 +4033,7 @@ export class BoardView {
     // not tip the view up or down.
     this.lockPitch(Math.acos(this.camera.position.clone().sub(this.controls.target).normalize().y));
     this.homeDist = start ? start.dist : table;
-    this.playerView = { target: this.controls.target.clone(), dist: this.homeDist };
+    this.playerView = { ...this.currentView(), dist: this.homeDist };
     this.opening = start ? { points, ...start } : null;
     this.controls.update();
     this.controls.saveState();
@@ -3964,7 +4057,7 @@ export class BoardView {
     this.controls.target.copy(start.target);
     this.camera.position.copy(start.target).addScaledVector(dir, start.dist);
     this.homeDist = start.dist;
-    this.playerView = { target: start.target.clone(), dist: start.dist };
+    this.playerView = this.currentView();
     this.opening = { points: open.points, ...start };
     this.controls.update();
     this.controls.saveState();
@@ -3985,10 +4078,11 @@ export class BoardView {
     // away from. Fit is monotonic in the distance, so halve the range onto it.
     let lo = Math.max(this.controls.minDistance, this.fitDistance(START_MIN_SPAN)); // may be too close
     let hi = this.controls.maxDistance; // as far out as the player could zoom
-    if (lo >= hi || !this.inView(points, { target, dist: hi })) return { target, dist: hi };
+    const { yaw } = this.currentView();
+    if (lo >= hi || !this.inView(points, { target, dist: hi, yaw })) return { target, dist: hi };
     for (let i = 0; i < START_FIT_STEPS; i++) {
       const mid = (lo + hi) / 2;
-      if (this.inView(points, { target, dist: mid })) hi = mid;
+      if (this.inView(points, { target, dist: mid, yaw })) hi = mid;
       else lo = mid;
     }
     return { target, dist: hi };
