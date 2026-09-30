@@ -12,7 +12,7 @@
  */
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { makeHexGrid, type TerrainFeature, type Vec } from '@fansong/engine';
+import { GAME_MODES, makeHexGrid, type TerrainFeature, type Vec } from '@fansong/engine';
 import { flatMap, mapToJson, type MapDef } from '../src/map.js';
 import { validateMap } from '../src/mapValidate.js';
 
@@ -56,10 +56,45 @@ function symNoise(v: Vec, w: number, h: number, seed: number): number {
   return noise(a!.x, a!.y, seed);
 }
 
+/** `map`'s hexes that satisfy `pred`, in row-major order. */
+function hexesWhere(map: MapDef, pred: (v: Vec) => boolean): Vec[] {
+  return map.hexes.map((_, i) => ({ x: i % map.width, y: Math.floor(i / map.width) })).filter(pred);
+}
+
+/** The central 2×2 block of hexes, which is its own mirror image on an even-width map. */
+const centreBlock = (w: number, h: number) => (v: Vec) =>
+  (v.x === w / 2 - 1 || v.x === w / 2) && (v.y === Math.floor((h - 1) / 2) || v.y === Math.ceil((h - 1) / 2));
+
+/** Flag bases on each side's home edge, level with the middle of the board. */
+const edgeFlags = (w: number, h: number): [Vec, Vec] => [
+  { x: 0, y: Math.floor((h - 1) / 2) },
+  { x: w - 1, y: h - 1 - Math.floor((h - 1) / 2) },
+];
+
+// ---------------------------------------------------------------------------
+// Open Field — flat, featureless ground: the plain board. Flags sit on each
+// side's home edge, the hill is the centre, and the conquest zones run down
+// the centre line.
+function openField(): MapDef {
+  const W = 12;
+  const H = 10;
+  const map = flatMap(W, H);
+  const north = (v: Vec) => (v.x === 5 || v.x === 6) && v.y === 1;
+  const south = (v: Vec) => north({ x: W - 1 - v.x, y: H - 1 - v.y });
+  const centre = hexesWhere(map, centreBlock(W, H));
+  map.objectives = {
+    flags: edgeFlags(W, H),
+    hill: centre,
+    conquest: [hexesWhere(map, north), centre, hexesWhere(map, south)],
+  };
+  return map;
+}
+
 // ---------------------------------------------------------------------------
 // Rolling Hills — elevation-heavy, few features. A broad central hilltop (the
-// king-of-the-hill zone) with a pair of flanking hills and low rises; a few
-// scattered trees and boulders.
+// king-of-the-hill zone and middle conquest zone) with a pair of flanking
+// hills and low rises; a few scattered trees and boulders. The outer conquest
+// zones sit north and south of the hilltop; flags on each side's home edge.
 function rollingHills(): MapDef {
   const W = 14;
   const H = 12;
@@ -92,10 +127,14 @@ function rollingHills(): MapDef {
     return { elevation, feature: features.get(`${v.x},${v.y}`) };
   });
   // The hilltop proper: the two central peaks' plateaus, all at elevation 3.
+  const hill = [...disc(W, H, centre, 1), ...disc(W, H, { x: W - 1 - centre.x, y: H - 1 - centre.y }, 1)]
+    .filter((v, i, a) => a.findIndex((u) => u.x === v.x && u.y === v.y) === i)
+    .sort((a, b) => a.y - b.y || a.x - b.x);
+  const north = (v: Vec) => (v.x === 6 || v.x === 7) && (v.y === 1 || v.y === 2);
   map.objectives = {
-    hill: [...disc(W, H, centre, 1), ...disc(W, H, { x: W - 1 - centre.x, y: H - 1 - centre.y }, 1)]
-      .filter((v, i, a) => a.findIndex((u) => u.x === v.x && u.y === v.y) === i)
-      .sort((a, b) => a.y - b.y || a.x - b.x),
+    flags: edgeFlags(W, H),
+    hill,
+    conquest: [hexesWhere(map, north), hill, hexesWhere(map, (v) => north({ x: W - 1 - v.x, y: H - 1 - v.y }))],
   };
   return map;
 }
@@ -103,7 +142,9 @@ function rollingHills(): MapDef {
 // ---------------------------------------------------------------------------
 // Old Forest — dense woodland broken by a central glade and two side
 // clearings; forest blocks sight *through* it, so fights happen at short range
-// and archers hunt for lanes. Flags sit at each side's home edge.
+// and archers hunt for lanes. Flags sit at each side's home edge; the heart of
+// the central glade is the hill and middle conquest zone, with the woods north
+// and south of it the outer conquest zones.
 function oldForest(): MapDef {
   const W = 14;
   const H = 12;
@@ -118,6 +159,8 @@ function oldForest(): MapDef {
   const rocks = [{ x: 5, y: 8 }, mirror({ x: 5, y: 8 }), { x: 9, y: 3 }, mirror({ x: 9, y: 3 })];
   const inGlade = (v: Vec) => glades.some(([c, r]) => grid.distance(c, v) <= r);
   const isRock = (v: Vec) => rocks.some((r) => r.x === v.x && r.y === v.y);
+  const north = (v: Vec) => (v.x === 6 || v.x === 7) && (v.y === 1 || v.y === 2);
+  const south = (v: Vec) => north(mirror(v));
 
   const map = build('old-forest', 'Old Forest', W, H, (v) => {
     const home = Math.min(v.x, W - 1 - v.x); // columns from the nearest home edge
@@ -126,7 +169,12 @@ function oldForest(): MapDef {
     const density = home === 2 ? 0.4 : 0.8;
     return symNoise(v, W, H, 0x0f0e57) < density ? { elevation: 0, feature: 'forest' } : { elevation: 0 };
   });
-  map.objectives = { flags: [{ x: 0, y: 5 }, mirror({ x: 0, y: 5 })] };
+  const centre = hexesWhere(map, centreBlock(W, H));
+  map.objectives = {
+    flags: [{ x: 0, y: 5 }, mirror({ x: 0, y: 5 })],
+    hill: centre,
+    conquest: [hexesWhere(map, north), centre, hexesWhere(map, south)],
+  };
   return map;
 }
 
@@ -135,7 +183,8 @@ function oldForest(): MapDef {
 // middle rows, a cross street either side of the centre, and back lanes. Some
 // houses have fallen to rubble (rock) or overgrown gardens (forest). The
 // market square at the heart of the village is raised a step and is the
-// king-of-the-hill zone.
+// king-of-the-hill zone and middle conquest zone; the back lanes north and
+// south of it hold the outer conquest zones.
 function ruinedVillage(): MapDef {
   const W = 14;
   const H = 12;
@@ -156,12 +205,13 @@ function ruinedVillage(): MapDef {
     if (n < 0.82) return { elevation: 0, feature: 'forest' };
     return { elevation: 0 };
   });
+  // The back lane (row 2) where it passes the village's middle blocks.
+  const lane = (v: Vec) => v.y === 2 && v.x >= 5 && v.x <= 8;
+  const square = hexesWhere(map, market);
   map.objectives = {
     flags: [{ x: 0, y: 5 }, mirror({ x: 0, y: 5 })],
-    hill: map.hexes
-      .map((_, i) => ({ x: i % W, y: Math.floor(i / W) }))
-      .filter(market)
-      .sort((a, b) => a.y - b.y || a.x - b.x),
+    hill: square,
+    conquest: [hexesWhere(map, lane), square, hexesWhere(map, (v) => lane(mirror(v)))],
   };
   return map;
 }
@@ -170,8 +220,9 @@ function ruinedVillage(): MapDef {
 // Rocky Pass — a rocky ridge runs down the middle of the field, crossed only
 // by three narrow passes: one at the centre and one near each board edge. The
 // slopes rise towards the ridge, so whoever holds a pass holds the high
-// ground; boulders litter the approaches. The centre pass is the
-// king-of-the-hill zone.
+// ground; boulders litter the approaches. The three passes are the conquest
+// zones, the centre one also the king-of-the-hill zone; flags sit on each
+// side's home edge.
 function rockyPass(): MapDef {
   const W = 14;
   const H = 12;
@@ -191,11 +242,13 @@ function rockyPass(): MapDef {
     }
     return isBoulder(v) ? { elevation, feature: 'rock' } : { elevation };
   });
+  // The north pass with a hex of approach either side; the south pass mirrors it.
+  const northPass = (v: Vec) => v.y === 1 && v.x >= 5 && v.x <= 8;
+  const centre = hexesWhere(map, centrePass);
   map.objectives = {
-    hill: map.hexes
-      .map((_, i) => ({ x: i % W, y: Math.floor(i / W) }))
-      .filter(centrePass)
-      .sort((a, b) => a.y - b.y || a.x - b.x),
+    flags: edgeFlags(W, H),
+    hill: centre,
+    conquest: [hexesWhere(map, northPass), centre, hexesWhere(map, (v) => northPass(mirror(v)))],
   };
   return map;
 }
@@ -205,7 +258,8 @@ function rockyPass(): MapDef {
 // edge, stepping down in rings; its flag sits on top. Rock walls guard the
 // plateau's front, leaving ramps at the flanks, so a raider must climb into
 // the defenders' high ground. Between the towers lies low ground with
-// scattered copses and a slight central rise. Built for capture-the-flag.
+// scattered copses and three slight rises down the centre line: the conquest
+// zones, the middle one also the hill. Built for capture-the-flag.
 function twinTowers(): MapDef {
   const W = 14;
   const H = 12;
@@ -219,19 +273,26 @@ function twinTowers(): MapDef {
       const ahead = i === 0 ? v.x - t.x : t.x - v.x; // columns towards the enemy
       return ahead >= 1 && Math.abs(v.y - t.y) <= 1;
     });
-  const centre = (v: Vec) => (v.x === 6 || v.x === 7) && (v.y === 5 || v.y === 6);
+  const centre = centreBlock(W, H);
+  const north = (v: Vec) => (v.x === 6 || v.x === 7) && (v.y === 1 || v.y === 2);
+  const south = (v: Vec) => north(mirror(v));
 
   const map = build('twin-towers', 'Twin Towers', W, H, (v) => {
     const d = Math.min(...towers.map((t) => grid.distance(t, v)));
     const elevation = Math.max(0, 3 - Math.max(0, d - 1));
     if (isWall(v)) return { elevation, feature: 'rock' };
-    if (centre(v)) return { elevation: 1 };
+    if (centre(v) || north(v) || south(v)) return { elevation: 1 };
     if (d >= 4 && v.x >= 4 && v.x <= 9 && symNoise(v, W, H, 0x7e117) < 0.22) {
       return { elevation, feature: 'forest' };
     }
     return { elevation };
   });
-  map.objectives = { flags: [towers[0]!, towers[1]!] };
+  const rise = hexesWhere(map, centre);
+  map.objectives = {
+    flags: [towers[0]!, towers[1]!],
+    hill: rise,
+    conquest: [hexesWhere(map, north), rise, hexesWhere(map, south)],
+  };
   return map;
 }
 
@@ -241,7 +302,8 @@ function twinTowers(): MapDef {
 // 6–7. The three conquest zones sit on the north road, at the crossing and on
 // the south road; the crossing, raised a step, doubles as the
 // king-of-the-hill zone. Between the roads are farmsteads (buildings),
-// copses and low rises that screen the approaches.
+// copses and low rises that screen the approaches. Flags sit where the
+// east–west road leaves each side's home edge.
 function crossroads(): MapDef {
   const W = 14;
   const H = 12;
@@ -271,6 +333,7 @@ function crossroads(): MapDef {
       .filter(pred)
       .sort((a, b) => a.y - b.y || a.x - b.x);
   map.objectives = {
+    flags: [{ x: 0, y: 5 }, mirror({ x: 0, y: 5 })],
     hill: hexes(crossing),
     conquest: [hexes(north), hexes(crossing), hexes(south)],
   };
@@ -473,6 +536,7 @@ function stoneCrown(): MapDef {
 // ---------------------------------------------------------------------------
 
 const MAPS: MapDef[] = [
+  openField(),
   rollingHills(),
   oldForest(),
   ruinedVillage(),
@@ -483,9 +547,10 @@ const MAPS: MapDef[] = [
   stoneCrown(),
 ];
 
+// Every premade map hosts every game mode.
 for (const map of MAPS) {
-  const { ok, errors } = validateMap(map);
-  if (!ok) throw new Error(`${map.id}: ${errors.join('; ')}`);
+  const errors = [...new Set(GAME_MODES.flatMap((mode) => validateMap(map, mode).errors))];
+  if (errors.length > 0) throw new Error(`${map.id}: ${errors.join('; ')}`);
   writeFileSync(`${MAPS_DIR}${map.id}.json`, mapToJson(map));
   console.log(`wrote ${map.id}.json`);
 }

@@ -26,9 +26,9 @@ describe('built-in map registry', () => {
     for (const map of listMaps()) expect(validateMap(map)).toEqual({ ok: true, errors: [] });
   });
 
-  it('lists the default map first, identical to DEFAULT_MAP', () => {
+  it('lists the default map first: DEFAULT_MAP plus objectives', () => {
     expect(listMaps()[0]?.id).toBe(DEFAULT_MAP_ID);
-    expect(getMap(DEFAULT_MAP_ID)).toEqual(DEFAULT_MAP);
+    expect({ ...getMap(DEFAULT_MAP_ID)!, objectives: {} }).toEqual(DEFAULT_MAP);
   });
 
   it('returns undefined for an unknown id', () => {

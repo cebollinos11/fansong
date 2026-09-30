@@ -299,8 +299,8 @@ describe('every built-in map × every supported mode', () => {
     'capture-the-flag': ['flag', 'annihilation'],
   };
 
-  it('every built-in map hosts at least one objective mode', () => {
-    for (const map of listMaps()) expect(supportedModes(map).length).toBeGreaterThan(1);
+  it('every built-in map hosts every mode', () => {
+    for (const map of listMaps()) expect(supportedModes(map)).toEqual(GAME_MODES);
   });
 
   for (const map of listMaps()) {

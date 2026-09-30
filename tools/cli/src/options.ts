@@ -1,6 +1,7 @@
 import {
   buildMatch,
   DEFAULT_BOARD,
+  DEFAULT_MAP_ID,
   getMap,
   getPreset,
   listMaps,
@@ -12,7 +13,7 @@ import {
   type MapDef,
   type Warband,
 } from '@fansong/content';
-import { createDemoGame, createGame, GAME_MODES, type GameMode, type GameState } from '@fansong/engine';
+import { createDemoGame, createGame, GAME_MODES, MODE_RULES, type GameMode, type GameState } from '@fansong/engine';
 
 /** A bad command line: the message is shown to the user and the CLI exits with code 2. */
 export class CliError extends Error {}
@@ -163,8 +164,9 @@ export function setupMatch(opts: Options): { state: GameState; label: string } {
 
   const w0 = requirePreset(opts.p0 ?? FALLBACK_PRESET);
   const w1 = requirePreset(opts.p1 ?? FALLBACK_PRESET);
-  const map = opts.map === null ? null : requireMap(opts.map);
   const mode = opts.mode ?? 'annihilation';
+  // The flat default board has no objectives; an objective mode without --map plays on the default map.
+  const map = opts.map !== null ? requireMap(opts.map) : MODE_RULES[mode].requires ? getMap(DEFAULT_MAP_ID)! : null;
   checkMode(mode, map);
   // Annihilation passes no mode, so its config is byte-identical to the pre-mode CLI.
   const modeOpt = mode === 'annihilation' ? {} : { mode };

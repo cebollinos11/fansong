@@ -155,7 +155,7 @@ describe('RoomEngine — lobby', () => {
     const b = new FakeConn('b');
     join(room, a);
     join(room, b);
-    msg(room, a, { t: 'setMap', mapId: 'old-forest', mode: 'king-of-the-hill' });
+    msg(room, a, { t: 'setArmy', preset: 'custom', warband: { ...HORDE, name: ' ' }, king: 0 });
     expect(a.lobby().problem).not.toBeNull();
     msg(room, a, { t: 'ready', ready: true });
     msg(room, b, { t: 'ready', ready: true });

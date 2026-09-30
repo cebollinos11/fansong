@@ -17,7 +17,7 @@ import {
   type MatchSetup,
   type Warband,
 } from '@fansong/content';
-import { GAME_MODES, type GameMode, type Replay } from '@fansong/engine';
+import { GAME_MODES, MODE_RULES, type GameMode, type Replay } from '@fansong/engine';
 import { normalizeRoomCode, ROOM_CODE_LENGTH } from '@fansong/protocol';
 import type { Launch } from '../game/launch.js';
 import { parseReplay } from '../game/replay-io.js';
@@ -77,7 +77,8 @@ export function launchFor(
   const seats = mode === 'vsAI' ? (['human', 'ai'] as const) : (['human', 'human'] as const);
   const setup: MatchSetup = { presets, seats: [seats[0], seats[1]], seed };
   if (warbands) setup.warbands = warbands;
-  if (mapId !== DEFAULT_MAP_ID) setup.mapId = mapId;
+  // The flat default board carries no objectives, so an objective mode names the map.
+  if (mapId !== DEFAULT_MAP_ID || MODE_RULES[game.mode].requires) setup.mapId = mapId;
   if (game.mode !== 'annihilation') setup.mode = game.mode;
   if (kings) setup.kings = kings;
   return { kind: 'local', setup };

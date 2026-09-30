@@ -1,4 +1,4 @@
-import { isLegalCommand, reduce, type Command, type GameMode, type GameState, type Owner } from '@fansong/engine';
+import { isLegalCommand, MODE_RULES, reduce, type Command, type GameMode, type GameState, type Owner } from '@fansong/engine';
 import {
   createMatchFromPresets,
   DEFAULT_MAP_ID,
@@ -73,7 +73,8 @@ export function newRoomSnapshot(): RoomSnapshot {
 
 /**
  * The match the lobby's picks describe. Both rosters are always written out;
- * the default map, annihilation and (outside kill-the-king) Kings stay implicit.
+ * annihilation, (outside kill-the-king) Kings and — in the modes that need no
+ * objectives — the default map stay implicit.
  */
 export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks'>, seed: number): MatchSetup {
   const [a, b] = room.picks;
@@ -83,7 +84,7 @@ export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks'>,
     seats: ['human', 'human'],
     seed,
   };
-  if (room.mapId !== DEFAULT_MAP_ID) setup.mapId = room.mapId;
+  if (room.mapId !== DEFAULT_MAP_ID || MODE_RULES[room.mode].requires) setup.mapId = room.mapId;
   if (room.mode !== 'annihilation') setup.mode = room.mode;
   if (room.mode === 'kill-the-king') setup.kings = [a.king, b.king];
   return setup;

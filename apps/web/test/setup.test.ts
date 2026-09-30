@@ -54,7 +54,8 @@ describe('launchFor game modes', () => {
 
 describe('mode filtering', () => {
   it('keeps a supported mode and falls back to annihilation otherwise', () => {
-    const open = getMap(DEFAULT_MAP_ID)!;
+    // A custom map with no objectives: only the objective-free modes.
+    const open = { ...getMap(DEFAULT_MAP_ID)!, objectives: {} };
     expect(modeFor(open, 'kill-the-king')).toBe('kill-the-king');
     expect(modeFor(open, 'capture-the-flag')).toBe('annihilation');
     for (const map of listMaps())

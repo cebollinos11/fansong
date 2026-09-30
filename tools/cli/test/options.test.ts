@@ -71,11 +71,12 @@ describe('setupMatch', () => {
   it('rejects unknown presets/maps and modes a map cannot host', () => {
     expect(() => setupMatch(parseArgs(['--map', 'atlantis']))).toThrow(/Unknown map "atlantis"/);
     expect(() => setupMatch(parseArgs(['--p0', 'nobody']))).toThrow(/Unknown preset/);
-    expect(() => setupMatch(parseArgs(['--mode', 'conquest']))).toThrow(/pass --map.*crossroads/);
-    const unsupported = listMaps().find((m) => !supportedModes(m).includes('capture-the-flag'))!;
-    expect(() => setupMatch(parseArgs(['--map', unsupported.id, '--mode', 'capture-the-flag']))).toThrow(
-      new RegExp(`not supported on map "${unsupported.id}"`),
-    );
+  });
+
+  it('plays an objective mode without --map on the default map', () => {
+    const { state, label } = setupMatch(parseArgs(['--mode', 'conquest']));
+    expect(state.mode?.mode).toBe('conquest');
+    expect(label).toContain('on Open Field');
   });
 });
 

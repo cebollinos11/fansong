@@ -31,8 +31,8 @@ export interface MatchSetup {
   seed: number;
   /**
    * Map to play on (a built-in id from `listMaps`, or a custom map id the caller
-   * can resolve). Omitted = the legacy flat {@link DEFAULT_BOARD}, which is
-   * identical to the `open-field` map.
+   * can resolve). Omitted = the legacy flat {@link DEFAULT_BOARD}: the
+   * `open-field` map's ground and deployment, without its objectives.
    */
   mapId?: string;
   /**

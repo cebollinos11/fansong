@@ -103,8 +103,10 @@ describe('MatchSetup.mode', () => {
   );
 
   it('a map lacking the mode objectives is rejected', () => {
-    // The default map has no objectives at all.
+    // A custom map with no objectives at all.
+    const bare: MapDef = { ...DEFAULT_MAP, id: 'bare' };
+    const lookup = (id: string) => (id === 'bare' ? bare : getMap(id));
     for (const mode of objectiveModes)
-      expect(() => configFromSetup({ ...DEFAULT_SETUP, mapId: DEFAULT_MAP_ID, mode })).toThrow(/is invalid: .*needs/);
+      expect(() => configFromSetup({ ...DEFAULT_SETUP, mapId: 'bare', mode }, undefined, lookup)).toThrow(/is invalid: .*needs/);
   });
 });
