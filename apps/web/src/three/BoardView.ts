@@ -4121,7 +4121,10 @@ function holdPeak<C extends Clip>(clip: C, at: number, ms: number): C {
   return { ...clip, frames, hitMs: hitMs + ms };
 }
 
-/** Whether a sprite's move clip actually animates (a few Wesnoth ones just hold the base image). */
+/**
+ * Whether a sprite's move clip actually animates. Many Wesnoth ones hold a single
+ * pose (a rider's "moving" frame) or just the base image, and still want the hop.
+ */
 function hasWalkFrames(animator: UnitAnimator): boolean {
-  return animator.anims.move?.frames.some(([f]) => f !== animator.base) ?? false;
+  return new Set(animator.anims.move?.frames.map(([f]) => f)).size > 1;
 }
