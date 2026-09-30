@@ -49,18 +49,21 @@ export function describeHex(
   const key = vecKey(cell);
   const terrain = board.terrain?.[key];
   const lines: HexLine[] = [];
-  const elevation = terrain?.elevation ?? 0;
-  lines.push(elevation > 0 ? `Elevation ${elevation} — high ground` : 'Elevation 0');
+  const unit = state.units.find((u) => !u.dead && vecKey(u.pos) === key);
+  // A unit's tooltip is about the unit: no coordinates, height or owner.
+  if (!unit) {
+    const elevation = terrain?.elevation ?? 0;
+    lines.push(elevation > 0 ? `Elevation ${elevation} — high ground` : 'Elevation 0');
+  }
   if (board.blocked.includes(key)) lines.push('Blocked — impassable, blocks sight');
   if (terrain?.feature) lines.push(FEATURE_TEXT[terrain.feature]);
-  const unit = state.units.find((u) => !u.dead && vecKey(u.pos) === key);
   if (unit) {
     const marks = [
-      unit.knockedDown ? 'knocked down' : null,
-      unit.guarding ? 'on guard' : null,
-      unit.inspired ? 'inspired' : null,
+      unit.knockedDown ? 'Knocked down' : null,
+      unit.guarding ? 'On guard' : null,
+      unit.inspired ? 'Inspired' : null,
     ].filter(Boolean);
-    lines.push([`${unit.name} (P${unit.owner})`, ...marks].join(' · '));
+    if (marks.length > 0) lines.push(marks.join(' · '));
     lines.push({ quality: unit.quality, combat: unit.combat, move: unitMove(unit) });
     // The abilities decide how the unit must be fought, so the tooltip names them.
     if (detailed) {
@@ -72,7 +75,7 @@ export function describeHex(
     }
   }
   if (plan) lines.push(...planLines(state, plan));
-  return { title: `Hex (${cell.x}, ${cell.y})`, lines };
+  return { title: unit ? unit.name : `Hex (${cell.x}, ${cell.y})`, lines };
 }
 
 const ACTIONS = (n: number): string => `${n} action${n === 1 ? '' : 's'}`;

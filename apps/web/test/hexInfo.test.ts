@@ -35,10 +35,11 @@ describe('describeHex', () => {
     expect(describeHex(state, { x: 0, y: 0 })?.lines).toContain('Blocked — impassable, blocks sight');
   });
 
-  it('names a living unit standing on the hex, with its stats', () => {
+  it('names a living unit standing on the hex, with its stats, but not its hex, height or owner', () => {
     const u = state.units[0]!;
     const info = describeHex(state, u.pos);
-    expect(info?.lines).toContain(`${u.name} (P${u.owner})`);
+    expect(info?.title).toBe(u.name);
+    expect(info?.lines.join(' ')).not.toMatch(/Elevation|\(P\d\)/);
     expect(info?.lines).toContainEqual({ quality: u.quality, combat: u.combat, move: unitMove(u) });
   });
 
@@ -56,7 +57,7 @@ describe('describeHex', () => {
       ),
     };
     const lines = describeHex(armed, plain.pos)?.lines ?? [];
-    expect(lines).toContain(`${plain.name} (P${plain.owner}) · on guard`);
+    expect(lines).toContain('On guard');
     expect(lines.at(-1)).toBe('Ranged 4 · Tough · Guard · Big');
 
     // Held on the hex, each ability is spelled out in place of the one-line list.
