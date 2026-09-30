@@ -72,6 +72,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // The board reports a unit click without the event, so remember where the
   // pointer last went down — that is where the attack menu opens.
   const pointer = useRef({ x: 0, y: 0 });
+  // Each seat's last unit picked to activate, so its next pick starts from the one after it.
+  const lastPicked = useRef<Partial<Record<Owner, string>>>({});
 
   // Subscribe to transitions (local reduce or server delta — same seam) and to
   // connection status. The client owns the state; the screen only renders it,
@@ -242,13 +244,49 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     if (state.phase === 'awaitingActivation') setSelectedUnitId(null);
   };
 
+  /**
+   * The selectable unit `step` places from `from` in army order, wrapping; with
+   * nothing to start from, the first (or, stepping back, the last) of them.
+   */
+  const cycleUnit = useCallback(
+    (from: string | null, step: 1 | -1): string | null => {
+      const ids = interaction.selectableUnitIds;
+      if (ids.length === 0) return null;
+      const order = state.units.map((u) => u.id);
+      const at = from === null ? -1 : order.indexOf(from);
+      if (at < 0) return step === 1 ? ids[0]! : ids[ids.length - 1]!;
+      // `ids` is in army order too, so the next one past `at` is the first with a later place.
+      const rank = (id: string): number => order.indexOf(id);
+      if (step === 1) return ids.find((id) => rank(id) > at) ?? ids[0]!;
+      return [...ids].reverse().find((id) => rank(id) < at) ?? ids[ids.length - 1]!;
+    },
+    [interaction, state.units],
+  );
+
+  // From a seat's second turn on, its turn to pick opens on the next unit in
+  // line after the last one it activated, dice menu and all; the first pick of
+  // the game is left to the player. They can still click another. Only on the
+  // way in, so Escape or clicking away leaves them with no pick.
+  const picking = myTurn && state.phase === 'awaitingActivation';
+  const wasPicking = useRef(false);
+  useEffect(() => {
+    const last = lastPicked.current[state.active];
+    if (picking && !wasPicking.current && last !== undefined) {
+      const id = cycleUnit(last, 1);
+      if (id) setSelectedUnitId(id);
+    }
+    wasPicking.current = picking;
+  }, [picking, cycleUnit, state.active]);
+
   const handleActivate = (diceCount: number): void => {
     if (!myTurn || !selectedUnitId) return;
+    lastPicked.current[state.active] = selectedUnitId;
     client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
   };
 
-  // Keyboard: 1/2/3 commit that many dice to the selected unit and Escape drops
-  // the selection; E ends the activation, which is otherwise the most-clicked
+  // Keyboard: Q/E step the selection back/forward through the units that can
+  // activate, 1/2/3 commit that many dice to the selected unit and Escape drops
+  // the selection; once acting, E ends the activation, which is otherwise the most-clicked
   // button on the screen, G declares Guard and W war cries (each only offered
   // when legal). The
   // attack menu owns Escape while it is open.
@@ -284,7 +322,16 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         }
         return;
       }
-      if (state.phase !== 'awaitingActivation' || !selectedUnitId) return;
+      if (state.phase !== 'awaitingActivation') return;
+      const key = e.key.toLowerCase();
+      if (key === 'q' || key === 'e') {
+        const id = cycleUnit(selectedUnitId, key === 'e' ? 1 : -1);
+        if (!id) return;
+        e.preventDefault();
+        setSelectedUnitId(id);
+        return;
+      }
+      if (!selectedUnitId) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         setSelectedUnitId(null);
@@ -293,11 +340,12 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       const diceCount = Number(e.key);
       if (!interaction.diceChoices.includes(diceCount)) return;
       e.preventDefault();
+      lastPicked.current[state.active] = selectedUnitId;
       client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, client]);
+  }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, client, cycleUnit]);
 
   // Picking a unit to activate brings the inspector back to it.
   useEffect(() => {

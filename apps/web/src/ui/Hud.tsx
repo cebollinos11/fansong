@@ -156,11 +156,13 @@ export function Hud(props: Props): JSX.Element {
                   </div>
                   <p className="hint">
                     More dice = more actions but higher turnover risk. One die can never turn over. Tip: press 1–3 to
-                    roll, <kbd>Esc</kbd> to pick a different unit.
+                    roll, <kbd>Q</kbd>/<kbd>E</kbd> to switch unit, <kbd>Esc</kbd> to deselect.
                   </p>
                 </>
               ) : (
-                <p className="prompt">Select one of your units (highlighted) to activate.</p>
+                <p className="prompt">
+                  Select one of your units (highlighted) to activate, or press <kbd>Q</kbd>/<kbd>E</kbd>.
+                </p>
               )}
             </div>
           ) : (
