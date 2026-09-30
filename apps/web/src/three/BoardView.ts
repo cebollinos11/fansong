@@ -392,6 +392,7 @@ const REASSEMBLE_STAGGER_MS = 250; // between one unit's reassembly and the next
 const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the player's view
 const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
 const HIT_STOP_MS = 220; // a gruesome kill freezes the action this long on impact
+const IMPACT_STOP_MS = 80; // any other blow that tells (a kill, knockdown, save, clash or parry) freezes this long
 const SILHOUETTE_MS = 120; // the start of that freeze is a flat silhouette: the victim white, all else dark (wall clock)
 const SLOW_MO_MS = 1100; // then plays on in slow motion for this long (wall clock), easing back to full speed
 const SLOW_MO_SCALE = 0.3; // board time runs this fast at the start of a gruesome kill's slow motion
@@ -1392,6 +1393,8 @@ export class BoardView {
         // A Tough unit freezes mid-death for a beat before it drops.
         const at = settle + (toughSaved.has(e.unitId) ? TOUGH_HITCH_MS : 0);
         hold(e.unitId, at);
+        // Struck down by the latest blow: the action catches on its impact.
+        if (pair?.includes(e.unitId)) this.at(lastHit, () => this.hitStop(IMPACT_STOP_MS));
         const obj = this.units.get(e.unitId);
         if (obj) {
           const fall = this.deathClip(obj, 'fall');
@@ -3244,6 +3247,7 @@ export class BoardView {
     const a = this.units.get(aId);
     const d = this.units.get(dId);
     if (!a || !d) return;
+    this.hitStop(IMPACT_STOP_MS);
     const at = this.contact(a, d);
     const across = d.group.position.clone().sub(a.group.position).setY(0);
     // 1a: a burst of white-gold sparks and a four-point glint.
@@ -3365,7 +3369,10 @@ export class BoardView {
   private killFx(obj: UnitObj, gruesome: boolean, shakenIds: string[], killerId: string | null = null, ranged = false): void {
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.035);
     this.effects.ring(ground, 0xffffff, 0.2, 1.1, { life: 0.5, opacity: 0.85, additive: true });
-    if (!gruesome) return;
+    if (!gruesome) {
+      if (killerId) this.hitStop(IMPACT_STOP_MS);
+      return;
+    }
     // 7a: the heavy version — a freeze on impact (its first instants a flat
     // silhouette) easing out of slow motion, a bigger double shockwave, a hard
     // shake with a tilt of the camera, and a burst of ash and dark shards.
@@ -3624,6 +3631,7 @@ export class BoardView {
   private armorFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj) return;
+    this.hitStop(IMPACT_STOP_MS);
     this.flashUnit(id, 0.35);
     const chest = this.chest(obj);
     this.effects.icon('shield', chest, 0.5, { life: 0.45, color: STEEL });
@@ -3646,6 +3654,7 @@ export class BoardView {
   private toughFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj) return;
+    this.hitStop(IMPACT_STOP_MS);
     this.flashUnit(id, 0.5);
     const chest = this.chest(obj);
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
@@ -3727,6 +3736,7 @@ export class BoardView {
     const g = this.units.get(guardId);
     const a = this.units.get(attackerId);
     if (!g || !a) return;
+    this.hitStop(IMPACT_STOP_MS);
     const at = this.contact(g, a);
     this.effects.icon('arc', at, 0.85, {
       life: 0.4,
