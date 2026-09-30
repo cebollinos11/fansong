@@ -396,7 +396,7 @@ const HALO_COLOR = 0x9a6ad0; // the faint ring showing how far a coming gruesome
 // A gruesome kill that is coming (the events say so before it plays): the build-up to it.
 const DREAD_SPAN_MARGIN = 1.8; // its close-up is tighter than an ordinary fight's...
 const DREAD_MIN_SPAN = 4.2;
-const DREAD_MAX_ZOOM = 0.38;
+const DREAD_MAX_ZOOM = 0.55;
 const DREAD_FRAME_SLOW = 1.6; // ...and the camera takes this much longer to get there
 const DREAD_DOLLY = 0.93; // then keeps creeping in to this fraction of its distance until the blow lands
 const WINDUP_MS = 320; // the killer holds its swing (or its draw) at the peak this long
@@ -442,9 +442,8 @@ const PAN_MAX_MS = 850;
 const PAN_MS_PER_UNIT = 70; // extra pan time per world unit travelled
 const CAMERA_SETTLE_MS = 150; // beat between the camera arriving and the dice starting
 const CAMERA_STILL = 0.25; // a move shorter than this (world units of travel + zoom) isn't worth making
-const AFTERMATH_HOLD_MS = 450; // how long a blow's result is held in close-up before pulling back out
-const RIDE_MAX_SPAN = 4; // longest shot (world units) the camera rides along with; beyond it, it holds the wide framing
-const RIDE_MIN_MS = 150; // shots that reach their target faster than this are too quick to ride
+const ZOOM_STEADY = 0.2; // a close-up within this fraction of the current distance keeps that distance and only pans
+const FIT_STEPS = 18; // halvings used to find the nearest distance that holds a set of units
 const SELECT_PAN_STEPS = 12; // halvings used to find the shortest pan that brings a pick into frame
 const SELECT_PAN_SLACK = 0.12; // extra fraction of that pan, so the pick isn't left on the margin
 const FOCUS_LEAD_MS = 220; // how long before a camera move its units start pulsing
@@ -453,9 +452,8 @@ const COMBAT_CARD_HOLD_MS = 600; // how long a blow's dice cards stay up after i
 const COMBAT_CARD_LINGER_MS = 3000; // a blow's dice cards stay up at least this long, unless the next fight replaces them
 const COMBAT_SPAN_MARGIN = 2.2; // how much of the close-up the two combatants take up
 const COMBAT_MIN_SPAN = 5; // world units kept in view (~5 hexes), however close the pair stand
-const COMBAT_MAX_ZOOM = 0.45; // never closer than this fraction of the opening framing
+const COMBAT_MAX_ZOOM = 0.7; // never closer than this fraction of the player's own framing
 const FRAME_LIFT = 0.55; // a close-up centres this high above a unit's base (mid-body, scaled by its size), not on its feet
-const SHOT_LEAD_MS = 260; // swing to the shooter before it looses its missile
 
 // The opening shot: the camera starts on the deployed warbands rather than the
 // bare table, so the fight — not the empty ground around it — fills the view.
@@ -723,8 +721,6 @@ export class BoardView {
    * Each move is planned from here, not from where the camera happens to be now.
    */
   private planned: { target: THREE.Vector3; dist: number } | null = null;
-  /** View distance to glide back out to once the fighting stops (null: nothing to restore). */
-  private restoreDist: number | null = null;
   /** The framing the player last set by hand; given back whenever they can act again. */
   private playerView: { target: THREE.Vector3; dist: number } | null = null;
   /** Whether the player could act at the last update, to spot the moment they can again. */
@@ -836,7 +832,6 @@ export class BoardView {
     this.controls.addEventListener('start', () => {
       this.cam = null;
       this.planned = null;
-      this.restoreDist = null;
       this.opening = null;
     });
     this.controls.addEventListener('end', () => this.rememberPlayerView());
@@ -1253,7 +1248,6 @@ export class BoardView {
         // A riposte or free hack tied by a master on the receiving end plays as
         // an exchange too: the swing is turned aside and the master's answer kills.
         const mastered = e.type !== 'AttackResolved' && after[0]?.type === 'MasteryStruck' && after[0].unitId === pair[1];
-        const framed = this.planned; // a shot the camera rides replaces it
         // The killing blow (the last one, in an exchange) hangs at its peak before it lands.
         const s = mastered
           ? this.exchange(pair[0], pair[1], start + cards, { land: true, windup })
@@ -1261,7 +1255,7 @@ export class BoardView {
             ? this.exchange(pair[0], pair[1], start + cards, { land: e.result.startsWith('attacker') || armored === pair[0], windup })
             : this.strike(pair[0], pair[1], ranged ? 'ranged' : 'melee', start + cards, { land, cover, windup });
         if (dread) {
-          aftermath = this.dreadPlay(dread, start, s.hit, this.planned === framed);
+          aftermath = this.dreadPlay(dread, start, s.hit);
           for (const id of dread.shaken) dreaded.add(id);
         }
         const [first, second] = pair;
@@ -1411,15 +1405,9 @@ export class BoardView {
         });
       }
     });
-    // After the fighting, hold the result, then pull back out to the framing the
-    // player had — a kill means nothing without the ground around it.
-    if (this.restoreDist !== null) {
-      const at = t + AFTERMATH_HOLD_MS;
-      const back = this.scheduleMove(at, this.plannedCamera().target, this.restoreDist);
-      if (back > 0) t = at + back;
-      this.restoreDist = null;
-    }
-
+    // The camera stays where the fighting left it: the next batch moves it only
+    // as far as its own action needs, and the player gets their own framing back
+    // once they can act (see returnToPlayerView).
     this.busyUntil = Math.max(this.busyUntil, this.now + t);
     return t;
   }
@@ -1451,16 +1439,13 @@ export class BoardView {
     if (points.length === 0) return 0;
 
     const end = this.plannedCamera();
-    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length);
-    // Pull back out of a combat close-up, whether or not the action is off screen.
-    const dist = this.restoreDist;
-    const target = this.inView(points, end) ? (dist === null ? null : end.target) : centre;
-    if (target === null) return 0;
-    this.restoreDist = null;
+    if (this.inView(points, end)) return 0;
+    // Centre on the action, pulling back out of a close-up only as far as it takes to hold it.
+    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length).setY(0);
     const ids = events.flatMap((e) =>
       e.type === 'ActivationChosen' || e.type === 'DiceRolled' || e.type === 'UnitMoved' ? [e.unitId] : [],
     );
-    const dur = this.scheduleMove(at, target, dist);
+    const dur = this.scheduleMove(at, centre, this.fitAround(points, centre, end.dist));
     if (dur > 0) this.focusUnits(ids, at);
     return dur;
   }
@@ -1476,12 +1461,35 @@ export class BoardView {
     if (points.length === 0) return 0;
     const end = this.plannedCamera();
     if (this.inView(points, end)) return 0;
-    const centre = middle(points);
-    const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
-    const dist = Math.max(end.dist, this.closeUp(span * COMBAT_SPAN_MARGIN));
-    const dur = this.scheduleMove(at, this.pivotFor(this.bodyMiddle(unitIds) ?? centre), dist);
+    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? middle(points));
+    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, end.dist));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
+  }
+
+  /**
+   * The nearest view distance, no nearer than `near`, at which every point (and
+   * the dice card over it) sits comfortably in view around `target` — or as far
+   * out as the player could zoom when nothing nearer holds them.
+   */
+  private fitAround(points: THREE.Vector3[], target: THREE.Vector3, near: number): number {
+    let lo = near; // may be too close
+    let hi = this.controls.maxDistance;
+    if (lo >= hi) return hi;
+    if (this.inView(points, { target, dist: lo })) return lo;
+    if (!this.inView(points, { target, dist: hi })) return hi;
+    for (let i = 0; i < FIT_STEPS; i++) {
+      const mid = (lo + hi) / 2;
+      if (this.inView(points, { target, dist: mid })) hi = mid;
+      else lo = mid;
+    }
+    return hi;
+  }
+
+  /** `dist`, unless it's so near the distance the camera will already be at that holding that one reads the same. */
+  private steadyZoom(dist: number): number {
+    const from = this.plannedCamera().dist;
+    return Math.abs(dist - from) < from * ZOOM_STEADY ? from : dist;
   }
 
   /**
@@ -1495,13 +1503,17 @@ export class BoardView {
     const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
 
-    // Remember where the player was looking from, to restore once the fighting stops.
-    if (this.restoreDist === null) this.restoreDist = this.plannedCamera().dist;
     const centre = middle(points);
-    // Close enough to fill the view with the pair, but never further out than the opening shot.
+    const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre);
+    // Close enough to fill the view with the pair — unless the camera is nearly
+    // there already, when a pan is enough. Only a gruesome kill always moves in.
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
-    const dist = dread ? this.closeUp(span * DREAD_SPAN_MARGIN, true) : this.closeUp(span * COMBAT_SPAN_MARGIN);
-    const dur = this.scheduleMove(at, this.pivotFor(this.bodyMiddle(unitIds) ?? centre), dist, dread ? DREAD_FRAME_SLOW : 1);
+    const close = dread
+      ? this.closeUp(span * DREAD_SPAN_MARGIN, true)
+      : this.steadyZoom(this.closeUp(span * COMBAT_SPAN_MARGIN));
+    // Both ends of a long shot stay in the frame from the start.
+    const dist = this.fitAround(points, pivot, close);
+    const dur = this.scheduleMove(at, pivot, dist, dread ? DREAD_FRAME_SLOW : 1);
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1509,15 +1521,14 @@ export class BoardView {
   /**
    * Lay out what surrounds a gruesome kill whose blow starts `start` ms from now
    * and lands at `hit`: the build-up (see {@link dreadFx}) while the camera
-   * creeps in on the pair (with `dolly`: not when it rides a shot in), a lurch in
-   * on the victim as the blow lands, then the killer's triumph in close-up.
+   * creeps in on the pair, a lurch in on the victim as the blow lands, then the
+   * killer's triumph, played where the camera already holds it.
    * Returns when that triumph is over.
    */
-  private dreadPlay(d: Dread, start: number, hit: number, dolly: boolean): number {
+  private dreadPlay(d: Dread, start: number, hit: number): number {
     const cinematic = this.cameraMode === 'cinematic' && !this.downPos;
-    const killer = this.units.get(d.killer);
     const victim = this.units.get(d.victim);
-    if (cinematic && dolly) {
+    if (cinematic) {
       const view = this.plannedCamera();
       const dist = view.dist * DREAD_DOLLY;
       this.at(start, () => this.moveCamera(view.target, dist, hit - start, true));
@@ -1530,10 +1541,7 @@ export class BoardView {
       this.at(hit, () => this.moveCamera(to, this.camera.position.distanceTo(this.controls.target) * PUSH_IN, PUSH_IN_MS));
       this.planned = { target: to, dist: view.dist * PUSH_IN };
     }
-    let triumph = hit + VICTORY_AT_MS;
-    if (cinematic && killer) {
-      triumph += this.scheduleMove(triumph, this.pivotFor(this.bodyAt(killer, killer.targetPos)), this.closeUp(0));
-    }
+    const triumph = hit + VICTORY_AT_MS;
     this.at(triumph, () => this.exult(d.killer));
     const end = triumph + VICTORY_HOLD_MS;
     this.at(start, () => this.dreadFx(d, hit - start, end - start));
@@ -1591,11 +1599,7 @@ export class BoardView {
   private reassemble(ids: string[], at: number, hold: (id: string, until: number) => void): number {
     const units = ids.map((id) => this.units.get(id)).filter((obj): obj is UnitObj => !!obj && !obj.fade);
     if (units.length === 0) return at;
-    // Where the player was looking from — out of any close-up still pending.
-    const back = this.plannedCamera();
-    if (this.restoreDist !== null) back.dist = this.restoreDist;
-    this.restoreDist = null;
-    let t = at + this.pause(this.frameReassembly(ids, at));
+    const t = at + this.pause(this.frameReassembly(ids, at));
     this.at(t, () =>
       this.rolls.addVerdict({ text: 'Reassembling', on: ids, tone: 'save' }, this.now, 'bottom'),
     );
@@ -1609,9 +1613,7 @@ export class BoardView {
       const fall = this.deathClip(obj, 'fall');
       end = Math.max(end, up + (fall ? clipDuration(fall) : 200));
     });
-    t = end + REASSEMBLE_HOLD_MS;
-    const ret = this.scheduleMove(t, back.target, back.dist);
-    return t + ret;
+    return end + REASSEMBLE_HOLD_MS;
   }
 
   /**
@@ -1626,7 +1628,8 @@ export class BoardView {
     const centre = middle(points);
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
     const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre);
-    const dur = this.scheduleMove(at, pivot, this.closeUp(Math.max(span * COMBAT_SPAN_MARGIN, REASSEMBLE_MIN_SPAN)));
+    const close = this.steadyZoom(this.closeUp(Math.max(span * COMBAT_SPAN_MARGIN, REASSEMBLE_MIN_SPAN)));
+    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, close));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1677,14 +1680,16 @@ export class BoardView {
 
   /**
    * View distance that keeps `span` world units across the view: the close-up a
-   * fight plays in. Never nearer than {@link COMBAT_MAX_ZOOM} of the opening
-   * framing, and never further out than that framing (a distant pair just gets
-   * less of a move in). A `tight` one (a gruesome kill's) may come closer.
+   * fight plays in. Measured from the player's own framing, not wherever the
+   * last close-up left the camera, so fight after fight doesn't ratchet in:
+   * never nearer than {@link COMBAT_MAX_ZOOM} of it, and never further out than
+   * it. A `tight` one (a gruesome kill's) may come closer.
    */
   private closeUp(span: number, tight = false): number {
+    const own = this.playerView?.dist ?? this.homeDist;
     const fit = this.fitDistance(Math.max(span, tight ? DREAD_MIN_SPAN : COMBAT_MIN_SPAN));
-    const nearest = Math.max(this.controls.minDistance, this.homeDist * (tight ? DREAD_MAX_ZOOM : COMBAT_MAX_ZOOM));
-    return THREE.MathUtils.clamp(fit, nearest, this.homeDist);
+    const nearest = Math.max(this.controls.minDistance, own * (tight ? DREAD_MAX_ZOOM : COMBAT_MAX_ZOOM));
+    return THREE.MathUtils.clamp(fit, nearest, Math.max(nearest, own));
   }
 
   /** The view distance at which `span` world units across the ground fill the view. */
@@ -1773,7 +1778,6 @@ export class BoardView {
   private returnToPlayerView(): void {
     const view = this.playerView;
     if (this.cameraMode === 'off' || !view || this.downPos) return;
-    this.restoreDist = null;
     this.planned = null;
     const from = this.plannedCamera();
     const travel = new THREE.Vector3(view.target.x - from.target.x, 0, view.target.z - from.target.z).length();
@@ -1861,7 +1865,6 @@ export class BoardView {
     this.timeline.length = 0;
     this.cam = null;
     this.planned = null;
-    this.restoreDist = null;
     this.busyUntil = this.now;
     this.rolls.clear();
     this.effects.clear();
@@ -2185,22 +2188,6 @@ export class BoardView {
         this.flashUnit(targetId, 0.8);
         if (range === 'melee') this.impactFx(a, d);
       });
-    }
-    if (range === 'ranged' && this.cameraMode === 'cinematic' && !this.downPos) {
-      // Swing to the shooter as it draws, then ride the shot in to its target —
-      // but only for a shot short and slow enough to follow. A long one would
-      // whip the camera across the board in a few frames, so it keeps the wide
-      // framing that already holds both ends of it.
-      const launch = Math.max(0, hit - (clip?.missileMs ?? 150));
-      const flight = hit - launch;
-      const span = a.group.position.distanceTo(d.group.position);
-      if (span <= RIDE_MAX_SPAN && flight >= RIDE_MIN_MS) {
-        const close = this.closeUp(0);
-        this.at(at, () => this.moveCamera(this.pivotFor(this.bodyAt(a, a.group.position)), close, Math.min(launch, SHOT_LEAD_MS)));
-        const landing = this.pivotFor(this.bodyAt(d, d.group.position));
-        this.at(at + launch, () => this.moveCamera(landing, null, flight, true));
-        this.planned = { target: landing, dist: close };
-      }
     }
     return { hit: at + hit, end: at + dur };
   }
