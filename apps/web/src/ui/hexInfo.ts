@@ -37,12 +37,16 @@ export interface HexInfo {
  * board. `plan` is what clicking here would commit, so the tooltip can price the
  * click before it is made. `detailed` (the pointer has rested on the hex) spells
  * out what each of the unit's abilities does instead of just naming them.
+ * `where` is 'match' for a board in play, which leaves out the hex's
+ * coordinates and elevation (the editor wants them); there, a hex with nothing
+ * else to say gets no tooltip at all.
  */
 export function describeHex(
   state: GameState,
   cell: Vec,
   plan: PlanPreview | null = null,
   detailed = false,
+  where: 'match' | 'editor' = 'editor',
 ): HexInfo | null {
   const { board } = state;
   if (cell.x < 0 || cell.y < 0 || cell.x >= board.width || cell.y >= board.height) return null;
@@ -51,7 +55,7 @@ export function describeHex(
   const lines: HexLine[] = [];
   const unit = state.units.find((u) => !u.dead && vecKey(u.pos) === key);
   // A unit's tooltip is about the unit: no coordinates, height or owner.
-  if (!unit) {
+  if (!unit && where === 'editor') {
     const elevation = terrain?.elevation ?? 0;
     lines.push(elevation > 0 ? `Elevation ${elevation} — high ground` : 'Elevation 0');
   }
@@ -75,7 +79,11 @@ export function describeHex(
     }
   }
   if (plan) lines.push(...planLines(state, plan));
-  return { title: unit ? unit.name : `Hex (${cell.x}, ${cell.y})`, lines };
+  if (unit) return { title: unit.name, lines };
+  if (where === 'editor') return { title: `Hex (${cell.x}, ${cell.y})`, lines };
+  // In a match a bare hex is titled by the first thing worth saying about it.
+  const [first, ...rest] = lines;
+  return typeof first === 'string' ? { title: first, lines: rest } : null;
 }
 
 const ACTIONS = (n: number): string => `${n} action${n === 1 ? '' : 's'}`;

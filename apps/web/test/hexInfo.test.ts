@@ -71,6 +71,17 @@ describe('describeHex', () => {
     ]);
   });
 
+  it('in a match, leaves out coordinates and elevation, and says nothing of a bare hex', () => {
+    expect(describeHex(state, { x: 1, y: 1 }, null, false, 'match')).toEqual({
+      title: 'Forest — blocks sight through it',
+      lines: [],
+    });
+    expect(describeHex(state, { x: 3, y: 1 }, null, false, 'match')).toBeNull();
+    const at = { x: 3, y: 1 };
+    const plan: PlanPreview = { kind: 'move', cost: 1, path: [at], waypoints: [at], provokes: 0 };
+    expect(describeHex(state, at, plan, false, 'match')?.title).toMatch(/^Move here/);
+  });
+
   it('is null off the board', () => {
     expect(describeHex(state, { x: -1, y: 0 })).toBeNull();
     expect(describeHex(state, { x: state.board.width, y: 0 })).toBeNull();

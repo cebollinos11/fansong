@@ -334,7 +334,9 @@ export function BoardCanvas(props: Props): JSX.Element {
   }, [hoverKey]);
 
   const detailed = hoverKey !== null && hoverKey === detailedKey;
-  const hexInfo = hover ? describeHex(props.state, hover, previewFor?.(hover) ?? null, detailed) : null;
+  const hexInfo = hover
+    ? describeHex(props.state, hover, previewFor?.(hover) ?? null, detailed, props.playing ? 'match' : 'editor')
+    : null;
 
   // The tooltip rides next to the pointer, flipping to its other side near an
   // edge. Placed straight on the DOM so a drifting pointer never re-renders.
