@@ -534,6 +534,60 @@ function stoneCrown(): MapDef {
 }
 
 // ---------------------------------------------------------------------------
+// Castle — a siege, and the one deliberately lopsided map: the defenders
+// (player 0) deploy in the courtyard of a castle at the heart of the board,
+// the attackers (player 1) in four camps at its corners. The castle is a
+// level-3 keep above a level-2 courtyard, ringed by a curtain wall of towers
+// broken by a gate on each side; a level-1 glacis falls away to farmland of
+// copses, boulders and the odd farmstead. The terrain itself is still
+// point-symmetric. The keep is the hill and the middle conquest zone; the
+// outer conquest zones are two hamlets on the north and south edges, between
+// the camps, so the defenders must sally to hold them. The defenders' flag
+// flies from the keep; the attackers' stands in their north-west camp.
+function castle(): MapDef {
+  const W = 22;
+  const H = 20;
+  const grid = makeHexGrid({ width: W, height: H, blocked: [] });
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  // The keep: two adjacent centre hexes that are each other's mirror image.
+  const keep = [{ x: 10, y: 9 }, mirror({ x: 10, y: 9 })];
+  const dK = (v: Vec) => Math.min(...keep.map((k) => grid.distance(k, v)));
+  // Gates: where the wall crosses the castle's centre column or centre rows.
+  const gate = (v: Vec) => v.x === 10 || v.x === 11 || v.y === 9 || v.y === 10;
+  const camp = (v: Vec) => (v.x <= 3 || v.x >= W - 4) && (v.y <= 3 || v.y >= H - 4);
+  // The north hamlet's square; the south hamlet mirrors it.
+  const north = (v: Vec) => (v.x === 10 || v.x === 11) && (v.y === 1 || v.y === 2);
+  const south = (v: Vec) => north(mirror(v));
+  const hamlet = (v: Vec) => [north, south].some((z) => [0, 1].some((dx) => z({ x: v.x - dx, y: v.y }) || z({ x: v.x + dx, y: v.y })));
+
+  const map = build('castle', 'Castle', W, H, (v) => {
+    const d = dK(v);
+    if (d <= 1) return { elevation: 3 };
+    if (d <= 3) return { elevation: 2 };
+    if (d === 4) return gate(v) ? { elevation: 2 } : { elevation: 2, feature: 'building' };
+    if (d === 5) return { elevation: 1 };
+    if (north(v) || south(v)) return { elevation: 1 };
+    if (camp(v) || v.x === 10 || v.x === 11) return { elevation: 0 }; // camps and the roads to the hamlets
+    const n = symNoise(v, W, H, 0xca571e);
+    // Farmsteads crowd round each hamlet square.
+    if (hamlet(v)) return n < 0.6 ? { elevation: 1, feature: 'building' } : { elevation: 1 };
+    const rise = symNoise(v, W, H, 0x5e9e) < 0.2 ? 1 : 0;
+    if (n < 0.2) return { elevation: rise, feature: 'forest' };
+    if (n < 0.26) return { elevation: rise, feature: 'rock' };
+    if (n < 0.29) return { elevation: rise, feature: 'building' };
+    return { elevation: rise };
+  });
+  const keepTop = hexesWhere(map, (v) => dK(v) <= 1);
+  map.deployZones = [hexesWhere(map, (v) => dK(v) === 2 || dK(v) === 3), hexesWhere(map, camp)];
+  map.objectives = {
+    flags: [keep[0]!, { x: 1, y: 1 }],
+    hill: keepTop,
+    conquest: [hexesWhere(map, north), keepTop, hexesWhere(map, south)],
+  };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
 
 const MAPS: MapDef[] = [
   openField(),
@@ -545,6 +599,7 @@ const MAPS: MapDef[] = [
   crossroads(),
   emberRift(),
   stoneCrown(),
+  castle(),
 ];
 
 // Every premade map hosts every game mode.

@@ -59,9 +59,11 @@ describe('built-in maps', () => {
       it('is point-symmetric, so neither side has the better ground', () => {
         for (let y = 0; y < map.height; y++)
           for (let x = 0; x < map.width; x++) expect(mapHexAt(map, mirror(map, { x, y }))).toEqual(mapHexAt(map, { x, y }));
-        expect(sortVecs(map.deployZones[1])).toEqual(sortVecs(map.deployZones[0].map((v) => mirror(map, v))));
+        // Castle is a siege: its terrain is symmetric, but by design not who deploys where.
+        const lopsided = map.id === 'castle';
+        if (!lopsided) expect(sortVecs(map.deployZones[1])).toEqual(sortVecs(map.deployZones[0].map((v) => mirror(map, v))));
         const { flags, hill, conquest } = map.objectives;
-        if (flags) expect(flags[1]).toEqual(mirror(map, flags[0]));
+        if (flags && !lopsided) expect(flags[1]).toEqual(mirror(map, flags[0]));
         if (hill) expect(sortVecs(hill.map((v) => mirror(map, v)))).toEqual(sortVecs(hill));
         if (conquest) {
           // Zone 2 is its own mirror image; zones 1 and 3 mirror each other.
@@ -246,6 +248,28 @@ describe('premade map character', () => {
     expect(mapHexAt(map, home0)?.elevation).toBe(3);
     const nearest = (zone: Vec[]) => Math.min(...zone.map((v) => grid.distance(home0, v)));
     expect(nearest(map.deployZones[0])).toBeLessThan(nearest(map.deployZones[1]));
+    expect(supportedModes(map)).toEqual(GAME_MODES);
+  });
+
+  it('Castle puts the defenders in a walled, raised courtyard ringed by the attackers’ camps', () => {
+    const map = getMap('castle')!;
+    const grid = makeHexGrid({ width: map.width, height: map.height, blocked: [] });
+    const [defenders, attackers] = map.deployZones;
+    // The defenders deploy in the middle of the board, above everything but the keep.
+    for (const v of defenders) expect(mapHexAt(map, v)?.elevation).toBe(2);
+    for (const v of map.objectives.hill!) expect(mapHexAt(map, v)?.elevation).toBe(3);
+    expect(sortVecs(map.objectives.conquest![1])).toEqual(sortVecs(map.objectives.hill!));
+    // The attackers surround them: a camp in every quadrant of the board.
+    const quadrants = new Set(attackers.map((v) => `${v.x < map.width / 2},${v.y < map.height / 2}`));
+    expect(quadrants.size).toBe(4);
+    // A wall of buildings stands between the two, broken by gates.
+    const wall = map.hexes
+      .map((h, i) => ({ h, v: { x: i % map.width, y: Math.floor(i / map.width) } }))
+      .filter(({ h, v }) => h.feature === 'building' && defenders.some((d) => grid.distance(d, v) === 1));
+    expect(wall.length).toBeGreaterThanOrEqual(12);
+    // Each flag is nearer its own side's deployment.
+    const nearest = (zone: Vec[], v: Vec) => Math.min(...zone.map((u) => grid.distance(u, v)));
+    map.objectives.flags!.forEach((f, p) => expect(nearest(map.deployZones[p]!, f)).toBeLessThan(nearest(map.deployZones[1 - p]!, f)));
     expect(supportedModes(map)).toEqual(GAME_MODES);
   });
 });
