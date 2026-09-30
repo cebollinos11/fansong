@@ -1,3 +1,4 @@
+import { BASE_MOVE } from '@fansong/engine';
 import type { JSX } from 'react';
 import type { HexTrait } from './hexInfo.js';
 
@@ -53,13 +54,13 @@ export interface UnitStats {
   range?: number;
 }
 
-/** A unit's core numbers as a row of icons. */
+/** A unit's core numbers as a row of icons. Move shows only when Slow or Fast shifts it from {@link BASE_MOVE}. */
 export function StatIcons({ stats }: { stats: UnitStats }): JSX.Element {
   return (
     <span className="stat-icons">
       <StatIcon stat="quality" value={stats.quality} />
       <StatIcon stat="combat" value={stats.combat} />
-      <StatIcon stat="move" value={stats.move} />
+      {stats.move === BASE_MOVE ? null : <StatIcon stat="move" value={stats.move} />}
       {stats.range === undefined ? null : <StatIcon stat="range" value={stats.range} />}
     </span>
   );
