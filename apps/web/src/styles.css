@@ -2649,7 +2649,27 @@ button.trait-add[aria-expanded='true'] {
 .warband-strip .unit-sprite {
   width: 34px;
   height: 34px;
+}
+
+.warband-strip-unit {
+  position: relative;
   margin-right: -6px;
+}
+
+/* How many copies of this unit the warband has. */
+.warband-strip-count {
+  position: absolute;
+  right: 2px;
+  bottom: 0;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 13px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 /* "Looks like" in a roster table. */

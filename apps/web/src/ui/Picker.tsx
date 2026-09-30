@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { profileMove, profileRange, unitCost, warbandCost, type MapDef, type Warband, type WarbandUnit } from '@fansong/content';
 import { tintPixels } from '../three/spriteTint.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
+import { unitKinds } from './unitKinds.js';
 import { mapThumb } from './mapThumb.js';
 import { StatIcons, type UnitStats } from './StatIcons.js';
 
@@ -226,12 +227,15 @@ function tintedSpriteUrl(url: string, tint: string): Promise<string> {
   return p;
 }
 
-/** Every unit of a warband, side by side. */
+/** Every kind of unit in a warband, side by side, with a `×N` pill on repeated ones. */
 export function WarbandStrip({ warband }: { warband: Warband }): JSX.Element {
   return (
     <span className="warband-strip">
-      {warband.units.map((u, i) => (
-        <UnitSprite key={i} unit={u} />
+      {unitKinds(warband.units).map(({ unit, count }, i) => (
+        <span key={i} className="warband-strip-unit">
+          <UnitSprite unit={unit} />
+          {count > 1 ? <span className="warband-strip-count">×{count}</span> : null}
+        </span>
       ))}
     </span>
   );
