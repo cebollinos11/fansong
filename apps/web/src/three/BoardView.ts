@@ -3979,12 +3979,13 @@ export class BoardView {
   /**
    * A unit's point `height` above its base, in container pixels (null when
    * behind the camera) — how anything drawn in DOM over the board finds a unit.
+   * A flyer's base is where it floats, so a card over it clears its body.
    */
   projectUnit = (id: string, height: number): { x: number; y: number } | null => {
     const obj = this.units.get(id);
     if (!obj) return null;
     const p = obj.group.position.clone();
-    p.y += TILE_TOP + height;
+    p.y += TILE_TOP + obj.hover + height;
     p.project(this.camera);
     if (p.z > 1) return null;
     return {

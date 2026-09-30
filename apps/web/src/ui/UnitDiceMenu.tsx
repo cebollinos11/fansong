@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { Owner } from '@fansong/engine';
 import { anchoredCard, type UnitProjector } from './anchorView.js';
 import { diceHint, dicePips } from './diceMenuView.js';
+import { usePressGuard } from './pressGuard.js';
 
 /** World height above a unit's base that the menu's bottom edge rides at. */
 const MENU_HEIGHT = 1.35;
@@ -26,6 +27,8 @@ interface Props {
  */
 export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, choices, project, onPick }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
+  // The tap that picked the unit must not also pick a dice count.
+  const { onPointerDown, guard } = usePressGuard();
 
   // Ride the unit every frame: the camera is still panning to the pick, and the
   // player may orbit or zoom before deciding.
@@ -60,6 +63,7 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, choic
       style={{ visibility: 'hidden' }}
       className={`dice-menu p${owner}${inspired ? ' inspired' : ''}`}
       role="group"
+      onPointerDown={onPointerDown}
       aria-label={`Commit dice to activate ${unitName}`}
     >
       <div className="dice-menu-title">
@@ -68,7 +72,7 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, choic
       {inspired ? <div className="dice-menu-inspired">★ Inspired: first die is a sure 6</div> : null}
       <div className="dice-menu-row">
         {choices.map((n) => (
-          <button key={n} type="button" className="dice-pick" title={diceHint(n, inspired)} onClick={() => onPick(n)}>
+          <button key={n} type="button" className="dice-pick" title={diceHint(n, inspired)} onClick={guard(() => onPick(n))}>
             <span className="dice-pick-count">{n}</span>
             <span className="dice-pick-label">{n === 1 ? 'die' : 'dice'}</span>
             {inspired ? (

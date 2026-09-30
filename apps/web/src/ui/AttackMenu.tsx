@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ActionPlan } from '@fansong/engine';
+import { usePressGuard } from './pressGuard.js';
 
 /** Which weapon the menu is offering — melee blows or ranged shots. */
 export type AttackKind = 'melee' | 'ranged';
@@ -58,6 +59,8 @@ export function cost(plan: ActionPlan, actionsRemaining: number): string {
 export function AttackMenu({ choice, onPick, onCancel }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const words = WORDING[choice.kind];
+  // The tap on the target must not also answer the menu it opened.
+  const { onPointerDown: onMenuPointerDown, guard } = usePressGuard();
   // A blow that has to be walked to costs more than the blow itself, so the
   // price comes from the plan rather than from the weapon.
   const approach = choice.plain.waypoints.length > 0;
@@ -104,16 +107,17 @@ export function AttackMenu({ choice, onPick, onCancel }: Props): JSX.Element {
       // flashes in the wrong place.
       style={{ left, top, visibility: height > 0 ? 'visible' : 'hidden' }}
       role="menu"
+      onPointerDown={onMenuPointerDown}
     >
       <div className="attack-menu-title">{choice.targetName}</div>
-      <button type="button" className="primary" onClick={() => onPick(false)}>
+      <button type="button" className="primary" onClick={guard(() => onPick(false))}>
         <span className="attack-menu-label">
           {approach ? words.approach : words.plain}
           {choice.plainOdds ? <span className="odds">{choice.plainOdds}</span> : null}
         </span>{' '}
         <span className="ap">{cost(choice.plain, choice.actionsRemaining)}</span>
       </button>
-      <button type="button" className="primary pressed" onClick={() => onPick(true)}>
+      <button type="button" className="primary pressed" onClick={guard(() => onPick(true))}>
         <span className="attack-menu-label">
           {approach ? `${words.approach}, ${words.pressed.toLowerCase()}` : words.pressed}
           {choice.pressedOdds ? <span className="odds">{choice.pressedOdds}</span> : null}
@@ -121,7 +125,7 @@ export function AttackMenu({ choice, onPick, onCancel }: Props): JSX.Element {
         <span className="ap">{cost(choice.pressed, choice.actionsRemaining)}</span>
       </button>
       <div className="attack-menu-hint">{words.hint}</div>
-      <button type="button" className="ghost" onClick={onCancel}>
+      <button type="button" className="ghost" onClick={guard(onCancel)}>
         Cancel <kbd>Esc</kbd>
       </button>
     </div>
