@@ -2647,8 +2647,8 @@ button.trait-add[aria-expanded='true'] {
 }
 
 .warband-strip .unit-sprite {
-  width: 34px;
-  height: 34px;
+  width: 46px;
+  height: 46px;
 }
 
 .warband-strip-unit {
@@ -2659,15 +2659,15 @@ button.trait-add[aria-expanded='true'] {
 /* How many copies of this unit the warband has. */
 .warband-strip-count {
   position: absolute;
-  right: 2px;
-  bottom: 0;
-  padding: 0 4px;
+  right: 0;
+  bottom: -2px;
+  padding: 0 3px;
   border-radius: 999px;
   background: var(--bg);
   border: 1px solid var(--muted);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
-  line-height: 13px;
+  line-height: 11px;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
 }
