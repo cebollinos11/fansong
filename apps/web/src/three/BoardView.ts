@@ -235,6 +235,26 @@ function standAtFeet<M extends THREE.Material>(material: M): M {
   return material;
 }
 
+/**
+ * {@link standAtFeet}, plus a `whiteout` uniform (0..1) that paints over the
+ * texture's colours with white, leaving only the cutout's shape at 1. The
+ * uniform is the material's own, kept in `userData.whiteout`.
+ */
+function standAtFeetWithWhiteout(material: THREE.MeshBasicMaterial): THREE.MeshBasicMaterial {
+  const whiteout = { value: 0 };
+  material.userData.whiteout = whiteout;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.whiteout = whiteout;
+    shader.vertexShader = shader.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>${FEET_DEPTH_GLSL}`);
+    shader.fragmentShader = `uniform float whiteout;\n${shader.fragmentShader}`.replace(
+      '#include <dithering_fragment>',
+      'gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0), whiteout);\n#include <dithering_fragment>',
+    );
+  };
+  material.customProgramCacheKey = () => 'feet-depth-whiteout';
+  return material;
+}
+
 function outlineMaterial(): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -455,6 +475,8 @@ const SMOKE_COLORS = [0x3a3431, 0x55504c, 0x2a2624];
 const STICK_MS = 500; // an arrow that lands stays in its target this long
 const BLINKS = 3; // a knocked-down unit blinks this many times as it lands
 const BLINK_MS = 160; // one blink: hidden for the first half, shown for the second
+const PICK_FLASH = 1.25; // whiteout on a unit as it is picked to activate; above 1 it holds as a pure white shape first
+const PICK_FLASH_FADE = 3.5; // whiteout lost per second
 
 // Following the action: a batch whose units sit outside this part of the view
 // (normalised device coords, ±1 = the edges) pans the camera to them first.
@@ -655,6 +677,8 @@ interface UnitObj {
   walk: { path: THREE.Vector3[]; start: number; backward?: boolean } | null;
   /** 0..1 transient hit flash, decays each frame. */
   flash: number;
+  /** Transient pick whiteout, decays each frame; 1 and above shows only the white shape. */
+  whiteout: number;
   /** Whether the view model marks it spent, and how far (0..1) its base has darkened. */
   spent: boolean;
   spentShade: number;
@@ -792,6 +816,10 @@ export class BoardView {
   private wasInteractive = false;
   /** The selection the camera has already answered, so a pick is panned to once. */
   private pannedTo: string | null = null;
+  /** The selection that last flashed, so a pick flashes once per time it is made. */
+  private flashedPick: string | null = null;
+  /** The last unit picked on this screen, so committing its dice doesn't flash it a second time. */
+  private ownPick: string | null = null;
   /** The distance of the opening shot (see {@link positionCamera}); combat never pulls further out than this. */
   private homeDist = 0;
   /**
@@ -1200,6 +1228,13 @@ export class BoardView {
     if (vm.interactive && !this.wasInteractive) this.returnToPlayerView();
     this.wasInteractive = vm.interactive;
     this.panToSelected(vm.selectedUnitId);
+    if (vm.selectedUnitId !== this.flashedPick) {
+      this.flashedPick = vm.selectedUnitId;
+      if (vm.selectedUnitId) {
+        this.ownPick = vm.selectedUnitId;
+        this.flashPick(vm.selectedUnitId);
+      }
+    }
   }
 
   /**
@@ -1271,6 +1306,9 @@ export class BoardView {
         }
       } else if (e.type === 'ActivationChosen') {
         const obj = this.units.get(e.unitId);
+        // The opponent's pick is news to whoever is watching; the player's own already flashed when they made it.
+        if (e.unitId !== this.ownPick) this.at(t, () => this.flashPick(e.unitId));
+        this.ownPick = null;
         if (obj?.anims.leading) this.at(t, () => obj.animator.play(obj.anims.leading));
       } else if (e.type === 'DiceRolled') {
         const roll = describeActivation(e, after);
@@ -2240,7 +2278,7 @@ export class BoardView {
     // not blended, so overlapping cutouts need no sorting.
     const sprite = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
-      standAtFeet(new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide, forceSinglePass: true })),
+      standAtFeetWithWhiteout(new THREE.MeshBasicMaterial({ alphaTest: 0.5, side: THREE.DoubleSide, forceSinglePass: true })),
     );
     sprite.userData.unitId = id;
     sprite.userData.isCutout = true;
@@ -2322,6 +2360,7 @@ export class BoardView {
       lunge: null,
       walk: null,
       flash: 0,
+      whiteout: 0,
       spent: false,
       spentShade: 0,
       pulse: null,
@@ -2776,6 +2815,8 @@ export class BoardView {
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
 
     if (obj.flash > 0) obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);
+    if (obj.whiteout > 0) obj.whiteout = Math.max(0, obj.whiteout - (dtMs / 1000) * PICK_FLASH_FADE);
+    obj.sprite.material.userData.whiteout.value = Math.min(1, obj.whiteout);
     // A basic material's colour multiplies the texture; > 1 washes it toward white.
     obj.spentShade += ((obj.spent ? 1 : 0) - obj.spentShade) * lerp;
     obj.sprite.material.color.setScalar((1 + obj.flash * 2.5) * this.unitLight(obj.id));
@@ -3921,6 +3962,12 @@ export class BoardView {
   private flashUnit(id: string, amount: number): void {
     const obj = this.units.get(id);
     if (obj) obj.flash = Math.max(obj.flash, amount);
+  }
+
+  /** Blank a unit to a white silhouette for a moment: it has just been picked to activate. */
+  private flashPick(id: string): void {
+    const obj = this.units.get(id);
+    if (obj) obj.whiteout = PICK_FLASH;
   }
 
   /** Draw a short-lived bolt between two points (a shot without a missile image). */
