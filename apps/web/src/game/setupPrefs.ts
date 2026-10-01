@@ -1,5 +1,6 @@
 import { GAME_MODES, type GameMode } from '@fansong/engine';
 import type { MapStorage } from './customMaps.js';
+import { parseLimitsByMode, type LimitsByMode } from './limits.js';
 
 /**
  * The setup screen's last choices (play mode, both sides, map, game mode,
@@ -18,6 +19,8 @@ export interface SetupPrefs {
   mapId?: string;
   gameMode?: GameMode;
   kings?: [number, number];
+  /** Custom round limit / target score, remembered per game mode. */
+  limits?: LimitsByMode;
 }
 
 const PLAY_MODES = ['vsAI', 'hotseat', 'online'] as const;
@@ -38,6 +41,8 @@ export function loadSetupPrefs(storage: MapStorage | null): SetupPrefs {
   if (typeof r.mapId === 'string') prefs.mapId = r.mapId;
   if (GAME_MODES.includes(r.gameMode as GameMode)) prefs.gameMode = r.gameMode as GameMode;
   if (isPair(r.kings, (x) => Number.isInteger(x) && (x as number) >= 0)) prefs.kings = r.kings as [number, number];
+  const limits = parseLimitsByMode(r.limits);
+  if (Object.keys(limits).length > 0) prefs.limits = limits;
   return prefs;
 }
 

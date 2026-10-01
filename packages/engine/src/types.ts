@@ -1,5 +1,5 @@
 import type { BoardData, Vec } from './board.js';
-import type { ModeState } from './mode.js';
+import type { GameLimits, ModeState } from './mode.js';
 import type { BASE_MOVE, SPEED_STEP } from './query.js';
 
 /** Two players: 0 and 1. */
@@ -179,6 +179,8 @@ export interface GameState {
    * so a default game's state shape — and every replay hash — is unchanged.
    */
   mode?: ModeState;
+  /** Custom round limit / target score; omitted when the game plays its mode's defaults. */
+  limits?: GameLimits;
 }
 
 // --- Commands -------------------------------------------------------------
@@ -480,7 +482,7 @@ export type GameEvent =
   | { type: 'FlagReturned'; player: Owner; unitId: string }
   /** Capture-the-flag: `player` carried the enemy flag home with `unitId` (and wins). */
   | { type: 'FlagCaptured'; player: Owner; unitId: string }
-  /** `reason` is present only in an objective mode (see {@link ModeState}). */
+  /** `reason` is present only in an objective mode (see {@link ModeState}) or when a round limit ends the game. */
   | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
 
 /** Why a game ended: last side standing, target score, round cap, king slain, or flag captured. */

@@ -117,7 +117,7 @@ function zoneLetter(zone: number): string {
 const GAME_OVER_REASONS: Record<GameOverReason, string> = {
   annihilation: 'last side standing',
   score: 'target score reached',
-  roundLimit: 'most points after the final round',
+  roundLimit: 'the round limit was reached',
   king: 'the King has fallen',
   flag: 'flag captured',
 };

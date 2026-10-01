@@ -1,4 +1,4 @@
-import { isLegalCommand, MODE_RULES, reduce, type Command, type GameMode, type GameState, type Owner } from '@fansong/engine';
+import { isLegalCommand, MODE_RULES, reduce, type Command, type GameLimits, type GameMode, type GameState, type Owner } from '@fansong/engine';
 import {
   createMatchFromPresets,
   DEFAULT_MAP_ID,
@@ -57,6 +57,8 @@ export interface ArmyPick {
 export interface RoomSnapshot {
   mapId: string;
   mode: GameMode;
+  /** The host's round limit / target score; absent (also in older snapshots) = mode defaults. */
+  limits?: GameLimits;
   picks: [ArmyPick, ArmyPick];
   game: { setup: MatchSetup; state: GameState } | null;
 }
@@ -76,7 +78,7 @@ export function newRoomSnapshot(): RoomSnapshot {
  * annihilation, (outside kill-the-king) Kings and — in the modes that need no
  * objectives — the default map stay implicit.
  */
-export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks'>, seed: number): MatchSetup {
+export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks' | 'limits'>, seed: number): MatchSetup {
   const [a, b] = room.picks;
   const setup: MatchSetup = {
     presets: [a.preset, b.preset],
@@ -87,6 +89,7 @@ export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks'>,
   if (room.mapId !== DEFAULT_MAP_ID || MODE_RULES[room.mode].requires) setup.mapId = room.mapId;
   if (room.mode !== 'annihilation') setup.mode = room.mode;
   if (room.mode === 'kill-the-king') setup.kings = [a.king, b.king];
+  if (room.limits && Object.keys(room.limits).length > 0) setup.limits = room.limits;
   return setup;
 }
 
@@ -188,6 +191,8 @@ export class RoomEngine {
         }
         this.room.mapId = msg.mapId;
         this.room.mode = msg.mode;
+        if (msg.limits && Object.keys(msg.limits).length > 0) this.room.limits = msg.limits;
+        else delete this.room.limits;
         this.lobbyChanged();
         break;
       case 'ready':
@@ -246,11 +251,12 @@ export class RoomEngine {
 
   /** The lobby as the clients see it. */
   lobby(): Lobby {
-    const { mapId, mode, picks } = this.room;
+    const { mapId, mode, limits, picks } = this.room;
     const presence = this.presence();
     return {
       mapId,
       mode,
+      ...(limits ? { limits } : {}),
       seats: [
         { ...picks[0], present: presence[0], ready: this.ready[0] },
         { ...picks[1], present: presence[1], ready: this.ready[1] },

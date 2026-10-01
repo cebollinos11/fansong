@@ -78,6 +78,19 @@ export interface ModeRules {
 /** Rounds played in the scoring modes before the game is called on points. */
 export const ROUND_LIMIT = 12;
 
+/** Bounds for a custom round limit or target score. */
+export const LIMIT_RANGE = { min: 1, max: 50 } as const;
+
+/**
+ * Per-game overrides of {@link MODE_RULES}. Absent keys use the mode's default.
+ * `roundLimit: null` plays with no round cap; `targetScore` only applies to the
+ * modes that score points (king of the hill, conquest).
+ */
+export interface GameLimits {
+  roundLimit?: number | null;
+  targetScore?: number;
+}
+
 export const MODE_RULES: Readonly<Record<GameMode, ModeRules>> = {
   annihilation: {},
   'kill-the-king': {},
@@ -91,7 +104,41 @@ export function gameMode(state: GameState): GameMode {
   return state.mode?.mode ?? 'annihilation';
 }
 
-const copyVecs = (vs: Vec[]): Vec[] => vs.map((v) => ({ x: v.x, y: v.y }));
+/** The round after which `state`'s game is called, or `undefined` for no cap. */
+export function roundLimitOf(state: GameState): number | undefined {
+  const custom = state.limits?.roundLimit;
+  if (custom !== undefined) return custom ?? undefined;
+  return state.mode ? MODE_RULES[state.mode.mode].roundLimit : undefined;
+}
+
+/** The score that wins `state`'s game outright, or `undefined` when the mode has none. */
+export function targetScoreOf(state: GameState): number | undefined {
+  if (!state.mode) return undefined;
+  const base = MODE_RULES[state.mode.mode].targetScore;
+  return base === undefined ? undefined : (state.limits?.targetScore ?? base);
+}
+
+/**
+ * The limits a mode honours, checked and trimmed: ranges enforced, a target score
+ * dropped in modes that have none, and `undefined` when nothing is left (so a
+ * default game's state is unchanged). Throws on an out-of-range value.
+ */
+export function normalizeLimits(mode: GameMode | undefined, limits: GameLimits | undefined): GameLimits | undefined {
+  if (!limits) return undefined;
+  const ok = (n: number): boolean => Number.isInteger(n) && n >= LIMIT_RANGE.min && n <= LIMIT_RANGE.max;
+  const out: GameLimits = {};
+  if (limits.roundLimit !== undefined) {
+    if (limits.roundLimit !== null && !ok(limits.roundLimit)) throw new Error(`round limit must be ${LIMIT_RANGE.min}-${LIMIT_RANGE.max}`);
+    out.roundLimit = limits.roundLimit;
+  }
+  if (limits.targetScore !== undefined && mode && MODE_RULES[mode].targetScore !== undefined) {
+    if (!ok(limits.targetScore)) throw new Error(`target score must be ${LIMIT_RANGE.min}-${LIMIT_RANGE.max}`);
+    out.targetScore = limits.targetScore;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+const copyVecs =(vs: Vec[]): Vec[] => vs.map((v) => ({ x: v.x, y: v.y }));
 
 /**
  * Build the initial mode state for a config, or `undefined` for annihilation.
@@ -172,7 +219,7 @@ export function finishGame(s: GameState, events: GameEvent[], winner: Owner, rea
   s.phase = 'gameOver';
   s.activeUnitId = null;
   s.actionsRemaining = 0;
-  events.push(s.mode ? { type: 'GameOver', winner, reason } : { type: 'GameOver', winner });
+  events.push(s.mode || reason === 'roundLimit' ? { type: 'GameOver', winner, reason } : { type: 'GameOver', winner });
 }
 
 /**
@@ -183,7 +230,7 @@ export function awardPoints(s: GameState, events: GameEvent[], player: Owner, po
   if (!s.mode || points <= 0) return false;
   s.mode.scores[player] += points;
   events.push({ type: 'ScoreChanged', player, points, scores: [s.mode.scores[0], s.mode.scores[1]] });
-  const target = MODE_RULES[s.mode.mode].targetScore;
+  const target = targetScoreOf(s);
   if (target !== undefined && s.mode.scores[player] >= target) {
     finishGame(s, events, player, 'score');
     return true;
@@ -221,8 +268,7 @@ export function fallenKingOwner(state: GameState): Owner | undefined {
  * ending the final round calls the game on points. Returns whether it ended.
  */
 export function checkRoundLimit(s: GameState, events: GameEvent[]): boolean {
-  if (!s.mode) return false;
-  const limit = MODE_RULES[s.mode.mode].roundLimit;
+  const limit = roundLimitOf(s);
   if (limit === undefined || s.round < limit) return false;
   finishGame(s, events, roundLimitWinner(s), 'roundLimit');
   return true;
@@ -280,7 +326,7 @@ export function scoreZones(s: GameState, events: GameEvent[]): boolean {
         : { type: 'ScoreChanged', player: holder, points: 1, scores },
     );
   });
-  const target = MODE_RULES[mode.mode].targetScore;
+  const target = targetScoreOf(s);
   if (target === undefined) return false;
   const [s0, s1] = mode.scores;
   if (s0 < target && s1 < target) return false;

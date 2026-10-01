@@ -1,4 +1,4 @@
-import { makeHexGrid, vecKey, type GameConfig, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { makeHexGrid, vecKey, type GameConfig, type GameLimits, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
 import { profileRange, unitCost } from './cost.js';
 import { flatMap, mapToBoard, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
@@ -27,6 +27,8 @@ export interface MatchOptions {
    * {@link defaultKing}. Ignored in every other mode.
    */
   kings?: [number, number];
+  /** Custom round limit / target score; omitted = the mode's defaults. */
+  limits?: GameLimits;
 }
 
 /**
@@ -219,7 +221,8 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
       initiativeLeader: opts.initiativeLeader ?? 0,
     };
   }
-  // Annihilation adds no keys, so its config (and every replay hash) is unchanged.
+  // Default games add no keys, so their config (and every replay hash) is unchanged.
+  if (opts.limits && Object.keys(opts.limits).length > 0) config.limits = opts.limits;
   if (mode === 'annihilation') return config;
   config.mode = mode;
   if (mode === 'kill-the-king') {

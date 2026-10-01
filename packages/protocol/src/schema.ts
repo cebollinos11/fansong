@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { GAME_MODES, MAX_ELEVATION, TERRAIN_FEATURES } from '@fansong/engine';
+import { GAME_MODES, LIMIT_RANGE, MAX_ELEVATION, TERRAIN_FEATURES } from '@fansong/engine';
 import type {
   AttackCommand,
   BoardData,
@@ -183,6 +183,13 @@ export const modeObjectivesSchema = z
   })
   .strict();
 
+const limitValue = z.number().int().min(LIMIT_RANGE.min).max(LIMIT_RANGE.max);
+
+/** Custom round limit (`null` = no cap) and target score; see the engine's `GameLimits`. */
+export const gameLimitsSchema = z
+  .object({ roundLimit: limitValue.nullable().optional(), targetScore: limitValue.optional() })
+  .strict();
+
 export const flagStateSchema = z.object({ at: vecSchema, carrier: z.string().nullable() }).strict();
 
 export const modeStateSchema = z
@@ -212,6 +219,7 @@ export const gameStateSchema = z
     rngState: z.number(),
     winner: ownerSchema.nullable(),
     mode: modeStateSchema.optional(),
+    limits: gameLimitsSchema.optional(),
   })
   .strict();
 
@@ -451,6 +459,7 @@ export const gameConfigSchema = z
     initiativeLeader: ownerSchema.optional(),
     mode: gameModeSchema.optional(),
     objectives: modeObjectivesSchema.optional(),
+    limits: gameLimitsSchema.optional(),
   })
   .strict();
 
@@ -504,6 +513,7 @@ export const matchSetupSchema = z
     mapId: z.string().min(1).max(64).optional(),
     mode: gameModeSchema.optional(),
     kings: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
+    limits: gameLimitsSchema.optional(),
   })
   .strict();
 

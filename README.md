@@ -300,6 +300,14 @@ absent when unused.
     be pushed onto — your base with the enemy flag to win. A flying carrier is
     weighed down and walks until it drops the flag.
 
+  **Game length** — every mode takes a custom **round limit** (1–50, or none), and
+  king-of-the-hill and conquest a custom **points to win** (1–50). Set them in the
+  Setup screen's *Game length* box (remembered per mode), by the host in an online
+  lobby, or with `--rounds <n|none>` / `--points <n>`. The defaults above apply
+  when nothing is set; at the round limit the higher score wins, with the
+  annihilation-style tiebreak (the only rule in annihilation, kill-the-king and
+  capture-the-flag, which have no points). Capture-the-flag stays sudden death.
+
   The heuristic AI plays every mode (zones, flags, Kings, high ground, cover
   and lava — it goes for foes with lava at their backs and keeps its own off it),
   and a self-play matrix runs every built-in map × every mode it supports.

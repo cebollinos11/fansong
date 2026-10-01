@@ -218,6 +218,40 @@ describe('RoomEngine — lobby', () => {
     expect(state.mode?.kings?.[1]).toBe(guestUnits[4]!.id);
   });
 
+  it('carries the host\'s round limit and target score from the lobby into the game', () => {
+    const room = new RoomEngine(undefined, () => 3);
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    expect(a.lobby().limits).toBeUndefined();
+    msg(room, b, { t: 'setMap', mapId: 'open-field', mode: 'conquest', limits: { roundLimit: 5 } });
+    expectError(b, 'not_host');
+    msg(room, a, { t: 'setMap', mapId: 'open-field', mode: 'conquest', limits: { roundLimit: 5, targetScore: 4 } });
+    expect(b.lobby().limits).toEqual({ roundLimit: 5, targetScore: 4 });
+    msg(room, a, { t: 'ready', ready: true });
+    msg(room, b, { t: 'ready', ready: true });
+    expect(room.setup).toMatchObject({ mode: 'conquest', limits: { roundLimit: 5, targetScore: 4 } });
+    expect(room.getState()!.limits).toEqual({ roundLimit: 5, targetScore: 4 });
+    const w = b.last();
+    if (w.t !== 'welcome') throw new Error('expected a welcome');
+    expect(w.state.limits).toEqual({ roundLimit: 5, targetScore: 4 });
+  });
+
+  it('rejects out-of-range limits, and a setMap without limits resets them', () => {
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    join(room, a);
+    msg(room, a, { t: 'setMap', mapId: 'open-field', mode: 'conquest', limits: { roundLimit: 0 } });
+    expectError(a, 'bad_frame');
+    msg(room, a, { t: 'setMap', mapId: 'open-field', mode: 'conquest', limits: { targetScore: 51 } });
+    expectError(a, 'bad_frame');
+    msg(room, a, { t: 'setMap', mapId: 'open-field', mode: 'annihilation', limits: { roundLimit: null } });
+    expect(a.lobby().limits).toEqual({ roundLimit: null });
+    msg(room, a, { t: 'setMap', mapId: 'open-field', mode: 'annihilation' });
+    expect(a.lobby().limits).toBeUndefined();
+  });
+
   it('refuses lobby changes during a game', () => {
     const { room, host } = startedRoom();
     msg(room, host, { t: 'setMap', mapId: 'old-forest', mode: 'annihilation' });

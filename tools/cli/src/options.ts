@@ -13,7 +13,7 @@ import {
   type MapDef,
   type Warband,
 } from '@fansong/content';
-import { createDemoGame, createGame, GAME_MODES, MODE_RULES, type GameMode, type GameState } from '@fansong/engine';
+import { createDemoGame, createGame, GAME_MODES, MODE_RULES, type GameLimits, type GameMode, type GameState } from '@fansong/engine';
 
 /** A bad command line: the message is shown to the user and the CLI exits with code 2. */
 export class CliError extends Error {}
@@ -28,6 +28,10 @@ export interface Options {
   map: string | null;
   /** Game mode (`--mode`); null = annihilation. */
   mode: GameMode | null;
+  /** Round limit (`--rounds`): a number, `none` for no cap, or null = the mode's default. */
+  rounds: number | 'none' | null;
+  /** Points to win (`--points`); null = the mode's default. */
+  points: number | null;
   list: boolean;
   help: boolean;
 }
@@ -55,6 +59,8 @@ export function parseArgs(argv: string[]): Options {
     p1: null,
     map: null,
     mode: null,
+    rounds: null,
+    points: null,
     list: false,
     help: false,
   };
@@ -75,7 +81,11 @@ export function parseArgs(argv: string[]): Options {
       const mode = value(++i, arg);
       if (!isGameMode(mode)) throw new CliError(`Unknown mode "${mode}". Known: ${GAME_MODES.join(', ')}`);
       opts.mode = mode;
-    } else if (arg === '--list') opts.list = true;
+    } else if (arg === '--rounds') {
+      const v = value(++i, arg);
+      opts.rounds = v === 'none' ? 'none' : numberArg(arg, v);
+    } else if (arg === '--points') opts.points = numberArg(arg, argv[++i]);
+    else if (arg === '--list') opts.list = true;
     else if (arg === '--help' || arg === '-h') opts.help = true;
     else throw new CliError(`Unknown option "${arg}". Try --help.`);
   }
@@ -93,6 +103,8 @@ Options:
   --p1 <preset>    Warband for player 1 (default: built-in demo)
   --map <id>       Built-in map to play on (default: flat ${DEFAULT_BOARD.width}×${DEFAULT_BOARD.height} board)
   --mode <mode>    Game mode (default annihilation); must be supported by the map
+  --rounds <n|none>  Round limit (1-50, or none); default depends on the mode
+  --points <n>     Points to win in king-of-the-hill and conquest (1-50)
   --list           List preset warbands, maps and modes, then exit
   --max-steps <n>  Safety cap on reduce steps (default 5000)
   --quiet, -q      Only print setup and final result
@@ -159,7 +171,7 @@ function checkMode(mode: GameMode, map: MapDef | null): void {
  * unsupported mode.
  */
 export function setupMatch(opts: Options): { state: GameState; label: string } {
-  if (!opts.p0 && !opts.p1 && opts.map === null && opts.mode === null)
+  if (!opts.p0 && !opts.p1 && opts.map === null && opts.mode === null && opts.rounds === null && opts.points === null)
     return { state: createDemoGame(opts.seed), label: 'demo warbands' };
 
   const w0 = requirePreset(opts.p0 ?? FALLBACK_PRESET);
@@ -169,10 +181,22 @@ export function setupMatch(opts: Options): { state: GameState; label: string } {
   const map = opts.map !== null ? requireMap(opts.map) : MODE_RULES[mode].requires ? getMap(DEFAULT_MAP_ID)! : null;
   checkMode(mode, map);
   // Annihilation passes no mode, so its config is byte-identical to the pre-mode CLI.
-  const modeOpt = mode === 'annihilation' ? {} : { mode };
-  const config = map
-    ? buildMatch(w0, w1, { seed: opts.seed, map, ...modeOpt })
-    : buildMatch(w0, w1, { seed: opts.seed, board: DEFAULT_BOARD, ...modeOpt });
+  const limits: GameLimits = {};
+  if (opts.rounds !== null) limits.roundLimit = opts.rounds === 'none' ? null : opts.rounds;
+  if (opts.points !== null) {
+    if (MODE_RULES[mode].targetScore === undefined) throw new CliError(`--points does not apply to mode "${mode}"`);
+    limits.targetScore = opts.points;
+  }
+  const modeOpt = { ...(mode === 'annihilation' ? {} : { mode }), limits };
+  let config;
+  try {
+    config = map
+      ? buildMatch(w0, w1, { seed: opts.seed, map, ...modeOpt })
+      : buildMatch(w0, w1, { seed: opts.seed, board: DEFAULT_BOARD, ...modeOpt });
+    createGame(config);
+  } catch (e) {
+    throw new CliError(e instanceof Error ? e.message : String(e));
+  }
 
   let label = `${w0.name} (P0) vs ${w1.name} (P1)`;
   if (map) label += ` on ${map.name}`;

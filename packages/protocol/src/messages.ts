@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   commandSchema,
   gameEventSchema,
+  gameLimitsSchema,
   gameModeSchema,
   gameStateSchema,
   matchSetupSchema,
@@ -38,9 +39,14 @@ export const setArmyMessageSchema = z
   })
   .strict();
 
-/** Lobby, host only: pick the built-in map and the game mode. */
+/** Lobby, host only: pick the built-in map, the game mode and its round limit / target score. */
 export const setMapMessageSchema = z
-  .object({ t: z.literal('setMap'), mapId: z.string().min(1).max(64), mode: gameModeSchema })
+  .object({
+    t: z.literal('setMap'),
+    mapId: z.string().min(1).max(64),
+    mode: gameModeSchema,
+    limits: gameLimitsSchema.optional(),
+  })
   .strict();
 
 /** Lobby: toggle ready. The match starts once both seats are ready. */
@@ -106,6 +112,7 @@ export const lobbySchema = z
   .object({
     mapId: z.string(),
     mode: gameModeSchema,
+    limits: gameLimitsSchema.optional(),
     seats: z.tuple([lobbySeatSchema, lobbySeatSchema]),
     problem: z.string().nullable(),
   })

@@ -1,5 +1,5 @@
 import type { BoardData, HexTerrain, Vec } from './board.js';
-import { createModeState, type GameMode, type ModeObjectives } from './mode.js';
+import { createModeState, normalizeLimits, type GameLimits, type GameMode, type ModeObjectives } from './mode.js';
 import { seedRng } from './rng.js';
 import type { GameState, Owner, Unit } from './types.js';
 
@@ -66,6 +66,8 @@ export interface GameConfig {
   mode?: GameMode;
   /** Objective placements the mode needs (flags / hill / conquest zones). */
   objectives?: ModeObjectives;
+  /** Custom round limit / target score (default: the mode's own; see {@link GameLimits}). */
+  limits?: GameLimits;
 }
 
 function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
@@ -176,6 +178,8 @@ export function createGame(config: GameConfig): GameState {
   const mode = createModeState(config.mode, config.objectives);
   if (mode?.mode === 'kill-the-king') mode.kings = [kingId(config.warbands[0], 0), kingId(config.warbands[1], 1)];
   if (mode) state.mode = mode;
+  const limits = normalizeLimits(config.mode, config.limits);
+  if (limits) state.limits = limits;
   return state;
 }
 

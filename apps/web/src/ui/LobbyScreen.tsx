@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_MAP_ID, defaultKing, getMap, PRESET_IDS, warbandCost } from '@fansong/content';
-import type { Owner } from '@fansong/engine';
+import type { GameLimits, Owner } from '@fansong/engine';
 import type { Lobby } from '@fansong/protocol';
 import type { OnlineRoom } from '../game/OnlineRoom.js';
 import { browserStorage } from '../game/customMaps.js';
@@ -8,7 +8,8 @@ import { choiceWarband, playableArmies } from '../game/armies.js';
 import { roomLink } from '../net/server.js';
 import { MODE_LABELS } from './editorView.js';
 import { MapThumb } from './Picker.js';
-import { GameModePicker, MapPicker, modeFor, Roster, sideLabel, WarbandPicker } from './SetupScreen.js';
+import { GameModePicker, LimitsPicker, MapPicker, modeFor, Roster, sideLabel, WarbandPicker } from './SetupScreen.js';
+import { limitsForMode, type LimitsByMode } from '../game/limits.js';
 
 interface Props {
   room: OnlineRoom;
@@ -37,7 +38,11 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
   // Before this player picks anything here, show the preset the server gave them.
   const value = choice ?? (PRESET_IDS.includes(me.preset) ? me.preset : PRESET_IDS[0]!);
 
-  const pickArmy = (next: string): void => {
+  // The host's custom limits, remembered per mode so switching modes and back keeps them.
+  const [limitsByMode, setLimitsByMode] = useState<LimitsByMode>(() => ({ [lobby.mode]: lobby.limits }));
+  const limitsFor = (mode: Lobby['mode']): GameLimits | undefined => limitsForMode(mode, limitsByMode[mode]);
+
+  const pickArmy =(next: string): void => {
     const warband = choiceWarband(next, armies);
     if (!warband) return;
     onChoice(next);
@@ -86,9 +91,20 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
               value={map.id}
               custom={[]}
               online
-              onChange={(id) => room.setMap(id, modeFor(getMap(id) ?? map, lobby.mode))}
+              onChange={(id) => {
+                const mode = modeFor(getMap(id) ?? map, lobby.mode);
+                room.setMap(id, mode, limitsFor(mode));
+              }}
             />
-            <GameModePicker map={map} value={lobby.mode} onChange={(mode) => room.setMap(map.id, mode)} />
+            <GameModePicker map={map} value={lobby.mode} onChange={(mode) => room.setMap(map.id, mode, limitsFor(mode))} />
+            <LimitsPicker
+              mode={lobby.mode}
+              value={lobby.limits}
+              onChange={(next) => {
+                setLimitsByMode((all) => ({ ...all, [lobby.mode]: next }));
+                room.setMap(map.id, lobby.mode, next);
+              }}
+            />
           </>
         ) : (
           <div className="map-picker">
@@ -101,6 +117,7 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
               {map.width}×{map.height} · the host picks the map and game mode
             </p>
             {kingMode ? <p className="hint">Pick your King in your roster above.</p> : null}
+            <LimitsPicker mode={lobby.mode} value={lobby.limits} onChange={() => undefined} disabled />
           </div>
         )}
 

@@ -1,8 +1,9 @@
 import {
   flagAtBase,
   gameMode,
-  MODE_RULES,
+  roundLimitOf,
   scoringZones,
+  targetScoreOf,
   unitById,
   zoneController,
   type GameState,
@@ -32,11 +33,19 @@ const GOALS = {
 
 const holderText = (holder: Owner | undefined): string => (holder === undefined ? '—' : `P${holder}`);
 
-/** The HUD's mode panel, or null in annihilation (which shows no panel). */
+/** " · ends after round N" when the game has a round limit, else "". */
+const limitText = (state: GameState): string => {
+  const limit = roundLimitOf(state);
+  return limit === undefined ? '' : ` · ends after round ${limit}`;
+};
+
+/** The HUD's mode panel, or null in annihilation without a round limit (which shows no panel). */
 export function modeHud(state: GameState): ModeHud | null {
   const m = state.mode;
-  if (!m) return null;
-  const rules = MODE_RULES[m.mode];
+  if (!m) {
+    if (roundLimitOf(state) === undefined) return null;
+    return { label: MODE_LABELS.annihilation, goal: `Destroy the enemy warband${limitText(state)}`, scores: null, lines: [] };
+  }
   const label = MODE_LABELS[m.mode];
   const lines: string[] = [];
 
@@ -45,7 +54,7 @@ export function modeHud(state: GameState): ModeHud | null {
       const king = unitById(state, id);
       if (king) lines.push(`P${p} King: ${king.name}${king.dead ? ' (fallen)' : king.knockedDown ? ' (knocked down)' : ''}`);
     });
-    return { label, goal: GOALS[m.mode], scores: null, lines };
+    return { label, goal: GOALS[m.mode] + limitText(state), scores: null, lines };
   }
 
   if (m.mode === 'capture-the-flag') {
@@ -58,7 +67,7 @@ export function modeHud(state: GameState): ModeHud | null {
           : `dropped at (${flag.at.x}, ${flag.at.y})`;
       lines.push(`P${p} flag: ${where}`);
     });
-    return { label, goal: GOALS[m.mode], scores: null, lines };
+    return { label, goal: GOALS[m.mode] + limitText(state), scores: null, lines };
   }
 
   const zones = scoringZones(state);
@@ -67,7 +76,7 @@ export function modeHud(state: GameState): ModeHud | null {
   } else {
     lines.push(zones.map((z, i) => `${CONQUEST_LABELS[i]}: ${holderText(zoneController(state, z))}`).join(' · '));
   }
-  const goal = `First to ${rules.targetScore} points · ends after round ${rules.roundLimit}`;
+  const goal = `First to ${targetScoreOf(state)} points${limitText(state)}`;
   return { label, goal, scores: [m.scores[0], m.scores[1]], lines };
 }
 

@@ -17,7 +17,7 @@ import {
   type MatchSetup,
   type Warband,
 } from '@fansong/content';
-import { GAME_MODES, MODE_RULES, type GameMode, type Replay } from '@fansong/engine';
+import { GAME_MODES, LIMIT_RANGE, MODE_RULES, ROUND_LIMIT, type GameLimits, type GameMode, type Replay } from '@fansong/engine';
 import { normalizeRoomCode, ROOM_CODE_LENGTH } from '@fansong/protocol';
 import type { Launch } from '../game/launch.js';
 import { parseReplay } from '../game/replay-io.js';
@@ -25,6 +25,7 @@ import { MODE_LABELS } from './editorView.js';
 import { browserStorage, customMapLookup, playableCustomMaps } from '../game/customMaps.js';
 import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy } from '../game/armies.js';
 import { loadSetupPrefs, saveSetupPrefs } from '../game/setupPrefs.js';
+import { limitsForMode, type LimitsByMode } from '../game/limits.js';
 import { StatIcons } from './StatIcons.js';
 import { MapThumb, Picker, profileStats, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
 
@@ -52,6 +53,8 @@ export interface GameChoice {
   mode: GameMode;
   /** Index into each preset's units of its King; only used in kill-the-king. */
   kings?: [number, number];
+  /** Custom round limit / target score for the chosen mode. */
+  limits?: GameLimits;
 }
 
 /**
@@ -81,6 +84,8 @@ export function launchFor(
   if (mapId !== DEFAULT_MAP_ID || MODE_RULES[game.mode].requires) setup.mapId = mapId;
   if (game.mode !== 'annihilation') setup.mode = game.mode;
   if (kings) setup.kings = kings;
+  const limits = limitsForMode(game.mode, game.limits);
+  if (limits) setup.limits = limits;
   return { kind: 'local', setup };
 }
 
@@ -145,9 +150,10 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
     };
     return [king(0, p0), king(1, p1)];
   });
+  const [limitsByMode, setLimitsByMode] = useState<LimitsByMode>(() => saved.limits ?? {});
   useEffect(() => {
-    saveSetupPrefs(browserStorage(), { mode, sides: [p0, p1], mapId, gameMode: wantedMode, kings });
-  }, [mode, p0, p1, mapId, wantedMode, kings]);
+    saveSetupPrefs(browserStorage(), { mode, sides: [p0, p1], mapId, gameMode: wantedMode, kings, limits: limitsByMode });
+  }, [mode, p0, p1, mapId, wantedMode, kings, limitsByMode]);
   const [replayError, setReplayError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
@@ -161,7 +167,8 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
   };
   const pickKing = (owner: 0 | 1, i: number) => setKings((k) => (owner === 0 ? [i, k[1]] : [k[0], i]));
   const localMode: LocalMode = mode === 'online' ? 'hotseat' : mode;
-  const launch = launchFor(localMode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMap.id, { mode: gameMode, kings }, armies);
+  const limits = limitsByMode[gameMode];
+  const launch = launchFor(localMode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMap.id, { mode: gameMode, kings, limits }, armies);
   const problem = launchProblem(launch, customMapLookup(browserStorage()));
   const start = () => onStart(launch);
 
@@ -245,6 +252,12 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
             <MapPicker value={playedMap.id} custom={customMaps} onChange={setMapId} />
 
             <GameModePicker map={playedMap} value={gameMode} onChange={setWantedMode} />
+
+            <LimitsPicker
+              mode={gameMode}
+              value={limits}
+              onChange={(next) => setLimitsByMode((all) => ({ ...all, [gameMode]: next }))}
+            />
 
             <label className="seed-row">
               Seed
@@ -450,6 +463,93 @@ export function MapPicker({
         {online ? ' · online matches use built-in maps only' : ''}
       </p>
     </div>
+  );
+}
+
+/**
+ * Round limit and (in the point-scoring modes) target score for a game mode.
+ * Blank/unset shows the mode's default; "No round limit" plays until the mode's
+ * own win condition. `onChange(undefined)` resets to the defaults.
+ */
+export function LimitsPicker({
+  mode,
+  value,
+  onChange,
+  disabled = false,
+}: {
+  mode: GameMode;
+  value: GameLimits | undefined;
+  onChange: (limits: GameLimits | undefined) => void;
+  /** Online guests see the host's choice but can't change it. */
+  disabled?: boolean;
+}): JSX.Element {
+  const rules = MODE_RULES[mode];
+  const unlimited = value?.roundLimit === null;
+  const rounds = value?.roundLimit ?? rules.roundLimit;
+  const target = value?.targetScore ?? rules.targetScore;
+  const emit = (next: GameLimits): void => onChange(Object.keys(next).length > 0 ? next : undefined);
+  const parse = (text: string): number | undefined => {
+    const n = parseInt(text, 10);
+    return Number.isInteger(n) ? Math.min(LIMIT_RANGE.max, Math.max(LIMIT_RANGE.min, n)) : undefined;
+  };
+  const setRounds = (text: string): void => {
+    const n = parse(text);
+    if (n !== undefined) emit({ ...value, roundLimit: n });
+  };
+  const setTarget = (text: string): void => {
+    const n = parse(text);
+    if (n !== undefined) emit({ ...value, targetScore: n });
+  };
+  return (
+    <fieldset className="limits-picker">
+      <legend>Game length</legend>
+      <label>
+        Round limit
+        <input
+          type="number"
+          aria-label="Round limit"
+          min={LIMIT_RANGE.min}
+          max={LIMIT_RANGE.max}
+          value={unlimited ? '' : (rounds ?? '')}
+          placeholder={unlimited ? 'none' : undefined}
+          disabled={disabled || unlimited}
+          onChange={(e) => setRounds(e.target.value)}
+        />
+      </label>
+      <label>
+        <input
+          type="checkbox"
+          checked={unlimited}
+          disabled={disabled}
+          onChange={(e) => emit({ ...value, roundLimit: e.target.checked ? null : (rules.roundLimit ?? ROUND_LIMIT) })}
+        />
+        No round limit
+      </label>
+      {target !== undefined ? (
+        <label>
+          Points to win
+          <input
+            type="number"
+            aria-label="Points to win"
+            min={LIMIT_RANGE.min}
+            max={LIMIT_RANGE.max}
+            value={target}
+            disabled={disabled}
+            onChange={(e) => setTarget(e.target.value)}
+          />
+        </label>
+      ) : null}
+      <p className="hint">
+        {unlimited || rounds === undefined
+          ? 'No round cap.'
+          : `The game is called after round ${rounds}: most ${target !== undefined ? 'points' : 'units left'} wins.`}
+      </p>
+      {value && !disabled ? (
+        <button type="button" className="ghost" onClick={() => onChange(undefined)}>
+          Reset to defaults
+        </button>
+      ) : null}
+    </fieldset>
   );
 }
 

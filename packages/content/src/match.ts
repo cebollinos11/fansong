@@ -1,4 +1,4 @@
-import { createGame, type GameConfig, type GameMode, type GameState, type Owner } from '@fansong/engine';
+import { createGame, type GameConfig, type GameLimits, type GameMode, type GameState, type Owner } from '@fansong/engine';
 import { DEFAULT_BOARD, buildMatch, type BoardSize } from './deploy.js';
 import type { MapDef } from './map.js';
 import { getMap } from './mapRegistry.js';
@@ -46,6 +46,8 @@ export interface MatchSetup {
    * Omitted = each side's `defaultKing`. Ignored in other modes.
    */
   kings?: [number, number];
+  /** Custom round limit / target score. Omitted = the mode's defaults. */
+  limits?: GameLimits;
 }
 
 /** Resolves a map id to its definition (built-ins by default). */
@@ -106,7 +108,7 @@ export function configFromSetup(
   lookup: MapLookup = getMap,
 ): GameConfig {
   const [p0, p1] = warbandsFor(setup);
-  const mode = { mode: setup.mode, kings: setup.kings };
+  const mode = { mode: setup.mode, kings: setup.kings, limits: setup.limits };
   if (setup.mapId !== undefined)
     return buildMatch(p0, p1, { seed: setup.seed, map: resolveMap(setup.mapId, lookup), ...mode });
   return buildMatch(p0, p1, { seed: setup.seed, board, ...mode });
