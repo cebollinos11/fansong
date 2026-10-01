@@ -75,7 +75,10 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   const runnerRef = useRef<PlanRunner | null>(null);
   // The board reports a unit click without the event, so remember where the
   // pointer last went down — that is where the attack menu opens.
-  const pointer = useRef({ x: 0, y: 0 });
+  const pointer = useRef({ x: 0, y: 0, touch: false });
+  // Touch only: the hex under the last tap. With nothing to hover, the first tap
+  // on a hex shows what it would commit and a second tap on it commits.
+  const [pinnedCell, setPinnedCell] = useState<Vec | null>(null);
   // Each seat's last unit picked to activate, so its next pick starts from the one after it.
   const lastPicked = useRef<Partial<Record<Owner, string>>>({});
 
@@ -89,6 +92,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         setShown({ state: t.state, events: t.events, scoring: t.scoring });
         setSelectedUnitId(null);
         setAttackChoice(null);
+        setPinnedCell(null);
       },
       (t, nowIdle) => {
         setState(t.state);
@@ -125,7 +129,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // Remember the last pointer position for the attack menu's anchor.
   useEffect(() => {
     const onPointerDown = (e: PointerEvent): void => {
-      pointer.current = { x: e.clientX, y: e.clientY };
+      pointer.current = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse' };
     };
     window.addEventListener('pointerdown', onPointerDown, true);
     return () => window.removeEventListener('pointerdown', onPointerDown, true);
@@ -204,17 +208,35 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   const over = idle && state.phase === 'gameOver';
   const replay = over ? client.getReplay() : null;
 
+  /**
+   * A tap on a touch screen: true when it is the first on `cell`, which only
+   * pins the hex (its tooltip and preview stand in for hovering); false for a
+   * mouse click, or the second tap that means "do it".
+   */
+  const pinFirst = (cell: Vec): boolean => {
+    if (!pointer.current.touch) return false;
+    if (pinnedCell && vecKey(pinnedCell) === vecKey(cell)) return false;
+    setPinnedCell(cell);
+    return true;
+  };
+
   const handleUnitClick = (id: string): void => {
     if (sandbox?.onUnitClick(id)) return;
     if (!myTurn) return;
     if (state.phase === 'awaitingActivation') {
-      if (interaction.selectableUnitIds.includes(id)) setSelectedUnitId(id);
+      if (interaction.selectableUnitIds.includes(id)) {
+        setPinnedCell(null);
+        setSelectedUnitId(id);
+      }
       return;
     }
     if (state.phase !== 'acting' || !state.activeUnitId) return;
     // The plan may walk in first — an enemy a move away is clickable straight off.
     const plan = plans.byTarget.get(id);
     if (!plan) return;
+    const target = unitById(state, id);
+    if (target && pinFirst(target.pos)) return;
+    setPinnedCell(null);
     // With actions to spare the engine also offers the pressed version, so ask
     // which one before spending anything.
     const pressed = plans.pressedByTarget.get(id);
@@ -254,6 +276,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   const handleCellClick = (cell: Vec): void => {
     setAttackChoice(null);
     if (sandbox?.onCellClick(cell)) return;
+    // Any hex can be looked at, whoever's turn it is; tapping it again lets go.
+    if (pinFirst(cell)) return;
+    setPinnedCell(null);
     if (!myTurn) return;
     if (state.phase === 'acting' && state.activeUnitId) {
       // One click commits the whole chain, however many actions it spends.
@@ -437,6 +462,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         onCellClick={handleCellClick}
         focusUnitIds={logFocus?.unitIds ?? (inspectedUnitId ? [inspectedUnitId] : [])}
         focusPath={logFocus?.path}
+        pinnedCell={pinnedCell}
         diceChoices={myTurn && selectedUnitId && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}
         onChooseDice={handleActivate}
         playing

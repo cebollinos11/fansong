@@ -68,6 +68,11 @@ interface Props {
    */
   diceChoices?: readonly number[];
   onChooseDice?: (dice: number) => void;
+  /**
+   * A hex held under the finger: on a touch screen, where nothing hovers, it
+   * gets the tooltip and route preview the pointer's hex would.
+   */
+  pinnedCell?: Vec | null;
   /** Shown briefly over the board when a new round begins; null the rest of the time. */
   announcement?: { round: number; owner: Owner; turnLabel: string } | null;
   /**
@@ -160,7 +165,10 @@ const TRAIT_DETAIL_DELAY_MS = 1000;
 export function BoardCanvas(props: Props): JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<BoardView | null>(null);
-  const [hover, setHover] = useState<Vec | null>(null);
+  const [hovered, setHover] = useState<Vec | null>(null);
+  const hover = hovered ?? props.pinnedCell ?? null;
+  // On a phone the camera tools fold away behind one button.
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState(loadCameraMode);
   const [elevation, setElevation] = useState(loadElevation);
   const [backdrop, setBackdrop] = useState(loadBackdrop);
@@ -183,6 +191,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     const container = containerRef.current;
     if (!container) return;
     const view = new BoardView(container);
+    view.homeSeat = props.localSeats?.[0] ?? 0;
     view.onUnitClick = (id) => handlers.current.onUnitClick(id);
     view.onCellClick = (cell) => handlers.current.onCellClick(cell);
     view.onCellHover = setHover;
@@ -342,8 +351,11 @@ export function BoardCanvas(props: Props): JSX.Element {
   }, [hoverKey]);
 
   const detailed = hoverKey !== null && hoverKey === detailedKey;
+  const hoverPlan = hover ? (previewFor?.(hover) ?? null) : null;
+  // A pinned hex has no "rest a moment longer": it spells the abilities out at once.
+  const pinned = hovered === null && hover !== null;
   const hexInfo = hover
-    ? describeHex(props.state, hover, previewFor?.(hover) ?? null, detailed, props.playing ? 'match' : 'editor')
+    ? describeHex(props.state, hover, hoverPlan, detailed || pinned, props.playing ? 'match' : 'editor')
     : null;
 
   // The tooltip rides next to the pointer, flipping to its other side near an
@@ -362,7 +374,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
   }, []);
-  const onPointerMove = useCallback(
+  const onPointerAt = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       const r = e.currentTarget.getBoundingClientRect();
       pointer.current = { x: e.clientX - r.left, y: e.clientY - r.top, w: r.width, h: r.height };
@@ -384,7 +396,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       : null;
 
   return (
-    <div className="board-wrap" onPointerMove={onPointerMove}>
+    <div className="board-wrap" onPointerMove={onPointerAt} onPointerDown={onPointerAt}>
       <div ref={containerRef} className="board-canvas" />
       {props.announcement ? (
         <div key={props.announcement.round} className={`round-announce p${props.announcement.owner}`}>
@@ -417,9 +429,18 @@ export function BoardCanvas(props: Props): JSX.Element {
         <div ref={tipRef} className="hex-tooltip">
           <strong>{hexInfo.title}</strong>
           <InfoLines lines={hexInfo.lines} />
+          {pinned && hoverPlan && props.interactive ? <div className="hex-tooltip-confirm">Tap again to confirm</div> : null}
         </div>
       ) : null}
-      <div className="board-tools">
+      <div className={`board-tools${toolsOpen ? ' open' : ''}`}>
+        <button
+          type="button"
+          className="board-follow board-tools-toggle"
+          aria-expanded={toolsOpen}
+          onClick={() => setToolsOpen((open) => !open)}
+        >
+          {toolsOpen ? '× View' : 'View'}
+        </button>
         <button
           type="button"
           className="board-reset-view"

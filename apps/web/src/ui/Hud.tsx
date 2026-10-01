@@ -50,19 +50,25 @@ function statusBanner(status: ClientStatus): string | null {
   }
 }
 
-const LOG_OPEN_KEY = 'fansong.logOpen';
+const LOG_SHOWN_KEY = 'fansong.logShown';
 
+/** The phone layout's breakpoint, as in the stylesheet. */
+const PHONE_QUERY = '(max-width: 700px)';
+
+/** Whether the log is showing: the player's last choice, else shown on a desktop and hidden on a phone. */
 function loadLogOpen(): boolean {
   try {
-    return localStorage.getItem(LOG_OPEN_KEY) === '1';
+    const saved = localStorage.getItem(LOG_SHOWN_KEY);
+    if (saved !== null) return saved === '1';
   } catch {
-    return false;
+    // Fall through to the default.
   }
+  return !window.matchMedia(PHONE_QUERY).matches;
 }
 
 function saveLogOpen(open: boolean): void {
   try {
-    localStorage.setItem(LOG_OPEN_KEY, open ? '1' : '0');
+    localStorage.setItem(LOG_SHOWN_KEY, open ? '1' : '0');
   } catch {
     // Not remembered; the toggle still works for this session.
   }
@@ -70,7 +76,7 @@ function saveLogOpen(open: boolean): void {
 
 /**
  * The match HUD, floating over the board rather than beside it: the score and
- * whose move it is across the top, the battle log in the top-right corner, and
+ * whose move it is across the top, the battle log (which can be hidden) in the top-right corner, and
  * the unit in hand with its orders along the bottom.
  */
 export function Hud(props: Props): JSX.Element {
@@ -108,7 +114,10 @@ export function Hud(props: Props): JSX.Element {
       ? {
           text: (
             <>
-              Commit dice to {selected.name} <kbd>1</kbd>–<kbd>{Math.max(...interaction.diceChoices, 1)}</kbd>
+              Commit dice to {selected.name}{' '}
+              <span className="keys">
+                <kbd>1</kbd>–<kbd>{Math.max(...interaction.diceChoices, 1)}</kbd>
+              </span>
             </>
           ),
           hint: 'More dice = more actions but higher turnover risk. One die can never turn over. Q/E switch unit, Esc deselects.',
@@ -117,8 +126,11 @@ export function Hud(props: Props): JSX.Element {
       : {
           text: (
             <>
-              Pick a unit to activate <kbd>Q</kbd>
-              <kbd>E</kbd>
+              Pick a unit to activate{' '}
+              <span className="keys">
+                <kbd>Q</kbd>
+                <kbd>E</kbd>
+              </span>
             </>
           ),
           tone: 'yours',
@@ -194,7 +206,7 @@ export function Hud(props: Props): JSX.Element {
             type="button"
             className="ghost"
             aria-expanded={logOpen}
-            title={logOpen ? 'Shrink the log to its latest lines' : 'Open the full battle log'}
+            title={logOpen ? 'Hide the battle log' : 'Show the battle log'}
             onClick={() => {
               setLogOpen(!logOpen);
               saveLogOpen(!logOpen);
@@ -206,7 +218,7 @@ export function Hud(props: Props): JSX.Element {
             ⟵ New match
           </button>
         </div>
-        <BattleLogView log={props.log} onFocus={props.onLogFocus} onInspect={props.onInspect} />
+        {logOpen ? <BattleLogView log={props.log} onFocus={props.onLogFocus} onInspect={props.onInspect} /> : null}
       </div>
 
       {shownUnitId || acting ? (

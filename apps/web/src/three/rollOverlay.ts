@@ -50,6 +50,8 @@ const VERDICT_HEIGHT = 0.9;
 const PIN_MARGIN = 14;
 /** How far a pinned verdict's foot sits above the bottom edge. */
 const VERDICT_BOTTOM = 30;
+/** Narrower than this, the two corner cards leave no room between them for the verdict. */
+const NARROW_BOARD = 560;
 
 /** A unit's anchor on screen, in container pixels; null when off screen. */
 export type Projector = (unitId: string, height: number) => { x: number; y: number } | null;
@@ -391,7 +393,11 @@ export class RollOverlay {
           y = Math.max(hgt / 2 + 4, Math.min(height - hgt / 2 - 4, p.y - hgt / 2 - 6));
         }
       } else if (v.pin) {
-        y = height - VERDICT_BOTTOM - hgt / 2;
+        // Between the corner cards — or, on a board too narrow to leave a gap
+        // between them (a phone), above them.
+        const cards = this.cards.filter((c) => c.pin).map((c) => c.el.offsetHeight);
+        const foot = width < NARROW_BOARD && cards.length > 0 ? PIN_MARGIN + Math.max(...cards) + 8 : VERDICT_BOTTOM;
+        y = height - foot - hgt / 2;
       } else {
         const points = v.on.map((id) => project(id, VERDICT_HEIGHT)).filter((p) => p !== null);
         if (points.length > 0) {

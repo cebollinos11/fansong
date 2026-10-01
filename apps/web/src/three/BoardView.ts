@@ -936,6 +936,9 @@ export class BoardView {
    * calls it again after every edit, which replaces the old tiles and keeps the
    * camera unless the board size changed.
    */
+  /** The seat whose side of the table an upright (portrait) opening shot stands behind. */
+  homeSeat: Owner = 0;
+
   buildBoard(state: GameState): void {
     const resized = state.board.width !== this.width || state.board.height !== this.height;
     this.clearBoard();
@@ -4186,6 +4189,7 @@ export class BoardView {
     this.camera.position.set(0, span * 0.95, spanZ * 0.62 + 3);
     this.controls.target.set(0, 0, 0);
     if (this.pitchOverride !== null) setPolar(this.camera.position, this.controls.target, this.pitchOverride);
+    this.standBehindHome(state);
     const table = this.camera.position.length();
     this.controls.minDistance = 3;
     this.controls.maxDistance = table * 1.8;
@@ -4206,6 +4210,25 @@ export class BoardView {
     this.opening = start ? { points, ...start } : null;
     this.controls.update();
     this.controls.saveState();
+  }
+
+  /**
+   * On an upright canvas (a phone held in portrait) a table seen side-on runs
+   * off both edges, so turn the opening shot to stand behind the home seat's
+   * warband and look down the table at the enemy, to the nearest quarter turn.
+   */
+  private standBehindHome(state: GameState): void {
+    if (this.camera.aspect >= 1) return;
+    const side = (home: boolean): THREE.Vector3[] =>
+      state.units.filter((u) => !u.dead && (u.owner === this.homeSeat) === home).map((u) => this.unitWorld(u.pos));
+    const mine = side(true);
+    const theirs = side(false);
+    if (mine.length === 0 || theirs.length === 0) return;
+    const toEnemy = middle(theirs).sub(middle(mine)).setY(0);
+    if (toEnemy.lengthSq() < 1e-6) return;
+    const s = new THREE.Spherical().setFromVector3(this.camera.position);
+    s.theta = Math.round(Math.atan2(-toEnemy.x, -toEnemy.z) / (Math.PI / 2)) * (Math.PI / 2);
+    this.camera.position.setFromSpherical(s);
   }
 
   /**

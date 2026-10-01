@@ -1100,14 +1100,15 @@ button.ghost {
   right: 10px;
   width: 320px;
   max-width: calc(100% - 20px);
-  max-height: 150px;
+  max-height: min(50%, 380px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 
-.play-log.open {
-  max-height: min(70%, 560px);
+/* Hidden, only its bar is left, and that shrinks to its two buttons. */
+.play-log:not(.open) {
+  width: auto;
 }
 
 .play-log-bar {
@@ -1130,8 +1131,7 @@ button.ghost {
   min-height: 0;
 }
 
-.play-log .log-head h3,
-.play-log:not(.open) .log-head {
+.play-log .log-head h3 {
   display: none;
 }
 
@@ -1211,6 +1211,198 @@ button.ghost {
 @media (max-width: 1180px) {
   .play-log {
     top: 70px;
+  }
+}
+
+/* Only a phone folds the camera tools away. */
+.board-tools-toggle {
+  display: none;
+}
+
+.hex-tooltip-confirm {
+  margin-top: 2px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* --- A phone held upright: the HUD stacks above the board instead of floating
+   over it (there is height to spare and no width), and nothing asks for a key. */
+@media (max-width: 700px) {
+  body {
+    overscroll-behavior: none;
+  }
+
+  .game.play {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+    touch-action: manipulation;
+  }
+
+  .play-hud {
+    display: contents;
+  }
+
+  .game.play .board-wrap {
+    grid-row: 3;
+  }
+
+  .play-top {
+    position: static;
+    grid-row: 1;
+    translate: none;
+    max-width: none;
+    align-items: stretch;
+    gap: 0;
+  }
+
+  .play-strip,
+  .play-lines,
+  .play-log {
+    background: var(--panel);
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
+
+  .play-side {
+    flex-wrap: wrap;
+    align-content: center;
+    gap: 0 6px;
+    max-width: 104px;
+    padding: 4px 10px;
+  }
+
+  .play-side.p1 {
+    justify-content: flex-start; /* the row is reversed: this is its right edge */
+  }
+
+  .play-side-name {
+    flex-basis: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .play-side.p1 .play-side-name {
+    text-align: right;
+  }
+
+  .play-mid {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 8px;
+  }
+
+  .play-round,
+  .play-turn {
+    white-space: normal;
+  }
+
+  .play-round {
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .play-lines {
+    text-align: center;
+  }
+
+  .play-top .banner.net,
+  .play-top .callout {
+    margin: 6px 8px;
+  }
+
+  .play-log {
+    position: static;
+    grid-row: 2;
+    width: auto;
+    max-width: none;
+    max-height: 190px;
+  }
+
+  .play-log-bar button {
+    padding: 8px 12px;
+  }
+
+  .play-bar {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    translate: none;
+    max-width: none;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .play-actions button {
+    flex: 1;
+    padding: 10px 8px;
+  }
+
+  .game.play kbd,
+  .game.play .keys,
+  .attack-menu kbd {
+    display: none;
+  }
+
+  /* The unit bar wraps taller here. */
+  .game.play .roll-layer {
+    bottom: 104px;
+  }
+
+  .game.play .gameover-actions {
+    bottom: 112px;
+    width: calc(100% - 16px);
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .gameover-actions button.primary {
+    width: auto;
+    padding: 10px 14px;
+  }
+
+  .game.play .scoring-banner {
+    top: 10px;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  .round-announce-turn {
+    font-size: 34px;
+  }
+
+  .board-tools-toggle {
+    display: block;
+  }
+
+  .game.play .board-tools,
+  .board-tools {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .board-tools:not(.open) > :not(.board-tools-toggle) {
+    display: none;
+  }
+
+  .board-tools button,
+  .board-pitch {
+    padding: 8px 12px;
+  }
+
+  /* Fingers are wider than pointers. */
+  .dice-pick {
+    padding: 9px;
+  }
+
+  .die-face {
+    width: 32px;
+    height: 32px;
+  }
+
+  .attack-menu button {
+    padding: 12px 11px;
   }
 }
 
