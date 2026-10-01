@@ -146,7 +146,7 @@ export function Hud(props: Props): JSX.Element {
   } else {
     const waiting = state.group?.pending.length ?? 0;
     turn = {
-      text: `${activeUnit?.name ?? 'Unit'} · ${state.actionsRemaining} action${state.actionsRemaining === 1 ? '' : 's'} left${waiting > 0 ? ` · ${waiting} more in the group` : ''}`,
+      text: `${activeUnit?.name ?? 'Unit'} · ${state.actionsRemaining} action${state.actionsRemaining === 1 ? '' : 's'} left${waiting > 0 ? ` · ${waiting} waiting` : ''}`,
       hint: interaction.switchTargetIds.length > 0
         ? 'A group is activating: each member acts in turn. Click a pulsing member to let it go first — once this one acts, it has to finish.'
         : state.actionsRemaining >= 2

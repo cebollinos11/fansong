@@ -1302,6 +1302,18 @@ button.ghost {
     line-height: 1.3;
   }
 
+  /* Always two lines tall, however long the line: the strip sits above the
+     board here, so a line that wrapped differently would shove the board about. */
+  .play-turn {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    line-height: 1.3;
+    height: 2.6em;
+  }
+
   .play-lines {
     text-align: center;
   }
