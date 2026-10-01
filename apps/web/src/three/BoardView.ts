@@ -835,7 +835,7 @@ export class BoardView {
    * canvas that changes shape re-fits it (see {@link refitOpening}), until the
    * player moves the camera or the first blow plays.
    */
-  private opening: { points: THREE.Vector3[]; target: THREE.Vector3; dist: number } | null = null;
+  private opening: { points: THREE.Vector3[]; head: number; target: THREE.Vector3; dist: number } | null = null;
   /** Dev aid: `?animSpeed=0.25` plays animations at quarter speed. */
   private readonly animSpeed = import.meta.env.DEV
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
@@ -1659,13 +1659,14 @@ export class BoardView {
     if (points.length === 0) return 0;
 
     const end = this.plannedCamera();
-    if (this.inView(points, end)) return 0;
-    // Centre on the action, pulling back out of a close-up only as far as it takes to hold it.
-    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length).setY(0);
     const ids = events.flatMap((e) =>
       e.type === 'ActivationChosen' || e.type === 'DiceRolled' || e.type === 'UnitMoved' ? [e.unitId] : [],
     );
-    const dur = this.scheduleMove(at, centre, this.fitAround(points, centre, end.dist, end.yaw));
+    const head = this.headroom([...ids, ...events.flatMap((e) => (e.type === 'GroupMemberActivated' ? [e.unitId] : []))]);
+    if (this.inView(points, end, head)) return 0;
+    // Centre on the action, pulling back out of a close-up only as far as it takes to hold it.
+    const centre = points.reduce((sum, p) => sum.add(p), new THREE.Vector3()).divideScalar(points.length).setY(0);
+    const dur = this.scheduleMove(at, centre, this.fitAround(points, centre, end.dist, end.yaw, head));
     if (dur > 0) this.focusUnits(ids, at);
     return dur;
   }
@@ -1680,9 +1681,10 @@ export class BoardView {
     const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
     const end = this.plannedCamera();
-    if (this.inView(points, end)) return 0;
+    const head = this.headroom(unitIds);
+    if (this.inView(points, end, head)) return 0;
     const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? middle(points), end.yaw);
-    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, end.dist, end.yaw));
+    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, end.dist, end.yaw, head));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1692,15 +1694,15 @@ export class BoardView {
    * the dice card over it) sits comfortably in view around `target`, seen from
    * heading `yaw` — or as far out as the player could zoom when nothing nearer holds them.
    */
-  private fitAround(points: THREE.Vector3[], target: THREE.Vector3, near: number, yaw: number): number {
+  private fitAround(points: THREE.Vector3[], target: THREE.Vector3, near: number, yaw: number, head = FOLLOW_HEAD): number {
     let lo = near; // may be too close
     let hi = this.controls.maxDistance;
     if (lo >= hi) return hi;
-    if (this.inView(points, { target, dist: lo, yaw })) return lo;
-    if (!this.inView(points, { target, dist: hi, yaw })) return hi;
+    if (this.inView(points, { target, dist: lo, yaw }, head)) return lo;
+    if (!this.inView(points, { target, dist: hi, yaw }, head)) return hi;
     for (let i = 0; i < FIT_STEPS; i++) {
       const mid = (lo + hi) / 2;
-      if (this.inView(points, { target, dist: mid, yaw })) hi = mid;
+      if (this.inView(points, { target, dist: mid, yaw }, head)) hi = mid;
       else lo = mid;
     }
     return hi;
@@ -1734,7 +1736,7 @@ export class BoardView {
       ? this.closeUp(span * DREAD_SPAN_MARGIN, true)
       : this.steadyZoom(this.closeUp(span * COMBAT_SPAN_MARGIN));
     // Both ends of a long shot stay in the frame from the start.
-    const dist = this.fitAround(points, pivot, close, yaw);
+    const dist = this.fitAround(points, pivot, close, yaw, this.headroom(unitIds));
     const dur = this.scheduleMove(at, pivot, dist, dread ? DREAD_FRAME_SLOW : 1, yaw);
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
@@ -1757,7 +1759,8 @@ export class BoardView {
       // the camera rises by sin(elevation) = cos(pitch), height by sin(pitch).
       const across = offset.x * Math.cos(heading) - offset.z * Math.sin(heading);
       const away = -(offset.x * Math.sin(heading) + offset.z * Math.cos(heading));
-      const up = away * Math.cos(pitch) + offset.y * Math.sin(pitch); // b's feet above a's
+      const rise = offset.y + this.flightHeight(b) - this.flightHeight(a); // a flyer's feet are where it floats
+      const up = away * Math.cos(pitch) + rise * Math.sin(pitch); // b's feet above a's
       return Math.abs(across) < width && up < this.bodyHeight(a) && -up < this.bodyHeight(b);
     };
     if (!overlap(yaw)) return yaw;
@@ -1887,7 +1890,7 @@ export class BoardView {
     const { yaw } = this.plannedCamera();
     const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre, yaw);
     const close = this.steadyZoom(this.closeUp(Math.max(span * COMBAT_SPAN_MARGIN, REASSEMBLE_MIN_SPAN)));
-    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, close, yaw));
+    const dur = this.scheduleMove(at, pivot, this.fitAround(points, pivot, close, yaw, this.headroom(unitIds)));
     if (dur > 0) this.focusUnits(unitIds, at);
     return dur;
   }
@@ -1898,6 +1901,24 @@ export class BoardView {
       .map((id) => this.units.get(id))
       .filter((obj): obj is UnitObj => !!obj && !obj.fade)
       .map((obj) => obj.group.position.clone());
+  }
+
+  /** How high a unit floats once it has settled: a flyer's hover, unless it is grounded or down. */
+  private flightHeight(obj: UnitObj): number {
+    return obj.flying && !obj.grounded && !obj.shown.knocked ? FLY_HOVER : 0;
+  }
+
+  /**
+   * The height above their bases that must stay in view to hold all of the given
+   * units: the dice card over the tallest of them, lifted with it when it flies,
+   * and the whole of a cutout that stands taller than its card.
+   */
+  private headroom(unitIds: string[]): number {
+    const heads = unitIds
+      .map((id) => this.units.get(id))
+      .filter((obj): obj is UnitObj => !!obj && !obj.fade)
+      .map((obj) => this.flightHeight(obj) + Math.max(FOLLOW_HEAD, BASE_HEIGHT + this.bodyHeight(obj)));
+    return Math.max(FOLLOW_HEAD, ...heads);
   }
 
   /** Mid-body of a unit standing at `base` (its group position): what a close-up centres on, rather than its feet. */
@@ -1980,15 +2001,15 @@ export class BoardView {
     return new THREE.Vector3().setFromSpherical(s.set(1, s.phi, yaw));
   }
 
-  /** Whether every point (and the dice card over its head) sits comfortably inside the view. */
-  private inView(points: THREE.Vector3[], from: View): boolean {
+  /** Whether every point (and what stands `head` above it: a body, the dice card over it) sits comfortably inside the view. */
+  private inView(points: THREE.Vector3[], from: View, head = FOLLOW_HEAD): boolean {
     const offset = this.viewDir(from.yaw).multiplyScalar(from.dist);
     const cam = this.camera.clone();
     cam.position.copy(from.target).add(offset);
     cam.lookAt(from.target);
     cam.updateMatrixWorld();
     return points.every((p) =>
-      [0, FOLLOW_HEAD].every((h) => {
+      [0, head].every((h) => {
         const n = p.clone().setY(p.y + TILE_TOP + h).project(cam);
         return n.z < 1 && Math.abs(n.x) <= FOLLOW_MARGIN_X && n.y <= FOLLOW_MARGIN_TOP && n.y >= -FOLLOW_MARGIN_BOTTOM;
       }),
@@ -2036,7 +2057,8 @@ export class BoardView {
     if (!obj || obj.fade) return;
     const point = obj.group.position.clone();
     const from = this.plannedCamera();
-    if (this.inView([point], from)) return;
+    const head = this.headroom([id]);
+    if (this.inView([point], from, head)) return;
     // How far along the line from the pivot to the unit's own hex the pivot has
     // to slide. The unit only comes further into frame as it goes, so halve onto
     // the shortest one that works; 1 (the unit dead centre) always does.
@@ -2045,7 +2067,7 @@ export class BoardView {
     let hi = 1;
     for (let i = 0; i < SELECT_PAN_STEPS; i++) {
       const mid = (lo + hi) / 2;
-      if (this.inView([point], { ...from, target: from.target.clone().lerp(flat, mid) })) hi = mid;
+      if (this.inView([point], { ...from, target: from.target.clone().lerp(flat, mid) }, head)) hi = mid;
       else lo = mid;
     }
     const target = from.target.clone().lerp(flat, Math.min(1, hi + SELECT_PAN_SLACK));
@@ -4248,8 +4270,16 @@ export class BoardView {
     this.controls.maxDistance = table * 1.8;
     // Swing the same viewing angle onto the units: only the pivot and the
     // distance move, so the board is never seen from an angle it wasn't built for.
-    const points = state.units.filter((u) => !u.dead).map((u) => this.unitWorld(u.pos));
-    const start = this.startView(points);
+    const living = state.units.filter((u) => !u.dead);
+    const points = living.map((u) => this.unitWorld(u.pos));
+    // The cutouts aren't loaded yet, so a flyer's hover and a Big unit's height are taken from its traits.
+    const head = Math.max(
+      FOLLOW_HEAD,
+      ...living.map(
+        (u) => (airborne(state, u) ? FLY_HOVER : 0) + BASE_HEIGHT + BODY_HEIGHT * (u.traits.big ? BIG_SCALE : 1),
+      ),
+    );
+    const start = this.startView(points, head);
     if (start) {
       const dir = this.camera.position.clone().normalize();
       this.controls.target.copy(start.target);
@@ -4260,7 +4290,7 @@ export class BoardView {
     this.lockPitch(Math.acos(this.camera.position.clone().sub(this.controls.target).normalize().y));
     this.homeDist = start ? start.dist : table;
     this.playerView = { ...this.currentView(), dist: this.homeDist };
-    this.opening = start ? { points, ...start } : null;
+    this.opening = start ? { points, head, ...start } : null;
     this.controls.update();
     this.controls.saveState();
   }
@@ -4296,14 +4326,14 @@ export class BoardView {
     if (!open || this.cam || this.handOnCamera) return;
     const dist = this.camera.position.distanceTo(this.controls.target);
     if (this.controls.target.distanceTo(open.target) > 0.01 || Math.abs(dist - open.dist) > 0.01) return;
-    const start = this.startView(open.points);
+    const start = this.startView(open.points, open.head);
     if (!start) return;
     const dir = this.camera.position.clone().sub(this.controls.target).normalize();
     this.controls.target.copy(start.target);
     this.camera.position.copy(start.target).addScaledVector(dir, start.dist);
     this.homeDist = start.dist;
     this.playerView = this.currentView();
-    this.opening = { points: open.points, ...start };
+    this.opening = { points: open.points, head: open.head, ...start };
     this.controls.update();
     this.controls.saveState();
   }
@@ -4314,7 +4344,7 @@ export class BoardView {
    * out again when a wide deployment would otherwise run off the edges of the
    * canvas. Null when nothing is deployed.
    */
-  private startView(points: THREE.Vector3[]): { target: THREE.Vector3; dist: number } | null {
+  private startView(points: THREE.Vector3[], head: number): { target: THREE.Vector3; dist: number } | null {
     if (points.length === 0) return null;
     const target = new THREE.Box3().setFromPoints(points).getCenter(new THREE.Vector3()).setY(0);
     // Stand as close as the units allow, judged by the same test the follow
@@ -4324,10 +4354,10 @@ export class BoardView {
     let lo = Math.max(this.controls.minDistance, this.fitDistance(START_MIN_SPAN)); // may be too close
     let hi = this.controls.maxDistance; // as far out as the player could zoom
     const { yaw } = this.currentView();
-    if (lo >= hi || !this.inView(points, { target, dist: hi, yaw })) return { target, dist: hi };
+    if (lo >= hi || !this.inView(points, { target, dist: hi, yaw }, head)) return { target, dist: hi };
     for (let i = 0; i < START_FIT_STEPS; i++) {
       const mid = (lo + hi) / 2;
-      if (this.inView(points, { target, dist: mid, yaw })) hi = mid;
+      if (this.inView(points, { target, dist: mid, yaw }, head)) hi = mid;
       else lo = mid;
     }
     return { target, dist: hi };
