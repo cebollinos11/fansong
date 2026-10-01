@@ -963,83 +963,255 @@ button.ghost {
   margin: 0;
 }
 
-.scoreline {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+/* --- Match HUD (ui/Hud.tsx): floats over the board, which fills the window --- */
+.game.play {
+  display: block;
+  position: relative;
 }
 
-.score {
-  background: var(--panel-2);
+.play-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.play-top,
+.play-log,
+.play-bar {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.play-strip,
+.play-lines,
+.play-log,
+.play-bar {
+  background: rgba(13, 17, 23, 0.86);
   border: 1px solid var(--line);
-  border-left-width: 4px;
-  border-radius: 8px;
-  padding: 8px 10px;
+  border-radius: 10px;
+}
+
+.play-top {
+  top: 10px;
+  left: 50%;
+  translate: -50% 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 20px);
 }
 
-.score.p0 {
-  border-left-color: var(--p0);
-}
-
-.score.p1 {
-  border-left-color: var(--p1);
-}
-
-.score.active {
-  outline: 1px solid var(--accent);
-}
-
-.score-name {
-  font-weight: 600;
-}
-
-.score-count {
-  color: var(--muted);
-}
-
-.score-points {
-  font-weight: 700;
-}
-
-.mode-panel {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
+.play-strip {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: stretch;
+  overflow: hidden;
 }
 
-.mode-title {
+.play-side {
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
 }
 
-.mode-score {
-  font-weight: 700;
-  font-size: 18px;
+.play-side.p1 {
+  flex-direction: row-reverse;
 }
 
-.mode-score .p0 {
+.play-side.p0 .play-side-name {
   color: var(--p0);
 }
 
-.mode-score .p1 {
+.play-side.p1 .play-side-name {
   color: var(--p1);
 }
 
-.mode-goal {
+/* Whose move it is, underlined in their colour. */
+.play-side.p0.active {
+  border-bottom-color: var(--p0);
+}
+
+.play-side.p1.active {
+  border-bottom-color: var(--p1);
+}
+
+.play-side-name {
+  font-weight: 600;
+}
+
+.play-side-count {
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.score-points {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.play-mid {
+  min-width: 190px;
+  padding: 4px 14px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+
+.play-round {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.play-turn {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.play-turn.yours,
+.play-turn.win {
+  color: var(--accent);
+}
+
+.play-turn.waiting {
+  color: var(--muted);
+}
+
+.play-turn[title] {
+  cursor: help;
+}
+
+.play-lines {
+  padding: 2px 12px;
   font-size: 12px;
 }
 
-.mode-line {
-  font-size: 13px;
+.play-top .banner.net {
+  padding: 6px 14px;
+}
+
+.play-log {
+  top: 10px;
+  right: 10px;
+  width: 320px;
+  max-width: calc(100% - 20px);
+  max-height: 150px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.play-log.open {
+  max-height: min(70%, 560px);
+}
+
+.play-log-bar {
+  display: flex;
+  justify-content: space-between;
+}
+
+.play-log-bar button {
+  padding: 4px 10px;
+  border: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.play-log-bar button:hover {
+  color: var(--text);
+}
+
+.play-log .log {
+  min-height: 0;
+}
+
+.play-log .log-head h3,
+.play-log:not(.open) .log-head {
+  display: none;
+}
+
+.play-log .log-head {
+  justify-content: flex-end;
+  margin: 0 8px 6px;
+}
+
+.play-log .log-body {
+  border-width: 1px 0 0;
+  border-radius: 0;
+  background: none;
+}
+
+.play-bar {
+  left: 50%;
+  bottom: 12px;
+  translate: -50% 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100% - 20px);
+  padding: 8px 12px;
+}
+
+.play-unit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.play-unit-name {
+  font-size: 15px;
+}
+
+.play-unit-name.p0 {
+  color: var(--p0);
+}
+
+.play-unit-name.p1 {
+  color: var(--p1);
+}
+
+.play-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.play-actions button {
+  padding: 6px 12px;
+  white-space: nowrap;
+}
+
+/* The bottom band is the unit bar's: dice cards and verdicts pin above it. */
+.game.play .roll-layer {
+  bottom: 64px;
+  z-index: 11; /* a roll near the top edge shows over the score strip */
+}
+
+.game.play .gameover-actions {
+  bottom: 84px;
+}
+
+.game.play .scoring-banner {
+  top: 96px; /* under the score strip */
+}
+
+/* The camera tools stack down the left edge, out of the score strip's way
+   (the dev sandbox's panel sits there, so with it they stay in a row). */
+.game.play:not(:has(.sandbox)) .board-tools {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+@media (max-width: 1180px) {
+  .play-log {
+    top: 70px;
+  }
 }
 
 .benched {
@@ -1048,27 +1220,15 @@ button.ghost {
 }
 
 /* The rout is coming (amber), and it has landed (red). */
-.score .warn {
+.play-side .warn {
   color: #ffc83c;
   font-size: 12px;
 }
 
-.score .broken {
+.play-side .broken {
   color: var(--p1);
   font-size: 12px;
   font-weight: 600;
-}
-
-.turn-panel {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-  min-height: 96px;
-}
-
-.prompt {
-  margin: 0 0 10px;
 }
 
 .hint {
@@ -1077,35 +1237,9 @@ button.ghost {
   margin: 8px 0 0;
 }
 
-.thinking {
-  color: var(--accent);
-  margin: 0;
-}
-
-.dice-row {
-  display: flex;
-  gap: 8px;
-}
-
-.dice-row .dice {
-  flex: 1;
-}
-
 button.secondary {
   width: 100%;
   margin-top: 6px;
-}
-
-.action-row {
-  display: flex;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.action-row button.secondary {
-  width: auto;
-  flex: 1;
-  margin-top: 0;
 }
 
 .banner {
@@ -1133,53 +1267,10 @@ button.secondary {
   font-weight: 600;
 }
 
-.inspector {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.inspector h3 {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 0 0 8px;
-}
-
 .inspector-close {
-  margin-left: auto;
   padding: 0 8px;
   font-size: 16px;
   line-height: 1.4;
-}
-
-.inspector-stats {
-  display: flex;
-  gap: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.inspector-owner {
-  font-size: 12px;
-  font-weight: 600;
-  vertical-align: middle;
-}
-
-.inspector-owner.p0 {
-  color: var(--p0);
-}
-
-.inspector-owner.p1 {
-  color: var(--p1);
-}
-
-.inspector-traits {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
 }
 
 .trait {
@@ -1189,13 +1280,6 @@ button.secondary {
   border: 1px solid var(--accent);
   color: var(--accent);
   cursor: help;
-}
-
-.inspector-flags {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 8px;
 }
 
 .flag {

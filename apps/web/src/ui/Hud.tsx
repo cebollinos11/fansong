@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { airborne, unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
 import { isAiSeat, type MatchSetup } from '@fansong/content';
@@ -29,7 +30,6 @@ interface Props {
   inspectedUnitId: string | null;
   onInspect: (unitId: string | null) => void;
   onLogFocus: (focus: LogFocus | null) => void;
-  onActivate: (diceCount: number) => void;
   onEndActivation: () => void;
   onGuard: () => void;
   onWarCry: () => void;
@@ -50,176 +50,197 @@ function statusBanner(status: ClientStatus): string | null {
   }
 }
 
+const LOG_OPEN_KEY = 'fansong.logOpen';
+
+function loadLogOpen(): boolean {
+  try {
+    return localStorage.getItem(LOG_OPEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function saveLogOpen(open: boolean): void {
+  try {
+    localStorage.setItem(LOG_OPEN_KEY, open ? '1' : '0');
+  } catch {
+    // Not remembered; the toggle still works for this session.
+  }
+}
+
+/**
+ * The match HUD, floating over the board rather than beside it: the score and
+ * whose move it is across the top, the battle log in the top-right corner, and
+ * the unit in hand with its orders along the bottom.
+ */
 export function Hud(props: Props): JSX.Element {
   const { state, setup, controlledSeats, status, interaction, selectedUnitId, humanTurn } = props;
+  const [logOpen, setLogOpen] = useState(loadLogOpen);
   const gameOver = state.phase === 'gameOver';
   const selected = selectedUnitId ? unitById(state, selectedUnitId) : null;
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
   const banner = statusBanner(status);
   const mode = modeHud(state);
   const callout = props.log.callout;
+  const acting = humanTurn && state.phase === 'acting';
+
+  // What is being waited on, in one line; `hint` is the longer how-to behind it.
+  let turn: { text: React.ReactNode; hint?: string; tone: 'yours' | 'waiting' | 'win' };
+  if (gameOver) {
+    const winner = seatLabel(setup, controlledSeats, state.winner as Owner);
+    turn = { text: winner === 'You' ? 'You win!' : `${winner} wins!`, tone: 'win' };
+  } else if (props.scoring) {
+    turn = { text: 'Scoring the round…', tone: 'waiting' };
+  } else if (props.roundStarting) {
+    turn = { text: 'Starting the round…', tone: 'waiting' };
+  } else if (!humanTurn) {
+    turn = {
+      text:
+        props.resolving && controlledSeats.includes(state.active)
+          ? 'Resolving…'
+          : isAiSeat(setup, state.active)
+            ? 'AI is thinking…'
+            : "Opponent's turn…",
+      tone: 'waiting',
+    };
+  } else if (state.phase === 'awaitingActivation') {
+    turn = selected
+      ? {
+          text: (
+            <>
+              Commit dice to {selected.name} <kbd>1</kbd>–<kbd>{Math.max(...interaction.diceChoices, 1)}</kbd>
+            </>
+          ),
+          hint: 'More dice = more actions but higher turnover risk. One die can never turn over. Q/E switch unit, Esc deselects.',
+          tone: 'yours',
+        }
+      : {
+          text: (
+            <>
+              Pick a unit to activate <kbd>Q</kbd>
+              <kbd>E</kbd>
+            </>
+          ),
+          tone: 'yours',
+        };
+  } else {
+    turn = {
+      text: `${activeUnit?.name ?? 'Unit'} · ${state.actionsRemaining} action${state.actionsRemaining === 1 ? '' : 's'} left`,
+      hint:
+        state.actionsRemaining >= 2
+          ? 'The green field covers everything it can reach with all its actions — the rings mark where each one ends. Hover to see the route and the price; one click spends the lot.'
+          : 'Click a green tile to move, a highlighted enemy to attack.',
+      tone: 'yours',
+    };
+  }
+
+  const side = (owner: Owner): JSX.Element => {
+    const warband = warbandStatus(state, owner);
+    const fielded = state.units.filter((u) => u.owner === owner).length;
+    return (
+      <div className={`play-side p${owner}${state.active === owner && !gameOver ? ' active' : ''}`}>
+        <span className="play-side-name">{seatLabel(setup, controlledSeats, owner)}</span>
+        {mode?.scores ? (
+          <span key={mode.scores[owner]} className={`score-points${mode.scores[owner] > 0 ? ' pulse' : ''}`}>
+            {mode.scores[owner]}
+          </span>
+        ) : null}
+        <span className="play-side-count" title={`${warband.alive} of ${fielded} units alive`}>
+          {warband.alive}/{fielded}
+        </span>
+        {/* A rout is a sudden collapse; say it is coming, not just that it came. */}
+        {warband.breaksAt !== null && !gameOver ? (
+          <span className="warn" title={`This warband breaks when ${warband.breaksAt} or fewer are left`}>
+            breaks at {warband.breaksAt}
+          </span>
+        ) : null}
+        {warband.broken ? <span className="broken">broken</span> : null}
+        {warband.benched && !gameOver ? <span className="benched">benched</span> : null}
+      </div>
+    );
+  };
+
+  const shownUnitId = props.inspectedUnitId ?? selectedUnitId ?? state.activeUnitId;
 
   return (
-    <aside className="hud">
-      <div className="hud-top">
-        <h2>Round {state.round}</h2>
-        <button className="ghost" onClick={props.onExit}>
-          ⟵ New match
-        </button>
-      </div>
-
-      {banner ? <div className="banner net">{banner}</div> : null}
-
-      <div className="scoreline">
-        {([0, 1] as const).map((owner) => {
-          const warband = warbandStatus(state, owner);
-          return (
-            <div key={owner} className={`score p${owner}${state.active === owner && !gameOver ? ' active' : ''}`}>
-              <span className="score-name">
-                P{owner} · {seatLabel(setup, controlledSeats, owner)}
-              </span>
-              {mode?.scores ? (
-                <span key={mode.scores[owner]} className={`score-points${mode.scores[owner] > 0 ? ' pulse' : ''}`}>
-                  {mode.scores[owner]} pts
-                </span>
-              ) : null}
-              <span className="score-count">{warband.alive} alive</span>
-              {/* A rout is a sudden collapse; say it is coming, not just that it came. */}
-              {warband.breaksAt !== null && !gameOver ? (
-                <span className="warn" title={`This warband breaks when ${warband.breaksAt} or fewer are left`}>
-                  breaks at {warband.breaksAt}
-                </span>
-              ) : null}
-              {warband.broken ? <span className="broken">broken</span> : null}
-              {warband.benched && !gameOver ? <span className="benched">benched</span> : null}
+    <aside className="play-hud">
+      <div className="play-top">
+        <div className="play-strip">
+          {side(0)}
+          <div className="play-mid">
+            <div className="play-round" title={mode ? `${mode.label} · ${mode.goal}` : undefined}>
+              Round {state.round}
+              {mode ? <span className="play-goal"> · {mode.goal}</span> : null}
             </div>
-          );
-        })}
-      </div>
-
-      {callout?.tone === 'objective' ? (
-        // Keyed by entry id so each new scoring/flag event replays the fade-in/out animation.
-        <div key={callout.id} className="callout">
-          {callout.text}
-        </div>
-      ) : null}
-
-      {mode ? (
-        <div className="mode-panel">
-          <div className="mode-title">
-            <strong>{mode.label}</strong>
-            {mode.scores ? (
-              <span className="mode-score">
-                <span className="p0">{mode.scores[0]}</span> – <span className="p1">{mode.scores[1]}</span>
-              </span>
-            ) : null}
+            <div className={`play-turn ${turn.tone}`} title={turn.hint}>
+              {turn.text}
+            </div>
           </div>
-          <div className="mode-goal">{mode.goal}</div>
-          {mode.lines.map((line) => (
-            <div key={line} className="mode-line">
-              {line}
+          {side(1)}
+        </div>
+        {mode && mode.lines.length > 0 ? <div className="play-lines">{mode.lines.join(' · ')}</div> : null}
+        {banner ? <div className="banner net">{banner}</div> : null}
+        {callout?.tone === 'objective' ? (
+          // Keyed by entry id so each new scoring/flag event replays the fade-in/out animation.
+          <div key={callout.id} className="callout">
+            {callout.text}
+          </div>
+        ) : null}
+      </div>
+
+      <div className={`play-log${logOpen ? ' open' : ''}`}>
+        <div className="play-log-bar">
+          <button
+            type="button"
+            className="ghost"
+            aria-expanded={logOpen}
+            title={logOpen ? 'Shrink the log to its latest lines' : 'Open the full battle log'}
+            onClick={() => {
+              setLogOpen(!logOpen);
+              saveLogOpen(!logOpen);
+            }}
+          >
+            {logOpen ? '▾' : '▸'} Battle log
+          </button>
+          <button type="button" className="ghost" onClick={props.onExit}>
+            ⟵ New match
+          </button>
+        </div>
+        <BattleLogView log={props.log} onFocus={props.onLogFocus} onInspect={props.onInspect} />
+      </div>
+
+      {shownUnitId || acting ? (
+        <div className="play-bar">
+          <UnitInspector
+            state={state}
+            unitId={shownUnitId}
+            onClose={props.inspectedUnitId ? () => props.onInspect(null) : undefined}
+          />
+          {acting ? (
+            <div className="play-actions">
+              {interaction.canWarCry ? (
+                <button
+                  title="Press C — one action: every friend still to activate this round is inspired, its first activation die a sure 6"
+                  onClick={props.onWarCry}
+                >
+                  War cry <kbd>C</kbd>
+                </button>
+              ) : null}
+              {interaction.canGuard ? (
+                <button
+                  title="Press G — stand ready to riposte the next melee attacker, until this unit next activates"
+                  onClick={props.onGuard}
+                >
+                  Guard <kbd>G</kbd>
+                </button>
+              ) : null}
+              <button disabled={!interaction.canEndActivation} title="Press E" onClick={props.onEndActivation}>
+                End activation <kbd>E</kbd>
+              </button>
             </div>
-          ))}
+          ) : null}
         </div>
       ) : null}
-
-      {gameOver ? (
-        <div className="banner win">
-          Player {state.winner} ({seatLabel(setup, controlledSeats, state.winner as Owner)}) wins!
-        </div>
-      ) : (
-        <div className="turn-panel">
-          {props.scoring ? (
-            <p className="thinking">Scoring the round…</p>
-          ) : props.roundStarting ? (
-            <p className="thinking">Starting the round…</p>
-          ) : !humanTurn ? (
-            <p className="thinking">
-              {props.resolving && controlledSeats.includes(state.active)
-                ? 'Resolving…'
-                : isAiSeat(setup, state.active)
-                  ? 'AI is thinking…'
-                  : "Opponent's turn…"}
-            </p>
-          ) : state.phase === 'awaitingActivation' ? (
-            <div>
-              {selected ? (
-                <>
-                  <p className="prompt">
-                    Activate <strong>{selected.name}</strong> — commit dice:
-                  </p>
-                  {selected.inspired ? (
-                    <p className="dice-menu-inspired">★ Inspired: the first die is a sure 6</p>
-                  ) : null}
-                  <div className="dice-row">
-                    {interaction.diceChoices.map((n) => (
-                      <button key={n} className="dice" title={`Press ${n}`} onClick={() => props.onActivate(n)}>
-                        {n} {n === 1 ? 'die' : 'dice'} <kbd>{n}</kbd>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="hint">
-                    More dice = more actions but higher turnover risk. One die can never turn over. Tip: press 1–3 to
-                    roll, <kbd>Q</kbd>/<kbd>E</kbd> to switch unit, <kbd>Esc</kbd> to deselect.
-                  </p>
-                </>
-              ) : (
-                <p className="prompt">
-                  Select one of your units (highlighted) to activate, or press <kbd>Q</kbd>/<kbd>E</kbd>.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div>
-              <p className="prompt">
-                Acting: <strong>{activeUnit?.name}</strong> · {state.actionsRemaining} action
-                {state.actionsRemaining === 1 ? '' : 's'} left
-              </p>
-              <p className="hint">
-                {state.actionsRemaining >= 2
-                  ? 'The green field covers everything it can reach with all its actions — the rings mark where each one ends. Hover to see the route and the price; one click spends the lot.'
-                  : 'Click a green tile to move, a highlighted enemy to attack.'}
-              </p>
-              <div className="action-row">
-                {interaction.canWarCry ? (
-                  <button
-                    className="secondary"
-                    title="Press W — one action: every friend still to activate this round is inspired, its first activation die a sure 6"
-                    onClick={props.onWarCry}
-                  >
-                    War cry <kbd>C</kbd>
-                  </button>
-                ) : null}
-                {interaction.canGuard ? (
-                  <button
-                    className="secondary"
-                    title="Press G — stand ready to riposte the next melee attacker, until this unit next activates"
-                    onClick={props.onGuard}
-                  >
-                    Guard <kbd>G</kbd>
-                  </button>
-                ) : null}
-                <button
-                  className="secondary"
-                  disabled={!interaction.canEndActivation}
-                  title="Press E"
-                  onClick={props.onEndActivation}
-                >
-                  End activation <kbd>E</kbd>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <UnitInspector
-        state={state}
-        unitId={props.inspectedUnitId ?? selectedUnitId ?? state.activeUnitId}
-        onClose={props.inspectedUnitId ? () => props.onInspect(null) : undefined}
-      />
-
-      <BattleLogView log={props.log} onFocus={props.onLogFocus} onInspect={props.onInspect} />
     </aside>
   );
 }
@@ -238,41 +259,38 @@ function UnitInspector({
   if (!u) return null;
   const traits = traitTags(u, u.traits.flying && !airborne(state, u));
   return (
-    <div className="inspector">
-      <h3>
-        {u.name} <span className={`inspector-owner p${u.owner}`}>P{u.owner}</span>
-        {onClose ? (
-          <button type="button" className="inspector-close ghost" title="Stop inspecting" onClick={onClose}>
-            ×
-          </button>
-        ) : null}
-      </h3>
-      <div className="inspector-stats">
-        <StatIcons stats={{ quality: u.quality, combat: u.combat, move: unitMove(u) }} />
-      </div>
+    <div className="play-unit">
+      <strong className={`play-unit-name p${u.owner}`}>{u.name}</strong>
+      <StatIcons
+        stats={{
+          quality: u.quality,
+          combat: u.combat,
+          move: unitMove(u),
+          ...(u.traits.ranged > 0 ? { range: u.traits.ranged } : {}),
+        }}
+      />
       {/* Ranged, Tough and Guard change how a unit must be fought far more than
           its stats do, so they are shown wherever a unit is described. */}
-      {traits.length > 0 ? (
-        <div className="inspector-traits">
-          {traits.map((t) => (
-            <span key={t.label} className="trait" title={t.help}>
-              {t.label}
-            </span>
-          ))}
-        </div>
+      {traits.map((t) => (
+        <span key={t.label} className="trait" title={t.help}>
+          {t.label}
+        </span>
+      ))}
+      {u.knockedDown ? <span className="flag down">knocked down</span> : null}
+      {u.guarding && !u.dead ? <span className="flag guarding">on guard</span> : null}
+      {u.inspired && !u.dead ? (
+        <span className="flag inspired" title="Its first activation die this round is a sure 6; lost on a failed nerve check">
+          inspired
+        </span>
       ) : null}
-      <div className="inspector-flags">
-        {u.knockedDown ? <span className="flag down">knocked down</span> : null}
-        {u.guarding && !u.dead ? <span className="flag guarding">on guard</span> : null}
-        {u.inspired && !u.dead ? (
-          <span className="flag inspired" title="Its first activation die this round is a sure 6; lost on a failed nerve check">
-            inspired
-          </span>
-        ) : null}
-        {u.warCried && !u.dead ? <span className="flag">war cried</span> : null}
-        {u.activatedThisRound ? <span className="flag">activated</span> : null}
-        {u.dead ? <span className="flag dead">dead</span> : null}
-      </div>
+      {u.warCried && !u.dead ? <span className="flag">war cried</span> : null}
+      {u.activatedThisRound ? <span className="flag">activated</span> : null}
+      {u.dead ? <span className="flag dead">dead</span> : null}
+      {onClose ? (
+        <button type="button" className="inspector-close ghost" title="Stop inspecting" onClick={onClose}>
+          ×
+        </button>
+      ) : null}
     </div>
   );
 }

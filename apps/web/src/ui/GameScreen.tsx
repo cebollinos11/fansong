@@ -414,7 +414,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   );
 
   return (
-    <div className="game">
+    <div className="game play">
       <BoardCanvas
         state={shown.state}
         reach={acting ? plans.reach : []}
@@ -456,7 +456,6 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         inspectedUnitId={inspectedUnitId}
         onInspect={setInspectedUnitId}
         onLogFocus={setLogFocus}
-        onActivate={handleActivate}
         onEndActivation={handleEndActivation}
         onGuard={handleGuard}
         onWarCry={handleWarCry}
