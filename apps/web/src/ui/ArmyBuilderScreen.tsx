@@ -31,6 +31,7 @@ import {
   armyFromPreset,
   blankUnit,
   EDITABLE_STATS,
+  type EditableStat,
   LOOKS,
   moveUnit,
   newArmy,
@@ -362,18 +363,18 @@ export function UnitRow({
       </td>
       {EDITABLE_STATS.map((s) => (
         <td key={s}>
-          <input
+          <select
             className="army-stat"
-            type="number"
-            min={STAT_BOUNDS[s][0]}
-            max={STAT_BOUNDS[s][1]}
             value={unit[s] ?? 0}
             aria-label={STAT_LABELS[s].title}
-            onChange={(e) => {
-              const v = parseInt(e.target.value, 10);
-              if (Number.isFinite(v)) onChange(withStat(unit, s, v));
-            }}
-          />
+            onChange={(e) => onChange(withStat(unit, s, parseInt(e.target.value, 10)))}
+          >
+            {statOptions(s, unit[s] ?? 0).map((v) => (
+              <option key={v} value={v}>
+                {v}
+              </option>
+            ))}
+          </select>
         </td>
       ))}
       <td className="army-traits">
@@ -397,4 +398,13 @@ export function UnitRow({
       </td>
     </tr>
   );
+}
+
+/** Every legal value of a stat, plus the current one if an imported unit is out of range. */
+function statOptions(stat: EditableStat, current: number): number[] {
+  const [min, max] = STAT_BOUNDS[stat];
+  const values: number[] = [];
+  for (let v = min; v <= max; v++) values.push(v);
+  if (!values.includes(current)) values.push(current);
+  return values.sort((a, b) => a - b);
 }

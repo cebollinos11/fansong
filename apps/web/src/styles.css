@@ -2454,6 +2454,11 @@ button.army-item.active {
   padding: 6px 4px 6px 8px;
 }
 
+.army-table select.army-stat {
+  width: 56px;
+  padding: 6px 4px 6px 8px;
+}
+
 .army-table .stats {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
