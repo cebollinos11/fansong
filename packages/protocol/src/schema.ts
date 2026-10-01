@@ -51,6 +51,8 @@ export const chooseActivationSchema = z
     type: z.literal('ChooseActivation'),
     unitId: z.string().min(1),
     diceCount: z.number().int().min(1).max(3),
+    /** A group activation: the unit's group shares the one roll. */
+    group: z.literal(true).optional(),
   })
   .strict();
 
@@ -100,6 +102,13 @@ export const endActivationSchema = z
   .object({ type: z.literal('EndActivation') })
   .strict();
 
+export const switchGroupMemberSchema = z
+  .object({
+    type: z.literal('SwitchGroupMember'),
+    unitId: z.string().min(1),
+  })
+  .strict();
+
 export const commandSchema = z.discriminatedUnion('type', [
   chooseActivationSchema,
   moveCommandSchema,
@@ -108,6 +117,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   guardCommandSchema,
   warCryCommandSchema,
   endActivationSchema,
+  switchGroupMemberSchema,
 ]);
 
 // --- State (server-authoritative — schema exists for shape + resync checks) --
@@ -202,6 +212,13 @@ export const modeStateSchema = z
   })
   .strict();
 
+export const groupStateSchema = z
+  .object({
+    pending: z.array(z.object({ unitId: z.string(), actions: z.number().int() }).strict()),
+    allotted: z.number().int(),
+  })
+  .strict();
+
 export const gameStateSchema = z
   .object({
     board: boardDataSchema,
@@ -220,6 +237,7 @@ export const gameStateSchema = z
     winner: ownerSchema.nullable(),
     mode: modeStateSchema.optional(),
     limits: gameLimitsSchema.optional(),
+    group: groupStateSchema.optional(),
   })
   .strict();
 
@@ -236,7 +254,13 @@ const combatResultSchema = z.enum([
 ]);
 
 export const gameEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('ActivationChosen'), player: ownerSchema, unitId: z.string(), diceCount: z.number() }),
+  z.object({
+    type: z.literal('ActivationChosen'),
+    player: ownerSchema,
+    unitId: z.string(),
+    diceCount: z.number(),
+    group: z.array(z.string()).optional(),
+  }),
   z.object({
     type: z.literal('DiceRolled'),
     unitId: z.string(),
@@ -374,6 +398,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('UnitFellIntoLava'), unitId: z.string() }),
   z.object({ type: z.literal('UnitKilled'), unitId: z.string(), byId: z.string().nullable() }),
   z.object({ type: z.literal('ActivationEnded'), unitId: z.string() }),
+  z.object({ type: z.literal('GroupMemberActivated'), unitId: z.string(), actions: z.number() }),
   z.object({ type: z.literal('RoundEnded'), round: z.number(), nextLeader: ownerSchema }),
   z.object({
     type: z.literal('ScoreChanged'),

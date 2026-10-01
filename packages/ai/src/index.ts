@@ -12,6 +12,7 @@ import {
   flagAtBase,
   isKing,
   getLegalCommands,
+  groupFor,
   kingOf,
   makeHexGrid,
   masteryEdge,
@@ -27,6 +28,7 @@ import {
   unitMove,
   vecKey,
   type Board,
+  type ChooseActivation,
   type Command,
   type GameState,
   type Owner,
@@ -447,10 +449,14 @@ function leaderFirst(state: GameState, unit: Unit, score: number): number {
  * that turns over still takes the actions its successes earned — so 3 dice is
  * strictly best.
  */
-function diceScore(state: GameState, player: Owner, diceCount: number): number {
-  const availableCount = aliveUnits(state, player).filter((u) => !u.activatedThisRound).length;
-  if (availableCount <= 1) return diceCount;
-  return diceCount === 2 ? 3 : diceCount === 3 ? 2 : 1;
+function diceScore(state: GameState, board: Board, command: ChooseActivation): number {
+  const { diceCount } = command;
+  const members = activated(state, board, command);
+  const availableCount = aliveUnits(state, members[0]!.owner).filter((u) => !u.activatedThisRound).length;
+  // A group takes all its members' actions for one roll's risk: better than going alone.
+  const together = command.group ? 4 : 0;
+  if (availableCount <= members.length) return together + diceCount;
+  return together + (diceCount === 2 ? 3 : diceCount === 3 ? 2 : 1);
 }
 
 /** Worth of a unit's 1st, 2nd and 3rd action this activation (later ones matter less). */
@@ -460,26 +466,36 @@ const ACTION_WORTH = [1, 0.8, 0.5];
 const BENCH_COST = 1;
 
 /**
- * Expected worth of activating `unit` with `dice` dice: the actions its
- * successes buy (less the one a knocked-down unit spends standing), less the
- * chance of a turnover times the activations it would cost the friends still
- * waiting. An inspired unit's first die is a sure success.
+ * Expected worth of activating `members` (one unit, or a group sharing the
+ * roll) with `dice` dice: the actions the successes buy each of them (less the
+ * one a knocked-down unit spends standing), less the chance of a turnover times
+ * the activations it would cost the friends still waiting. The first die is a
+ * sure success when every member is inspired.
  */
-function activationWorth(unit: Unit, dice: number, need: number, waiting: number): number {
-  const p = Math.min(1, Math.max(0, (7 - unit.quality) / 6));
-  const sure = unit.inspired ? 1 : 0;
+function activationWorth(members: Unit[], dice: number, need: (u: Unit) => number, waiting: number): number {
+  const p = Math.min(1, Math.max(0, (7 - members[0]!.quality) / 6));
+  const sure = members.every((u) => u.inspired) ? 1 : 0;
   const rolled = dice - sure;
+  const needs = members.map(need);
   let worth = 0;
   for (let hits = 0; hits <= rolled; hits++) {
     const prob = binomial(rolled, hits) * p ** hits * (1 - p) ** (rolled - hits);
     const successes = hits + sure;
     const failures = dice - successes;
     let actions = 0;
-    for (let i = unit.knockedDown ? 1 : 0; i < successes; i++) actions += ACTION_WORTH[i]! * need;
-    if (unit.knockedDown && successes > 0) actions += 0.5; // back on its feet
+    members.forEach((unit, m) => {
+      for (let i = unit.knockedDown ? 1 : 0; i < successes; i++) actions += ACTION_WORTH[i]! * needs[m]!;
+      if (unit.knockedDown && successes > 0) actions += 0.5; // back on its feet
+    });
     worth += prob * (actions - (failures >= 2 ? waiting * BENCH_COST : 0));
   }
   return worth;
+}
+
+/** Who a `ChooseActivation` command would activate: the unit alone, or its group. */
+function activated(state: GameState, board: Board, command: ChooseActivation): Unit[] {
+  const unit = unitById(state, command.unitId)!;
+  return command.group ? groupFor(state, unit, board) : [unit];
 }
 
 function binomial(n: number, k: number): number {
@@ -510,22 +526,24 @@ function unitNeed(state: GameState, board: Board, zones: ZoneView[], kings: King
  * tiebreak (at most ~25) that never reorders which unit goes. A turnover costs
  * the activations of the friends still waiting, each weighed by how much it has
  * to do; the last unit risks nothing, so it always rolls all three.
+ *
+ * A group activation is worth all its members' actions for one roll's risk, so
+ * it outscores activating the same unit alone.
  */
 function diceWorth(
   state: GameState,
   board: Board,
   zones: ZoneView[],
   kings: KingPlan | undefined,
-  unit: Unit,
-  diceCount: number,
+  command: ChooseActivation,
 ): number {
+  const members = activated(state, board, command);
   const need = (u: Unit) => unitNeed(state, board, zones, kings, u);
   let waiting = 0;
-  for (const u of aliveUnits(state, unit.owner)) if (!u.activatedThisRound && u.id !== unit.id) waiting += need(u);
-  const own = need(unit);
-  const worth = (d: number) => activationWorth(unit, d, own, waiting);
+  for (const u of aliveUnits(state, members[0]!.owner)) if (!u.activatedThisRound && !members.includes(u)) waiting += need(u);
+  const worth = (d: number) => activationWorth(members, d, need, waiting);
   const best = Math.max(worth(1), worth(2), worth(3));
-  return worth(diceCount) === best ? 20 + best : worth(diceCount);
+  return worth(command.diceCount) === best ? 20 + best : worth(command.diceCount);
 }
 
 function scoreCommand(
@@ -542,7 +560,7 @@ function scoreCommand(
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
       if (kings) {
-        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceWorth(state, board, zones, kings, unit, command.diceCount);
+        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceWorth(state, board, zones, kings, command);
       }
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       // Zone modes: a unit already holding a zone has nowhere better to be, so
@@ -565,7 +583,7 @@ function scoreCommand(
       const fight = canMelee ? bestBlowNow(state, board, unit) * ORDER_SCALE : 0;
       const unitScore = leaderFirst(state, unit, canAttack ? 100_000 + fight : holding ? 1_000 : 10_000 - dist * 100);
 
-      return unitScore + diceWorth(state, board, zones, kings, unit, command.diceCount);
+      return unitScore + diceWorth(state, board, zones, kings, command);
     }
 
     case 'Attack': {
@@ -627,6 +645,10 @@ function scoreCommand(
 
     case 'EndActivation':
       return 0;
+
+    // Group members act in the order the engine lines them up.
+    case 'SwitchGroupMember':
+      return -1;
   }
 }
 
@@ -884,7 +906,7 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
       // The carrier moves first: every activation it waits is a chance to lose the flag.
       if (unit.id === plan.carrierId) unitScore = 150_000;
       unitScore = leaderFirst(state, unit, unitScore);
-      return unitScore + diceScore(state, player, command.diceCount);
+      return unitScore + diceScore(state, board, command);
     }
 
     case 'Attack':
@@ -932,6 +954,10 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
 
     case 'EndActivation':
       return 0;
+
+    // Group members act in the order the engine lines them up.
+    case 'SwitchGroupMember':
+      return -1;
   }
 }
 

@@ -219,6 +219,7 @@ export function finishGame(s: GameState, events: GameEvent[], winner: Owner, rea
   s.phase = 'gameOver';
   s.activeUnitId = null;
   s.actionsRemaining = 0;
+  delete s.group;
   events.push(s.mode || reason === 'roundLimit' ? { type: 'GameOver', winner, reason } : { type: 'GameOver', winner });
 }
 

@@ -119,6 +119,7 @@ export function removeUnit(state: GameState, id: string): GameState {
   const unit = s.units.find((u) => u.id === id);
   if (!unit) return state;
   s.units = s.units.filter((u) => u.id !== id);
+  if (s.group) s.group.pending = s.group.pending.filter((p) => p.unitId !== id);
   s.startCount[unit.owner] = Math.max(0, s.startCount[unit.owner] - 1);
   if (s.activeUnitId === id) dropActivation(s);
   return s;
@@ -170,6 +171,7 @@ export function patchUnit(state: GameState, id: string, patch: UnitPatch): GameS
 function dropActivation(s: GameState): void {
   s.activeUnitId = null;
   s.actionsRemaining = 0;
+  delete s.group;
   if (s.phase === 'acting') s.phase = 'awaitingActivation';
 }
 
@@ -195,6 +197,7 @@ export function activateUnit(state: GameState, id: string, actions: number): Gam
   s.benched[unit.owner] = false;
   s.activeUnitId = id;
   s.actionsRemaining = actions;
+  delete s.group;
   return s;
 }
 

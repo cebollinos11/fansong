@@ -37,6 +37,7 @@ import {
   adjacentEnemies,
   airborne,
   canWarCry,
+  groupFor,
   inMelee,
   isOccupied,
   livingCount,
@@ -73,7 +74,7 @@ export function reduce(state: GameState, command: Command): ReduceResult {
 
   switch (command.type) {
     case 'ChooseActivation':
-      handleChoose(s, events, command.unitId, command.diceCount);
+      handleChoose(s, events, command.unitId, command.diceCount, command.group === true);
       break;
     case 'Move':
       handleMove(s, events, command.unitId, command.to);
@@ -92,6 +93,9 @@ export function reduce(state: GameState, command: Command): ReduceResult {
       break;
     case 'EndActivation':
       handleEndActivation(s, events);
+      break;
+    case 'SwitchGroupMember':
+      handleSwitchGroupMember(s, events, command.unitId);
       break;
   }
 
@@ -114,7 +118,7 @@ function activeUnit(s: GameState): Unit {
 
 // --- Activation -----------------------------------------------------------
 
-function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCount: number): void {
+function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCount: number, asGroup: boolean): void {
   requirePhase(s, 'awaitingActivation');
   const unit = unitById(s, unitId);
   if (!unit) throw new Error(`unknown unit '${unitId}'`);
@@ -123,20 +127,33 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   if (s.benched[s.active]) throw new Error(`player ${s.active} is benched this round`);
   if (diceCount < 1 || diceCount > 3) throw new Error(`diceCount must be 1..3, got ${diceCount}`);
 
-  unit.activatedThisRound = true;
-  // Activating drops any Guard stance held from a previous round.
-  unit.guarding = false;
-  events.push({ type: 'ActivationChosen', player: s.active, unitId, diceCount });
+  // A group activation: the unit's whole group shares this one roll, for
+  // better or worse. Alone, the "group" is just the unit.
+  const members = asGroup ? groupFor(s, unit, makeHexGrid(s.board)) : [unit];
+  if (members.length === 0) throw new Error(`unit '${unitId}' has no group to activate with`);
+
+  // The sure 6 of a war cry needs every member inspired; the roll spends the
+  // inspiration of each either way.
+  const inspired = members.every((m) => m.inspired);
+  for (const m of members) {
+    m.activatedThisRound = true;
+    // Activating drops any Guard stance held from a previous round.
+    m.guarding = false;
+    m.inspired = false;
+  }
+  events.push({
+    type: 'ActivationChosen',
+    player: s.active,
+    unitId,
+    diceCount,
+    ...(asGroup ? { group: members.map((m) => m.id) } : {}),
+  });
 
   const { dice, state: rngState } = rollDice(s.rngState, diceCount);
   s.rngState = rngState;
   // An inspired unit's first die is a sure 6 (still drawn, so the RNG stream
   // doesn't depend on who is inspired). The inspiration is spent on this roll.
-  const inspired = unit.inspired;
-  if (inspired) {
-    dice[0] = 6;
-    unit.inspired = false;
-  }
+  if (inspired) dice[0] = 6;
   let successes = 0;
   for (const d of dice) if (d >= unit.quality) successes++;
   const failures = diceCount - successes;
@@ -165,25 +182,51 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
     }
   }
 
-  // Successes become action points.
-  let actions = successes;
+  // Successes become action points: each member of a group gets them all. The
+  // picked unit acts first and the rest wait their turn.
+  if (asGroup) {
+    s.group = { pending: members.slice(1).map((m) => ({ unitId: m.id, actions: successes })), allotted: 0 };
+  }
+  beginActivation(s, events, unit, successes);
+}
+
+/** Put `unit` to work with `actions` to spend: the start of its own activation, alone or as a group member. */
+function beginActivation(s: GameState, events: GameEvent[], unit: Unit, actions: number): void {
   if (unit.knockedDown && actions > 0) {
     // Standing up costs one action.
     unit.knockedDown = false;
     actions -= 1;
-    events.push({ type: 'UnitStoodUp', unitId });
+    events.push({ type: 'UnitStoodUp', unitId: unit.id });
     regrabOnStandUp(s, events, unit);
   }
 
   s.activationCount += 1;
-  s.activeUnitId = unitId;
+  s.activeUnitId = unit.id;
   s.actionsRemaining = actions;
+  if (s.group) s.group.allotted = actions;
 
   if (actions <= 0) {
     endActivation(s, events);
     return;
   }
   s.phase = 'acting';
+}
+
+function handleSwitchGroupMember(s: GameState, events: GameEvent[], unitId: string): void {
+  requirePhase(s, 'acting');
+  const group = s.group;
+  if (!group) throw new Error('no group activation is under way');
+  if (s.actionsRemaining !== group.allotted) throw new Error('the active member has already acted');
+  const index = group.pending.findIndex((p) => p.unitId === unitId);
+  const next = group.pending[index];
+  const unit = unitById(s, unitId);
+  if (!next || !unit || unit.dead) throw new Error(`unit '${unitId}' is not waiting in the group`);
+
+  // The member stepping back keeps what it has and goes next in line.
+  group.pending.splice(index, 1);
+  group.pending.unshift({ unitId: activeUnit(s).id, actions: s.actionsRemaining });
+  events.push({ type: 'GroupMemberActivated', unitId, actions: next.actions });
+  beginActivation(s, events, unit, next.actions);
 }
 
 // --- Move -----------------------------------------------------------------
@@ -1109,6 +1152,19 @@ function endActivation(s: GameState, events: GameEvent[]): void {
   if (endedId) events.push({ type: 'ActivationEnded', unitId: endedId });
   s.activeUnitId = null;
   s.actionsRemaining = 0;
+
+  // A group activation holds the turn until its last member has acted.
+  if (s.group) {
+    if (checkGameOver(s, events)) return;
+    for (let next = s.group.pending.shift(); next; next = s.group.pending.shift()) {
+      const unit = unitById(s, next.unitId);
+      if (!unit || unit.dead) continue;
+      events.push({ type: 'GroupMemberActivated', unitId: unit.id, actions: next.actions });
+      beginActivation(s, events, unit, next.actions);
+      return;
+    }
+    delete s.group;
+  }
   advanceTurn(s, events);
 }
 

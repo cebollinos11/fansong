@@ -50,6 +50,7 @@ These are implemented, so they are not listed again below:
 | Original | FanSong | Note |
 |---|---|---|
 | A player activates models one after another until a turnover or until they choose to stop, and then the whole turn passes to the opponent. | Players alternate **one unit at a time**, and a turnover benches the player for the round. | This is the project's core twist. |
+| Only a **Leader** calls a group activation: friends near it of any kind roll on its Quality and make a group move or attack. | **Any** unit may activate with the friends *identical* to it within 2 hexes (up to 5). They share one roll, and each then acts on its own. | Made to speed up large armies rather than to model command (§6). |
 | Whoever goes first is decided by a roll, and players then alternate turns. | Initiative flips each round. | Part of the twist. |
 | An attack against a fallen model gets **+2**, and any win kills it. | A fallen defender only hurts its attacker on a natural 6, and any win against it kills. | This is a different mechanism with a similar feel. The original's +2 also makes a double, and so a kill, much easier. |
 | Fear: a **gruesome** kill (see §3) makes nearby friends test, and a failure means fleeing. | A gruesome kill makes friends within 4 hexes test with one die, and a failure means a knockdown. | The trigger now matches (M8); the 3-dice test and fleeing are still open (§5). |
@@ -192,8 +193,19 @@ die of its next activation roll is a sure 6 (still drawn from the RNG, and the
 inspiration is spent on that roll). A failed nerve check strips a unit's
 inspiration, and all of it lapses at the end of the round. A warband may field
 any number of Leaders, and Leaders never inspire each other. When a Leader is
-killed, friends who see it fall test nerve (§5.1). Group activation below is
-still not done.
+killed, friends who see it fall test nerve (§5.1).
+
+✅ **Done — group activation** *(FanSong's own take, not the Leader-led one
+below)*. *Implemented:* `ChooseActivation` takes a `group` flag. The picked
+unit's group is every friend with the same Quality, Combat, traits, sprite and
+tint that has yet to activate within 2 hexes of it, nearest first, capped at 5
+units. One roll is made; each member gets the successes as its own actions and
+they activate in turn (`GameState.group` holds those waiting), each exactly as
+if alone. All members count as activated whatever the roll, a turnover works as
+usual, and the sure 6 of a war cry applies only when every member is inspired.
+`SwitchGroupMember` lets a waiting member go first while the one in hand has
+done nothing. The Leader-led version below (mixed units, the Leader's Quality,
+combined moves and attacks) is still not done.
 
 1. **Leader trait.** A warband has at most one Leader. *(FanSong allows any
    number.)*
@@ -380,8 +392,8 @@ the engine is built today:
 4. ✅ **Range bands and cover** (§4.1–4.2). The board and line-of-sight code
    already have the pieces.
 5. **Difficult terrain** (§2.4). The terrain map can take a new `feature` value.
-6. **Leader and group activation** (§6). This is the biggest change to the
-   activation twist, and it needs design work.
+6. **Leader-led group activation** (§6): combined group moves, attacks and
+   shooting. Groups of identical units sharing a roll are done.
 7. **3-dice morale** (§5.2). Fleeing (§5.3) is done; the three dice and
    the flee distance per failure are not.
 8. Traits in batches, then magic, then campaigns.

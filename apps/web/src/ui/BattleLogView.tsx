@@ -176,6 +176,11 @@ export function BattleLogView({ log, title = 'Battle log', onFocus, onInspect }:
           </span>
           {name({ unit: g.unit }, -1)}
           {g.roll ? <Dice roll={g.roll} /> : g.diceCount ? <span className="log-dim">{g.diceCount}d</span> : null}
+          {g.groupOf ? (
+            <span className="log-dim" title={`One roll shared by a group of ${g.groupOf}`}>
+              ×{g.groupOf}
+            </span>
+          ) : null}
           {!expanded && brief.length ? (
             <span className="log-brief">
               {brief.map((i) => (

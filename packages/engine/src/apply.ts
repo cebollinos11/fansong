@@ -12,7 +12,13 @@ export function commandsEqual(a: Command, b: Command): boolean {
   if (a.type !== b.type) return false;
   switch (a.type) {
     case 'ChooseActivation':
-      return b.type === 'ChooseActivation' && a.unitId === b.unitId && a.diceCount === b.diceCount;
+      // Activating alone and activating as a group are different commands for the same unit.
+      return (
+        b.type === 'ChooseActivation' &&
+        a.unitId === b.unitId &&
+        a.diceCount === b.diceCount &&
+        (a.group ?? false) === (b.group ?? false)
+      );
     case 'Move':
       return b.type === 'Move' && a.unitId === b.unitId && a.to.x === b.to.x && a.to.y === b.to.y;
     case 'Attack':
@@ -36,6 +42,8 @@ export function commandsEqual(a: Command, b: Command): boolean {
       return b.type === 'WarCry' && a.unitId === b.unitId;
     case 'EndActivation':
       return b.type === 'EndActivation';
+    case 'SwitchGroupMember':
+      return b.type === 'SwitchGroupMember' && a.unitId === b.unitId;
   }
 }
 

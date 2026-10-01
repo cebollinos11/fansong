@@ -51,6 +51,43 @@ export function unitAvailable(u: Unit): boolean {
   return !u.dead && !u.activatedThisRound;
 }
 
+/** A group activation reaches this many hexes from the unit picked to activate. */
+export const GROUP_RADIUS = 2;
+
+/** Most units one group activation can hold, the picked unit included. */
+export const GROUP_MAX = 5;
+
+/**
+ * Whether two units are "the same unit" for a group activation: the same
+ * Quality, Combat and traits, drawn with the same sprite and tint. Names may
+ * differ (a roster numbers its copies).
+ */
+export function sameProfile(a: Unit, b: Unit): boolean {
+  if (a.quality !== b.quality || a.combat !== b.combat) return false;
+  if ((a.look ?? a.name) !== (b.look ?? b.name) || a.tint !== b.tint) return false;
+  for (const key of Object.keys(a.traits) as (keyof UnitTraits)[]) {
+    if (a.traits[key] !== b.traits[key]) return false;
+  }
+  return true;
+}
+
+/**
+ * The group `unit` would activate with: itself first, then every friend like
+ * it (see {@link sameProfile}) still to activate within {@link GROUP_RADIUS},
+ * nearest first (ties in unit order), up to {@link GROUP_MAX} in all. Empty
+ * when the unit has no one to group with.
+ */
+export function groupFor(state: GameState, unit: Unit, board: Board): Unit[] {
+  if (!unitAvailable(unit)) return [];
+  const near = state.units
+    .filter((u) => u.id !== unit.id && u.owner === unit.owner && unitAvailable(u) && sameProfile(u, unit))
+    .map((u) => ({ u, d: board.distance(u.pos, unit.pos) }))
+    .filter((e) => e.d <= GROUP_RADIUS)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, GROUP_MAX - 1);
+  return near.length === 0 ? [] : [unit, ...near.map((e) => e.u)];
+}
+
 /** Does player `p` have a legal activation available (not benched, has a fresh unit)? */
 export function playerHasAvailable(state: GameState, p: Owner): boolean {
   if (state.benched[p]) return false;

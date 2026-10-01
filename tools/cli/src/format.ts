@@ -18,7 +18,9 @@ const gore = (e: { gruesome?: true }) => (e.gruesome ? ' (gruesome!)' : '');
 export function formatEvent(state: GameState, e: GameEvent): string {
   switch (e.type) {
     case 'ActivationChosen':
-      return `P${e.player} activates ${name(state, e.unitId)} with ${e.diceCount} dice`;
+      return e.group
+        ? `P${e.player} activates a group of ${e.group.length} (${e.group.map((id) => name(state, id)).join(', ')}) with ${e.diceCount} dice`
+        : `P${e.player} activates ${name(state, e.unitId)} with ${e.diceCount} dice`;
     case 'DiceRolled':
       return `  rolls [${e.dice.join(', ')}] vs Q${e.quality} -> ${e.successes} hit / ${e.failures} miss${e.inspired ? ' (inspired: first die a 6)' : ''}`;
     case 'Turnover':
@@ -73,6 +75,8 @@ export function formatEvent(state: GameState, e: GameEvent): string {
       return `    ☠ ${name(state, e.unitId)} is killed`;
     case 'ActivationEnded':
       return `  — activation ends (${name(state, e.unitId)})`;
+    case 'GroupMemberActivated':
+      return `${name(state, e.unitId)} takes its turn in the group (${e.actions} actions)`;
     case 'RoundEnded':
       return `=== Round ${e.round} begins — P${e.nextLeader} leads ===`;
     case 'ScoreChanged':

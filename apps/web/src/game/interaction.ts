@@ -10,6 +10,10 @@ export interface Interaction {
   selectableUnitIds: string[];
   /** Distinct dice counts offered for activation. */
   diceChoices: number[];
+  /** Of {@link selectableUnitIds}, those that may activate as a group. */
+  groupUnitIds: string[];
+  /** Waiting group members the active one may hand over to (acting, before it does anything). */
+  switchTargetIds: string[];
   /** Cells the active unit may move into (acting). */
   moveTargets: Vec[];
   /** Enemy unit ids the active unit may attack (acting). */
@@ -31,6 +35,8 @@ export interface Interaction {
 export function deriveInteraction(legal: Command[]): Interaction {
   const selectable = new Set<string>();
   const diceChoices = new Set<number>();
+  const groupUnitIds = new Set<string>();
+  const switchTargetIds: string[] = [];
   const moveTargets: Vec[] = [];
   const attackTargetIds: string[] = [];
   const shootTargetIds: string[] = [];
@@ -45,6 +51,10 @@ export function deriveInteraction(legal: Command[]): Interaction {
       case 'ChooseActivation':
         selectable.add(c.unitId);
         diceChoices.add(c.diceCount);
+        if (c.group) groupUnitIds.add(c.unitId);
+        break;
+      case 'SwitchGroupMember':
+        switchTargetIds.push(c.unitId);
         break;
       case 'Move':
         moveTargets.push(c.to);
@@ -72,6 +82,8 @@ export function deriveInteraction(legal: Command[]): Interaction {
   return {
     selectableUnitIds: [...selectable],
     diceChoices: [...diceChoices].sort((a, b) => a - b),
+    groupUnitIds: [...groupUnitIds],
+    switchTargetIds,
     moveTargets,
     attackTargetIds,
     shootTargetIds,

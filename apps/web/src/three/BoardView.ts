@@ -1307,11 +1307,17 @@ export class BoardView {
       } else if (e.type === 'ActivationChosen') {
         const obj = this.units.get(e.unitId);
         // The opponent's pick is news to whoever is watching; the player's own already flashed when they made it.
-        if (e.unitId !== this.ownPick) this.at(t, () => this.flashPick(e.unitId));
+        // A group lights up together, so it is plain who shares the roll.
+        for (const id of e.group ?? [e.unitId]) if (id !== this.ownPick) this.at(t, () => this.flashPick(id));
         this.ownPick = null;
         if (obj?.anims.leading) this.at(t, () => obj.animator.play(obj.anims.leading));
+      } else if (e.type === 'GroupMemberActivated') {
+        // The next member of a group steps up once the last one's doings have shown.
+        t = Math.max(t, settle);
+        this.at(t, () => this.flashPick(e.unitId));
       } else if (e.type === 'DiceRolled') {
-        const roll = describeActivation(e, after);
+        const chosen = events.slice(0, i).find((x) => x.type === 'ActivationChosen' && x.unitId === e.unitId);
+        const roll = describeActivation(e, after, chosen?.type === 'ActivationChosen' ? chosen.group?.length : 0);
         const start = t;
         const resolve = start + activationResolveMs(roll.dice.length);
         const end = start + activationRollMs(roll.dice.length);
@@ -1642,7 +1648,7 @@ export class BoardView {
     // Blows frame themselves (see frameCombat); this is about what leads up to them.
     const points: THREE.Vector3[] = [];
     for (const e of events) {
-      if (e.type === 'ActivationChosen' || e.type === 'DiceRolled') {
+      if (e.type === 'ActivationChosen' || e.type === 'DiceRolled' || e.type === 'GroupMemberActivated') {
         const obj = this.units.get(e.unitId);
         if (obj && !obj.fade) points.push(obj.group.position.clone());
       } else if (e.type === 'UnitMoved') {

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Owner } from '@fansong/engine';
 import { anchoredCard, type UnitProjector } from './anchorView.js';
-import { diceHint } from './diceMenuView.js';
+import { diceHint, groupHint } from './diceMenuView.js';
 import type { TraitTag } from './hudView.js';
 import { usePressGuard } from './pressGuard.js';
 
@@ -18,8 +18,10 @@ interface Props {
   inspired: boolean;
   traits: readonly TraitTag[];
   choices: readonly number[];
+  /** Offered when the unit has a group: how many would share the roll, and whether all of them are inspired. */
+  group?: { size: number; inspired: boolean };
   project: UnitProjector;
-  onPick: (dice: number) => void;
+  onPick: (dice: number, group: boolean) => void;
 }
 
 /**
@@ -27,7 +29,7 @@ interface Props {
  * offers the same choice, but a player who has just clicked a unit on the board
  * should not have to cross the screen to answer the question that click asked.
  */
-export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, traits, choices, project, onPick }: Props): JSX.Element {
+export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, traits, choices, group, project, onPick }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   // The tap that picked the unit must not also pick a dice count.
   const { onPointerDown, guard } = usePressGuard();
@@ -92,13 +94,35 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
             className="dice-pick"
             title={diceHint(n, inspired)}
             aria-label={`Roll ${n} ${n === 1 ? 'die' : 'dice'}`}
-            onClick={guard(() => onPick(n))}
+            onClick={guard(() => onPick(n, false))}
           >
             {/* An inspired unit's first die is the war cry's sure 6, gold as in the roll. */}
             <DieFace pips={n} sure={inspired && i === 0} />
           </button>
         ))}
       </div>
+      {group ? (
+        <>
+          <div className="dice-menu-group" title="Every unit like this one within 2 hexes shares one roll, and all of them act before the turn passes.">
+            Group of {group.size}
+            <kbd>⇧</kbd>
+          </div>
+          <div className="dice-menu-row">
+            {choices.map((n, i) => (
+              <button
+                key={n}
+                type="button"
+                className="dice-pick group"
+                title={groupHint(n, group.size, group.inspired)}
+                aria-label={`Roll ${n} ${n === 1 ? 'die' : 'dice'} for the group of ${group.size}`}
+                onClick={guard(() => onPick(n, true))}
+              >
+                <DieFace pips={n} sure={group.inspired && i === 0} />
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

@@ -2065,6 +2065,21 @@ button.secondary {
   cursor: help;
 }
 
+/* The shared roll for the unit's whole group, under its own. */
+.dice-menu-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: help;
+}
+
 .dice-menu-row {
   display: flex;
   justify-content: center;

@@ -107,6 +107,10 @@ decides push-back / knockdown / kill. Minimal morale in v1.
 - **Turnover (2+ failures):** the player is **benched for the rest of the
   round** — no more activations until next round. The unit still takes the
   actions its successes earned (3 dice with 1 success) before the turn passes.
+- **Group activation:** a unit may bring along every identical, un-activated
+  friend within 2 hexes (up to 5 units). They share one roll, each takes the
+  successes as its own actions, and the turn passes only when the last has
+  acted. It keeps large armies moving without giving up the alternation.
 - **Solo continuation:** if the opponent is benched or out of units, you keep
   activating one unit at a time until you turn over or run out.
 - **Round end:** when no player has a unit that is both un-activated and not

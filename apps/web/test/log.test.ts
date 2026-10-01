@@ -179,6 +179,26 @@ describe('grouping', () => {
     expect(partsText(g!.items[0]!.brief!)).toBe('➜ 4 hexes');
   });
 
+  it('gives each member of a group activation its own entry under the shared roll', () => {
+    const [b, c] = s.units.filter((u) => u.owner === 0 && u.id !== a.id);
+    let log = appendEvents(emptyLog(), s, [
+      { type: 'ActivationChosen', player: 0, unitId: a.id, diceCount: 2, group: [a.id, b!.id, c!.id] },
+      { type: 'DiceRolled', unitId: a.id, quality: 4, dice: [5, 6], successes: 2, failures: 0 },
+    ]);
+    // The picked unit steps back before acting: the other takes over its entry.
+    log = appendEvents(log, s, [{ type: 'GroupMemberActivated', unitId: c!.id, actions: 2 }]);
+    log = appendEvents(log, s, [
+      walk(0),
+      { type: 'ActivationEnded', unitId: c!.id },
+      { type: 'GroupMemberActivated', unitId: a.id, actions: 2 },
+    ]);
+    const groups = log.rounds[0]!.groups;
+    expect(groups.map((g) => g.unit?.id)).toEqual([c!.id, a.id]);
+    expect(groups.map((g) => g.groupOf)).toEqual([3, 3]);
+    expect(groups[1]!.roll).toEqual(groups[0]!.roll);
+    expect(groups.map((g) => g.open)).toEqual([false, true]);
+  });
+
   it('starts a new round section and puts events outside activations in a loose group', () => {
     const log = appendEvents(emptyLog(), s, [
       { type: 'ActivationChosen', player: 0, unitId: a.id, diceCount: 1 },

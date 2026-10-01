@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getActionPlans, unitById, vecKey, type ActionPlan, type GameEvent, type GameState, type Owner, type Replay, type Vec } from '@fansong/engine';
+import { getActionPlans, groupFor, makeHexGrid, unitById, vecKey, type ActionPlan, type GameEvent, type GameState, type Owner, type Replay, type Vec } from '@fansong/engine';
 import type { ClientStatus, MatchClient } from '../game/client.js';
 import type { Transition } from '../game/controller.js';
 import { deriveInteraction } from '../game/interaction.js';
@@ -168,6 +168,20 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // tints, rings, and resolves a click to.
   const plans = useMemo(() => buildPlanIndex(getActionPlans(state), state), [state]);
   const acting = myTurn && state.phase === 'acting';
+  // Who would share the roll if the selected unit activated as a group (itself first).
+  const groupIds = useMemo(() => {
+    if (!myTurn || state.phase !== 'awaitingActivation' || !selectedUnitId) return [];
+    if (!interaction.groupUnitIds.includes(selectedUnitId)) return [];
+    const unit = unitById(state, selectedUnitId);
+    return unit ? groupFor(state, unit, makeHexGrid(state.board)).map((u) => u.id) : [];
+  }, [myTurn, state, selectedUnitId, interaction]);
+  const diceGroup = useMemo(
+    () =>
+      groupIds.length > 0
+        ? { size: groupIds.length, inspired: groupIds.every((id) => unitById(state, id)?.inspired) }
+        : undefined,
+    [groupIds, state],
+  );
   // While the human picks a unit or gives it orders, the enemies that can no
   // longer answer this round (acted already, or their side turned over) sit dimmed.
   const spentUnitIds = useMemo(
@@ -231,6 +245,12 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       return;
     }
     if (state.phase !== 'acting' || !state.activeUnitId) return;
+    // A waiting group member: let it act now instead of the one in hand.
+    if (interaction.switchTargetIds.includes(id)) {
+      setPinnedCell(null);
+      client.send({ type: 'SwitchGroupMember', unitId: id });
+      return;
+    }
     // The plan may walk in first — an enemy a move away is clickable straight off.
     const plan = plans.byTarget.get(id);
     if (!plan) return;
@@ -323,14 +343,15 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     wasPicking.current = picking;
   }, [picking, cycleUnit, state.active]);
 
-  const handleActivate = (diceCount: number): void => {
+  const handleActivate = (diceCount: number, group: boolean): void => {
     if (!myTurn || !selectedUnitId) return;
     lastPicked.current[state.active] = selectedUnitId;
-    client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
+    client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount, ...(group ? { group: true as const } : {}) });
   };
 
   // Keyboard: Q/E step the selection back/forward through the units that can
-  // activate, 1/2/3 commit that many dice to the selected unit and Escape drops
+  // activate, 1/2/3 commit that many dice to the selected unit (with Shift, to
+  // its whole group) and Escape drops
   // the selection; once acting, E ends the activation, which is otherwise the most-clicked
   // button on the screen, G declares Guard and C war cries (each only offered
   // when legal). The
@@ -382,15 +403,19 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         setSelectedUnitId(null);
         return;
       }
-      const diceCount = Number(e.key);
+      // With Shift the key no longer reads as a digit (and which symbol it is
+      // depends on the keyboard layout), so go by the physical key.
+      const group = e.shiftKey;
+      const diceCount = Number(group ? /^Digit(\d)$/.exec(e.code)?.[1] : e.key);
       if (!interaction.diceChoices.includes(diceCount)) return;
+      if (group && groupIds.length === 0) return;
       e.preventDefault();
       lastPicked.current[state.active] = selectedUnitId;
-      client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount });
+      client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount, ...(group ? { group: true as const } : {}) });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, client, cycleUnit]);
+  }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, client, cycleUnit, groupIds]);
 
   // Picking a unit to activate brings the inspector back to it.
   useEffect(() => {
@@ -447,7 +472,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         approachTargetIds={acting ? plans.approachIds : []}
         shootTargetIds={acting ? plans.shootIds : []}
         previewFor={hoverPreview}
-        selectableUnitIds={myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : []}
+        selectableUnitIds={
+          myTurn && state.phase === 'awaitingActivation' ? interaction.selectableUnitIds : acting ? interaction.switchTargetIds : []
+        }
         selectedUnitId={selectedUnitId ?? sandbox?.selectedUnitId ?? null}
         spentUnitIds={spentUnitIds}
         interactive={myTurn || sandbox !== undefined}
@@ -460,10 +487,12 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         scoring={scoring}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
-        focusUnitIds={logFocus?.unitIds ?? (inspectedUnitId ? [inspectedUnitId] : [])}
+        // With nothing else pointed at, ring the friends that would join the selected unit's group.
+        focusUnitIds={logFocus?.unitIds ?? (inspectedUnitId ? [inspectedUnitId] : groupIds.slice(1))}
         focusPath={logFocus?.path}
         pinnedCell={pinnedCell}
         diceChoices={myTurn && selectedUnitId && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}
+        diceGroup={diceGroup}
         onChooseDice={handleActivate}
         playing
       />

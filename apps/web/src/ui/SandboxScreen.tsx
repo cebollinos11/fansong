@@ -647,7 +647,7 @@ function describeCommand(state: GameState, c: Command): string {
   const name = (id: string) => unitById(state, id)?.name ?? id;
   switch (c.type) {
     case 'ChooseActivation':
-      return `Activate ${name(c.unitId)} with ${c.diceCount}d`;
+      return `Activate ${name(c.unitId)}${c.group ? "'s group" : ''} with ${c.diceCount}d`;
     case 'Move':
       return `Move ${name(c.unitId)} → ${c.to.x},${c.to.y}`;
     case 'Attack':
@@ -660,6 +660,8 @@ function describeCommand(state: GameState, c: Command): string {
       return `War cry: ${name(c.unitId)}`;
     case 'EndActivation':
       return 'End activation';
+    case 'SwitchGroupMember':
+      return `Group: ${name(c.unitId)} goes next`;
   }
 }
 

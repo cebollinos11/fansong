@@ -115,12 +115,13 @@ export interface Unit {
   /**
    * Cosmetic: which unit this one is drawn as (a preset unit's name, e.g. an
    * army-builder unit that "looks like" a Longbow). Omitted = drawn by `name`.
-   * No rule reads it.
+   * The only rule that reads it is group activation: units must look alike to
+   * form a group (see `sameProfile`).
    */
   look?: string;
   /**
    * Cosmetic: a colour (`"#rrggbb"`) blended into the unit's sprite, sparing its
-   * team colours. Omitted = untinted. No rule reads it.
+   * team colours. Omitted = untinted. Like `look`, read only by group activation.
    */
   tint?: string;
   /**
@@ -181,6 +182,22 @@ export interface GameState {
   mode?: ModeState;
   /** Custom round limit / target score; omitted when the game plays its mode's defaults. */
   limits?: GameLimits;
+  /**
+   * The group activation in progress; omitted outside one, so an ordinary
+   * state's shape (and every replay hash) is unchanged.
+   */
+  group?: GroupState;
+}
+
+/** A group activation in progress: the members still to act behind the active one. */
+export interface GroupState {
+  /** Members waiting their turn, next first, each with the actions the shared roll left it. */
+  pending: { unitId: string; actions: number }[];
+  /**
+   * Actions the active member started with. While `actionsRemaining` still
+   * equals it the member has done nothing, and may hand over to another.
+   */
+  allotted: number;
 }
 
 // --- Commands -------------------------------------------------------------
@@ -190,6 +207,12 @@ export interface ChooseActivation {
   unitId: string;
   /** Dice committed to this activation (1–3). */
   diceCount: number;
+  /**
+   * A **group activation**: the unit's group (see `groupFor`) shares this one
+   * roll, and every member acts on it before the turn passes. Omitted = the
+   * unit activates alone.
+   */
+  group?: true;
 }
 
 export interface MoveCommand {
@@ -241,6 +264,16 @@ export interface EndActivation {
   type: 'EndActivation';
 }
 
+/**
+ * In a group activation, let the waiting member `unitId` act now instead of
+ * the active one, which goes back to waiting. Only legal while the active
+ * member has done nothing yet.
+ */
+export interface SwitchGroupMember {
+  type: 'SwitchGroupMember';
+  unitId: string;
+}
+
 export type Command =
   | ChooseActivation
   | MoveCommand
@@ -248,7 +281,8 @@ export type Command =
   | ShootCommand
   | GuardCommand
   | WarCryCommand
-  | EndActivation;
+  | EndActivation
+  | SwitchGroupMember;
 
 // --- Events ---------------------------------------------------------------
 
@@ -262,7 +296,14 @@ export type CombatResult =
   | 'clash';
 
 export type GameEvent =
-  | { type: 'ActivationChosen'; player: Owner; unitId: string; diceCount: number }
+  | {
+      type: 'ActivationChosen';
+      player: Owner;
+      unitId: string;
+      diceCount: number;
+      /** Present on a group activation: every member sharing the roll, `unitId` first. */
+      group?: string[];
+    }
   | {
       type: 'DiceRolled';
       unitId: string;
@@ -471,6 +512,8 @@ export type GameEvent =
   | { type: 'UnitFellIntoLava'; unitId: string }
   | { type: 'UnitKilled'; unitId: string; byId: string | null }
   | { type: 'ActivationEnded'; unitId: string }
+  /** In a group activation, `unitId` takes its turn with the `actions` the shared roll gave it. */
+  | { type: 'GroupMemberActivated'; unitId: string; actions: number }
   | { type: 'RoundEnded'; round: number; nextLeader: Owner }
   /** `zone` (index into the conquest zones) is present only for conquest zone scoring. */
   | { type: 'ScoreChanged'; player: Owner; points: number; scores: [number, number]; zone?: number }

@@ -3,6 +3,16 @@
  * (and the inspired guarantee it promises) is tested without a DOM.
  */
 
+/** What one shared roll of this many dice buys a group of `size`, and what it risks. */
+export function groupHint(n: number, size: number, inspired: boolean): string {
+  const sure = inspired ? ' All are inspired: the first die is a sure 6.' : '';
+  const risk =
+    n === 1
+      ? 'A single die can never turn over, but a miss wastes all of them.'
+      : 'Two failures bench you, and a roll with no successes wastes all of them.';
+  return `Group of ${size}, ${n === 1 ? 'one die' : `${n} dice`} rolled once — each gets up to ${n} action${n === 1 ? '' : 's'}. ${risk}${sure}`;
+}
+
 /** What committing this many dice buys, and what it risks. */
 export function diceHint(n: number, inspired: boolean): string {
   if (inspired) {

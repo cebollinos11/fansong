@@ -118,9 +118,17 @@ export function Hud(props: Props): JSX.Element {
               <span className="keys">
                 <kbd>1</kbd>–<kbd>{Math.max(...interaction.diceChoices, 1)}</kbd>
               </span>
+              {interaction.groupUnitIds.includes(selected.id) ? (
+                <span className="keys">
+                  {' '}
+                  · group <kbd>⇧</kbd>
+                </span>
+              ) : null}
             </>
           ),
-          hint: 'More dice = more actions but higher turnover risk. One die can never turn over. Q/E switch unit, Esc deselects.',
+          hint: interaction.groupUnitIds.includes(selected.id)
+            ? 'More dice = more actions but higher turnover risk. One die can never turn over. Hold Shift (or use the group row) to activate every unit like it within 2 hexes on one shared roll. Q/E switch unit, Esc deselects.'
+            : 'More dice = more actions but higher turnover risk. One die can never turn over. Q/E switch unit, Esc deselects.',
           tone: 'yours',
         }
       : {
@@ -136,10 +144,12 @@ export function Hud(props: Props): JSX.Element {
           tone: 'yours',
         };
   } else {
+    const waiting = state.group?.pending.length ?? 0;
     turn = {
-      text: `${activeUnit?.name ?? 'Unit'} · ${state.actionsRemaining} action${state.actionsRemaining === 1 ? '' : 's'} left`,
-      hint:
-        state.actionsRemaining >= 2
+      text: `${activeUnit?.name ?? 'Unit'} · ${state.actionsRemaining} action${state.actionsRemaining === 1 ? '' : 's'} left${waiting > 0 ? ` · ${waiting} more in the group` : ''}`,
+      hint: interaction.switchTargetIds.length > 0
+        ? 'A group is activating: each member acts in turn. Click a pulsing member to let it go first — once this one acts, it has to finish.'
+        : state.actionsRemaining >= 2
           ? 'The green field covers everything it can reach with all its actions — the rings mark where each one ends. Hover to see the route and the price; one click spends the lot.'
           : 'Click a green tile to move, a highlighted enemy to attack.',
       tone: 'yours',

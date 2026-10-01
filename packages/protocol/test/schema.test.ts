@@ -12,6 +12,8 @@ describe('commandSchema', () => {
   it('accepts each legal command shape', () => {
     const cmds: Command[] = [
       { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 2 },
+      { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 2, group: true },
+      { type: 'SwitchGroupMember', unitId: 'p0u1' },
       { type: 'Move', unitId: 'p0u0', to: { x: 1, y: 2 } },
       { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' },
       { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0', power: true },
@@ -56,6 +58,34 @@ describe('commandSchema', () => {
       for (const c of legal) expect(commandSchema.safeParse(c).success).toBe(true);
       state = reduce(state, legal[0]!).state;
     }
+  });
+});
+
+describe('group activation on the wire', () => {
+  const twins = () =>
+    createGame({
+      seed: 1,
+      board: { width: 8, height: 4 },
+      warbands: [
+        [
+          { name: 'Twin', quality: 1, combat: 3, pos: { x: 0, y: 0 } },
+          { name: 'Twin 2', look: 'Twin', quality: 1, combat: 3, pos: { x: 0, y: 1 } },
+        ],
+        [{ name: 'Foe', quality: 3, combat: 3, pos: { x: 7, y: 0 } }],
+      ],
+    });
+
+  it('accepts the group flag only as an explicit true', () => {
+    expect(commandSchema.safeParse({ type: 'ChooseActivation', unitId: 'x', diceCount: 2, group: false }).success).toBe(false);
+  });
+
+  it('round-trips a state and the events of a group activation in progress', () => {
+    const { state, events } = reduce(twins(), { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 2, group: true });
+    expect(state.group).toBeDefined();
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    const next = reduce(state, { type: 'EndActivation' });
+    for (const e of [...events, ...next.events]) expect(gameEventSchema.parse(JSON.parse(JSON.stringify(e)))).toEqual(e);
+    expect(next.events.some((e) => e.type === 'GroupMemberActivated')).toBe(true);
   });
 });
 

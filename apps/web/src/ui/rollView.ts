@@ -260,11 +260,13 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
 
 /**
  * Describe an activation roll. `after` is the rest of the batch: a Turnover or
- * a stand-up changes the summary.
+ * a stand-up changes the summary. `groupOf` is how many units share the roll
+ * in a group activation.
  */
 export function describeActivation(
   e: Extract<GameEvent, { type: 'DiceRolled' }>,
   after: readonly GameEvent[] = [],
+  groupOf = 0,
 ): ActivationRoll {
   const dice: ActivationRoll['dice'] = e.dice.map((value, i) =>
     e.inspired && i === 0 ? { value, success: true, inspired: true } : { value, success: value >= e.quality },
@@ -274,7 +276,8 @@ export function describeActivation(
   const stood = after.some((x) => x.type === 'UnitStoodUp' && x.unitId === e.unitId);
   const actions = e.successes - (stood ? 1 : 0);
   const plural = actions === 1 ? 'action' : 'actions';
-  const earned = stood ? `Stands up (−1) · ${actions} ${plural}` : actions > 0 ? `${actions} ${plural}` : 'No actions';
+  const each = groupOf > 1 ? ` each, group of ${groupOf}` : '';
+  const earned = stood ? `Stands up (−1) · ${actions} ${plural}` : actions > 0 ? `${actions} ${plural}${each}` : 'No actions';
   // A turnover with a success still acts first (3 dice, 1 success).
   let summary: string;
   if (turnover) summary = e.successes > 0 ? `${e.failures} fails — turnover · ${earned}` : `${e.failures} fails — turnover`;

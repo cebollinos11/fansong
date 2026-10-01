@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
 import { PRESSED_COST } from './combat.js';
-import { canWarCry, enemiesOf, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
+import { canWarCry, enemiesOf, groupFor, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -17,10 +17,16 @@ export function getLegalCommands(state: GameState): Command[] {
   if (state.phase === 'awaitingActivation') {
     if (state.benched[state.active]) return [];
     const commands: Command[] = [];
+    const board = makeHexGrid(state.board);
     for (const u of state.units) {
       if (u.owner !== state.active || !unitAvailable(u)) continue;
       for (const diceCount of DICE_CHOICES) {
         commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount });
+      }
+      // With friends like it close by, the unit may activate them all on one roll.
+      if (groupFor(state, u, board).length === 0) continue;
+      for (const diceCount of DICE_CHOICES) {
+        commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount, group: true });
       }
     }
     return commands;
@@ -30,6 +36,14 @@ export function getLegalCommands(state: GameState): Command[] {
   const commands: Command[] = [{ type: 'EndActivation' }];
   const unit = state.activeUnitId ? unitById(state, state.activeUnitId) : undefined;
   if (!unit || unit.dead || state.actionsRemaining <= 0) return commands;
+
+  // Group activation: until the active member does something, any waiting
+  // member may take its place, so the player sets the order they act in.
+  if (state.group && state.actionsRemaining === state.group.allotted) {
+    for (const p of state.group.pending) {
+      if (!unitById(state, p.unitId)?.dead) commands.push({ type: 'SwitchGroupMember', unitId: p.unitId });
+    }
+  }
 
   const board = makeHexGrid(state.board);
 

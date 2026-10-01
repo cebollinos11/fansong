@@ -74,6 +74,8 @@ export interface LogGroup {
   unit?: UnitRef;
   diceCount?: number;
   roll?: DiceRoll;
+  /** Set on every member of a group activation: how many units shared the roll. */
+  groupOf?: number;
   /** The dice turned over: the side is benched for the round. */
   turnover?: boolean;
   items: LogItem[];
@@ -473,6 +475,29 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
           id: log.nextId++,
           unit: ref(state, e.unitId),
           diceCount: e.diceCount,
+          ...(e.group ? { groupOf: e.group.length } : {}),
+          items: [],
+          open: true,
+        });
+        break;
+      }
+      case 'GroupMemberActivated': {
+        // The next member of a group: its own entry, under the roll they share.
+        const groups = round().groups;
+        const g = current();
+        const shared = [...groups].reverse().find((x) => x.groupOf);
+        if (g?.open && g.unit && g.items.length === 0) {
+          // The member in hand stepped back before doing anything; this one takes its entry.
+          g.unit = ref(state, e.unitId);
+          break;
+        }
+        if (g) g.open = false;
+        groups.push({
+          id: log.nextId++,
+          unit: ref(state, e.unitId),
+          diceCount: shared?.diceCount,
+          roll: shared?.roll,
+          groupOf: shared?.groupOf,
           items: [],
           open: true,
         });
