@@ -1,7 +1,9 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import type { GameMode, GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { modeHud, modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from '../src/ui/modeView.js';
+import { zoneTallies } from '../src/game/roundScoring.js';
+import { ZONE_COLORS } from '../src/ui/editorView.js';
+import { modeHud, modeMarkers, modeMarkingsKey, modeOverlays, unitBadges, zoneScore } from '../src/ui/modeView.js';
 
 function match(mode: GameMode | undefined, mapId?: string): GameState {
   const setup: MatchSetup = { presets: ['iron-wardens', 'ashfang-raiders'], seats: ['ai', 'ai'], seed: 5 };
@@ -90,12 +92,48 @@ describe('king-of-the-hill', () => {
     expect(hud.lines).toEqual(['Hill: —']);
 
     const hill = s.mode!.objectives.hill!;
+    expect(modeOverlays(s)).toEqual([expect.objectContaining({ cells: hill, color: ZONE_COLORS.hill })]);
+    const unheld = modeMarkingsKey(s);
     const unit = s.units.find((u) => u.owner === 1)!;
     unit.pos = { ...hill[0]! };
     s.mode!.scores = [1, 3];
     expect(modeHud(s)!.lines).toEqual(['Hill: P1']);
     expect(modeHud(s)!.scores).toEqual([1, 3]);
-    expect(modeOverlays(s)).toEqual([expect.objectContaining({ cells: hill })]);
+    // Held: rimmed in the holder's colour, under the hill's own tint.
+    expect(modeOverlays(s)).toEqual([
+      expect.objectContaining({ cells: hill, color: ZONE_COLORS.deploy[1] }),
+      expect.objectContaining({ cells: hill, color: ZONE_COLORS.hill }),
+    ]);
+    expect(modeMarkingsKey(s)).not.toBe(unheld);
+  });
+
+  it('words a zone being scored: who takes the point, or why nobody does', () => {
+    const s = match('king-of-the-hill', 'rolling-hills');
+    const hill = s.mode!.objectives.hill!;
+    const names = ['You', 'AI'] as const;
+    const tally = () => ({ ...zoneTallies(s)[0]!, points: 1 });
+
+    expect(zoneScore(s, { ...tally(), points: 0 }, names)).toMatchObject({
+      name: 'The hill',
+      owner: null,
+      headline: 'No points',
+      reason: 'nobody standing in it',
+    });
+
+    const [mine, theirs] = [s.units.find((u) => u.owner === 0)!, s.units.find((u) => u.owner === 1)!];
+    mine.pos = { ...hill[0]! };
+    expect(zoneScore(s, tally(), names)).toMatchObject({ owner: 0, headline: '+1 You', counts: [1, 0] });
+
+    theirs.pos = { ...hill[1]! };
+    expect(zoneScore(s, { ...tally(), points: 0 }, names)).toMatchObject({
+      owner: null,
+      counts: [1, 1],
+      reason: 'contested: equal numbers standing in it',
+    });
+
+    // A knocked-down unit holds nothing.
+    mine.knockedDown = true;
+    expect(zoneScore(s, tally(), names)).toMatchObject({ owner: 1, headline: '+1 AI', counts: [0, 1] });
   });
 });
 

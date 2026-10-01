@@ -7,6 +7,7 @@ import { buildPlanIndex, previewFor } from '../game/planView.js';
 import { PlanRunner } from '../game/planRunner.js';
 import { PresentationQueue } from '../game/presentation.js';
 import { downloadReplay } from '../game/replay-io.js';
+import { splitRoundScoring, type ZoneTally } from '../game/roundScoring.js';
 import { splitRoundStart } from '../game/roundStart.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
@@ -15,9 +16,12 @@ import { Hud } from './Hud.js';
 import { seatLabel, turnPhrase } from './hudView.js';
 import type { LogFocus } from './BattleLogView.js';
 import { appendEvents, emptyLog, type BattleLog } from './log.js';
+import { zoneScore } from './modeView.js';
 
 /** How long the round-start banner stays up over the board (ms; matches the CSS animation). */
 const ROUND_ANNOUNCE_MS = 1800;
+/** How long a scored zone stays on screen after its point counts, before the next one. */
+const ZONE_SCORE_HOLD_MS = 800;
 
 interface Props {
   client: MatchClient;
@@ -46,7 +50,7 @@ export interface SandboxHooks {
 
 export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, children }: Props): JSX.Element {
   // What the board is showing (it may still be rolling dice for it)...
-  const [shown, setShown] = useState<{ state: GameState; events: GameEvent[] }>(() => ({
+  const [shown, setShown] = useState<{ state: GameState; events: GameEvent[]; scoring?: ZoneTally }>(() => ({
     state: client.getState(),
     events: [],
   }));
@@ -82,7 +86,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     const queue = new PresentationQueue<Transition>(
       (t) => {
         setIdle(false);
-        setShown({ state: t.state, events: t.events });
+        setShown({ state: t.state, events: t.events, scoring: t.scoring });
         setSelectedUnitId(null);
         setAttackChoice(null);
       },
@@ -90,6 +94,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         setState(t.state);
         setLog((prev) => appendEvents(prev, t.state, t.events));
         setIdle(nowIdle);
+        // A zone's point has just counted; leave its verdict up before the next zone.
+        if (t.scoring) queue.hold(ZONE_SCORE_HOLD_MS);
         // Only once this transition's own animations (a round-ending blow, say)
         // have played out — never while they're still on screen. Held back from
         // the queue too, so whatever plays next stays hidden until it clears.
@@ -101,8 +107,11 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       },
     );
     queueRef.current = queue;
-    // Reassembling units stand up after the round's banner, not under it.
-    const unsub = client.subscribe((t) => splitRoundStart(t).forEach((part) => queue.push(part)));
+    // A round's zones are scored one at a time before it ends, and Reassembling
+    // units stand up after the round's banner, not under it.
+    const unsub = client.subscribe((t) =>
+      splitRoundScoring(t).flatMap(splitRoundStart).forEach((part) => queue.push(part)),
+    );
     const unsubStatus = client.onStatus(setStatus);
     setStatus(client.status());
     return () => {
@@ -393,6 +402,16 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         turnLabel: turnPhrase(seatLabel(client.setup, client.controlledSeats, roundAnnounce.owner)),
       }
     : null;
+  const scoring = useMemo(
+    () =>
+      shown.scoring
+        ? zoneScore(shown.state, shown.scoring, [
+            seatLabel(client.setup, client.controlledSeats, 0),
+            seatLabel(client.setup, client.controlledSeats, 1),
+          ])
+        : null,
+    [shown, client],
+  );
 
   return (
     <div className="game">
@@ -413,6 +432,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         events={shown.events}
         onEventsPlayed={(ms) => queueRef.current?.played(ms)}
         announcement={announcement}
+        scoring={scoring}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
         focusUnitIds={logFocus?.unitIds ?? (inspectedUnitId ? [inspectedUnitId] : [])}
@@ -431,6 +451,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         humanTurn={myTurn}
         resolving={!idle}
         roundStarting={roundAnnounce !== null}
+        scoring={scoring !== null}
         log={log}
         inspectedUnitId={inspectedUnitId}
         onInspect={setInspectedUnitId}

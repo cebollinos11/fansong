@@ -22,6 +22,8 @@ interface Props {
   resolving: boolean;
   /** True while the round-start banner covers the board — nobody's turn text is accurate yet. */
   roundStarting: boolean;
+  /** True while the board is showing the round's zones being scored. */
+  scoring: boolean;
   log: BattleLog;
   /** The unit picked from the log for the inspector; it outranks the selection until closed. */
   inspectedUnitId: string | null;
@@ -127,7 +129,9 @@ export function Hud(props: Props): JSX.Element {
         </div>
       ) : (
         <div className="turn-panel">
-          {props.roundStarting ? (
+          {props.scoring ? (
+            <p className="thinking">Scoring the round…</p>
+          ) : props.roundStarting ? (
             <p className="thinking">Starting the round…</p>
           ) : !humanTurn ? (
             <p className="thinking">

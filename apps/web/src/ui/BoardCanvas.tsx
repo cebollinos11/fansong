@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { airborne, unitById, vecKey, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
-import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay } from '../three/BoardView.js';
+import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay, type ZoneScore } from '../three/BoardView.js';
 import { BACKDROP_LABELS, BACKDROPS, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
@@ -70,6 +70,12 @@ interface Props {
   onChooseDice?: (dice: number) => void;
   /** Shown briefly over the board when a new round begins; null the rest of the time. */
   announcement?: { round: number; owner: Owner; turnLabel: string } | null;
+  /**
+   * The zone being scored as a round ends, arriving with its own `events`
+   * batch: the board goes to it and shows who takes its point, in place of
+   * playing those events.
+   */
+  scoring?: ZoneScore | null;
 }
 
 const CAMERA_KEY = 'fansong.cameraMode';
@@ -302,9 +308,11 @@ export function BoardCanvas(props: Props): JSX.Element {
     const view = viewRef.current;
     if (!view) return;
     let ms = 0;
-    if (props.events.length > 0) ms = view.animateEvents(props.events);
+    if (props.scoring) ms = view.scoreZone(props.scoring);
+    else if (props.events.length > 0) ms = view.animateEvents(props.events);
     else view.clearAnimations();
     handlers.current.onEventsPlayed?.(ms);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.events]);
 
   // Trace the hovered plan. `hover` changes only when the pointer crosses into a
@@ -384,6 +392,7 @@ export function BoardCanvas(props: Props): JSX.Element {
           <div className="round-announce-turn">{props.announcement.turnLabel}</div>
         </div>
       ) : null}
+      {props.scoring ? <div className="scoring-banner">End of round {props.state.round} · scoring the zones</div> : null}
       {props.playing && props.state.phase !== 'gameOver' ? (
         // Whose turn it is, around the board itself: a camera move that arrives
         // with the other side's colour reads as "they are doing something".

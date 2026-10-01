@@ -28,6 +28,7 @@ import {
   OPPOSED_ROLL_MS,
   ROLL_LINGER_MS,
   RollOverlay,
+  type ZoneScoreText,
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
@@ -104,6 +105,11 @@ export interface HexOverlay {
   opacity?: number;
   /** Hexagon size relative to a tile (default 0.9). */
   scale?: number;
+}
+
+/** One zone's turn in the end-of-round scoring (see {@link BoardView.scoreZone}). */
+export interface ZoneScore extends ZoneScoreText {
+  cells: Vec[];
 }
 
 const OWNER_COLORS = [0x4f9dff, 0xff6b5b] as const; // P0 blue, P1 red
@@ -391,6 +397,12 @@ const REASSEMBLE_GATHER_MS = 650; // the bones drawing in, before the unit start
 const REASSEMBLE_STAGGER_MS = 250; // between one unit's reassembly and the next
 const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the player's view
 const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
+const ZONE_SPAN_MARGIN = 1.8; // how much of the view a zone being scored takes up
+const ZONE_MIN_SPAN = 8; // world units kept in view around it, so who stands in and near it shows
+const ZONE_SCORE_LEAD_MS = 250; // a zone's verdict is up this long before its point counts
+const ZONE_SCORE_MS = 1700; // how long its verdict and glow last: fading only as the next zone's turn begins
+const ZONE_UNHELD_COLOR = 0xcfd8e3; // the glow of a zone nobody takes
+const ZONE_GLOW = 0.7; // its opacity at the brightest
 const KEY_PAN_SPEED = 0.9; // WASD pans this many view distances per second, so it feels the same at any zoom
 const KEY_PAN_EASE_IN = 0.12; // seconds for a WASD pan to come up to speed...
 const KEY_PAN_EASE_OUT = 0.16; // ...and to glide to a stop once the keys are let go
@@ -742,6 +754,10 @@ export class BoardView {
   private now = 0;
   /** When the current batch of combat animations finishes. */
   private busyUntil = 0;
+  /** Until this board time, what is playing can't be skipped (a zone being scored). */
+  private noSkipUntil = 0;
+  /** The glow over the zone being scored, on board time. */
+  private zoneGlow: { mesh: THREE.InstancedMesh; start: number; end: number } | null = null;
   /**
    * Move the camera to the action before playing it: off-screen activations and
    * moves are panned to (see {@link planPan}), and — in `cinematic` — every blow
@@ -1473,6 +1489,102 @@ export class BoardView {
     return t;
   }
 
+  /**
+   * Show one zone being scored as a round ends: the camera goes to it, it glows
+   * in the colour of whoever takes the point (pale when nobody does), and a
+   * verdict over it gives the count and the reason. Returns how long (ms from
+   * now) until the point counts; the verdict stays up a while longer.
+   * Not skippable: it is the one moment that says where the points came from.
+   */
+  scoreZone(zone: ZoneScore): number {
+    this.opening = null;
+    let t = Math.min(MAX_QUEUE_MS, Math.max(0, this.busyUntil - this.now));
+    this.planned = null;
+    this.planned = this.plannedCamera();
+    const points = zone.cells.map((c) => this.unitWorld(c));
+    t += this.pause(this.frameZone(points, t));
+    // Over the zone's far edge on screen, so the units standing in it stay in the clear.
+    const anchor = (): { x: number; y: number } | null => {
+      const on = points.map((p) => p.clone().setY(p.y + TILE_TOP + FOLLOW_HEAD).project(this.camera));
+      if (on.length === 0 || on.some((p) => p.z > 1)) return null;
+      return {
+        x: ((on.reduce((sum, p) => sum + p.x, 0) / on.length + 1) / 2) * this.container.clientWidth,
+        y: ((1 - Math.max(...on.map((p) => p.y))) / 2) * this.container.clientHeight,
+      };
+    };
+    this.at(t, () => {
+      this.glowZone(zone);
+      this.rolls.addZoneScore(zone, this.now, ZONE_SCORE_MS, anchor);
+    });
+    t += ZONE_SCORE_LEAD_MS;
+    this.busyUntil = Math.max(this.busyUntil, this.now + t);
+    this.noSkipUntil = this.busyUntil;
+    return t;
+  }
+
+  /**
+   * Bring a zone into view to be scored — up close in the cinematic camera, only
+   * if off screen when following. Returns the move's length.
+   */
+  private frameZone(points: THREE.Vector3[], at: number): number {
+    if (this.cameraMode === 'off' || this.handOnCamera || points.length === 0) return 0;
+    const end = this.plannedCamera();
+    const centre = middle(points);
+    if (this.cameraMode !== 'cinematic') {
+      if (this.inView(points, end)) return 0;
+      const pivot = centre.clone().setY(0);
+      return this.scheduleMove(at, pivot, this.fitAround(points, pivot, end.dist, end.yaw));
+    }
+    const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
+    const pivot = this.pivotFor(centre, end.yaw);
+    const close = this.steadyZoom(this.closeUp(Math.max(span * ZONE_SPAN_MARGIN, ZONE_MIN_SPAN)));
+    return this.scheduleMove(at, pivot, this.fitAround(points, pivot, close, end.yaw));
+  }
+
+  /** Light a zone's hexes up for as long as its verdict shows (see {@link scoreZone}). */
+  private glowZone(zone: ZoneScore): void {
+    this.clearZoneGlow();
+    const geo = new THREE.CircleGeometry(HEX_SIZE, 6);
+    const mat = new THREE.MeshBasicMaterial({
+      color: zone.owner === null ? ZONE_UNHELD_COLOR : OWNER_COLORS[zone.owner],
+      transparent: true,
+      opacity: 0,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    const tiles = zone.cells.map((c) => (tile: THREE.Object3D) => {
+      tile.rotation.set(-Math.PI / 2, 0, 0);
+      const w = this.cellToWorld(c);
+      tile.position.set(w.x, this.surfaceAt(c) + 0.03, w.z);
+    });
+    const mesh = instanced(geo, mat, tiles);
+    this.scene.add(mesh);
+    this.zoneGlow = { mesh, start: this.now, end: this.now + ZONE_SCORE_MS };
+  }
+
+  /** Swell the zone glow in, shimmer it, and take it away when its time is up. */
+  private stepZoneGlow(): void {
+    const glow = this.zoneGlow;
+    if (!glow) return;
+    if (this.now >= glow.end) {
+      this.clearZoneGlow();
+      return;
+    }
+    const k = (this.now - glow.start) / (glow.end - glow.start);
+    const shimmer = 0.8 + 0.2 * Math.cos(k * Math.PI * 6);
+    (glow.mesh.material as THREE.MeshBasicMaterial).opacity = ZONE_GLOW * Math.sin(Math.PI * k) * shimmer;
+  }
+
+  private clearZoneGlow(): void {
+    const glow = this.zoneGlow;
+    if (!glow) return;
+    this.scene.remove(glow.mesh);
+    glow.mesh.geometry.dispose();
+    (glow.mesh.material as THREE.Material).dispose();
+    glow.mesh.dispose();
+    this.zoneGlow = null;
+  }
+
   /** A camera move's length plus a beat to settle, or 0 when it made no move. */
   private pause(moveMs: number): number {
     return moveMs > 0 ? moveMs + CAMERA_SETTLE_MS : 0;
@@ -1966,6 +2078,7 @@ export class BoardView {
    */
   skipAnimations(): boolean {
     if (this.timeline.length === 0 && this.busyUntil <= this.now) return false;
+    if (this.now < this.noSkipUntil) return false;
     this.now = Math.max(this.now, this.busyUntil);
     // Steps run in order, and may schedule more (a strike's hit, its reaction).
     for (let guard = 0; guard < 64 && this.timeline.length > 0; guard++) {
@@ -1996,6 +2109,8 @@ export class BoardView {
     this.cam = null;
     this.planned = null;
     this.busyUntil = this.now;
+    this.noSkipUntil = 0;
+    this.clearZoneGlow();
     this.rolls.clear();
     this.effects.clear();
     this.effects.clearMarks(true);
@@ -2079,6 +2194,7 @@ export class BoardView {
     this.previewDotGeo?.dispose();
     this.previewDotMat?.dispose();
     this.clearRoutes();
+    this.clearZoneGlow();
     this.routeDotGeo?.dispose();
     for (const t of this.badgeTextures.values()) t.dispose();
     this.starMaterial?.map?.dispose();
@@ -3845,6 +3961,7 @@ export class BoardView {
     this.grade();
     this.animateMissiles();
     this.animateRoutes();
+    this.stepZoneGlow();
     this.effects.update(dtMs);
     this.rolls.update(this.now, this.projectUnit);
     // Lava flows on the wall clock, so a hit-stop doesn't freeze it; wrapped

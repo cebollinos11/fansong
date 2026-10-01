@@ -7,6 +7,7 @@ import {
   type GameEvent,
   type GameState,
 } from '@fansong/engine';
+import type { ZoneTally } from './roundScoring.js';
 
 /**
  * A snapshot handed to subscribers after every applied command: the new state
@@ -21,6 +22,11 @@ export interface Transition {
    * `welcome` snapshot or a `sync` after a resync.
    */
   command?: Command;
+  /**
+   * Set only on the steps a screen makes for itself to show a round's zones
+   * being scored one at a time (see `splitRoundScoring`): the zone this one counts.
+   */
+  scoring?: ZoneTally;
 }
 
 export type Subscriber = (t: Transition) => void;

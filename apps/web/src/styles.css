@@ -807,6 +807,81 @@ button.ghost {
   color: var(--muted);
 }
 
+/* A zone scored at the round's end: a card over the zone, edged in the colour of
+   whoever takes its point. */
+.roll-verdict.zone-score {
+  padding: 6px 16px 8px;
+  background: rgba(13, 17, 23, 0.86);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--muted);
+  border-radius: 12px;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.5);
+}
+
+.roll-verdict.zone-score.p0 {
+  border-top-color: var(--p0);
+}
+
+.roll-verdict.zone-score.p1 {
+  border-top-color: var(--p1);
+}
+
+.zone-score-name {
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.zone-score-count {
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.zone-score-count b {
+  font-size: 20px;
+}
+
+.zone-score-count .p0,
+.roll-verdict.zone-score.p0 .verdict-text {
+  color: var(--p0);
+}
+
+.zone-score-count .p1,
+.roll-verdict.zone-score.p1 .verdict-text {
+  color: var(--p1);
+}
+
+.roll-verdict.zone-score.unheld .verdict-text {
+  color: #cfd8e3;
+  font-size: 22px;
+}
+
+.roll-verdict.zone-score .verdict-detail {
+  background: none;
+  padding: 0;
+  color: var(--muted);
+}
+
+/* Up for as long as the zones are being scored, so the tour has a heading. */
+.scoring-banner {
+  position: absolute;
+  top: 54px; /* under the camera tools */
+  left: 50%;
+  translate: -50% 0;
+  z-index: 4;
+  padding: 5px 16px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text);
+  background: rgba(13, 17, 23, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
 @keyframes roll-verdict-in {
   from {
     opacity: 0;

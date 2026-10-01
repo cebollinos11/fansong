@@ -101,9 +101,25 @@ interface Card {
   leaving: boolean;
 }
 
+/** What a zone's verdict says as it is scored at a round's end. */
+export interface ZoneScoreText {
+  /** "The hill", "Zone A". */
+  name: string;
+  /** Standing units of player 0 and player 1 in it. */
+  counts: [number, number];
+  /** Who takes the point; null when nobody does. */
+  owner: 0 | 1 | null;
+  /** "+1 You", "No points". */
+  headline: string;
+  /** Why: "more units standing in it", "contested: ...". */
+  reason: string;
+}
+
 interface Verdict {
   el: HTMLElement;
   on: string[];
+  /** Sits just above this point on screen (a zone's far edge) rather than over units. */
+  anchor?: () => { x: number; y: number } | null;
   /** Fixed to the bottom centre (a combat's conclusion) rather than over its unit. */
   pin: boolean;
   /** A gruesome kill's headline, stamped across the upper middle of the view. */
@@ -242,6 +258,26 @@ export class RollOverlay {
   }
 
   /**
+   * A zone scored at a round's end: its name, each side's standing units in
+   * their colours, then who takes the point and why. Held over the zone (see
+   * `anchor`) for `lifeMs`, replacing the last zone's.
+   */
+  addZoneScore(z: ZoneScoreText, now: number, lifeMs: number, anchor: () => { x: number; y: number } | null): void {
+    this.now = now;
+    this.verdicts = this.verdicts.filter((v) => {
+      if (!v.anchor) return true;
+      v.el.remove();
+      return false;
+    });
+    const el = h('div', `roll-verdict zone-score ${z.owner === null ? 'unheld' : `p${z.owner}`}`);
+    const count = h('div', 'zone-score-count');
+    count.append(h('b', 'p0', String(z.counts[0])), document.createTextNode(' vs '), h('b', 'p1', String(z.counts[1])));
+    el.append(h('div', 'zone-score-name', z.name), count, h('div', 'verdict-text', z.headline), h('div', 'verdict-detail', z.reason));
+    this.layer.append(el);
+    this.verdicts.push({ el, on: [], anchor, pin: false, stamp: false, start: now, endAt: now + lifeMs });
+  }
+
+  /**
    * Fade out every card still up over a unit (the rolls that follow are about
    * something else). Combat cards sit in the corners, out of the way, and keep
    * their time: only the next fight replaces them.
@@ -340,13 +376,20 @@ export class RollOverlay {
         return false;
       }
       const f = (now - v.start) / (v.endAt - v.start);
-      const rise = v.stamp ? 0 : 28 * f;
+      const rise = v.stamp || v.anchor ? 0 : 28 * f;
       const w = v.el.offsetWidth;
       const hgt = v.el.offsetHeight;
       let x = width / 2;
       let y = height * 0.32;
       if (v.stamp) {
         y = Math.max(hgt / 2 + 4, height * STAMP_TOP);
+      } else if (v.anchor) {
+        // Its foot on the anchor, and kept on screen when the zone itself isn't.
+        const p = v.anchor();
+        if (p) {
+          x = p.x;
+          y = Math.max(hgt / 2 + 4, Math.min(height - hgt / 2 - 4, p.y - hgt / 2 - 6));
+        }
       } else if (v.pin) {
         y = height - VERDICT_BOTTOM - hgt / 2;
       } else {

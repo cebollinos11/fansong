@@ -10,7 +10,8 @@ import {
   type Owner,
   type Vec,
 } from '@fansong/engine';
-import type { BoardMarker, HexOverlay, UnitBadge } from '../three/BoardView.js';
+import { zoneTallies, type ZoneTally } from '../game/roundScoring.js';
+import type { BoardMarker, HexOverlay, UnitBadge, ZoneScore } from '../three/BoardView.js';
 import { CONQUEST_LABELS, MODE_LABELS, ZONE_COLORS } from './editorView.js';
 
 // Pure game-mode presentation (no DOM): the HUD's mode panel and the board's
@@ -80,11 +81,41 @@ export function modeHud(state: GameState): ModeHud | null {
   return { label, goal, scores: [m.scores[0], m.scores[1]], lines };
 }
 
-/** Objective zones tinted on the board: the hill, or conquest zones A/B/C; flag bases as faint small hexes. */
+/** What a scoring zone is called on screen: "The hill", or "Zone A" / "B" / "C". */
+export function zoneName(state: GameState, zone: number): string {
+  return state.mode?.mode === 'king-of-the-hill' ? 'The hill' : `Zone ${CONQUEST_LABELS[zone] ?? zone + 1}`;
+}
+
+/**
+ * The words for one zone's turn in the end-of-round scoring: who takes the
+ * point and the count that decided it, or why nobody does. `names` are the two
+ * seats' labels ("You", "AI", an army's name).
+ */
+export function zoneScore(state: GameState, tally: ZoneTally, names: readonly [string, string]): ZoneScore {
+  const [a, b] = tally.counts;
+  const base = { name: zoneName(state, tally.zone), cells: tally.cells, counts: tally.counts };
+  if (tally.holder !== undefined) {
+    return { ...base, owner: tally.holder, headline: `+${tally.points} ${names[tally.holder]}`, reason: 'more units standing in it' };
+  }
+  return a === 0 && b === 0
+    ? { ...base, owner: null, headline: 'No points', reason: 'nobody standing in it' }
+    : { ...base, owner: null, headline: 'No points', reason: 'contested: equal numbers standing in it' };
+}
+
+/**
+ * Objective zones tinted on the board: the hill, or conquest zones A/B/C, each
+ * rimmed in its holder's colour while one side has more units standing in it;
+ * flag bases as faint small hexes.
+ */
 export function modeOverlays(state: GameState): HexOverlay[] {
   const m = state.mode;
   if (!m) return [];
   const out: HexOverlay[] = [];
+  // Under the zones' own tint, so it shows as a rim around each hex.
+  for (const tally of zoneTallies(state)) {
+    if (tally.holder === undefined) continue;
+    out.push({ cells: tally.cells.slice(), color: ZONE_COLORS.deploy[tally.holder]!, opacity: 0.6, scale: 0.98 });
+  }
   if (m.mode === 'king-of-the-hill' && m.objectives.hill) {
     out.push({ cells: m.objectives.hill.slice(), color: ZONE_COLORS.hill, opacity: 0.35, scale: 0.8 });
   }
@@ -160,5 +191,6 @@ export function modeMarkingsKey(state: GameState): string {
   const cell = (v: Vec) => `${v.x},${v.y}`;
   const flags = m.flags?.map((f) => `${cell(f.at)}:${f.carrier ?? ''}`).join('|') ?? '';
   const kings = m.kings?.map((id) => `${id}:${unitById(state, id)?.dead ? 1 : 0}`).join('|') ?? '';
-  return `${m.mode};${flags};${kings};${guards};${inspired}`;
+  const holders = zoneTallies(state).map((z) => z.holder ?? '-').join('');
+  return `${m.mode};${flags};${kings};${holders};${guards};${inspired}`;
 }
