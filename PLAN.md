@@ -108,7 +108,7 @@ decides push-back / knockdown / kill. Minimal morale in v1.
   round** — no more activations until next round. The unit still takes the
   actions its successes earned (3 dice with 1 success) before the turn passes.
 - **Group activation:** a unit may bring along every identical, un-activated
-  friend within 2 hexes (up to 5 units). They share one roll, each takes the
+  friend within 2 hexes (up to 5 units; knocked-down units stay out). They share one roll, each takes the
   successes as its own actions, and the turn passes only when the last has
   acted. It keeps large armies moving without giving up the alternation.
 - **Solo continuation:** if the opponent is benched or out of units, you keep

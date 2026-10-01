@@ -76,13 +76,13 @@ action; the AI, the tests, and any future UI all pick from that list.
 - **Group activation:** a unit may activate together with every friend like it
   (same Quality, Combat, traits, sprite and tint) that has yet to activate and
   stands within **2 hexes** of it — nearest first, at most **5 units** in all.
+  A knocked-down unit can neither call a group nor join one.
   The group shares **one roll**: each member gets the successes as its own
   actions, and they act one after another before the turn passes. Their fate is
   shared too: every member counts as activated whatever the dice say, a roll
   with no successes wastes them all, and two failures still turn over. The sure
   6 of a war cry needs every member inspired (the roll spends their inspiration
-  either way). A knocked-down member pays an action to stand when its turn
-  comes. Until the member in hand does something, any waiting member may go
+  either way). Until the member in hand does something, any waiting member may go
   first instead, so the player sets the order.
 - Combat is an opposed roll. Doubling the loser kills; a plain win pushes the
   loser back a hex on the winner's odd die or knocks it down on an even one

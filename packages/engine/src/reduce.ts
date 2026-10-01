@@ -183,8 +183,9 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   }
 
   // Successes become action points: each member of a group gets them all. The
-  // picked unit acts first and the rest wait their turn.
-  if (asGroup) {
+  // picked unit acts first and the rest wait their turn. A roll with no
+  // successes gives no one a turn to wait for: the activation just ends.
+  if (asGroup && successes > 0) {
     s.group = { pending: members.slice(1).map((m) => ({ unitId: m.id, actions: successes })), allotted: 0 };
   }
   beginActivation(s, events, unit, successes);

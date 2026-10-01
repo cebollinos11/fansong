@@ -61,6 +61,15 @@ describe('who forms a group', () => {
     expect(ids(tinted, 'p0u0')).toEqual(['p0u0', 'p0u1']);
   });
 
+  it('leaves knocked-down units out, and lets none call a group', () => {
+    const g = game();
+    g.units[1]!.knockedDown = true;
+    expect(ids(g, 'p0u0')).toEqual(['p0u0', 'p0u2']);
+    expect(ids(g, 'p0u1')).toEqual([]);
+    expect(isLegalCommand(g, groupPick('p0u1'))).toBe(false);
+    expect(() => reduce(g, groupPick('p0u1'))).toThrow();
+  });
+
   it('skips members that already activated and caps the group', () => {
     const g = game();
     g.units[1]!.activatedThisRound = true;
@@ -148,24 +157,25 @@ describe('group activation', () => {
     expect(s.active).toBe(1);
   });
 
-  it('makes a knocked-down member pay an action to stand when its turn comes', () => {
+  it('ends at once on a single die that misses, without stepping through the members', () => {
     const g = game();
-    g.units[1]!.knockedDown = true;
-    const s = reduce(g, groupPick('p0u0', 2)).state;
-    expect(s.units[1]!.knockedDown).toBe(true); // still waiting
+    for (const u of g.units) if (u.owner === 0) u.quality = 7;
+    const { state, events } = reduce(g, groupPick('p0u0', 1));
+    expect(events.map((e) => e.type)).toEqual(['ActivationChosen', 'DiceRolled', 'ActivationEnded']);
+    expect(state.benched[0]).toBe(false);
+    expect(state.active).toBe(1);
+    expect(state.group).toBeUndefined();
+    expect(state.activationCount).toBe(1);
+    for (const id of ['p0u0', 'p0u1', 'p0u2']) expect(state.units.find((u) => u.id === id)!.activatedThisRound).toBe(true);
+  });
+
+  it('makes a member knocked down while it waits pay an action to stand', () => {
+    let s = reduce(game(), groupPick('p0u0', 2)).state;
+    s = { ...s, units: s.units.map((u) => (u.id === 'p0u1' ? { ...u, knockedDown: true } : u)) };
     const next = reduce(s, { type: 'EndActivation' });
     expect(next.events.some((e) => e.type === 'UnitStoodUp' && e.unitId === 'p0u1')).toBe(true);
     expect(next.state.activeUnitId).toBe('p0u1');
     expect(next.state.actionsRemaining).toBe(1);
-  });
-
-  it('passes straight over a member whose only action went on standing up', () => {
-    const g = game();
-    g.units[1]!.knockedDown = true;
-    const s = reduce(g, groupPick('p0u0', 1)).state;
-    const next = reduce(s, { type: 'EndActivation' }).state;
-    expect(next.units[1]!.knockedDown).toBe(false);
-    expect(next.activeUnitId).toBe('p0u2');
   });
 
   it('rolls the sure 6 only when every member is inspired, and spends the inspiration regardless', () => {

@@ -199,7 +199,7 @@ killed, friends who see it fall test nerve (§5.1).
 below)*. *Implemented:* `ChooseActivation` takes a `group` flag. The picked
 unit's group is every friend with the same Quality, Combat, traits, sprite and
 tint that has yet to activate within 2 hexes of it, nearest first, capped at 5
-units. One roll is made; each member gets the successes as its own actions and
+units; a knocked-down unit neither calls a group nor joins one. One roll is made; each member gets the successes as its own actions and
 they activate in turn (`GameState.group` holds those waiting), each exactly as
 if alone. All members count as activated whatever the roll, a turnover works as
 usual, and the sure 6 of a war cry applies only when every member is inspired.

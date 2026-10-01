@@ -74,13 +74,14 @@ export function sameProfile(a: Unit, b: Unit): boolean {
 /**
  * The group `unit` would activate with: itself first, then every friend like
  * it (see {@link sameProfile}) still to activate within {@link GROUP_RADIUS},
- * nearest first (ties in unit order), up to {@link GROUP_MAX} in all. Empty
- * when the unit has no one to group with.
+ * nearest first (ties in unit order), up to {@link GROUP_MAX} in all. A
+ * knocked-down unit neither calls a group nor joins one: it has to get up on
+ * a roll of its own. Empty when the unit has no one to group with.
  */
 export function groupFor(state: GameState, unit: Unit, board: Board): Unit[] {
-  if (!unitAvailable(unit)) return [];
+  if (!unitAvailable(unit) || unit.knockedDown) return [];
   const near = state.units
-    .filter((u) => u.id !== unit.id && u.owner === unit.owner && unitAvailable(u) && sameProfile(u, unit))
+    .filter((u) => u.id !== unit.id && u.owner === unit.owner && unitAvailable(u) && !u.knockedDown && sameProfile(u, unit))
     .map((u) => ({ u, d: board.distance(u.pos, unit.pos) }))
     .filter((e) => e.d <= GROUP_RADIUS)
     .sort((a, b) => a.d - b.d)
