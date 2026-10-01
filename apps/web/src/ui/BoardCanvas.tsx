@@ -8,6 +8,7 @@ import { InfoLines } from './StatIcons.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
 import { traitTags } from './hudView.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
+import { canOfferFullscreen, toggleFullscreen, useFullscreen } from './fullscreen.js';
 
 interface Props {
   state: GameState;
@@ -172,6 +173,9 @@ export function BoardCanvas(props: Props): JSX.Element {
   const [cameraMode, setCameraMode] = useState(loadCameraMode);
   const [elevation, setElevation] = useState(loadElevation);
   const [backdrop, setBackdrop] = useState(loadBackdrop);
+  // Phones and tablets can hide the browser's bars to give the board the whole screen.
+  const [offerFullscreen] = useState(canOfferFullscreen);
+  const fullscreen = useFullscreen();
   // Keep click handlers in a ref so the (long-lived) BoardView always calls the latest.
   const handlers = useRef({
     onUnitClick: props.onUnitClick,
@@ -461,6 +465,16 @@ export function BoardCanvas(props: Props): JSX.Element {
             }}
           >
             {CAMERA_LABEL[cameraMode]}
+          </button>
+        ) : null}
+        {props.playing && offerFullscreen ? (
+          <button
+            type="button"
+            className={`board-follow${fullscreen ? ' on' : ''}`}
+            title={fullscreen ? 'Leave fullscreen' : 'Give the board the whole screen'}
+            onClick={toggleFullscreen}
+          >
+            {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           </button>
         ) : null}
         <label className="board-pitch" title="The camera's angle above the table">
