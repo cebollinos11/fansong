@@ -56,6 +56,23 @@ function symNoise(v: Vec, w: number, h: number, seed: number): number {
   return noise(a!.x, a!.y, seed);
 }
 
+/** Smooth, point-symmetric value noise in [0, 1): `scale` hexes per lattice cell. */
+function smoothNoise(v: Vec, w: number, h: number, scale: number, seed: number): number {
+  const sample = (p: Vec) => {
+    const fx = p.x / scale;
+    const fy = p.y / scale;
+    const ix = Math.floor(fx);
+    const iy = Math.floor(fy);
+    const s = (t: number) => t * t * (3 - 2 * t);
+    const tx = s(fx - ix);
+    const ty = s(fy - iy);
+    const top = noise(ix, iy, seed) * (1 - tx) + noise(ix + 1, iy, seed) * tx;
+    const bottom = noise(ix, iy + 1, seed) * (1 - tx) + noise(ix + 1, iy + 1, seed) * tx;
+    return top * (1 - ty) + bottom * ty;
+  };
+  return (sample(v) + sample({ x: w - 1 - v.x, y: h - 1 - v.y })) / 2;
+}
+
 /** `map`'s hexes that satisfy `pred`, in row-major order. */
 function hexesWhere(map: MapDef, pred: (v: Vec) => boolean): Vec[] {
   return map.hexes.map((_, i) => ({ x: i % map.width, y: Math.floor(i / map.width) })).filter(pred);
@@ -404,22 +421,7 @@ function stoneCrown(): MapDef {
   const dist = (cs: Vec[], v: Vec) => Math.min(...cs.map((c) => grid.distance(c, v)));
   const at = (v: Vec, u: Vec) => v.x === u.x && v.y === u.y;
 
-  /** Smooth, point-symmetric value noise in [0, 1): `scale` hexes per lattice cell. */
-  const smooth = (v: Vec, scale: number, seed: number): number => {
-    const sample = (p: Vec) => {
-      const fx = p.x / scale;
-      const fy = p.y / scale;
-      const ix = Math.floor(fx);
-      const iy = Math.floor(fy);
-      const s = (t: number) => t * t * (3 - 2 * t);
-      const tx = s(fx - ix);
-      const ty = s(fy - iy);
-      const top = noise(ix, iy, seed) * (1 - tx) + noise(ix + 1, iy, seed) * tx;
-      const bottom = noise(ix, iy + 1, seed) * (1 - tx) + noise(ix + 1, iy + 1, seed) * tx;
-      return top * (1 - ty) + bottom * ty;
-    };
-    return (sample(v) + sample(mirror(v))) / 2;
-  };
+  const smooth = (v: Vec, scale: number, seed: number) => smoothNoise(v, W, H, scale, seed);
 
   // The Crown: two adjacent centre hexes that are each other's mirror image.
   const crown = [{ x: 19, y: 19 }, { x: 20, y: 20 }];
@@ -588,6 +590,87 @@ function castle(): MapDef {
 }
 
 // ---------------------------------------------------------------------------
+// Warpaths — a long 40×28 battlefield built for conquest. Each side's camp sits
+// on a low rise at its home edge, and three roads run from one camp to the
+// other: a north road and a south road that swing out along the board edges,
+// and a broad middle road straight between them. A dry riverbed cuts across
+// all three at the centre of the board; the three fords are the conquest
+// zones, the middle one (raised a step) also the king-of-the-hill zone. A
+// watchtower stands in each road on each side's half. Between the roads lies
+// the wilds: thick forest and rock walls that block sight, threaded by a
+// trail on each side that links all three roads, with a few clearings and, by
+// the riverbed, a rock-walled hollow. Crags close off the board's corners and
+// edges. Flags stand at the back of each camp.
+function warpaths(): MapDef {
+  const W = 40;
+  const H = 28;
+  const grid = makeHexGrid({ width: W, height: H, blocked: [] });
+  const mirror = (v: Vec): Vec => ({ x: W - 1 - v.x, y: H - 1 - v.y });
+  /** `pred` made point-symmetric: true where it holds for a hex or its mirror. */
+  const sym = (pred: (v: Vec) => boolean) => (v: Vec) => pred(v) || pred(mirror(v));
+  const near = (cs: Vec[], v: Vec, r: number) => cs.some((c) => grid.distance(c, v) <= r);
+  const line = (a: Vec, b: Vec): Vec[] => {
+    const n = 2 * Math.max(Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    return Array.from({ length: n + 1 }, (_, i) => ({
+      x: Math.round(a.x + ((b.x - a.x) * i) / n),
+      y: Math.round(a.y + ((b.y - a.y) * i) / n),
+    }));
+  };
+
+  const camp = { x: 3, y: 14 };
+  const flag = { x: 2, y: 14 };
+  const deploy0 = (v: Vec) => v.x >= 5 && v.x <= 7 && v.y >= 8 && v.y <= 19;
+  // The north road: out of player 0's camp, along row 3, down into player 1's.
+  // The south road is its mirror image.
+  const northRoad = [...line({ x: 5, y: 10 }, { x: 10, y: 3 }), ...line({ x: 10, y: 3 }, { x: 29, y: 3 }), ...line({ x: 29, y: 3 }, { x: 34, y: 10 })];
+  const road = sym((v) => near(northRoad, v, 1) || (v.y >= 12 && v.y <= 13 && v.x >= 5));
+  const river = (v: Vec) => (v.x === 19 || v.x === 20) && v.y >= 2 && v.y <= H - 3;
+  const northFord = (v: Vec) => river(v) && v.y <= 4;
+  const midFord = (v: Vec) => river(v) && v.y >= 12 && v.y <= 15;
+  const tower = sym((v) => [{ x: 14, y: 3 }, { x: 25, y: 3 }, { x: 13, y: 13 }].some((t) => t.x === v.x && t.y === v.y));
+  // The wilds: a trail linking the three roads, clearings, and a walled hollow.
+  const trail = sym((v) => v.x === 12 && v.y >= 4 && v.y <= H - 5);
+  const clearing = sym((v) => near([{ x: 9, y: 7 }, { x: 15, y: 6 }, { x: 16, y: 19 }], v, 1));
+  const hollow = { x: 16, y: 9 };
+  // Gated on both sides (towards the riverbed and towards the trail), so it's a way through, not a dead end.
+  const hollowMouth = sym((v) => v.x >= 13 && v.x <= 18 && Math.abs(v.y - hollow.y) <= (v.x >= 17 ? 1 : 0));
+  const dHollow = (v: Vec) => Math.min(grid.distance(hollow, v), grid.distance(hollow, mirror(v)));
+  // Beyond the outer roads: the board's top and bottom edges and its corners.
+  const beyond = sym(
+    (v) =>
+      v.y <= 1 ||
+      (v.y <= 10 && v.x < 5 + ((10 - v.y) * 5) / 7) ||
+      (v.y >= 17 && v.x < 5 + ((v.y - 17) * 5) / 7),
+  );
+
+  const map = build('warpaths', 'Warpaths', W, H, (v) => {
+    const dCamp = Math.min(grid.distance(camp, v), grid.distance(camp, mirror(v)));
+    if (dCamp <= 3) return { elevation: 1 };
+    if (dCamp === 4 || sym(deploy0)(v)) return { elevation: 0 };
+    if (tower(v)) return { elevation: 0, feature: 'building' };
+    if (midFord(v)) return { elevation: 1 };
+    if (road(v) || river(v)) return { elevation: 0 };
+    const n = symNoise(v, W, H, 0x3a9e5);
+    if (beyond(v)) return n < 0.6 ? { elevation: 2, feature: 'rock' } : { elevation: 2, feature: 'forest' };
+    if (dHollow(v) <= 1 || hollowMouth(v)) return { elevation: 0 };
+    if (dHollow(v) === 2) return { elevation: 1, feature: 'rock' };
+    if (trail(v) || clearing(v)) return { elevation: 0 };
+    const elevation = smoothNoise(v, W, H, 4, 0x71d5) > 0.6 ? 1 : 0;
+    if (smoothNoise(v, W, H, 2.5, 0x0c4a6) > 0.6) return { elevation, feature: 'rock' };
+    return n < 0.7 ? { elevation, feature: 'forest' } : { elevation };
+  });
+
+  map.deployZones = [hexesWhere(map, deploy0), hexesWhere(map, (v) => deploy0(mirror(v)))];
+  const centre = hexesWhere(map, midFord);
+  map.objectives = {
+    flags: [flag, mirror(flag)],
+    hill: centre,
+    conquest: [hexesWhere(map, northFord), centre, hexesWhere(map, (v) => northFord(mirror(v)))],
+  };
+  return map;
+}
+
+// ---------------------------------------------------------------------------
 
 const MAPS: MapDef[] = [
   openField(),
@@ -600,6 +683,7 @@ const MAPS: MapDef[] = [
   emberRift(),
   stoneCrown(),
   castle(),
+  warpaths(),
 ];
 
 // Every premade map hosts every game mode.

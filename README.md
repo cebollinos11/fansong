@@ -295,6 +295,7 @@ absent when unused.
   | Twin Towers | two raised plateaus | capture-the-flag |
   | Crossroads | three objective zones | king-of-the-hill, conquest |
   | Ember Rift | a lava river crossed by three narrow bridges | king-of-the-hill, conquest, capture-the-flag |
+  | Warpaths | a long 40×28 board: three roads through forest and rock, a conquest zone on each | king-of-the-hill, conquest, capture-the-flag |
 
 - **Game modes** (chosen in Setup or with `--mode`; the map must support it):
   - **annihilation** — the default: destroy or rout the enemy warband.

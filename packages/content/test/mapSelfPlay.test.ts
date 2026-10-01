@@ -272,6 +272,28 @@ describe('premade map character', () => {
     map.objectives.flags!.forEach((f, p) => expect(nearest(map.deployZones[p]!, f)).toBeLessThan(nearest(map.deployZones[1 - p]!, f)));
     expect(supportedModes(map)).toEqual(GAME_MODES);
   });
+
+  it('Warpaths is a long map of three open roads through the wilds, with a conquest zone on each', () => {
+    const map = getMap('warpaths')!;
+    expect([map.width, map.height]).toEqual([40, 28]);
+    // The north, middle and south roads run clear between the camps, bar a watchtower each side.
+    for (const y of [3, 13, 14, 24]) {
+      const blocked = Array.from({ length: 20 }, (_, i) => mapHexAt(map, { x: 10 + i, y })!).filter((h) => h.feature !== undefined);
+      expect(blocked.length).toBeLessThanOrEqual(2);
+      for (const h of blocked) expect(h.feature).toBe('building');
+    }
+    // One zone where each road fords the riverbed; the raised middle ford is also the hill.
+    const [north, middle, south] = map.objectives.conquest!;
+    expect([north.length, middle.length, south.length]).toEqual([6, 8, 6]);
+    for (const v of north) expect(v.y).toBeLessThanOrEqual(4);
+    for (const v of south) expect(v.y).toBeGreaterThanOrEqual(23);
+    for (const v of middle) expect(mapHexAt(map, v)?.elevation).toBe(1);
+    expect(sortVecs(map.objectives.hill!)).toEqual(sortVecs(middle));
+    // The wilds between the roads are thick with forest and rock.
+    expect(count(map, (h) => h.feature === 'forest')).toBeGreaterThanOrEqual(200);
+    expect(count(map, (h) => h.feature === 'rock')).toBeGreaterThanOrEqual(200);
+    expect(supportedModes(map)).toEqual(GAME_MODES);
+  });
 });
 
 /** Invariants of a live objective-mode state, checked after every step of a self-play game. */
