@@ -28,7 +28,325 @@ body {
   font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
 }
 
+/* --- Main menu (ui/MenuScreen.tsx) -------------------------------------- */
+.menu {
+  --gold: #e8be62;
+  --zoom: 2;
+  --unit: calc(72px * var(--zoom));
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 412px) minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas:
+    'head scene'
+    'actions scene'
+    'foot scene';
+  gap: 28px 40px;
+  padding: 64px max(40px, env(safe-area-inset-right)) 40px max(88px, env(safe-area-inset-left));
+  background: radial-gradient(circle at 72% 58%, #2b3454 0%, #0e1220 58%);
+  color: #f1e9d8;
+  font-family: 'Alegreya Sans', system-ui, sans-serif;
+  overflow: hidden;
+}
+
+.menu-head {
+  grid-area: head;
+}
+
+.menu-head h1 {
+  margin: 0;
+  font: 800 76px/1 'Cinzel', Georgia, serif;
+  letter-spacing: 4px;
+  color: var(--gold);
+}
+
+.menu-head p {
+  margin: 6px 0 0;
+  font-size: 19px;
+  color: #c9c2b2;
+}
+
+.menu-actions {
+  grid-area: actions;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.menu-play {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.menu button {
+  border-radius: 3px;
+  color: #f1e9d8;
+}
+
+.menu button:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+
+.menu :focus-visible {
+  outline-color: var(--gold);
+}
+
+.menu-item {
+  min-height: 60px;
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(14, 18, 32, 0.6);
+  border-color: #7d6a3c;
+  font-size: 15px;
+  text-align: left;
+}
+
+.menu-item strong {
+  font: 600 21px 'Cinzel', Georgia, serif;
+  letter-spacing: 2px;
+}
+
+.menu-item span {
+  color: #c9c2b2;
+  text-align: right;
+}
+
+.menu button.menu-item.primary {
+  display: flex;
+  width: auto;
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  color: #1b1407;
+}
+
+.menu-item.primary strong {
+  font-weight: 800;
+}
+
+.menu-item.primary span {
+  color: inherit;
+  font-weight: 500;
+}
+
+.menu button.menu-item.primary:hover {
+  background: #f3d083;
+}
+
+.menu-workshop h2 {
+  margin: 0 0 10px;
+  font: 600 13px 'Cinzel', Georgia, serif;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #b9a26a;
+}
+
+.menu-tools {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.menu-tools button {
+  min-height: 48px;
+  padding: 0 6px;
+  background: transparent;
+  border-color: #4a4f66;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.menu-foot {
+  grid-area: foot;
+  align-self: end;
+  margin: 0;
+  font-size: 13px;
+  color: #a7a195;
+}
+
+.menu-scene {
+  grid-area: scene;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 56px;
+}
+
+.menu-team {
+  display: flex;
+  align-items: center;
+}
+
+.menu-unit {
+  position: relative;
+  width: var(--unit);
+  height: calc(var(--unit) * 1.14);
+}
+
+.menu-unit img {
+  position: absolute;
+  image-rendering: pixelated;
+}
+
+.menu-hex {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: calc(var(--unit) * 0.58);
+}
+
+/* Frames come in different sizes, all centred on the hex: draw each at its own
+   size, scaled up, around that centre. A striking unit leans into its foe. */
+.menu-sprite {
+  --lean: 0px;
+  --face: 1;
+  left: 50%;
+  top: calc(var(--unit) * 0.49);
+  max-width: none;
+  transform: translate(calc(-50% + var(--lean) * var(--face)), -50%) scale(var(--zoom)) scaleX(var(--face));
+  transition: transform 140ms ease-out;
+}
+
+.menu-sprite.flip {
+  --face: -1;
+}
+
+.menu-sprite.striking {
+  --lean: 14px;
+}
+
+/* No room for two full warbands beside the menu: the leaders face off alone. */
+@media (max-width: 1100px), (max-height: 560px) {
+  .menu-unit:not(.leader) {
+    display: none;
+  }
+
+  .menu-scene {
+    gap: 16px;
+  }
+}
+
+/* A phone held upright (or any narrow window): title, leaders, then the menu in thumb reach. */
+@media (max-width: 760px) {
+  .menu {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-areas: 'head' 'scene' 'actions' 'foot';
+    gap: 24px;
+    padding: max(40px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
+  }
+
+  .menu-head {
+    text-align: center;
+  }
+
+  .menu-head h1 {
+    font-size: 58px;
+    letter-spacing: 3px;
+  }
+
+  .menu-head p {
+    font-size: 17px;
+  }
+
+  .menu-actions {
+    gap: 24px;
+  }
+
+  .menu-item {
+    min-height: 58px;
+    padding: 0 20px;
+  }
+
+  .menu-item strong {
+    font-size: 19px;
+  }
+
+  .menu-tools button {
+    font-size: 15px;
+  }
+
+  .menu-foot {
+    text-align: center;
+  }
+}
+
+/* A phone on its side: the title and leaders on the left, the menu on the right. */
+@media (max-height: 560px) and (min-width: 561px) {
+  .menu {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'head actions'
+      'scene actions';
+    gap: 8px 32px;
+    padding: 20px max(48px, env(safe-area-inset-right)) 20px max(48px, env(safe-area-inset-left));
+  }
+
+  .menu-head {
+    text-align: left;
+  }
+
+  .menu-head h1 {
+    font-size: 46px;
+    letter-spacing: 3px;
+  }
+
+  .menu-head p {
+    font-size: 15px;
+  }
+
+  .menu-scene {
+    align-items: flex-end;
+  }
+
+  .menu-actions {
+    justify-content: center;
+    gap: 14px;
+  }
+
+  .menu-play {
+    gap: 8px;
+  }
+
+  .menu-item {
+    min-height: 52px;
+    padding: 0 18px;
+    font-size: 14px;
+  }
+
+  .menu-item strong {
+    font-size: 18px;
+  }
+
+  .menu-workshop h2 {
+    margin-bottom: 6px;
+    font-size: 11px;
+  }
+
+  .menu-tools {
+    gap: 8px;
+  }
+
+  .menu-tools button {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .menu-foot {
+    display: none;
+  }
+}
+
 /* --- Setup screen ------------------------------------------------------- */
+.setup-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 .setup {
   min-height: 100%;
   display: grid;

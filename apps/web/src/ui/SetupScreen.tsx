@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   configFromSetup,
   DEFAULT_BOARD,
@@ -17,10 +17,9 @@ import {
   type MatchSetup,
   type Warband,
 } from '@fansong/content';
-import { GAME_MODES, LIMIT_RANGE, MODE_RULES, ROUND_LIMIT, type GameLimits, type GameMode, type Replay } from '@fansong/engine';
+import { GAME_MODES, LIMIT_RANGE, MODE_RULES, ROUND_LIMIT, type GameLimits, type GameMode } from '@fansong/engine';
 import { normalizeRoomCode, ROOM_CODE_LENGTH } from '@fansong/protocol';
 import type { Launch } from '../game/launch.js';
-import { parseReplay } from '../game/replay-io.js';
 import { MODE_LABELS } from './editorView.js';
 import { browserStorage, customMapLookup, playableCustomMaps } from '../game/customMaps.js';
 import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy } from '../game/armies.js';
@@ -31,14 +30,13 @@ import { MapThumb, Picker, profileStats, WarbandStrip, warbandItem, type PickerG
 
 interface Props {
   initial: MatchSetup;
+  /** The way to play, picked on the main menu. */
+  mode: Mode;
   onStart: (launch: Launch) => void;
-  onLoadReplay: (replay: Replay) => void;
-  onOpenEditor: () => void;
-  onOpenArmies: () => void;
+  /** Back to the main menu. */
+  onBack: () => void;
   /** With `?dev=1` in the URL: open the sandbox, starting from the chosen warbands and map. */
   onOpenSandbox?: (setup: MatchSetup) => void;
-  /** With `?dev=1` in the URL: open the preset unit editor. */
-  onOpenPresets?: () => void;
 }
 
 export type Mode = 'vsAI' | 'hotseat' | 'online';
@@ -121,10 +119,15 @@ export function modeFor(map: MapDef, wanted: GameMode): GameMode {
   return supportedModes(map).includes(wanted) ? wanted : 'annihilation';
 }
 
-export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOpenArmies, onOpenSandbox, onOpenPresets }: Props): JSX.Element {
+const MODE_TITLES: Record<Mode, string> = {
+  vsAI: 'Play vs AI',
+  hotseat: 'Hotseat',
+  online: 'Online with a friend',
+};
+
+export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: Props): JSX.Element {
   // The choices made last time on this screen, where they are still on offer.
   const [saved] = useState(() => loadSetupPrefs(browserStorage()));
-  const [mode, setMode] = useState<Mode>(saved.mode ?? (initial.seats[1] === 'ai' ? 'vsAI' : 'hotseat'));
   const [seed, setSeed] = useState(initial.seed);
   // Custom maps saved from the editor (read once; the editor is a separate screen).
   const [customMaps] = useState(() => playableCustomMaps(browserStorage()));
@@ -154,9 +157,6 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
   useEffect(() => {
     saveSetupPrefs(browserStorage(), { mode, sides: [p0, p1], mapId, gameMode: wantedMode, kings, limits: limitsByMode });
   }, [mode, p0, p1, mapId, wantedMode, kings, limitsByMode]);
-  const [replayError, setReplayError] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-
   // The map played and a mode it supports.
   const playedMap = getMap(mapId) ?? customMaps.find((m) => m.id === mapId) ?? getMap(DEFAULT_MAP_ID)!;
   const gameMode = modeFor(playedMap, wantedMode);
@@ -172,39 +172,19 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
   const problem = launchProblem(launch, customMapLookup(browserStorage()));
   const start = () => onStart(launch);
 
-  const loadReplayFile = async (file: File): Promise<void> => {
-    setReplayError(null);
-    try {
-      onLoadReplay(parseReplay(await file.text()));
-    } catch (e) {
-      setReplayError(e instanceof Error ? e.message : String(e));
-    }
-  };
-
   const label0 = mode === 'vsAI' ? 'You — Player 0' : 'Player 0';
   const label1 = mode === 'vsAI' ? 'AI — Player 1' : 'Player 1';
 
   return (
     <div className="setup">
       <div className="setup-card">
-        <h1>FanSong</h1>
-        <p className="tagline">A "you go, I go" skirmish. Pick two warbands and fight.</p>
-
-        <fieldset>
-          <legend>Mode</legend>
-          <label>
-            <input type="radio" checked={mode === 'vsAI'} onChange={() => setMode('vsAI')} />
-            You vs AI
-          </label>
-          <label>
-            <input type="radio" checked={mode === 'hotseat'} onChange={() => setMode('hotseat')} />
-            Local hotseat (two humans)
-          </label>
-          <label>
-            <input type="radio" checked={mode === 'online'} onChange={() => setMode('online')} />
-            Online with a friend
-          </label>
-        </fieldset>
+        <div className="setup-head">
+          <button className="ghost" onClick={onBack}>
+            ⟵ Menu
+          </button>
+          <h1>{MODE_TITLES[mode]}</h1>
+        </div>
+        {mode === 'online' ? null : <p className="tagline">Pick two warbands and a map, then fight.</p>}
 
         {mode === 'online' ? (
           <OnlinePanel onStart={onStart} />
@@ -229,20 +209,9 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
           </div>
         )}
         <div className="setup-links">
-          <button className="ghost" onClick={onOpenArmies}>
-            Army builder…
-          </button>
-          <button className="ghost" onClick={onOpenEditor}>
-            Map editor…
-          </button>
           {onOpenSandbox && launch.kind === 'local' && problem === null ? (
             <button className="ghost" title="Dev tool: set up and test any situation" onClick={() => onOpenSandbox(launch.setup)}>
               Sandbox…
-            </button>
-          ) : null}
-          {onOpenPresets ? (
-            <button className="ghost" title="Dev tool: edit the preset warbands and export them" onClick={onOpenPresets}>
-              Preset units…
             </button>
           ) : null}
         </div>
@@ -274,24 +243,6 @@ export function SetupScreen({ initial, onStart, onLoadReplay, onOpenEditor, onOp
             </button>
           </>
         )}
-
-        <div className="replay-load">
-          <button className="ghost" onClick={() => fileInput.current?.click()}>
-            Load a replay…
-          </button>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void loadReplayFile(file);
-              e.target.value = ''; // allow re-selecting the same file
-            }}
-          />
-          {replayError ? <p className="error">{replayError}</p> : null}
-        </div>
       </div>
     </div>
   );

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { GameState, Replay } from '@fansong/engine';
 import { GameScreen } from './ui/GameScreen.js';
-import { SetupScreen } from './ui/SetupScreen.js';
+import { MenuScreen } from './ui/MenuScreen.js';
+import { SetupScreen, type Mode } from './ui/SetupScreen.js';
 import { ReplayScreen } from './ui/ReplayScreen.js';
 import { EditorScreen } from './ui/EditorScreen.js';
 import { ArmyBuilderScreen } from './ui/ArmyBuilderScreen.js';
@@ -18,7 +19,8 @@ import { browserStorage, customMapLookup } from './game/customMaps.js';
 
 /** Which screen the app is showing. A match is keyed so a new one remounts cleanly. */
 type View =
-  | { kind: 'setup' }
+  | { kind: 'menu' }
+  | { kind: 'setup'; mode: Mode }
   | { kind: 'editor' }
   | { kind: 'armies' }
   | { kind: 'presets' }
@@ -31,53 +33,64 @@ export function App(): JSX.Element {
     const sandbox = sandboxFromUrl();
     if (sandbox) return sandbox;
     const launch = inviteLaunch();
-    return launch ? { kind: 'match', id: Date.now(), launch } : { kind: 'setup' };
+    return launch ? { kind: 'match', id: Date.now(), launch } : { kind: 'menu' };
   });
 
-  if (view.kind === 'setup') {
+  const toMenu = () => setView({ kind: 'menu' });
+
+  if (view.kind === 'menu') {
     return (
-      <SetupScreen
-        initial={DEFAULT_SETUP}
-        onStart={(launch) => setView({ kind: 'match', id: Date.now(), launch })}
+      <MenuScreen
+        onPlay={(mode) => setView({ kind: 'setup', mode })}
         onLoadReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
         onOpenEditor={() => setView({ kind: 'editor' })}
         onOpenArmies={() => setView({ kind: 'armies' })}
-        onOpenSandbox={
-          devTools()
-            ? (setup) => setView({ kind: 'sandbox', id: Date.now(), initial: sandboxStart(setup), setup })
-            : undefined
-        }
         onOpenPresets={devTools() ? () => setView({ kind: 'presets' }) : undefined}
       />
     );
   }
 
+  if (view.kind === 'setup') {
+    return (
+      <SetupScreen
+        initial={DEFAULT_SETUP}
+        mode={view.mode}
+        onStart={(launch) => setView({ kind: 'match', id: Date.now(), launch })}
+        onBack={toMenu}
+        onOpenSandbox={
+          devTools()
+            ? (setup) => setView({ kind: 'sandbox', id: Date.now(), initial: sandboxStart(setup), setup })
+            : undefined
+        }
+      />
+    );
+  }
+
   if (view.kind === 'armies') {
-    return <ArmyBuilderScreen onExit={() => setView({ kind: 'setup' })} />;
+    return <ArmyBuilderScreen onExit={toMenu} />;
   }
 
   if (view.kind === 'presets') {
-    return <PresetEditorScreen onExit={() => setView({ kind: 'setup' })} />;
+    return <PresetEditorScreen onExit={toMenu} />;
   }
 
   if (view.kind === 'editor') {
-    return <EditorScreen onExit={() => setView({ kind: 'setup' })} />;
+    return <EditorScreen onExit={toMenu} />;
   }
 
   if (view.kind === 'sandbox') {
-    return <SandboxScreen key={view.id} initial={view.initial} setup={view.setup} onExit={() => setView({ kind: 'setup' })} />;
+    return <SandboxScreen key={view.id} initial={view.initial} setup={view.setup} onExit={toMenu} />;
   }
 
   if (view.kind === 'replay') {
-    return <ReplayScreen key={view.id} replay={view.replay} onExit={() => setView({ kind: 'setup' })} />;
+    return <ReplayScreen key={view.id} replay={view.replay} onExit={toMenu} />;
   }
 
-  const exit = () => setView({ kind: 'setup' });
   const watch = (replay: Replay) => setView({ kind: 'replay', id: Date.now(), replay });
   return view.launch.kind === 'local' ? (
-    <MatchHost key={view.id} setup={view.launch.setup} onExit={exit} onWatchReplay={watch} />
+    <MatchHost key={view.id} setup={view.launch.setup} onExit={toMenu} onWatchReplay={watch} />
   ) : (
-    <RoomHost key={view.id} launch={view.launch} onExit={exit} onWatchReplay={watch} />
+    <RoomHost key={view.id} launch={view.launch} onExit={toMenu} onWatchReplay={watch} />
   );
 }
 
