@@ -142,9 +142,23 @@ export interface Board {
   /**
    * A shortest walk from `a` to `b` (both included) through the same hexes
    * {@link reachableWithin} walks (under the same `rules`), or null when `b`
-   * isn't reachable in `steps`.
+   * isn't reachable in `steps`. Of the equally short walks it takes the one that
+   * keeps closest to the straight line from `a` to `b`, so a unit doesn't detour
+   * through a corner it had no reason to visit.
    */
   pathWithin(a: Vec, b: Vec, steps: number, rules?: WalkRules): Vec[] | null;
+  /**
+   * Every walk out of `v` in `1..steps` steps at once: {@link reachableWithin}
+   * and {@link pathWithin} from one search, for a caller that asks about many
+   * destinations from the same hex.
+   */
+  walkFrom(v: Vec, steps: number, rules?: WalkRules): Walk;
+  /**
+   * How far the centre of `v` lies from the straight segment joining the centres
+   * of `a` and `b`, in hex widths (0 on the line). Used to prefer the most direct
+   * looking of several equally short routes.
+   */
+  offLine(a: Vec, b: Vec, v: Vec): number;
   /**
    * Line of sight between hex centres (symmetric). Any intervening blocked cell,
    * rock/building/forest hex, or (optionally) occupied cell breaks it; the
@@ -158,6 +172,16 @@ export interface Board {
    * occupied cell). Assumes {@link lineOfSight} is clear.
    */
   inCover(a: Vec, b: Vec, occupied?: (v: Vec) => boolean): boolean;
+}
+
+/** Every walk out of one hex, from {@link Board.walkFrom}. */
+export interface Walk {
+  /** Reachable hexes as `"x,y"` keys, the start excluded — as {@link Board.reachableWithin}. */
+  reach: Set<string>;
+  /** Fewest steps to `b` (0 for the start), or undefined when it can't be reached. */
+  steps(b: Vec): number | undefined;
+  /** The walk to `b`, start included — as {@link Board.pathWithin}. */
+  pathTo(b: Vec): Vec[] | null;
 }
 
 // --- Cube coordinates (internal working representation) -------------------
@@ -184,6 +208,11 @@ function cubeToOffset(c: Cube): Vec {
 
 function cubeDistance(a: Cube, b: Cube): number {
   return (Math.abs(a.q - b.q) + Math.abs(a.r - b.r) + Math.abs(a.s - b.s)) / 2;
+}
+
+/** A flat-top hex's centre on the plane, one hex width apart between neighbours. */
+function cubeCentre(c: Cube): { px: number; py: number } {
+  return { px: (c.q * Math.sqrt(3)) / 2, py: c.r + c.q / 2 };
 }
 
 /** The six flat-top hex directions, in cube space (fixed order for determinism). */
@@ -290,6 +319,74 @@ export function makeHexGrid(data: BoardData): Board {
     return true;
   };
 
+  /** Distance of `v`'s centre from the segment between `a`'s and `b`'s centres, in hex widths. */
+  const offLine = (a: Vec, b: Vec, v: Vec): number => {
+    const p = cubeCentre(offsetToCube(a));
+    const q = cubeCentre(offsetToCube(b));
+    const c = cubeCentre(offsetToCube(v));
+    const dx = q.px - p.px;
+    const dy = q.py - p.py;
+    const len2 = dx * dx + dy * dy;
+    const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((c.px - p.px) * dx + (c.py - p.py) * dy) / len2));
+    return Math.hypot(c.px - (p.px + t * dx), c.py - (p.py + t * dy));
+  };
+
+  /**
+   * Breadth-first search out of `start`, keeping *every* hex a cell was first
+   * reached from (not just one), so a path can afterwards be picked from all the
+   * equally short ones.
+   */
+  const walkFrom = (start: Vec, steps: number, rules?: WalkRules): Walk => {
+    const startKey = vecKey(start);
+    const dist = new Map<string, number>([[startKey, 0]]);
+    const parents = new Map<string, Vec[]>();
+    let frontier: Vec[] = [start];
+    for (let step = 0; step < steps && frontier.length > 0; step++) {
+      const next: Vec[] = [];
+      for (const cell of frontier) {
+        for (const n of walkSteps(cell, step === 0, rules)) {
+          const k = vecKey(n);
+          const d = dist.get(k);
+          if (d === undefined) {
+            dist.set(k, step + 1);
+            parents.set(k, [cell]);
+            next.push(n);
+          } else if (d === step + 1) {
+            parents.get(k)!.push(cell);
+          }
+        }
+      }
+      frontier = next;
+    }
+    const reach = new Set(dist.keys());
+    reach.delete(startKey);
+    return {
+      reach,
+      steps: (b) => dist.get(vecKey(b)),
+      pathTo(b) {
+        if (!dist.has(vecKey(b))) return null;
+        // Walk back from the goal, at each step taking the predecessor nearest
+        // the straight line (first in search order on a tie, for determinism).
+        const path: Vec[] = [{ x: b.x, y: b.y }];
+        let cur = b;
+        while (vecKey(cur) !== startKey) {
+          let best: Vec | undefined;
+          let bestOff = Infinity;
+          for (const p of parents.get(vecKey(cur))!) {
+            const off = offLine(start, b, p);
+            if (off < bestOff - 1e-9) {
+              best = p;
+              bestOff = off;
+            }
+          }
+          cur = best!;
+          path.push({ x: cur.x, y: cur.y });
+        }
+        return path.reverse();
+      },
+    };
+  };
+
   return {
     width,
     height,
@@ -327,48 +424,13 @@ export function makeHexGrid(data: BoardData): Board {
       return cells;
     },
     reachableWithin(v, steps, rules) {
-      const start = vecKey(v);
-      const seen = new Set<string>([start]);
-      let frontier: Vec[] = [v];
-      for (let step = 0; step < steps && frontier.length > 0; step++) {
-        const next: Vec[] = [];
-        for (const cell of frontier) {
-          for (const n of walkSteps(cell, step === 0, rules)) {
-            const k = vecKey(n);
-            if (seen.has(k)) continue;
-            seen.add(k);
-            next.push(n);
-          }
-        }
-        frontier = next;
-      }
-      seen.delete(start);
-      return seen;
+      return walkFrom(v, steps, rules).reach;
     },
     pathWithin(a, b, steps, rules) {
-      const goal = vecKey(b);
-      const parent = new Map<string, Vec | null>([[vecKey(a), null]]);
-      let frontier: Vec[] = [a];
-      for (let step = 0; step <= steps && frontier.length > 0; step++) {
-        const next: Vec[] = [];
-        for (const cell of frontier) {
-          if (vecKey(cell) === goal) {
-            const path: Vec[] = [];
-            for (let c: Vec | null | undefined = cell; c; c = parent.get(vecKey(c))) path.push(c);
-            return path.reverse();
-          }
-          if (step === steps) continue;
-          for (const n of walkSteps(cell, step === 0, rules)) {
-            const k = vecKey(n);
-            if (parent.has(k)) continue;
-            parent.set(k, cell);
-            next.push(n);
-          }
-        }
-        frontier = next;
-      }
-      return null;
+      return walkFrom(a, steps, rules).pathTo(b);
     },
+    walkFrom,
+    offLine,
     lineOfSight(a, b, occupied) {
       return lineClear(a, b, 1, occupied);
     },

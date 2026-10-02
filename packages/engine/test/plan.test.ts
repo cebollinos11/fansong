@@ -180,6 +180,19 @@ describe('multi-action reach', () => {
     }
   });
 
+  it('walks the shortest, straightest way over several moves', () => {
+    const s = acting(config(16, [mover], [{ name: 'Far', quality: 3, combat: 3, pos: { x: 10, y: 0 } }], 15, 9), 3);
+    const board = makeHexGrid(s.board);
+    const from = s.units[0]!.pos;
+    for (const p of moves(getActionPlans(s))) {
+      // No detour: open ground, so the walk is exactly as long as the distance...
+      expect(p.path.length - 1).toBe(board.distance(from, p.to));
+      // ...and it never strays as much as a whole hex off the line (each leg is
+      // straight on its own; only the stop between legs can wobble a little).
+      for (const v of p.path) expect(board.offLine(from, p.to, v)).toBeLessThan(0.8);
+    }
+  });
+
   it('caps the chain at three actions however many are held', () => {
     // A plodder on a long board, so cost keeps climbing if nothing stops it.
     const plodder: UnitSpec = { ...mover, slow: true };

@@ -110,29 +110,43 @@ export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp
   for (let ap = 1; ap <= maxAp && frontier.length > 0; ap++) {
     const next: ReachNode[] = [];
     for (const node of frontier) {
-      const reach = board.reachableWithin(node.cell, move, rules);
+      const walk = board.walkFrom(node.cell, move, rules);
       // Leaving *this* hex is what provokes, so the risk is counted once per hop.
       const hop = provoking.has(vecKey(node.cell)) ? 1 : 0;
+      const provokes = node.provokes + hop;
       // `cellsWithin` order, exactly as `getLegalCommands` enumerates moves, so
       // the one-action layer comes out in the same order it does.
       for (const to of board.cellsWithin(node.cell, move)) {
         const key = vecKey(to);
-        if (!reach.has(key)) continue;
+        const legSteps = walk.steps(to);
+        if (legSteps === undefined) continue;
         // Every Move costs 1, so this BFS over *actions* sees each hex first at
         // its minimum cost. A hex seen again *this* hop is a rival route at the
-        // same price, though, and a route that keeps clear of enemy blades is
-        // worth having — otherwise whichever route enumeration happened to reach
-        // first would decide, and the free-hack warning would be arbitrary.
+        // same price, though. Prefer one that keeps clear of enemy blades (else
+        // whichever route enumeration happened to reach first would decide, and
+        // the free-hack warning would be arbitrary), then the shorter walk, then
+        // the one hugging the straight line — so a two-move walk doesn't stop
+        // off in some corner on its way.
         const seen = best.get(key);
-        if (seen && (seen.cost < ap || seen.provokes <= node.provokes + hop)) continue;
-        const seg = board.pathWithin(node.cell, to, move, rules);
+        const length = (node.path.length === 0 ? 1 : node.path.length) + legSteps;
+        if (seen) {
+          if (seen.cost < ap || seen.provokes < provokes) continue;
+          if (seen.provokes === provokes && seen.path.length < length) continue;
+        }
+        const seg = walk.pathTo(to);
         if (!seg) continue;
         const waypoints = [...node.waypoints, { ...to }];
         // The first leg contributes its start hex; later legs drop the joint.
         const path = node.path.length === 0 ? seg : [...node.path, ...seg.slice(1)];
-        const provokes = node.provokes + hop;
         if (seen) {
-          // Same price, safer route: rewrite it in place, so anything already
+          if (
+            seen.provokes === provokes &&
+            seen.path.length === length &&
+            offLineTotal(board, path) >= offLineTotal(board, seen.path) - 1e-9
+          ) {
+            continue;
+          }
+          // Same price, better route: rewrite it in place, so anything already
           // queued to expand from this hex carries the better route with it.
           seen.waypoints = waypoints;
           seen.path = path;
@@ -340,6 +354,15 @@ function strikePlan(
     ...(pressed ? ({ pressed: true } as const) : {}),
     provokes: spot.provokes,
   };
+}
+
+/** How far a walk strays from the straight line between its ends, summed over its hexes. */
+function offLineTotal(board: Board, path: Vec[]): number {
+  const a = path[0]!;
+  const b = path[path.length - 1]!;
+  let total = 0;
+  for (const v of path) total += board.offLine(a, b, v);
+  return total;
 }
 
 function copy(v: Vec): Vec {

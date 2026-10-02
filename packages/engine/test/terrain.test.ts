@@ -180,6 +180,17 @@ describe('movement pathing around impassable terrain', () => {
     expect(g.pathWithin(from, from, 0)).toEqual([from]);
   });
 
+  it('pathWithin hugs the straight line on open ground', () => {
+    const g = makeHexGrid({ width: 9, height: 9, blocked: [] });
+    const from = { x: 4, y: 4 };
+    for (const to of g.cellsWithin(from, 4)) {
+      const path = g.pathWithin(from, to, 4)!;
+      expect(path.length - 1).toBe(g.distance(from, to));
+      // Every hex the walk crosses is one the straight line itself passes through.
+      for (const v of path) expect(g.offLine(from, to, v)).toBeLessThanOrEqual(1 / Math.sqrt(3) + 1e-9);
+    }
+  });
+
   it('forest is passable for pathing', () => {
     const g = makeHexGrid({ width: 3, height: 1, blocked: [], terrain: { '1,0': { feature: 'forest' } } });
     expect(g.reachableWithin({ x: 0, y: 0 }, 2)).toEqual(new Set(['1,0', '2,0']));
