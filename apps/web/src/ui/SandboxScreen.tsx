@@ -592,7 +592,8 @@ function EffectsSection({ onPlay }: { onPlay: (demo: EffectDemo) => void }) {
     <Section title="Animations" open={false}>
       <p className="sb-hint">
         Plays one outcome or trait in the middle of the board. It replaces every unit (Undo brings them back). Add{' '}
-        <code>&amp;animSpeed=0.25</code> to the address to watch in slow motion.
+        <code>&amp;animSpeed=0.25</code> to the address to watch in slow motion, or <code>&amp;spar=2</code> to open every
+        melee with that many rounds of blocked blows (0 for none).
       </p>
       {DEMO_GROUPS.map((group) => (
         <div key={group}>

@@ -412,6 +412,7 @@ const DEFLECT = 0.08; // how far a clash throws the two combatants apart
 const BLOCK_STOP_MS = 110; // a blocked swing freezes this long where it is stopped: less than a blow that tells
 const BLOCK_BEAT_MS = 60; // ...and a lone blocked swing holds this long after it before play goes on
 const BLOCK_REPLY_MS = 120; // the blocker's answer starts this soon after the block, while the swing is still coming back
+const SPAR_ODDS = [0.4, 0.1]; // chance a melee opens with at least one round of blocked blows, and with two
 const BLOCK_BOUNCE = 0.16; // how far the swing's owner staggers back off the block
 const BLOCK_BOUNCE_MS = 360;
 const BLOCK_BRACE = 0.03; // how far the blocker shudders under it
@@ -914,6 +915,11 @@ export class BoardView {
    * player moves the camera or the first blow plays.
    */
   private opening: { points: THREE.Vector3[]; head: number; target: THREE.Vector3; dist: number } | null = null;
+  /** Dev aid: `?spar=2` opens every melee with that many rounds of blocked blows (see {@link spar}). */
+  private readonly sparRounds = (() => {
+    const spar = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('spar') : null;
+    return spar === null ? null : Math.max(0, Math.floor(Number(spar)) || 0);
+  })();
   /** Dev aid: `?animSpeed=0.25` plays animations at quarter speed. */
   private readonly animSpeed = import.meta.env.DEV
     ? Number(new URLSearchParams(window.location.search).get('animSpeed')) || 1
@@ -1466,29 +1472,34 @@ export class BoardView {
         const floored = ranged ? undefined : pair.find((id) => flooredBy(id, after));
         // So is an ordinary melee kill that leaves the body where it stood.
         const slain = kill && !dread && !ranged && fallsWhereItStood(kill.victim, after) ? kill.victim : undefined;
+        // Now and then the two trade blocked blows first, and the fight is settled straight off the last of them.
+        const sparring = e.type === 'AttackResolved' || e.type === 'GuardRiposte';
+        const go = sparring ? this.spar(pair[0], pair[1], start + cards) : start + cards;
         const s = mastered
-          ? this.exchange(pair[0], pair[1], start + cards, { land: true, windup, heavy: slain === pair[0], lethal: true })
+          ? this.exchange(pair[0], pair[1], go, { land: true, windup, heavy: slain === pair[0], lethal: true })
           : e.type === 'AttackResolved' && armored !== pair[1] && this.answered(e)
-            ? this.exchange(pair[0], pair[1], start + cards, {
+            ? this.exchange(pair[0], pair[1], go, {
                 land: e.result.startsWith('attacker') || armored === pair[0],
                 windup,
                 heavy: floored === pair[0] || slain === pair[0],
                 lethal: slain === pair[0],
               })
-            : this.strike(pair[0], pair[1], ranged ? 'ranged' : 'melee', start + cards, {
+            : this.strike(pair[0], pair[1], ranged ? 'ranged' : 'melee', go, {
                 land,
                 cover,
                 windup,
                 heavy: land && (floored === pair[1] || slain === pair[1]),
                 lethal: slain === pair[1],
               });
+        // The camera and the dread close in on the blow that settles it, not on the sparring before.
+        const closing = go - cards;
         if (dread) {
-          aftermath = this.dreadPlay(dread, start, s.hit);
+          aftermath = this.dreadPlay(dread, closing, s.hit);
           for (const id of dread.shaken) dreaded.add(id);
         } else if (kill) {
-          this.closeIn(kill.victim, start, s.hit, KILL_DOLLY, KILL_PUSH_IN);
+          this.closeIn(kill.victim, closing, s.hit, KILL_DOLLY, KILL_PUSH_IN);
         } else if (floored) {
-          this.closeIn(floored, start, s.hit, DOWN_DOLLY, DOWN_PUSH_IN);
+          this.closeIn(floored, closing, s.hit, DOWN_DOLLY, DOWN_PUSH_IN);
         }
         const [first, second] = pair;
         // The traits that swung the roll show as the first swing starts.
@@ -2810,6 +2821,31 @@ export class BoardView {
     const reply = Math.min(swing.hit + BLOCK_REPLY_MS, swing.end + RIPOSTE_GAP_MS);
     const answer = this.strike(targetId, attackerId, 'melee', reply, { ...opts, block: false });
     return { hit: answer.hit, end: Math.max(answer.end, swing.end) };
+  }
+
+  /**
+   * Sparring before a melee is settled, for suspense: now and then (see
+   * {@link SPAR_ODDS}) the two trade a round or two of blocked blows — `firstId`
+   * swings, then `secondId` — each coming straight off the block before it.
+   * Only between two units on their feet. Returns when the blow that settles
+   * the fight should start: `at` itself when they don't spar, else straight off
+   * the last block.
+   */
+  private spar(firstId: string, secondId: string, at: number): number {
+    const standing = [firstId, secondId].every((id) => {
+      const obj = this.units.get(id);
+      return obj && !obj.shown.knocked && !obj.shown.dead;
+    });
+    if (!standing) return at;
+    const roll = Math.random();
+    const rounds = this.sparRounds ?? SPAR_ODDS.filter((odds) => roll < odds).length;
+    let t = at;
+    for (let i = 0; i < rounds; i++) {
+      const swing = this.strike(firstId, secondId, 'melee', t, { land: false });
+      const answer = this.strike(secondId, firstId, 'melee', swing.hit + BLOCK_REPLY_MS, { land: false });
+      t = answer.hit + BLOCK_REPLY_MS;
+    }
+    return t;
   }
 
   /**
