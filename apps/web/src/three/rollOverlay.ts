@@ -233,7 +233,7 @@ export class RollOverlay {
     this.now = now;
     this.retire(roll.unitId);
     const card = this.card(roll.unitId, null, lifeMs, 'roll-card activation');
-    card.el.append(this.header(`Activation · need ${roll.quality}+${roll.inspired ? ' · inspired' : ''}`, roll.unitId));
+    card.el.append(this.header(`Activation · need ${roll.quality}+${roll.inspired ? ' · inspired' : ''}`, roll.unitId, true));
     const line = h('div', 'roll-line');
     roll.dice.forEach((d, i) => {
       const landAt = now + TUMBLE_MS + i * ACTIVATION_STAGGER_MS;

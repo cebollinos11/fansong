@@ -544,6 +544,14 @@ const BLINKS = 3; // a knocked-down unit blinks this many times as it lands
 const BLINK_MS = 160; // one blink: hidden for the first half, shown for the second
 const PICK_FLASH = 1.25; // whiteout on a unit as it is picked to activate; above 1 it holds as a pure white shape first
 const PICK_FLASH_FADE = 3.5; // whiteout lost per second
+/**
+ * The opponent's pick gets a beat of its own before its dice tumble: the unit
+ * blanks white, its ring swells and its outline glows in its side's colour,
+ * so the eye lands on who is activating before the card over it draws focus.
+ */
+const OPPONENT_PICK_MS = 550;
+const OPPONENT_PICK_GLOW_MS = 1400;
+const OPPONENT_PICK_PULSE_MS = 900;
 
 // Following the action: a batch whose units sit outside this part of the view
 // (normalised device coords, ±1 = the edges) pans the camera to them first.
@@ -1411,10 +1419,14 @@ export class BoardView {
         this.at(t, () => this.rolls.retireFight());
         // The opponent's pick is news to whoever is watching; the player's own already flashed when they made it.
         // A group lights up together, so it is plain who shares the roll.
-        for (const id of e.group ?? [e.unitId]) if (id !== this.ownPick) this.at(t, () => this.flashPick(id));
+        const picked = e.group ?? [e.unitId];
+        const news = !picked.includes(this.ownPick ?? '');
+        for (const id of picked) if (id !== this.ownPick) this.at(t, () => (news ? this.markOpponentPick(id) : this.flashPick(id)));
         this.ownPick = null;
         for (const id of e.group ?? [e.unitId]) if (this.units.get(id)?.traits?.dumb) this.at(t, () => this.dumbFx(id));
         if (obj?.anims.leading) this.at(t, () => obj.animator.play(obj.anims.leading));
+        // Hold the dice until the pick has registered.
+        if (news) t += OPPONENT_PICK_MS;
       } else if (e.type === 'GroupMemberActivated') {
         // The next member of a group steps up once the last one's doings have shown.
         t = Math.max(t, settle);
@@ -5043,6 +5055,15 @@ export class BoardView {
   private flashPick(id: string): void {
     const obj = this.units.get(id);
     if (obj) obj.whiteout = PICK_FLASH;
+  }
+
+  /** Make a pick the player didn't make plain: flash, a swelling ring and a glow in its side's colour. */
+  private markOpponentPick(id: string): void {
+    this.flashPick(id);
+    const obj = this.units.get(id);
+    if (!obj) return;
+    obj.pulse = { start: this.now, end: this.now + OPPONENT_PICK_PULSE_MS };
+    obj.glow = { color: OWNER_COLORS[obj.owner]!, start: this.now, end: this.now + OPPONENT_PICK_GLOW_MS };
   }
 
   /** Draw a short-lived bolt between two points (a shot without a missile image). */
