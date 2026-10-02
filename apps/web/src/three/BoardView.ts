@@ -2185,7 +2185,7 @@ export class BoardView {
     // Each hex lights with a soft fill and a bright rim, so the wave reads over
     // any ground (and over the move highlights).
     const fillGeo = new THREE.CircleGeometry(HEX_SIZE * 0.92, 6);
-    const rimGeo = new THREE.RingGeometry(HEX_SIZE * 0.78, HEX_SIZE * 0.95, 6);
+    const rimGeo = new THREE.RingGeometry(HEX_SIZE * 0.85, HEX_SIZE * 0.94, 6);
     let left = rings.filter((r) => r.length > 0).length;
     rings.forEach((cells, i) => {
       if (cells.length === 0) return;
@@ -2197,8 +2197,8 @@ export class BoardView {
           tile.position.set(w.x, this.surfaceAt(c) + 0.02, w.z);
         });
         const layers = [
-          { geo: fillGeo, peak: 0.45 * fade },
-          { geo: rimGeo, peak: 1 * fade },
+          { geo: fillGeo, peak: 0.16 * fade },
+          { geo: rimGeo, peak: 0.45 * fade },
         ].map(({ geo, peak }) => {
           const mat = new THREE.MeshBasicMaterial({
             color: INSPIRED_GLOW,
