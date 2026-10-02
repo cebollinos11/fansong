@@ -110,7 +110,7 @@ export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }
         </div>
       </nav>
 
-      <p className="menu-foot">A fan project. Unit art from Battle for Wesnoth (GPL).</p>
+      <p className="menu-foot">A fan project. Game design inspired by the wargame <em>Song of Blades and Heroes</em>. Unit art from Battle for Wesnoth (GPL).</p>
     </div>
   );
 }
