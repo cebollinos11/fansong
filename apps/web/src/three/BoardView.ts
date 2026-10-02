@@ -1756,29 +1756,50 @@ export class BoardView {
 
   /**
    * The heading nearest `yaw` from which the two units of `unitIds` don't cover
-   * one another on screen: `yaw` itself when they already stand clear, else the
-   * smallest turn around them that parts them — side by side, or one far enough
-   * up the screen behind the other. Anything but a pair keeps `yaw`.
+   * one another on screen, and no other unit stands in front of either: `yaw`
+   * itself when they already stand clear, else the smallest turn around them
+   * that clears them — side by side, or one far enough up the screen behind the
+   * other. Anything but a pair keeps `yaw`.
    */
   private separatingYaw(unitIds: string[], yaw: number): number {
     const [a, b] = unitIds.map((id) => this.units.get(id));
     if (!a || !b || a.fade || b.fade || unitIds.length !== 2) return yaw;
     const pitch = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target)).phi;
     const offset = b.group.position.clone().sub(a.group.position);
-    const width = (BODY_WIDTH * (a.size + b.size)) / 2;
-    const overlap = (heading: number): boolean => {
+    // Whether `other` and `unit` cover one another from `heading` — or, with
+    // `inFront`, only whether `other` stands nearer the camera and covers `unit`.
+    const overlap = (unit: UnitObj, other: UnitObj, heading: number, inFront = false): boolean => {
       // Across the screen: along the camera's right. Up it: ground further from
       // the camera rises by sin(elevation) = cos(pitch), height by sin(pitch).
-      const across = offset.x * Math.cos(heading) - offset.z * Math.sin(heading);
-      const away = -(offset.x * Math.sin(heading) + offset.z * Math.cos(heading));
-      const rise = offset.y + this.flightHeight(b) - this.flightHeight(a); // a flyer's feet are where it floats
-      const up = away * Math.cos(pitch) + rise * Math.sin(pitch); // b's feet above a's
-      return Math.abs(across) < width && up < this.bodyHeight(a) && -up < this.bodyHeight(b);
+      const off = other.group.position.clone().sub(unit.group.position);
+      const across = off.x * Math.cos(heading) - off.z * Math.sin(heading);
+      const away = -(off.x * Math.sin(heading) + off.z * Math.cos(heading));
+      if (inFront && away >= 0) return false;
+      const rise = off.y + this.flightHeight(other) - this.flightHeight(unit); // a flyer's feet are where it floats
+      const up = away * Math.cos(pitch) + rise * Math.sin(pitch); // other's feet above unit's
+      const width = (BODY_WIDTH * (unit.size + other.size)) / 2;
+      return Math.abs(across) < width && up < this.bodyHeight(unit) && -up < this.bodyHeight(other);
     };
-    if (!overlap(yaw)) return yaw;
+    // Bystanders matter only when they stand in front of a combatant; one behind is merely part of the scene.
+    const bystanders = [...this.units.values()].filter((u) => u !== a && u !== b && !u.fade);
+    const PAIR_HIDDEN = bystanders.length * 2 + 1; // the pair covering each other is worse than any number of bystanders in the way
+    const hidden = (heading: number): number => {
+      let n = overlap(a, b, heading) ? PAIR_HIDDEN : 0;
+      for (const u of bystanders) n += Number(overlap(a, u, heading, true)) + Number(overlap(b, u, heading, true));
+      return n;
+    };
+    let best = yaw;
+    let least = hidden(yaw);
+    if (least === 0) return yaw;
     for (let turn = SEPARATE_STEP; turn < Math.PI / 2; turn += SEPARATE_STEP) {
-      for (const heading of [yaw + turn, yaw - turn]) if (!overlap(heading)) return heading;
+      for (const heading of [yaw + turn, yaw - turn]) {
+        const n = hidden(heading);
+        if (n === 0) return heading;
+        if (n < least) [best, least] = [heading, n];
+      }
     }
+    // No heading shows both wholly: take the nearest that parts the pair with the fewest bystanders in the way.
+    if (least < PAIR_HIDDEN) return best;
     // Side on parts them most; when even that won't do, it is the best there is.
     const side = Math.atan2(offset.x, offset.z) + Math.PI / 2;
     return Math.abs(turnBetween(yaw, side)) <= Math.PI / 2 ? side : side + Math.PI;
