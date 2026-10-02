@@ -256,7 +256,7 @@ function standAtFeetWithWhiteout(material: THREE.MeshBasicMaterial): THREE.MeshB
   return material;
 }
 
-function outlineMaterial(): THREE.ShaderMaterial {
+function outlineMaterial(pixelRatio: number): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
     uniforms: {
       map: { value: null },
@@ -264,6 +264,7 @@ function outlineMaterial(): THREE.ShaderMaterial {
       uRepeat: { value: new THREE.Vector2(1, 1) },
       uPixel: { value: new THREE.Vector2(1 / 72, 1 / 72) },
       uWidth: { value: OUTLINE_PX },
+      uPixelRatio: { value: pixelRatio },
       uColor: { value: new THREE.Color() },
       uOpacity: { value: 1 },
     },
@@ -280,6 +281,7 @@ function outlineMaterial(): THREE.ShaderMaterial {
       uniform vec2 uRepeat;
       uniform vec2 uPixel;
       uniform float uWidth;
+      uniform float uPixelRatio;
       uniform vec3 uColor;
       uniform float uOpacity;
       varying vec2 vUv;
@@ -297,13 +299,18 @@ function outlineMaterial(): THREE.ShaderMaterial {
         gradX = dFdx(vUv * uRepeat);
         gradY = dFdy(vUv * uRepeat);
         if (alphaAt(vUv) > 0.5) discard;
+        // Sprite pixels per CSS pixel, read off the quad's own slope so zoom,
+        // a Big model and the close-up camera all count. The closer the sprite,
+        // the fewer sprite pixels the outline spans, so it thins against the art.
+        float texels = length(vec2(dFdx(vUv.x), dFdy(vUv.x))) / uPixel.x * uPixelRatio;
+        float width = uWidth * clamp(pow(texels * ${OUTLINE_REF_ZOOM.toFixed(2)}, ${OUTLINE_THINNING.toFixed(2)}), ${OUTLINE_MIN_SCALE.toFixed(2)}, ${OUTLINE_MAX_SCALE.toFixed(2)});
         float near = 0.0;
         float far = 0.0;
         for (int i = 0; i < 12; i++) {
           float t = float(i) * 0.5235988;
           vec2 d = vec2(cos(t), sin(t)) * uPixel;
-          near = max(near, max(alphaAt(vUv + d * uWidth * 0.5), alphaAt(vUv + d * uWidth)));
-          far = max(far, alphaAt(vUv + d * uWidth * 2.0));
+          near = max(near, max(alphaAt(vUv + d * width * 0.5), alphaAt(vUv + d * width)));
+          far = max(far, alphaAt(vUv + d * width * 2.0));
         }
         float glow = max(near, far * 0.4);
         if (glow < 0.02) discard;
@@ -343,8 +350,12 @@ const CUE_SLOW_MS = 1600; // breath period for a unit to activate
 const CUE_FAST_MS = 900; // breath period for a target
 const CUE_SWELL = 0.06; // how much a breathing ring grows at its peak
 const CUE_HOVER_SCALE = 1.12; // the ring under the pointer, held open
-const OUTLINE_PX = 2; // outline width in sprite pixels, widened under the pointer
+const OUTLINE_PX = 2; // outline width in sprite pixels at the reference zoom, widened under the pointer
 const OUTLINE_HOVER_PX = 3;
+const OUTLINE_REF_ZOOM = 2; // screen pixels per sprite pixel at which the widths above hold
+const OUTLINE_THINNING = 0.8; // 0 keeps the outline a fixed share of the sprite, 1 a fixed width on screen
+const OUTLINE_MIN_SCALE = 0.2; // limits on how far zoom thins or thickens it
+const OUTLINE_MAX_SCALE = 1.5;
 
 // An enemy that has already acted this round (or whose side turned over) has
 // its base go dark while the human picks and plans, so what can still answer stands out.
@@ -2550,7 +2561,7 @@ export class BoardView {
     sprite.visible = false;
 
     // Shares the cutout's quad (and, once loaded, its texture window); never picked.
-    const outline = new THREE.Mesh(sprite.geometry, outlineMaterial());
+    const outline = new THREE.Mesh(sprite.geometry, outlineMaterial(this.renderer.getPixelRatio()));
     outline.position.z = -0.002;
     outline.visible = false;
     outline.raycast = () => {};
