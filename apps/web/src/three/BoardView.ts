@@ -453,6 +453,11 @@ const SPOT_LIGHT_DIM = 0.55; // how much the light on the board drops
 const SHIVER_MS = 380; // a friend who will have to test its nerve shivers this often through the build-up
 const PUSH_IN = 0.9; // on impact the camera lurches in to this fraction of its distance...
 const PUSH_IN_MS = 260;
+// An ordinary kill gets a lighter cut of the same camera work: no darkness, tilt or triumph.
+const KILL_DOLLY = 0.96; // the camera creeps in to this fraction of its distance until the blow lands...
+const KILL_PUSH_IN = 0.94; // ...lurches in to this fraction of it on impact...
+const KILL_SLOW_MO_MS = 450; // ...and the fall plays in slow motion this long (wall clock)
+const KILL_SLOW_MO_SCALE = 0.5;
 const ROLL = 0.05; // ...and tilts this far (radians), easing back
 const ROLL_MS = 900; // wall clock
 const SLASH_COLOR = 0xf2ecff;
@@ -1348,10 +1353,11 @@ export class BoardView {
         gruesome = e.gruesome === true;
         ranged = e.type === 'ShotResolved';
         // A gruesome kill is known before it plays: build up to it.
-        const dread = gruesome ? dreadOf(e, pair, after) : null;
+        const kill = killOf(e, pair, after);
+        const dread = gruesome ? kill : null;
         // A blow plays in three beats: frame the pair, show their dice, then
         // strike while the cards are still up in the corners.
-        t += this.pause(this.frameCombat(pair, t, dread !== null));
+        t += this.pause(this.frameCombat(pair, t, dread ? 'gruesome' : kill ? 'kill' : null));
         const start = t;
         const windup = dread ? WINDUP_MS : 0;
         const cards = OPPOSED_ROLL_MS; // the cards show their outcome at once; a beat to read it
@@ -1379,6 +1385,8 @@ export class BoardView {
         if (dread) {
           aftermath = this.dreadPlay(dread, start, s.hit);
           for (const id of dread.shaken) dreaded.add(id);
+        } else if (kill) {
+          this.closeIn(kill.victim, start, s.hit, KILL_DOLLY, KILL_PUSH_IN);
         }
         const [first, second] = pair;
         if (e.result === 'clash' && !armored && e.type !== 'ShotResolved') this.at(s.hit, () => this.clashFx(first, second));
@@ -1718,10 +1726,12 @@ export class BoardView {
    * Frame a blow on its two combatants: centre them and move in close enough to
    * read the fight, so the dice cards and then the strike play out in a close-up.
    * If one would stand in front of the other, turn around them until both show.
-   * A `dread`ful one (a gruesome kill coming) is framed tighter, and slower.
+   * One that will `kill` always moves in, and a gruesome kill is framed tighter,
+   * and slower.
    * Returns how long the move takes, which the caller plays the blow after.
    */
-  private frameCombat(unitIds: string[], at: number, dread = false): number {
+  private frameCombat(unitIds: string[], at: number, kill: 'kill' | 'gruesome' | null = null): number {
+    const dread = kill === 'gruesome';
     if (this.cameraMode !== 'cinematic' || this.handOnCamera) return 0;
     const points = this.unitPoints(unitIds);
     if (points.length === 0) return 0;
@@ -1730,11 +1740,13 @@ export class BoardView {
     const yaw = this.separatingYaw(unitIds, this.plannedCamera().yaw);
     const pivot = this.pivotFor(this.bodyMiddle(unitIds) ?? centre, yaw);
     // Close enough to fill the view with the pair — unless the camera is nearly
-    // there already, when a pan is enough. Only a gruesome kill always moves in.
+    // there already, when a pan is enough. Only a kill always moves in.
     const span = Math.max(...points.map((p) => p.distanceTo(centre))) * 2;
     const close = dread
       ? this.closeUp(span * DREAD_SPAN_MARGIN, true)
-      : this.steadyZoom(this.closeUp(span * COMBAT_SPAN_MARGIN));
+      : kill
+        ? this.closeUp(span * COMBAT_SPAN_MARGIN)
+        : this.steadyZoom(this.closeUp(span * COMBAT_SPAN_MARGIN));
     // Both ends of a long shot stay in the frame from the start.
     const dist = this.fitAround(points, pivot, close, yaw, this.headroom(unitIds));
     const dur = this.scheduleMove(at, pivot, dist, dread ? DREAD_FRAME_SLOW : 1, yaw);
@@ -1779,28 +1791,34 @@ export class BoardView {
   }
 
   /**
+   * The camera closing on a kill whose blow starts `start` ms from now and lands
+   * at `hit`: it creeps in on the pair to `dolly` of its distance, then lurches
+   * in to `pushIn` of that on the victim as the blow lands.
+   */
+  private closeIn(victimId: string, start: number, hit: number, dolly: number, pushIn: number): void {
+    if (this.cameraMode !== 'cinematic' || this.handOnCamera) return;
+    const held = this.plannedCamera();
+    const dist = held.dist * dolly;
+    this.at(start, () => this.moveCamera(held.target, dist, hit - start, true));
+    this.planned = { ...held, dist };
+    const victim = this.units.get(victimId);
+    if (!victim) return;
+    // Halfway to the victim, so the killer stays in the shot.
+    const view = this.plannedCamera();
+    const to = this.pivotFor(this.bodyAt(victim, victim.targetPos), view.yaw).lerp(view.target, 0.5);
+    this.at(hit, () => this.moveCamera(to, this.camera.position.distanceTo(this.controls.target) * pushIn, PUSH_IN_MS));
+    this.planned = { ...view, target: to, dist: view.dist * pushIn };
+  }
+
+  /**
    * Lay out what surrounds a gruesome kill whose blow starts `start` ms from now
    * and lands at `hit`: the build-up (see {@link dreadFx}) while the camera
    * creeps in on the pair, a lurch in on the victim as the blow lands, then the
    * killer's triumph, played where the camera already holds it.
    * Returns when that triumph is over.
    */
-  private dreadPlay(d: Dread, start: number, hit: number): number {
-    const cinematic = this.cameraMode === 'cinematic' && !this.handOnCamera;
-    const victim = this.units.get(d.victim);
-    if (cinematic) {
-      const view = this.plannedCamera();
-      const dist = view.dist * DREAD_DOLLY;
-      this.at(start, () => this.moveCamera(view.target, dist, hit - start, true));
-      this.planned = { ...view, dist };
-    }
-    if (cinematic && victim) {
-      // Halfway to the victim, so the killer stays in the shot.
-      const view = this.plannedCamera();
-      const to = this.pivotFor(this.bodyAt(victim, victim.targetPos), view.yaw).lerp(view.target, 0.5);
-      this.at(hit, () => this.moveCamera(to, this.camera.position.distanceTo(this.controls.target) * PUSH_IN, PUSH_IN_MS));
-      this.planned = { ...view, target: to, dist: view.dist * PUSH_IN };
-    }
+  private dreadPlay(d: Kill, start: number, hit: number): number {
+    this.closeIn(d.victim, start, hit, DREAD_DOLLY, PUSH_IN);
     const triumph = hit + VICTORY_AT_MS;
     this.at(triumph, () => this.exult(d.killer));
     const end = triumph + VICTORY_HOLD_MS;
@@ -1814,7 +1832,7 @@ export class BoardView {
    * a faint ring shows how far its fear will reach, and every friend inside it
    * who will have to test its nerve shivers.
    */
-  private dreadFx(d: Dread, toHit: number, total: number): void {
+  private dreadFx(d: Kill,toHit: number, total: number): void {
     const lit = new Map<string, number>([
       [d.killer, 1],
       [d.victim, 1],
@@ -3600,6 +3618,8 @@ export class BoardView {
     this.effects.ring(ground, 0xffffff, 0.2, 1.1, { life: 0.5, opacity: 0.85, additive: true });
     if (!gruesome) {
       if (killerId) this.hitStop(IMPACT_STOP_MS, [obj.id]);
+      // The camera closed in on this one: let the fall play out slowly in its close-up.
+      if (killerId && this.cameraMode === 'cinematic' && !this.handOnCamera) this.slowMotion(KILL_SLOW_MO_MS, KILL_SLOW_MO_SCALE);
       return;
     }
     // 7a: the heavy version — a freeze on impact (its first instants a flat
@@ -4490,8 +4510,8 @@ export class BoardView {
   }
 }
 
-/** A gruesome kill about to play: who deals it, who dies, and which friends of the dead will test their nerve. */
-interface Dread {
+/** A kill about to play: who deals it, who dies, and which friends of the dead will test their nerve. */
+interface Kill {
   killer: string;
   victim: string;
   shaken: string[];
@@ -4503,12 +4523,12 @@ const isBlow = (e: GameEvent): e is Blow =>
   e.type === 'AttackResolved' || e.type === 'ShotResolved' || e.type === 'GuardRiposte' || e.type === 'FreeHackResolved';
 
 /**
- * The gruesome kill a gruesome blow between `pair` makes, or null when its
- * victim lives after all (Tough turned the blow into a knockdown). `after` is
- * the rest of the batch: the victim's death, and the nerve checks it causes,
- * come before the next blow.
+ * The kill a blow between `pair` makes, or null when its loser lives (the blow
+ * didn't kill, or Tough turned it into a knockdown). `after` is the rest of the
+ * batch: the victim's death, and the nerve checks it causes, come before the
+ * next blow.
  */
-function dreadOf(e: Blow, pair: [string, string], after: readonly GameEvent[]): Dread | null {
+function killOf(e: Blow, pair: [string, string], after: readonly GameEvent[]): Kill | null {
   const victim = e.result.startsWith('defender') ? pair[1] : pair[0];
   const killer = victim === pair[1] ? pair[0] : pair[1];
   const next = after.findIndex(isBlow);
