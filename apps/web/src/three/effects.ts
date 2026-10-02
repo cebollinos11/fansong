@@ -66,7 +66,9 @@ export type FxTexture =
   | 'alarm'
   | 'scorch'
   | 'wall'
-  | 'query';
+  | 'query'
+  | 'burst'
+  | 'hoop';
 
 interface Fx {
   obj: THREE.Object3D;
@@ -366,6 +368,39 @@ export class Effects {
       if (env.drift) sprite.position.addScaledVector(env.drift, k);
       mat.rotation = (env.rotation ?? 0) + (env.spin ?? 0) * k;
       mat.opacity = peak * Math.min(1, (1 - k) / 0.4);
+    }, () => mat.dispose());
+  }
+
+  /**
+   * A billboard image that bursts outward: it grows from `from` to `to` (world
+   * size), fast at first, and fades as it goes. Unlike {@link icon} it never
+   * holds, so it reads as a flash of impact rather than a sign.
+   */
+  pop(
+    tex: FxTexture,
+    at: THREE.Vector3,
+    from: number,
+    to: number,
+    env: Envelope & { color?: number; rotation?: number; spin?: number; additive?: boolean },
+  ): void {
+    const mat = new THREE.SpriteMaterial({
+      map: this.texture(tex),
+      color: env.color ?? 0xffffff,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      rotation: env.rotation ?? 0,
+      blending: env.additive === false ? THREE.NormalBlending : THREE.AdditiveBlending,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.position.copy(at);
+    sprite.renderOrder = 3;
+    const peak = env.opacity ?? 1;
+    this.add(sprite, env.life, (k) => {
+      const e = 1 - Math.pow(1 - k, 3);
+      sprite.scale.setScalar(Math.max(0.001, from + (to - from) * e));
+      mat.rotation = (env.rotation ?? 0) + (env.spin ?? 0) * k;
+      mat.opacity = peak * (1 - k * k);
     }, () => mat.dispose());
   }
 
@@ -877,6 +912,37 @@ function drawTexture(g: CanvasRenderingContext2D, kind: FxTexture): void {
       g.lineWidth = 14;
       g.strokeText('?', c, c + 6);
       g.fillText('?', c, c + 6);
+      return;
+    }
+    case 'burst': {
+      // An impact star: a hot core with uneven spikes thrown out of it.
+      const core = g.createRadialGradient(c, c, 0, c, c, 26);
+      core.addColorStop(0, 'rgba(255,255,255,1)');
+      core.addColorStop(1, 'rgba(255,255,255,0)');
+      g.fillStyle = core;
+      g.fillRect(0, 0, 128, 128);
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      const spikes = 11;
+      for (let i = 0; i < spikes * 2; i++) {
+        const r = i % 2 === 0 ? 34 + ((i * 37) % 29) : 9;
+        const a = (i * Math.PI) / spikes;
+        g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
+      }
+      g.closePath();
+      g.fill();
+      return;
+    }
+    case 'hoop': {
+      // A thin ring with a soft glow either side of it.
+      g.strokeStyle = 'rgba(255,255,255,0.25)';
+      g.lineWidth = 14;
+      g.beginPath();
+      g.arc(c, c, 52, 0, Math.PI * 2);
+      g.stroke();
+      g.strokeStyle = '#ffffff';
+      g.lineWidth = 5;
+      g.stroke();
       return;
     }
     case 'wall': {
