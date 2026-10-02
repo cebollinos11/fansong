@@ -42,7 +42,6 @@ export function App(): JSX.Element {
     return (
       <MenuScreen
         onPlay={(mode) => setView({ kind: 'setup', mode })}
-        onLoadReplay={(replay) => setView({ kind: 'replay', id: Date.now(), replay })}
         onOpenEditor={() => setView({ kind: 'editor' })}
         onOpenArmies={() => setView({ kind: 'armies' })}
         onOpenPresets={devTools() ? () => setView({ kind: 'presets' }) : undefined}
