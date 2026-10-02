@@ -409,6 +409,12 @@ const DUST_TINT = 0xb8a888; // what the ground's colour is lightened toward for 
 const WISP_COLOR = 0xcfe6ff;
 const FEAR_COLOR = 0x6a3a9a;
 const DEFLECT = 0.08; // how far a clash throws the two combatants apart
+const BLOCK_STOP_MS = 110; // a blocked swing freezes this long where it is stopped: less than a blow that tells
+const BLOCK_BEAT_MS = 60; // ...and a lone blocked swing holds this long after it before play goes on
+const BLOCK_REPLY_MS = 120; // the blocker's answer starts this soon after the block, while the swing is still coming back
+const BLOCK_BOUNCE = 0.16; // how far the swing's owner staggers back off the block
+const BLOCK_BOUNCE_MS = 360;
+const BLOCK_BRACE = 0.03; // how far the blocker shudders under it
 const JOLT_MS = 220;
 const TOUGH_HITCH_MS = 320; // a Tough unit freezes mid-death this long before it drops to the ground instead
 const GLOW_MS = 1200; // gold rim glow on a Tough save
@@ -1445,7 +1451,9 @@ export class BoardView {
         // A blow an Armored loser turned aside still connects — the armor, not a
         // parry, is what stops it (the ArmorHeld that follows plays the flare).
         const armored = after[0]?.type === 'ArmorHeld' ? after[0].unitId : undefined;
-        const land = e.result.startsWith('defender') || armored === pair[1];
+        // A free hack its target slips is turned aside too: the leaver gets away unhurt.
+        const slipped = e.type === 'FreeHackResolved' && e.result === 'defenderRecoiled';
+        const land = (e.result.startsWith('defender') && !slipped) || armored === pair[1];
         // Melee the defender answers plays as an exchange, so the swing goes in
         // and is turned aside before the answer comes back — landing when the
         // attacker lost the roll, turned aside in its turn when they clashed.
@@ -1496,7 +1504,10 @@ export class BoardView {
           if (woods[1]) this.woodwiseFx(second);
           if (melee) for (const id of [first, second]) this.whirlFx(id);
         });
-        if (e.result === 'clash' && !armored && e.type !== 'ShotResolved') this.at(s.hit, () => this.clashFx(first, second));
+        // Two blows that both fail end in a clash; a lone swing that fails is simply blocked (see strike).
+        if (e.type === 'AttackResolved' && e.result === 'clash' && !armored && this.answered(e)) {
+          this.at(s.hit, () => this.clashFx(first, second));
+        }
         if (e.type === 'GuardRiposte') {
           this.at(start + cards, () => this.guardFx(e.guardId));
           if (e.prevented) this.at(s.hit, () => this.parryFx(e.guardId, e.attackerId));
@@ -2696,6 +2707,8 @@ export class BoardView {
    * (one that floors its target) is gathered first — the striker sinks back on
    * the first frame of its swing — then driven in deep, and lands harder;
    * hardest when it is `lethal`.
+   * A melee blow that doesn't land is shown blocked (see {@link blockFx}), and
+   * its end comes a moment later, unless `block` is false.
    * Returns the hit and end times, relative to now.
    */
   private strike(
@@ -2703,7 +2716,7 @@ export class BoardView {
     targetId: string,
     range: 'melee' | 'ranged',
     at: number,
-    opts: { land?: boolean; cover?: boolean; windup?: number; heavy?: boolean; lethal?: boolean } = {},
+    opts: { land?: boolean; cover?: boolean; windup?: number; heavy?: boolean; lethal?: boolean; block?: boolean } = {},
   ): { hit: number; end: number } {
     const a = this.units.get(attackerId);
     const d = this.units.get(targetId);
@@ -2771,6 +2784,10 @@ export class BoardView {
       });
     }
     if (coil > 0) this.at(at + hit - DASH_MS, () => this.dashFx(a, d, windup > 0));
+    if (!land && range === 'melee' && opts.block !== false) {
+      this.at(at + hit, () => this.blockFx(a, d));
+      return { hit: at + hit, end: at + dur + BLOCK_BEAT_MS };
+    }
     return { hit: at + hit, end: at + dur };
   }
 
@@ -2788,7 +2805,11 @@ export class BoardView {
     opts: { land?: boolean; windup?: number; heavy?: boolean; lethal?: boolean } = {},
   ): { hit: number; end: number } {
     const swing = this.strike(attackerId, targetId, 'melee', at, { land: false });
-    return this.strike(targetId, attackerId, 'melee', swing.end + RIPOSTE_GAP_MS, opts);
+    // An answer that fails too is the clash, which has its own effect.
+    // The answer comes straight off the block, not once the swing has been taken back.
+    const reply = Math.min(swing.hit + BLOCK_REPLY_MS, swing.end + RIPOSTE_GAP_MS);
+    const answer = this.strike(targetId, attackerId, 'melee', reply, { ...opts, block: false });
+    return { hit: answer.hit, end: Math.max(answer.end, swing.end) };
   }
 
   /**
@@ -4006,6 +4027,43 @@ export class BoardView {
     const color = OWNER_COLORS[obj.owner];
     this.effects.ring(this.feet(obj), color, 0.2, HEX_SIZE * 1.1, { life: 0.6, opacity: 0.6, additive: true });
     obj.glow = { color, start: this.now, end: this.now + 700 };
+  }
+
+  /**
+   * A swing `d` blocks: it stops dead on a steel arc in front of the blocker,
+   * sparks spray back the way it came, the blocker shudders and holds, and the
+   * swing's owner staggers back off it.
+   */
+  private blockFx(a: UnitObj, d: UnitObj): void {
+    if (d.fade || a.fade) return;
+    this.hitStop(BLOCK_STOP_MS);
+    const back = a.group.position.clone().sub(d.group.position).setY(0);
+    const at = this.chest(d).lerp(this.chest(a), 0.35);
+    this.effects.icon('arc', at, 0.6, {
+      life: 0.35,
+      opacity: 0.9,
+      color: STEEL,
+      rotation: this.screenAngle(d.group.position, a.group.position),
+      additive: true,
+    });
+    this.effects.icon('ting', at, 0.4, { life: 0.3, spin: 0.6, color: STEEL, additive: true });
+    this.effects.burst({
+      at,
+      count: 14,
+      colors: STEEL_COLORS,
+      speed: [1.4, 2.8],
+      dir: back.clone().setY(0.4),
+      cone: 0.8,
+      gravity: 5,
+      drag: 2,
+      life: [0.2, 0.4],
+      size: [0.03, 0.06],
+      blend: 'add',
+    });
+    this.flashUnit(d.id, 0.3);
+    this.joltUnit(d, back.clone().negate(), BLOCK_BRACE, true, BLOCK_BOUNCE_MS);
+    this.joltUnit(a, back, BLOCK_BOUNCE, false, BLOCK_BOUNCE_MS);
+    if (this.cameraMode === 'cinematic') this.shakeCamera('nudge', 0.04, 160, back.clone().normalize());
   }
 
   /** 1a–1c. A clash: sparks and a glint where the blades meet, both thrown apart, the defender's ward rippling out. */

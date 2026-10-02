@@ -131,7 +131,7 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     id: 'clash',
     group: 'Melee',
     label: 'Clash',
-    hint: 'A tied roll: sparks where the blades meet, and both are thrown a step apart.',
+    hint: 'A tied roll: the swing is blocked, the answer meets it in sparks, and both are thrown a step apart.',
     stage: (s) => duel(s),
     shows: melee('clash'),
   },
@@ -192,7 +192,7 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     id: 'counterPush',
     group: 'Melee',
     label: 'Attacker pushed',
-    hint: 'The defender wins on an odd die: the swing is turned aside and the answer drives the attacker back.',
+    hint: 'The defender wins on an odd die: the swing is blocked in a spray of steel sparks, the attacker staggers off it, and the answer drives it back.',
     stage: (s) => duel(s),
     shows: melee('attackerRecoiled'),
   },
@@ -266,12 +266,20 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     id: 'hackSlip',
     group: 'Melee',
     label: 'Free hack slips',
-    hint: 'Leaving contact, it loses the hack on an odd die and gets away.',
+    hint: 'Leaving contact, it loses the hack on an odd die, blocks it and gets away.',
     stage: (s) => {
       duel(s);
       return runFrom(s, s.target);
     },
     shows: (ev) => hack(ev)?.result === 'defenderRecoiled' && has(ev, 'UnitMoved'),
+  },
+  {
+    id: 'riposteBlocked',
+    group: 'Melee',
+    label: 'Riposte blocked',
+    hint: "A guard's first strike fails: the attacker blocks it, and its own blow goes in.",
+    stage: (s) => duel(s, ELF, { ...BONES, guard: true }, { guarding: true }),
+    shows: (ev) => ev.some((e) => e.type === 'GuardRiposte' && e.result === 'clash') && has(ev, 'AttackResolved') && plain(ev),
   },
 
   // --- Shooting outcomes --------------------------------------------------------
