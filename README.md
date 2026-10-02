@@ -63,7 +63,7 @@ action; the AI, the tests, and any future UI all pick from that list.
 
 - Players alternate **one unit per activation**; initiative flips each round.
 - An activation commits **1–3 dice** rolled vs the unit's Quality; successes
-  become action points (move/attack).
+  become action points (move/attack). A **Dumb** unit may roll at most 2.
 - **2+ failures = turnover:** that player is **benched for the rest of the
   round** — though the unit still spends any action its successes earned first.
   With a single die you can never turn over.
@@ -94,11 +94,30 @@ action; the AI, the tests, and any future UI all pick from that list.
   **Armored** unit that loses any combat by exactly 1 point — standing or
   knocked down — is unharmed: its armor turns the blow aside. A melee tie
   kills the side without **Combat Mastery** when the other side has it.
+- **Pushes:** an **Immovable** unit is never pushed: it stays where it is, on
+  its feet. A unit with **Bad Balance** is also knocked down wherever a push
+  lands it (a friend bracing it keeps it up). A **Trample** unit pushes a foe
+  two hexes in melee: a standing friend of the foe on the second hex stops it
+  after one, the map edge or lava there kills it, and anything else there
+  leaves it knocked down on the first hex.
+- **Positional bonuses (+1 each):** a **Pincer** strikes at +1 when one of its
+  standing friends is on the hex directly opposite the target; a **Shieldwall**
+  unit defends against an attack at +1 while next to a standing friend; a
+  **Rusher** gets +1 on the first attack after a Move that brought it into
+  contact with its target; a **Woodwise** unit standing in a forest hex gets +1
+  on every combat roll, melee or shot. All of them lapse while the unit is
+  knocked down.
 - **Contact:** a unit that walks next to an enemy stops there, and a unit
   leaving contact takes a **free hack** from each standing enemy it was
-  touching (it can't hit back; a knockdown stops it in its tracks).
+  touching (it can't hit back; a knockdown stops it in its tracks). A
+  **Slippery** unit draws no free hacks, unless it is carrying a flag.
 - **Outnumbering:** in melee, each standing enemy in contact beyond the first
-  costs −1.
+  costs −1. A **Whirling** unit on its feet is never outnumbered.
+- **Disloyal:** a Disloyal unit that rolls a natural 1 on a nerve check changes
+  sides where it stands instead of fleeing, and counts as activated for the
+  round. It keeps the trait, so it can turn again. The side it left is a unit
+  short, which can break it; a Leader's defection makes the friends who see it
+  test nerve; a King's defection ends the game in its new side's favour.
 - **Shooting:** −1 beyond short range (the first half of the shooter's reach)
   and −1 against a target in cover (in a forest, or only just visible past a
   blocker). A **Sharpshooter** scores +1 on every shot it takes.
@@ -115,9 +134,11 @@ seed replays identically).
 - **Cost model** (`unitCost`) — the Song of Blades and Heroes formula
   `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
   favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling,
-  Mounted, Opportunist, Savage, Armored, Sharpshooter) adds
-  3 to Special Abilities and each unfavorable one (Slow) takes 3 off. Leader and
-  Combat Mastery each count as two favorable traits (+6).
+  Mounted, Opportunist, Savage, Armored, Sharpshooter, Pincer, Shieldwall,
+  Rusher, Slippery, Woodwise, Trample) adds
+  3 to Special Abilities and each unfavorable one (Slow, Dumb, Disloyal, Bad
+  Balance) takes 3 off. Leader, Combat Mastery, Whirling and Immovable each
+  count as two favorable traits (+6). Immovable and Bad Balance exclude each other.
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
   3 or 7.
 - **Validation** (`validateWarband`) — checks stat ranges and roster size,

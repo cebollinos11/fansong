@@ -220,6 +220,79 @@ export function sharpshooterBonus(shooter: Pick<Unit, 'traits'>): number {
   return shooter.traits.sharpshooter ? SHARPSHOOTER_BONUS : 0;
 }
 
+/** How much a Pincer gains striking a foe caught between it and a friend. */
+export const PINCER_BONUS = 1;
+
+/** How much a Shieldwall unit gains defending beside a standing friend. */
+export const SHIELDWALL_BONUS = 1;
+
+/** How much a Rusher gains on the attack its charge ends in. */
+export const RUSHER_BONUS = 1;
+
+/** How much a Woodwise unit gains on every combat roll made from a forest hex. */
+export const WOODWISE_BONUS = 1;
+
+/**
+ * The Pincer bonus: {@link PINCER_BONUS} when `unit` is a standing Pincer
+ * striking `opponent` and one of its standing friends holds the hex directly
+ * opposite — the one a push would send `opponent` into. Only ever the striker's:
+ * an attack, a riposte or a free hack.
+ */
+export function pincerBonus(
+  state: GameState,
+  board: { stepAway(from: Vec, v: Vec): Vec },
+  unit: Unit,
+  opponent: Unit,
+): number {
+  if (!unit.traits.pincer || unit.knockedDown) return 0;
+  const behind = board.stepAway(unit.pos, opponent.pos);
+  const closes = state.units.some(
+    (u) => !u.dead && !u.knockedDown && u.owner === unit.owner && u.id !== unit.id && u.pos.x === behind.x && u.pos.y === behind.y,
+  );
+  return closes ? PINCER_BONUS : 0;
+}
+
+/**
+ * The Shieldwall bonus: {@link SHIELDWALL_BONUS} when `unit` is a standing
+ * Shieldwall unit with a standing friend next to it, else 0. It only counts
+ * for the target of a melee attack (the caller decides that).
+ */
+export function shieldwallBonus(
+  state: GameState,
+  board: { distance(a: Vec, b: Vec): number },
+  unit: Unit,
+): number {
+  if (!unit.traits.shieldwall || unit.knockedDown) return 0;
+  const braced = state.units.some(
+    (u) => !u.dead && !u.knockedDown && u.owner === unit.owner && u.id !== unit.id && board.distance(u.pos, unit.pos) === 1,
+  );
+  return braced ? SHIELDWALL_BONUS : 0;
+}
+
+/**
+ * The Rusher bonus: {@link RUSHER_BONUS} when `unit` is the activating Rusher
+ * and its last Move brought it into contact with `opponent` (see
+ * `GameState.rushed`), else 0. Only an attack ever gets it.
+ */
+export function rusherBonus(state: GameState, unit: Unit, opponent: Unit): number {
+  if (!unit.traits.rusher || state.activeUnitId !== unit.id) return 0;
+  return state.rushed?.includes(opponent.id) ? RUSHER_BONUS : 0;
+}
+
+/**
+ * The Woodwise bonus: {@link WOODWISE_BONUS} when `unit` is Woodwise, on its
+ * feet and standing in a forest hex — an airborne flyer is above the trees, not
+ * among them — else 0. It counts on either side of every combat roll, melee or shot.
+ */
+export function woodwiseBonus(
+  state: GameState,
+  board: { feature(v: Vec): unknown },
+  unit: Unit,
+): number {
+  if (!unit.traits.woodwise || unit.knockedDown || airborne(state, unit)) return 0;
+  return board.feature(unit.pos) === 'forest' ? WOODWISE_BONUS : 0;
+}
+
 function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {
   if (loser.knockedDown) return 'Killed';
   return winnerDie % 2 === 1 && loser.canRecoil ? 'Recoiled' : 'KnockedDown';

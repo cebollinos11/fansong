@@ -18,7 +18,11 @@ import {
   masteryEdge,
   mountedMeleeBonus,
   opportunistBonus,
+  pincerBonus,
   sharpshooterBonus,
+  shieldwallBonus,
+  slipsAway,
+  woodwiseBonus,
   outnumberedPenalty,
   rangePenalty,
   scoringZones,
@@ -81,8 +85,8 @@ const DISENGAGE_COST = 30_000;
 
 function disengageCost(state: GameState, board: Board, unitId: string): number {
   const mover = unitById(state, unitId)!;
-  // A flyer lifts away without drawing a hack, so leaving contact costs it nothing.
-  if (airborne(state, mover)) return 0;
+  // A flyer lifts away without drawing a hack, and a Slippery unit ducks out, so leaving contact costs them nothing.
+  if (slipsAway(state, mover)) return 0;
   return adjacentEnemies(state, mover, board).filter((e) => !e.knockedDown).length * DISENGAGE_COST;
 }
 
@@ -140,7 +144,7 @@ const SHOT_PENALTY_COST = 100;
 
 /**
  * How far a shot at `target` from where `shooter` stands is stacked against it:
- * range and cover, less the points a Big, airborne or (to an Opportunist) downed target and a Sharpshooter's eye hand the shooter. Negative means
+ * range, cover and a Woodwise target's trees, less the points a Big, airborne or (to an Opportunist) downed target, a Sharpshooter's eye and a Woodwise shooter's own trees hand the shooter. Negative means
  * the shot is better than an unmodified one.
  */
 function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit): number {
@@ -148,7 +152,9 @@ function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit
   const cover = board.inCover(shooter.pos, target.pos, (v) => occupied.has(vecKey(v))) ? 1 : 0;
   return (
     rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) +
-    cover -
+    cover +
+    woodwiseBonus(state, board, target) -
+    woodwiseBonus(state, board, shooter) -
     bigTargetBonus(target) -
     flyingTargetBonus(state, target) -
     opportunistBonus(shooter, target) -
@@ -179,19 +185,23 @@ function pressedEdge(worthIt: boolean, pressed: boolean): number {
   return pressed === worthIt ? PRESSED_EDGE : -PRESSED_EDGE;
 }
 
-/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, mounts, opportunism and outnumbering. */
+/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, mounts, opportunism, pincers, shieldwalls, woods and outnumbering. */
 function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
   return (
     attacker.combat +
     bigMeleeBonus(attacker, target) +
     flyingMeleeBonus(state, attacker, target) +
     mountedMeleeBonus(attacker, target) +
-    opportunistBonus(attacker, target) -
+    opportunistBonus(attacker, target) +
+    pincerBonus(state, board, attacker, target) +
+    woodwiseBonus(state, board, attacker) -
     outnumberedPenalty(state, attacker, board) -
     (target.combat +
       bigMeleeBonus(target, attacker) +
       mountedMeleeBonus(target, attacker) +
-      opportunistBonus(target, attacker) -
+      opportunistBonus(target, attacker) +
+      shieldwallBonus(state, board, target) +
+      woodwiseBonus(state, board, target) -
       outnumberedPenalty(state, target, board))
   );
 }
@@ -200,6 +210,7 @@ function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit)
 const VALUED_TRAITS = [
   'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist',
   'savage', 'leader', 'armored', 'sharpshooter', 'mastery',
+  'pincer', 'shieldwall', 'rusher', 'slippery', 'whirling', 'immovable', 'woodwise', 'trample',
 ] as const;
 
 /**

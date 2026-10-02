@@ -38,6 +38,28 @@ export interface UnitSpec {
   sharpshooter?: boolean;
   /** Combat Mastery: a melee it ties against a foe without it kills that foe. */
   mastery?: boolean;
+  /** Pincer: +1 striking a foe that has one of its standing friends directly opposite. */
+  pincer?: boolean;
+  /** Shieldwall: +1 defending against a melee attack while next to a standing friend. */
+  shieldwall?: boolean;
+  /** Rusher: +1 on the first attack after a Move that brought it into contact with its target. */
+  rusher?: boolean;
+  /** Slippery: leaving contact draws no free hack, unless it carries a flag. */
+  slippery?: boolean;
+  /** Whirling: never outnumbered in melee while on its feet. */
+  whirling?: boolean;
+  /** Immovable: never pushed. Never with `badBalance`. */
+  immovable?: boolean;
+  /** Woodwise: +1 on every combat roll while standing in a forest hex. */
+  woodwise?: boolean;
+  /** Trample: a foe it pushes in melee goes two hexes instead of one. */
+  trample?: boolean;
+  /** Dumb: at most 2 activation dice. */
+  dumb?: boolean;
+  /** Disloyal: a natural 1 on a nerve check makes it change sides. */
+  disloyal?: boolean;
+  /** Bad Balance: a push that moves it also knocks it down. Never with `immovable`. */
+  badBalance?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -72,6 +94,7 @@ export interface GameConfig {
 
 function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
   if (spec.slow && spec.fast) throw new Error(`unit '${spec.name}' cannot be both slow and fast`);
+  if (spec.immovable && spec.badBalance) throw new Error(`unit '${spec.name}' cannot be both immovable and badly balanced`);
   const unit: Unit = {
     id: `p${owner}u${index}`,
     owner,
@@ -98,6 +121,17 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       armored: spec.armored ?? false,
       sharpshooter: spec.sharpshooter ?? false,
       mastery: spec.mastery ?? false,
+      pincer: spec.pincer ?? false,
+      shieldwall: spec.shieldwall ?? false,
+      rusher: spec.rusher ?? false,
+      slippery: spec.slippery ?? false,
+      whirling: spec.whirling ?? false,
+      immovable: spec.immovable ?? false,
+      woodwise: spec.woodwise ?? false,
+      trample: spec.trample ?? false,
+      dumb: spec.dumb ?? false,
+      disloyal: spec.disloyal ?? false,
+      badBalance: spec.badBalance ?? false,
     },
     guarding: false,
     inspired: false,

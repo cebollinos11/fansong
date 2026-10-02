@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
 import { PRESSED_COST } from './combat.js';
-import { canWarCry, enemiesOf, groupFor, inMelee, isOccupied, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
+import { canWarCry, enemiesOf, groupFor, inMelee, isOccupied, maxActivationDice, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -20,12 +20,14 @@ export function getLegalCommands(state: GameState): Command[] {
     const board = makeHexGrid(state.board);
     for (const u of state.units) {
       if (u.owner !== state.active || !unitAvailable(u)) continue;
-      for (const diceCount of DICE_CHOICES) {
+      // A Dumb unit is offered fewer dice (and so is its group: they are all alike).
+      const choices = DICE_CHOICES.filter((n) => n <= maxActivationDice(u));
+      for (const diceCount of choices) {
         commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount });
       }
       // With friends like it close by, the unit may activate them all on one roll.
       if (groupFor(state, u, board).length === 0) continue;
-      for (const diceCount of DICE_CHOICES) {
+      for (const diceCount of choices) {
         commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount, group: true });
       }
     }

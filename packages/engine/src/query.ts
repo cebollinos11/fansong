@@ -107,9 +107,10 @@ export function adjacentEnemies(state: GameState, unit: Unit, board: Board): Uni
 /**
  * Outnumbering: a combatant fighting in melee takes −1 for each *standing* enemy
  * in contact with it beyond the first. Returns that penalty (0 when facing at
- * most one standing foe).
+ * most one standing foe). A Whirling unit on its feet is never outnumbered.
  */
 export function outnumberedPenalty(state: GameState, unit: Unit, board: Board): number {
+  if (unit.traits.whirling && !unit.knockedDown) return 0;
   const standing = adjacentEnemies(state, unit, board).filter((u) => !u.knockedDown).length;
   return Math.max(0, standing - 1);
 }
@@ -120,6 +121,27 @@ export function outnumberedPenalty(state: GameState, unit: Unit, board: Board): 
  */
 export function airborne(state: GameState, unit: Unit): boolean {
   return unit.traits.flying && !state.mode?.flags?.some((f) => f.carrier === unit.id);
+}
+
+/**
+ * Whether `unit` leaves contact without drawing a free hack: an airborne flyer
+ * lifts out of reach, and a Slippery unit ducks away — unless, like the flyer,
+ * it is weighed down with a flag.
+ */
+export function slipsAway(state: GameState, unit: Unit): boolean {
+  if (airborne(state, unit)) return true;
+  return unit.traits.slippery && !state.mode?.flags?.some((f) => f.carrier === unit.id);
+}
+
+/** Most activation dice any unit may roll. */
+export const MAX_DICE = 3;
+
+/** Most activation dice a Dumb unit may roll. */
+export const DUMB_MAX_DICE = 2;
+
+/** Most activation dice `unit` may roll: {@link MAX_DICE}, or {@link DUMB_MAX_DICE} if it is Dumb. */
+export function maxActivationDice(unit: { traits: Pick<UnitTraits, 'dumb'> }): number {
+  return unit.traits.dumb ? DUMB_MAX_DICE : MAX_DICE;
 }
 
 /**

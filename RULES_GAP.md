@@ -222,8 +222,12 @@ combined moves and attacks) is still not done.
 ## 7. Special rules (traits)
 
 FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted,
-Opportunist, Savage, Armored, Sharpshooter and Combat Mastery (see the ✅ entries below), plus Leader (§6). Guard, Reassembling, Opportunist, Savage, Armored, Sharpshooter and Combat Mastery have no direct equivalent in the
-original. The original core rules have roughly 50 more. Each line below is a
+Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Pincer, Shieldwall,
+Rusher, Slippery, Whirling, Immovable, Woodwise, Trample, Dumb, Disloyal and Bad
+Balance (see the ✅ entries below), plus Leader (§6). Guard, Reassembling,
+Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Pincer, Shieldwall,
+Rusher, Immovable, Woodwise, Trample, Dumb, Disloyal and Bad Balance have no
+direct equivalent in the original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
 
 **Movement:**
@@ -242,13 +246,47 @@ short paraphrase, and the exact effects should be checked before building one.
 - **Amphibious:** moves normally through water.
 - **Mountaineer:** moves normally over rough and uphill ground.
 - **Acrobat:** better at jumping and climbing, and leaves combat more easily.
-- **Free Disengage:** can leave contact without taking free hacks. This needs
-  §2.2 first.
+- ✅ **Done — Slippery** *(the original's Free Disengage)*. *Implemented:* a
+  `slippery` trait. Leaving contact draws no free hack, on a Move or in flight
+  from a failed nerve check (`slipsAway` in query.ts) — unless it is carrying a
+  flag, the same limit a flyer has.
 - **Dashing** *(revised)*: a movement bonus tied to activation.
 
 **Melee:**
-- **Combat Master:** enemies get no outnumbering bonus against it. This needs
-  §3.2 first. (Not the same as FanSong's Combat Mastery, below.)
+- ✅ **Done — Whirling** *(the original's Combat Master; not the same as
+  FanSong's Combat Mastery, below)*. *Implemented:* a `whirling` trait, priced as
+  two favorable traits. While on its feet it takes no outnumbering penalty in
+  any melee (`outnumberedPenalty` returns 0); knocked down it is outnumbered
+  like anyone. A Pincer still gets its bonus against it.
+- ✅ **Done — Pincer** *(FanSong's own)*. *Implemented:* a `pincer` trait. +1
+  whenever it strikes — an attack, a riposte or a free hack — at a foe with one
+  of its standing friends on the hex directly opposite (`attackPincer` /
+  `guardPincer` event fields). It stacks with outnumbering and lapses while the
+  Pincer is knocked down.
+- ✅ **Done — Shieldwall** *(FanSong's own)*. *Implemented:* a `shieldwall`
+  trait. +1 defending against a melee attack while next to a standing friend,
+  whatever that friend's traits (`defenseShieldwall` on `AttackResolved`). Not
+  against a riposte or a free hack, and not while knocked down.
+- ✅ **Done — Rusher** *(FanSong's own)*. *Implemented:* a `rusher` trait. A
+  Move records the enemies it brought the unit into contact with
+  (`GameState.rushed`); the next attack gets +1 if its target is one of them
+  (`attackRusher`). Any attack or further Move, and the end of the activation,
+  clears it. Being shoved into contact does not count.
+- ✅ **Done — Immovable** *(FanSong's own)*. *Implemented:* an `immovable`
+  trait, priced as two favorable traits. A push result — from a blow, a riposte
+  or a shot — leaves it standing where it is (`UnitHeldGround`), map edge and
+  lava included, and does not stop its own attack when it came from a riposte.
+  Never with Bad Balance.
+- ✅ **Done — Trample** *(FanSong's own)*. *Implemented:* a `trample` trait. A
+  foe it pushes in melee (attacking, defending or riposting; never a shot) goes
+  two hexes. A standing friend of the foe on the second hex stops it after one;
+  the map edge or lava there kills it; anything else there leaves it knocked
+  down on the first hex.
+- ✅ **Done — Woodwise** *(FanSong's own)*. *Implemented:* a `woodwise` trait.
+  Standing in a forest hex, on its feet and not airborne, it scores +1 on every
+  combat roll: melee on either side, a shot it takes and a shot taken at it
+  (`attackWoodwise` / `defenseWoodwise` and the riposte's `guardWoodwise` /
+  `attackerWoodwise`).
 - **Hatred:** a bonus against one named enemy type.
 - **Savage:** more lethal against some opponents.
 - **Poison:** extra harm on some die results. It has no effect on undead.
@@ -334,6 +372,22 @@ short paraphrase, and the exact effects should be checked before building one.
 - **Demon:** similar in kind to Undead.
 
 **Behaviour:**
+- ✅ **Done — Dumb** *(FanSong's own, unfavorable)*. *Implemented:* a `dumb`
+  trait. It may roll at most 2 activation dice (`maxActivationDice`), so
+  `getLegalCommands` never offers it 3, alone or in a group.
+- ✅ **Done — Disloyal** *(FanSong's own, unfavorable)*. *Implemented:* a
+  `disloyal` trait. A natural 1 on a nerve check makes it change sides where it
+  stands instead of fleeing (`UnitDefected`). It drops its Guard stance and any
+  flag it carries, leaves a group activation it was waiting in, counts as
+  activated for the round, and keeps the trait. The side it left is a unit
+  short, so the rout check runs for it, and a side left with no one loses. A
+  defecting Leader makes the friends who see it test nerve; a defecting King
+  ends the game for its new side.
+- ✅ **Done — Bad Balance** *(FanSong's own, unfavorable)*. *Implemented:* a
+  `badBalance` trait. A push that moves it — from a blow, a riposte or a shot —
+  also knocks it down where it lands. Braced by a friend it is not moved, so it
+  stays up, and slipping away from a free hack does not floor it. Never with
+  Immovable.
 - **Gregarious:** worse when it is away from friends.
 - **Lone:** cannot join group activations.
 - **Greedy:** is distracted by loot and objectives.
