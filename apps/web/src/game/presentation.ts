@@ -28,7 +28,8 @@ export class PresentationQueue<T> {
 
   /** Whether nothing is playing, waiting, or deliberately held back. */
   get idle(): boolean {
-    return this.current === null && this.queue.length === 0 && !this.holding;
+    // A hold asked for while an item settles counts from that moment, before its timer starts.
+    return this.current === null && this.queue.length === 0 && !this.holding && this.pendingHoldMs === 0;
   }
 
   push(item: T): void {
@@ -80,7 +81,8 @@ export class PresentationQueue<T> {
   }
 
   private pump(): void {
-    if (this.disposed || this.current !== null) return;
+    // An item that arrives during a hold waits it out like one already queued.
+    if (this.disposed || this.current !== null || this.holding) return;
     const next = this.queue.shift();
     if (next === undefined) return;
     this.current = next;

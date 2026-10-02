@@ -98,6 +98,18 @@ describe('PresentationQueue', () => {
       expect(log).toEqual(['present a', 'finish a', 'present b']);
     });
 
+    it('also holds back an item that only arrives during the hold', () => {
+      const { q, log } = setup();
+      q.push('a');
+      q.played(0);
+      q.hold(500);
+      vi.advanceTimersByTime(200);
+      q.push('b');
+      expect(log).toEqual(['present a', 'finish a idle']);
+      vi.advanceTimersByTime(300);
+      expect(log).toEqual(['present a', 'finish a idle', 'present b']);
+    });
+
     it('only holds up the item finishing when it was called, not the one after', () => {
       const { q, log } = setup();
       q.push('a');
@@ -110,6 +122,24 @@ describe('PresentationQueue', () => {
       q.played(0);
       vi.advanceTimersByTime(100);
       expect(log).toContain('finish b idle'); // no lingering hold from 'a'
+    });
+
+    it('is already not idle when asked to hold as an item settles', () => {
+      const seen: boolean[] = [];
+      const q: PresentationQueue<string> = new PresentationQueue<string>(
+        () => {},
+        () => {
+          q.hold(500);
+          seen.push(q.idle);
+        },
+        100,
+      );
+      q.push('a');
+      q.played(0);
+      vi.advanceTimersByTime(0);
+      expect(seen).toEqual([false]);
+      vi.advanceTimersByTime(500);
+      expect(q.idle).toBe(true);
     });
 
     it('reports not idle while holding, even though nothing is playing', () => {

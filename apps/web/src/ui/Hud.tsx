@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { airborne, unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
-import { isAiSeat, type MatchSetup } from '@fansong/content';
+import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { seatLabel, traitTags, warbandStatus } from './hudView.js';
+import { seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import type { BattleLog } from './log.js';
 import { modeHud } from './modeView.js';
@@ -21,6 +21,8 @@ interface Props {
   humanTurn: boolean;
   /** True while the board is still playing out the latest dice and blows. */
   resolving: boolean;
+  /** The unit whose doings the board is playing out (or last played), named while the player waits. */
+  playingUnitId: string | null;
   /** True while the round-start banner covers the board — nobody's turn text is accurate yet. */
   roundStarting: boolean;
   /** True while the board is showing the round's zones being scored. */
@@ -101,12 +103,7 @@ export function Hud(props: Props): JSX.Element {
     turn = { text: 'Starting the round…', tone: 'waiting' };
   } else if (!humanTurn) {
     turn = {
-      text:
-        props.resolving && controlledSeats.includes(state.active)
-          ? 'Resolving…'
-          : isAiSeat(setup, state.active)
-            ? 'AI is thinking…'
-            : "Opponent's turn…",
+      text: waitingLine(setup, controlledSeats, state, props.resolving ? (props.playingUnitId ?? '') : null),
       tone: 'waiting',
     };
   } else if (state.phase === 'awaitingActivation') {

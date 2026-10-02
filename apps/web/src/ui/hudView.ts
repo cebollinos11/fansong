@@ -27,6 +27,23 @@ export function turnPhrase(label: string): string {
   return label === 'You' ? 'Your turn' : `${label}'s turn`;
 }
 
+/**
+ * What the HUD says while the local player cannot act. While the board is
+ * playing something out (`playingUnitId` is the unit doing it), it names that
+ * unit rather than claiming the other side is still thinking.
+ */
+export function waitingLine(
+  setup: MatchSetup,
+  controlled: readonly Owner[],
+  state: GameState,
+  playingUnitId: string | null,
+): string {
+  const unit = playingUnitId ? state.units.find((u) => u.id === playingUnitId) : undefined;
+  if (unit && !controlled.includes(unit.owner)) return `${seatLabel(setup, controlled, unit.owner)}: ${unit.name} acts…`;
+  if (playingUnitId !== null && (unit || controlled.includes(state.active))) return 'Resolving…';
+  return isAiSeat(setup, state.active) ? 'AI is thinking…' : "Opponent's turn…";
+}
+
 /** How a warband is doing, for its line in the scoreline. */
 export interface WarbandStatus {
   alive: number;

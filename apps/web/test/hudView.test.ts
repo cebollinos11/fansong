@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { ROUT_FRACTION, type GameState, type Owner, type UnitTraits } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { armyName, seatLabel, traitLine, traitTags, turnPhrase, warbandStatus } from '../src/ui/hudView.js';
+import { armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
 
 const VS_AI: MatchSetup = {
   presets: ['iron-wardens', 'ashfang-raiders'],
@@ -50,6 +50,28 @@ describe('seatLabel', () => {
     // An unresolvable preset with no roster still gives the seat a label.
     expect(armyName({ ...HOTSEAT, presets: ['nope', 'nope'] }, 0)).toBeNull();
     expect(seatLabel({ ...HOTSEAT, presets: ['nope', 'nope'] }, [0, 1], 0)).toBe('Seat 0');
+  });
+});
+
+describe('waitingLine', () => {
+  const state = createMatchFromPresets(VS_AI);
+  const mine = state.units.find((u) => u.owner === 0)!;
+  const theirs = state.units.find((u) => u.owner === 1)!;
+  const aiToAct: GameState = { ...state, active: 1 };
+
+  it('names the opposing unit the board is playing out', () => {
+    expect(waitingLine(VS_AI, [0], aiToAct, theirs.id)).toBe(`AI: ${theirs.name} acts…`);
+    expect(waitingLine(HOTSEAT, [0], aiToAct, theirs.id)).toBe(`Opponent: ${theirs.name} acts…`);
+  });
+
+  it("says the player's own action is resolving", () => {
+    expect(waitingLine(VS_AI, [0], aiToAct, mine.id)).toBe('Resolving…');
+    expect(waitingLine(VS_AI, [0], { ...state, active: 0 }, '')).toBe('Resolving…');
+  });
+
+  it('only says the other side is thinking when nothing is playing', () => {
+    expect(waitingLine(VS_AI, [0], aiToAct, null)).toBe('AI is thinking…');
+    expect(waitingLine(HOTSEAT, [0], aiToAct, null)).toBe("Opponent's turn…");
   });
 });
 

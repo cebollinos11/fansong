@@ -9,6 +9,7 @@ import { PresentationQueue } from '../game/presentation.js';
 import { downloadReplay } from '../game/replay-io.js';
 import { splitRoundScoring, type ZoneTally } from '../game/roundScoring.js';
 import { splitRoundStart } from '../game/roundStart.js';
+import { seamHoldMs } from '../game/seams.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { oddsLine } from './hexInfo.js';
@@ -72,6 +73,10 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // subscribe effect), so nothing next round is clickable or shown until it clears.
   const [roundAnnounce, setRoundAnnounce] = useState<{ round: number; owner: Owner } | null>(null);
   const queueRef = useRef<PresentationQueue<Transition> | null>(null);
+  // How long the transition now showing took to play: 0 when it was instant or skipped.
+  const playedMs = useRef(0);
+  // The unit the board last showed acting, which the HUD names while the player waits.
+  const [playingUnitId, setPlayingUnitId] = useState<string | null>(null);
   const runnerRef = useRef<PlanRunner | null>(null);
   // The board reports a unit click without the event, so remember where the
   // pointer last went down — that is where the attack menu opens.
@@ -86,10 +91,14 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // connection status. The client owns the state; the screen only renders it,
   // one transition at a time, so each roll plays out before its result shows.
   useEffect(() => {
+    // Who was to act before the transition now playing: the side whose doings it shows.
+    let actor = client.getState().active;
     const queue = new PresentationQueue<Transition>(
       (t) => {
         setIdle(false);
         setShown({ state: t.state, events: t.events, scoring: t.scoring });
+        const chosen = t.events.find((e): e is Extract<GameEvent, { type: 'ActivationChosen' }> => e.type === 'ActivationChosen');
+        setPlayingUnitId((prev) => chosen?.unitId ?? t.state.activeUnitId ?? prev);
         setSelectedUnitId(null);
         setAttackChoice(null);
         setPinnedCell(null);
@@ -97,7 +106,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       (t, nowIdle) => {
         setState(t.state);
         setLog((prev) => appendEvents(prev, t.state, t.events));
-        setIdle(nowIdle);
+        // A beat between one activation and the next, so a result is read before the board moves on.
+        queue.hold(seamHoldMs(t.events, actor, t.state.active, client.controlledSeats, playedMs.current));
+        actor = t.state.active;
         // A zone's point has just counted; leave its verdict up before the next zone.
         if (t.scoring) queue.hold(ZONE_SCORE_HOLD_MS);
         // Only once this transition's own animations (a round-ending blow, say)
@@ -108,6 +119,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
           setRoundAnnounce({ round: roundEnded.round, owner: roundEnded.nextLeader });
           queue.hold(ROUND_ANNOUNCE_MS);
         }
+        // Input stays locked through a hold; it comes back once the hold is over.
+        setIdle(queue.idle);
+        if (nowIdle && !queue.idle) void queue.whenIdle().then(() => setIdle(queue.idle));
       },
     );
     queueRef.current = queue;
@@ -482,7 +496,10 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         localSeats={client.controlledSeats}
         liveTerrain={sandbox !== undefined}
         events={shown.events}
-        onEventsPlayed={(ms) => queueRef.current?.played(ms)}
+        onEventsPlayed={(ms) => {
+          playedMs.current = ms;
+          queueRef.current?.played(ms);
+        }}
         announcement={announcement}
         scoring={scoring}
         onUnitClick={handleUnitClick}
@@ -505,6 +522,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         selectedUnitId={selectedUnitId}
         humanTurn={myTurn}
         resolving={!idle}
+        playingUnitId={playingUnitId}
         roundStarting={roundAnnounce !== null}
         scoring={scoring !== null}
         log={log}

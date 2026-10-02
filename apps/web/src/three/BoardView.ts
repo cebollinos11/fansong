@@ -1311,6 +1311,8 @@ export class BoardView {
         }
       } else if (e.type === 'ActivationChosen') {
         const obj = this.units.get(e.unitId);
+        // A new activation starts on a clean screen: the last fight's cards and verdict go.
+        this.at(t, () => this.rolls.retireFight());
         // The opponent's pick is news to whoever is watching; the player's own already flashed when they made it.
         // A group lights up together, so it is plain who shares the roll.
         for (const id of e.group ?? [e.unitId]) if (id !== this.ownPick) this.at(t, () => this.flashPick(id));

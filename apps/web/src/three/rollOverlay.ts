@@ -288,6 +288,16 @@ export class RollOverlay {
     for (const c of this.cards) if (!c.pin) c.endAt = Math.min(c.endAt, this.now + LEAVE_MS);
   }
 
+  /**
+   * Fade out the last fight's corner cards and its verdict: a new unit is
+   * stepping up, and its dice should not share the screen with an old result.
+   */
+  retireFight(): void {
+    const end = this.now + LEAVE_MS;
+    for (const c of this.cards) if (c.pin) c.endAt = Math.min(c.endAt, end);
+    for (const v of this.verdicts) if (v.pin) v.endAt = Math.min(v.endAt, end);
+  }
+
   /** Drop everything at once (a replay jump). */
   clear(): void {
     for (const c of this.cards) c.el.remove();
