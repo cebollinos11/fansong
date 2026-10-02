@@ -58,7 +58,6 @@ export type FxTexture =
   | 'ting'
   | 'chevron'
   | 'shield'
-  | 'skull'
   | 'blades'
   | 'arc'
   | 'fallen'
@@ -736,39 +735,6 @@ function drawTexture(g: CanvasRenderingContext2D, kind: FxTexture): void {
       g.globalAlpha = 0.35;
       g.stroke();
       g.globalAlpha = 1;
-      return;
-    }
-    case 'skull': {
-      g.fillStyle = '#ece6d6';
-      g.beginPath();
-      g.arc(c, 54, 40, Math.PI * 0.85, Math.PI * 2.15);
-      g.lineTo(88, 96);
-      g.lineTo(40, 96);
-      g.closePath();
-      g.fill();
-      g.fillRect(44, 92, 40, 20);
-      g.lineWidth = 6;
-      g.stroke();
-      g.strokeRect(44, 92, 40, 20);
-      g.fillStyle = INK;
-      for (const x of [46, 82]) {
-        g.beginPath();
-        g.ellipse(x, 60, 12, 14, 0, 0, Math.PI * 2);
-        g.fill();
-      }
-      g.beginPath();
-      g.moveTo(c, 72);
-      g.lineTo(58, 86);
-      g.lineTo(70, 86);
-      g.closePath();
-      g.fill();
-      g.lineWidth = 4;
-      for (const x of [56, 64, 72]) {
-        g.beginPath();
-        g.moveTo(x, 94);
-        g.lineTo(x, 110);
-        g.stroke();
-      }
       return;
     }
     case 'blades': {

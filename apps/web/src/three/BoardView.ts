@@ -494,6 +494,9 @@ const SHATTER_FADE_MS = 200; // a unit that shatters into motes is gone this fas
 const COIL_MS = 260; // a blow that floors its target is gathered this long first: the striker sinks back before it goes
 const COIL_BACK = 0.45; // how far it draws back as it gathers, as a fraction of its lunge...
 const COIL_SQUASH = 0.14; // ...and how much it crouches into itself
+const DREAD_COIL_MS = 620; // a gruesome kill is gathered this long before the swing (or the draw) even starts...
+const DREAD_COIL_DEPTH = 1.6; // ...its killer sinking this much further back and down than for an ordinary heavy blow
+const DREAD_BEATS = 2; // the heartbeats that sound through that gathering
 const HEAVY_REACH = 1.5; // how much deeper than an ordinary lunge that blow drives in
 const DASH_MS = 90; // the last of the swing, when it covers nearly all that ground
 const DASH_STRETCH = 0.2; // how much the cutout stretches along the dash
@@ -720,9 +723,10 @@ interface UnitObj {
   /**
    * A shove the cutout rides out and recovers from: a strike's lunge in, or a
    * dodge back. With `coil` (ms) it first sinks back for that long, gathering,
-   * then drives in late and deep (see {@link COIL_BACK}, {@link HEAVY_REACH}).
+   * then drives in late and deep (see {@link COIL_BACK}, {@link HEAVY_REACH});
+   * `depth` scales how far it sinks.
    */
-  lunge: { dir: THREE.Vector3; start: number; hit: number; end: number; coil?: number } | null;
+  lunge: { dir: THREE.Vector3; start: number; hit: number; end: number; coil?: number; depth?: number } | null;
   /**
    * Struck off its feet: thrown back along `dir` in an arc from `start` to
    * `land`, tipping over by `lean`, then bouncing and sliding home until `end`.
@@ -2687,7 +2691,8 @@ export class BoardView {
    * `land` is false for a blow the target turns aside — it still defends, but
    * nothing connects; a shot that misses with `cover` hits the cover instead.
    * A `windup` (a gruesome kill's) holds the swing or the draw at its peak that
-   * many ms longer, gathering dread, before it lets go. A `heavy` melee blow
+   * many ms longer, gathering dread, before it lets go — and is itself led up
+   * to by a long gathering (see {@link forebodeFx}). A `heavy` melee blow
    * (one that floors its target) is gathered first — the striker sinks back on
    * the first frame of its swing — then driven in deep, and lands harder;
    * hardest when it is `lethal`.
@@ -2709,11 +2714,14 @@ export class BoardView {
     // The moment it lets go: the blow landing, or the missile leaving the shooter.
     const release = (c: RangedClip) =>
       (c.hitMs ?? clipDuration(c) / 2) - (range === 'ranged' ? (c.missileMs ?? 150) : 0);
-    const coil = opts.heavy && range === 'melee' && windup === 0 ? COIL_MS : 0;
+    // What comes before the swing: a gruesome kill's long gathering (a shooter's
+    // too, standing over its first frame), or a heavy blow's short one.
+    const lead = windup > 0 ? DREAD_COIL_MS : opts.heavy && range === 'melee' ? COIL_MS : 0;
+    const coil = range === 'melee' ? lead : 0;
     const peaked = picked && windup > 0 ? holdPeak(picked, release(picked), windup) : picked;
-    const clip = peaked && coil > 0 ? holdPeak(peaked, 1, coil) : peaked;
-    const dur = clip ? clipDuration(clip) : 400 + windup + coil;
-    const hit = clip?.hitMs ?? (clip ? dur / 2 : 200 + windup + coil);
+    const clip = peaked && lead > 0 ? holdPeak(peaked, 1, lead) : peaked;
+    const dur = clip ? clipDuration(clip) : 400 + windup + lead;
+    const hit = clip?.hitMs ?? (clip ? dur / 2 : 200 + windup + lead);
     const land = opts.land ?? true;
     const ending: ShotEnding = land ? 'hit' : opts.cover ? 'cover' : 'miss';
     if (windup > 0) {
@@ -2726,10 +2734,11 @@ export class BoardView {
       this.setHeading(a, toTarget.clone());
       this.setHeading(d, toTarget.clone().negate());
       a.animator.play(clip);
+      if (windup > 0) this.forebodeFx(a, d, lead, hit);
       if (range === 'melee') {
         const dir = toTarget.normalize().multiplyScalar(LUNGE);
-        a.lunge = { dir, start: this.now, hit: this.now + hit, end: this.now + dur, coil };
-        if (coil > 0) this.coilFx(a, d, coil);
+        a.lunge = { dir, start: this.now, hit: this.now + hit, end: this.now + dur, coil, depth: windup > 0 ? DREAD_COIL_DEPTH : 1 };
+        if (coil > 0 && windup === 0) this.coilFx(a, d, coil);
       } else if (clip?.missile) {
         this.launchMissile(a, d, clip.missile, hit - (clip.missileMs ?? 150), hit, ending);
       } else {
@@ -2756,11 +2765,12 @@ export class BoardView {
     if (land) {
       this.at(at + hit, () => {
         this.flashUnit(targetId, coil > 0 ? 1 : 0.8);
-        if (coil > 0) this.smashFx(a, d, opts.lethal === true);
+        // A gruesome kill's impact is its own (see killFx).
+        if (coil > 0 && windup === 0) this.smashFx(a, d, opts.lethal === true);
         else if (range === 'melee') this.impactFx(a, d);
       });
     }
-    if (coil > 0) this.at(at + hit - DASH_MS, () => this.dashFx(a, d));
+    if (coil > 0) this.at(at + hit - DASH_MS, () => this.dashFx(a, d, windup > 0));
     return { hit: at + hit, end: at + dur };
   }
 
@@ -3042,25 +3052,27 @@ export class BoardView {
     // Melee lunge: lean in until the hit frame, then settle back.
     const off = new THREE.Vector3();
     if (obj.lunge) {
-      const { dir, start, hit, end, coil = 0 } = obj.lunge;
+      const { dir, start, hit, end, coil = 0, depth = 1 } = obj.lunge;
       const go = start + coil;
+      const back = COIL_BACK * depth;
+      const sag = COIL_SQUASH * depth;
       if (this.now >= end) obj.lunge = null;
       else if (coil > 0 && this.now < go) {
         // Gathering: it sinks back and down into itself.
         const k = THREE.MathUtils.clamp((this.now - start) / coil, 0, 1);
         const e = 1 - (1 - k) ** 2;
-        off.addScaledVector(dir, -COIL_BACK * e);
-        tall = 1 - COIL_SQUASH * e;
-        wide = 1 + COIL_SQUASH * 0.7 * e;
+        off.addScaledVector(dir, -back * e);
+        tall = 1 - sag * e;
+        wide = 1 + sag * 0.7 * e;
       } else if (coil > 0 && this.now < hit) {
         // Let go: it hangs back through the swing, then covers the ground all at once, stretched along the way.
         const k = THREE.MathUtils.clamp((this.now - go) / Math.max(1, hit - go), 0, 1);
         const e = k ** 4;
-        off.addScaledVector(dir, THREE.MathUtils.lerp(-COIL_BACK, HEAVY_REACH, e));
+        off.addScaledVector(dir, THREE.MathUtils.lerp(-back, HEAVY_REACH, e));
         const held = Math.max(0, 1 - k / 0.3);
         const stretch = 4 * e * (1 - e);
-        tall = 1 - COIL_SQUASH * held - 0.07 * stretch;
-        wide = 1 + COIL_SQUASH * 0.7 * held + DASH_STRETCH * stretch;
+        tall = 1 - sag * held - 0.07 * stretch;
+        wide = 1 + sag * 0.7 * held + DASH_STRETCH * stretch;
       } else if (coil > 0) {
         // It stays in on the blow a moment, then steps back.
         const k = THREE.MathUtils.clamp((end - this.now) / Math.max(1, end - hit), 0, 1);
@@ -3817,20 +3829,22 @@ export class BoardView {
   }
 
   /** The last of a heavy swing, as the striker covers the ground: afterimages behind it, speed lines, dirt kicked back. */
-  private dashFx(a: UnitObj, d: UnitObj): void {
+  private dashFx(a: UnitObj, d: UnitObj, dread = false): void {
     const dir = d.group.position.clone().sub(a.group.position).setY(0).normalize();
-    const color = new THREE.Color(OWNER_COLORS[a.owner]).lerp(new THREE.Color(0xffffff), 0.45).getHex();
-    for (let i = 0; i < DASH_GHOSTS; i++) {
-      this.at((i * DASH_MS) / DASH_GHOSTS, () => this.afterimage(a, color, DASH_GHOST_LIFE));
+    const color = dread ? DREAD_COLOR : new THREE.Color(OWNER_COLORS[a.owner]).lerp(new THREE.Color(0xffffff), 0.45).getHex();
+    // A gruesome kill's dash leaves more of them, and they hang longer (it lands in slow motion).
+    const ghosts = dread ? DASH_GHOSTS + 2 : DASH_GHOSTS;
+    for (let i = 0; i < ghosts; i++) {
+      this.at((i * DASH_MS) / ghosts, () => this.afterimage(a, color, dread ? DASH_GHOST_LIFE * 2 : DASH_GHOST_LIFE));
     }
     const feet = this.feet(a);
     const body = feet.clone().add(new THREE.Vector3(a.facing.position.x, 0, a.facing.position.z));
     const ahead = body.clone().addScaledVector(dir, HEX_SIZE * 0.9);
     const along = this.screenAngle(body, ahead);
     for (const lift of [0.25, 0.5, 0.75]) {
-      this.effects.streak(body.clone().setY(feet.y + lift * a.size + a.hover), along, 1.3 - lift * 0.4, 0.06, {
-        life: 0.28,
-        color: 0xffffff,
+      this.effects.streak(body.clone().setY(feet.y + lift * a.size + a.hover), along, 1.3 - lift * 0.4, dread ? 0.09 : 0.06, {
+        life: dread ? 0.45 : 0.28,
+        color: dread ? DREAD_COLOR : 0xffffff,
         opacity: 0.8,
       });
     }
@@ -4431,7 +4445,7 @@ export class BoardView {
    * 6d, 7a–7f. A killing blow: a shockwave — and for a gruesome one (dealt by
    * `killerId`, with a shot if `ranged`), a hit-stop opening on a flat
    * silhouette, slow motion, the killing stroke hanging in the air, a lurch of
-   * the camera, ash, a skull, a wall of fear and a scorch that stays.
+   * the camera, ash, a wall of fear and a scorch that stays.
    */
   private killFx(obj: UnitObj, gruesome: boolean, shakenIds: string[], killerId: string | null = null, ranged = false): void {
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.035);
@@ -4486,8 +4500,6 @@ export class BoardView {
       shape: 'square',
       floor: ground.y,
     });
-    // 7c: a pale skull blooms over the hex.
-    this.effects.icon('skull', chest.clone().setY(chest.y + 0.55), 0.75, { life: 1.1, rise: 0.3, opacity: 0.92 });
     // 7b: fear spreads out to the edge of its reach as a pale wall, and every
     // friend it reaches — each about to test its nerve — starts and shudders as it passes.
     const reach = MORALE_RADIUS * HEX_STEP;
@@ -4516,6 +4528,79 @@ export class BoardView {
     }
   }
 
+  /**
+   * The long gathering before a gruesome kill, over `ms` (its blow landing
+   * `toHit` ms from now): the killer's rim lights, dread is drawn in to it from
+   * all round in waves, ash lifts off the ground, a heartbeat thuds — each beat
+   * a ring closing under it and a knock of the camera, harder than the last —
+   * and the victim sees it coming: it starts, and shakes until the blow lands.
+   */
+  private forebodeFx(a: UnitObj, d: UnitObj, ms: number, toHit: number): void {
+    const feet = this.feet(a);
+    const chest = this.chest(a);
+    a.glow = { color: DREAD_COLOR, start: this.now, end: this.now + toHit };
+    // Motes drawn in to the killer from a circle round it.
+    const waves = 4;
+    for (let w = 0; w < waves; w++) {
+      this.at((w * ms) / waves, () => {
+        const life = 0.32;
+        for (let i = 0; i < 14; i++) {
+          const turn = Math.random() * Math.PI * 2;
+          const r = 0.75 + Math.random() * 0.45;
+          const from = new THREE.Vector3(Math.cos(turn) * r, (Math.random() - 0.3) * 0.7, Math.sin(turn) * r);
+          this.effects.burst({
+            at: chest.clone().add(from),
+            count: 1,
+            colors: [DREAD_COLOR, 0xffffff, HALO_COLOR],
+            speed: [(r / life) * 0.85, (r / life) * 0.85],
+            dir: from.clone().negate(),
+            cone: 0,
+            life: [life, life],
+            size: [0.06, 0.11],
+            grow: 0.3,
+            blend: 'add',
+          });
+        }
+      });
+    }
+    // Ash and grit lifting off the ground round it.
+    this.effects.burst({
+      at: feet,
+      count: 22,
+      colors: ASH_COLORS,
+      speed: [0, 0.15],
+      flat: true,
+      up: 0.55,
+      gravity: -0.6,
+      life: [ms / 1000, (ms / 1000) * 1.6],
+      size: [0.03, 0.06],
+      shape: 'square',
+      opacity: 0.8,
+      jitter: HEX_SIZE * 0.8,
+    });
+    // The heartbeat: each beat harder than the last.
+    for (let b = 0; b < DREAD_BEATS; b++) {
+      const strength = (b + 1) / DREAD_BEATS;
+      this.at((b * ms) / DREAD_BEATS, () => {
+        this.effects.ring(feet, DREAD_COLOR, HEX_SIZE * (1.5 + 0.4 * strength), 0.25, {
+          life: (ms / DREAD_BEATS / 1000) * 0.9,
+          opacity: 0.5 + 0.4 * strength,
+          thick: true,
+          additive: true,
+        });
+        this.effects.pop('hoop', chest, 0.5, 1.1 + 0.5 * strength, { life: 0.3, color: DREAD_COLOR, opacity: 0.35 * strength });
+        this.dust(feet, 6, 0.7);
+        this.shakeCamera('rumble', 0.012 + 0.02 * strength, 180);
+        if (this.cameraMode === 'cinematic') this.shakeCamera('nudge', 0.03 + 0.04 * strength, 200, new THREE.Vector3(0, -1, 0));
+      });
+    }
+    // The victim sees it coming.
+    const away = d.group.position.clone().sub(a.group.position).setY(0);
+    const head = d.group.position.clone().setY(d.group.position.y + TILE_TOP + BADGE_HEIGHT + d.hover + 0.1);
+    this.effects.icon('alarm', head, 0.42, { life: Math.min(1.1, toHit / 1000), rise: 0.12, color: FEAR_WALL_COLOR });
+    this.joltUnit(d, away, 0.04, true, toHit);
+  }
+
   /** 7d. A killer gathering itself for a gruesome blow over `ms`: dread closing in on it, motes rising, a rim of light. */
   private gatherFx(obj: UnitObj, ms: number): void {
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
@@ -4534,7 +4619,13 @@ export class BoardView {
       jitter: 0.45,
     });
     obj.glow = { color: DREAD_COLOR, start: this.now, end: this.now + ms + 300 };
-    this.shakeCamera('rumble', 0.015, ms);
+    this.shakeCamera('rumble', 0.03, ms);
+    // The weapon catches the light at the top of the swing, and a last ring snaps shut on it.
+    const glint = this.chest(obj);
+    glint.y += 0.35 * obj.size;
+    this.effects.icon('ting', glint, 0.85, { life: Math.min(0.4, ms / 1000), spin: 1.6, additive: true });
+    this.effects.pop('burst', glint, 0.25, 0.8, { life: 0.22, color: DREAD_COLOR, opacity: 0.8 });
+    this.effects.ring(ground, 0xffffff, HEX_SIZE * 1.1, 0.15, { life: (ms / 1000) * 0.7, opacity: 0.7, additive: true });
   }
 
   /**
