@@ -335,6 +335,7 @@ const SELECT_COLOR = 0xffd54a;
 const FOCUS_COLOR = 0xffffff; // ring on a unit named by the hovered log line
 const GUARD_COLOR = 0x53e0d0; // ring on a unit holding a Guard stance
 const INSPIRED_COLOR = '#ffae3c'; // star over a unit inspired by a war cry
+const INSPIRED_GLOW = 0xffae3c; // the same colour, for the war cry's rings and blinks
 const CROWN_COLOR = '#ffd54a';
 const BADGE_SIZE = 0.42; // world size of a badge sprite
 const BADGE_HEIGHT = 1.55; // badge centre above the unit's base
@@ -406,6 +407,15 @@ const ROUT_MS = 700; // a routed unit flees toward its own board edge while fadi
 const MAX_QUEUE_MS = 4000; // most a new batch waits behind the previous one's animations
 const NERVE_LEAD_MS = 900; // pause between a killing blow (its verdict) and the nerve checks it causes
 const WAR_CRY_MS = 1100; // a Leader's war cry: its rallying clip and verdict before play goes on
+const WAR_CRY_SHOUT_MS = 650; // the shout rolls out from the Leader this long before the camera turns to who hears it
+const WAR_CRY_RINGS = 3; // rings of the shout rolling out from the Leader
+const WAR_CRY_RING_GAP_MS = 170;
+const WAR_CRY_REACH_MS_PER_UNIT = 90; // a friend further from the Leader takes heart this much later per world unit
+const WAR_CRY_REACH_MAX_MS = 800; // but never later than this after the nearest
+const INSPIRE_BLINKS = 3; // gold blinks an inspired friend gives, the star landing on the last
+const INSPIRE_BLINK_MS = 260; // one blink
+const INSPIRE_HOLD_MS = 450; // the stars stay in view this long before play goes on
+const BADGE_POP_MS = 380; // a badge popping in over a unit, overshooting a little
 
 // Combat effects (see effects.ts). No red anywhere: impacts are white and gold,
 // dust takes the ground's colour, and a gruesome kill leaves ash, not blood.
@@ -697,6 +707,12 @@ interface UnitObj {
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   /** Mode badge sprite (shares a texture per badge kind); hidden when none. */
   badge: THREE.Sprite;
+  /** Whether the view model gives it a badge, which shows once {@link badgeHeld} has passed. */
+  badgeOn: boolean;
+  /** Board time before which its badge stays hidden: a war cry's star waits for the friend to take heart. */
+  badgeHeld: number;
+  /** Board time its badge popped in, while it is still growing to size. */
+  badgePop: number | null;
   /** Dizzy stars circling the head while knocked down. */
   stars: THREE.Group;
   anims: SpriteAnimations;
@@ -743,7 +759,7 @@ interface UnitObj {
   /** A knock the cutout takes and springs back from (a clash, a brace, a shudder of fear); `shake` wobbles instead. */
   jolt: { dir: THREE.Vector3; start: number; end: number; shake: boolean } | null;
   /** A rim glow traced around the figure (a Tough save), when no click cue is showing. */
-  glow: { color: number; start: number; end: number } | null;
+  glow: { color: number; start: number; end: number; beats?: number } | null;
   /** Board times a knocked-down unit blinks between (see {@link BLINKS}). */
   blink: { start: number; end: number } | null;
   /**
@@ -1570,23 +1586,7 @@ export class BoardView {
         settle = start + NERVE_RESOLVE_MS;
         t = Math.max(t, start + NERVE_ROLL_MS);
       } else if (e.type === 'WarCry') {
-        // Frame the Leader, rally with its leadership clip, and name who took heart.
-        t += this.pause(this.frameUnits([e.unitId], t));
-        const obj = this.units.get(e.unitId);
-        const n = e.inspired.length;
-        this.at(t, () => {
-          if (obj?.anims.leading) obj.animator.play(obj.anims.leading);
-          this.rolls.addVerdict(
-            {
-              text: 'War cry!',
-              detail: n > 0 ? `${n} ${n === 1 ? 'friend' : 'friends'} inspired` : 'no one left to inspire',
-              on: [e.unitId],
-              tone: 'save',
-            },
-            this.now,
-          );
-        });
-        t += WAR_CRY_MS;
+        t = this.warCry(e.unitId, e.inspired, t);
         lastHit = settle = t;
       } else if (e.type === 'LeaderFallen') {
         const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
@@ -2102,6 +2102,104 @@ export class BoardView {
   }
 
   /**
+   * A Leader's war cry, starting `at` ms from now: frame the Leader as it rallies
+   * and its shout rolls out in rings, then bring every friend it inspired into
+   * view and have each one blink gold in turn, nearest first, its star popping
+   * in on the last blink. Returns when the beat is over.
+   */
+  private warCry(leaderId: string, inspired: string[], at: number): number {
+    let t = at + this.pause(this.frameUnits([leaderId], at));
+    const leader = this.units.get(leaderId);
+    const n = inspired.length;
+    // The stars are already in the state: keep them hidden until each friend takes heart.
+    const friends = inspired
+      .map((id) => this.units.get(id))
+      .filter((obj): obj is UnitObj => !!obj && !obj.fade);
+    for (const obj of friends) obj.badgeHeld = Infinity;
+    this.at(t, () => {
+      if (leader?.anims.leading) leader.animator.play(leader.anims.leading);
+      if (leader) this.shoutFx(leader);
+      this.rolls.addVerdict(
+        {
+          text: 'War cry!',
+          detail: n > 0 ? `${n} ${n === 1 ? 'friend' : 'friends'} inspired` : 'no one left to inspire',
+          on: [leaderId],
+          tone: 'save',
+        },
+        this.now,
+      );
+    });
+    if (friends.length === 0) return t + WAR_CRY_MS;
+    t += WAR_CRY_SHOUT_MS;
+    // Pull back to hold the Leader and everyone who heard it.
+    t += this.pause(this.frameUnits([leaderId, ...friends.map((obj) => obj.id)], t));
+    // The cry reaches the nearest first, as a wave rolling out from the Leader.
+    const from = leader?.group.position ?? friends[0]!.group.position;
+    const reach = friends.map((obj) => ({ obj, dist: obj.group.position.distanceTo(from) }));
+    const nearest = Math.min(...reach.map((r) => r.dist));
+    let end = t;
+    for (const { obj, dist } of reach) {
+      const start = t + Math.min(WAR_CRY_REACH_MAX_MS, (dist - nearest) * WAR_CRY_REACH_MS_PER_UNIT);
+      end = Math.max(end, this.inspireFx(obj, start));
+    }
+    return Math.max(at + WAR_CRY_MS, end + INSPIRE_HOLD_MS);
+  }
+
+  /** A war cry leaves the Leader: gold rings roll out over the ground from its feet. */
+  private shoutFx(obj: UnitObj): void {
+    this.flashUnit(obj.id, 0.4);
+    obj.squash = { start: this.now, end: this.now + 320, amount: -0.12 };
+    for (let i = 0; i < WAR_CRY_RINGS; i++) {
+      this.at(i * WAR_CRY_RING_GAP_MS, () =>
+        this.effects.ring(this.feet(obj), INSPIRED_GLOW, 0.3, HEX_SIZE * 4.5, {
+          life: 0.9,
+          opacity: 0.8 - i * 0.18,
+          additive: true,
+        }),
+      );
+    }
+  }
+
+  /**
+   * A friend takes heart, starting `at` ms from now: it blinks gold
+   * {@link INSPIRE_BLINKS} times, springing up a little on each, and its star
+   * pops in on the last with a shower of sparks. Returns when the star has landed.
+   */
+  private inspireFx(obj: UnitObj, at: number): number {
+    const blinks = INSPIRE_BLINKS * INSPIRE_BLINK_MS;
+    this.at(at, () => {
+      obj.glow = { color: INSPIRED_GLOW, start: this.now, end: this.now + blinks, beats: INSPIRE_BLINKS };
+      this.effects.ring(this.feet(obj), INSPIRED_GLOW, HEX_SIZE * 1.2, 0.3, { life: blinks / 1000, opacity: 0.7, additive: true });
+    });
+    for (let i = 0; i < INSPIRE_BLINKS; i++) {
+      this.at(at + i * INSPIRE_BLINK_MS + INSPIRE_BLINK_MS / 2, () => {
+        this.flashUnit(obj.id, 0.35);
+        obj.squash = { start: this.now, end: this.now + INSPIRE_BLINK_MS * 0.8, amount: -0.08 };
+      });
+    }
+    const landed = at + (INSPIRE_BLINKS - 1) * INSPIRE_BLINK_MS + INSPIRE_BLINK_MS / 2;
+    this.at(landed, () => {
+      obj.badgeHeld = 0;
+      obj.badgePop = this.now;
+      const star = obj.group.position.clone().setY(obj.group.position.y + TILE_TOP + BADGE_HEIGHT + obj.hover);
+      this.effects.burst({
+        at: star,
+        count: 14,
+        colors: [INSPIRED_GLOW, ...GOLD_COLORS],
+        speed: [0.6, 1.6],
+        up: 0.6,
+        gravity: 2.5,
+        drag: 2,
+        life: [0.35, 0.6],
+        size: [0.03, 0.06],
+        shape: 'square',
+        blend: 'add',
+      });
+    });
+    return landed + BADGE_POP_MS;
+  }
+
+  /**
    * The top of a round, when Reassembling units haul themselves up: frame them
    * all, pull each one's bones back together in turn, let it climb out of its
    * down pose, then hand the player back the view they had. Starts `at` ms from
@@ -2421,6 +2519,8 @@ export class BoardView {
       obj.toss = null;
       obj.squash = null;
       obj.blink = null;
+      obj.badgeHeld = 0;
+      obj.badgePop = null;
       obj.facing.visible = true;
     }
     this.busyUntil = this.now;
@@ -2451,6 +2551,8 @@ export class BoardView {
       obj.turning = false; // a change of sides left unplayed shows at once
       obj.glow = null;
       obj.blink = null;
+      obj.badgeHeld = 0;
+      obj.badgePop = null;
       obj.facing.visible = true;
       obj.mirror.rotation.z = 0;
       obj.animator.moveFor(0, { reset: true });
@@ -2622,6 +2724,9 @@ export class BoardView {
       base,
       ring,
       badge,
+      badgeOn: false,
+      badgeHeld: 0,
+      badgePop: null,
       stars,
       anims,
       downPose: downPose && anims.death?.frames.some(([f]) => f === downPose) ? downPose : null,
@@ -3113,7 +3218,8 @@ export class BoardView {
       const u = obj.outline.material.uniforms;
       const k = (this.now - glow.start) / (glow.end - glow.start);
       u.uColor!.value.setHex(glow.color);
-      u.uOpacity!.value = Math.min(1, k * 8) * (1 - k * k);
+      // A blinking glow flares and dies `beats` times; any other fades in fast and out slowly.
+      u.uOpacity!.value = glow.beats ? Math.sin(Math.PI * ((k * glow.beats) % 1)) ** 2 : Math.min(1, k * 8) * (1 - k * k);
       u.uWidth!.value = OUTLINE_HOVER_PX;
     }
 
@@ -3242,6 +3348,12 @@ export class BoardView {
     if (obj.blink && this.now >= obj.blink.end) obj.blink = null;
     obj.facing.visible = !obj.blink || ((this.now - obj.blink.start) % BLINK_MS) >= BLINK_MS / 2;
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
+    obj.badge.visible = obj.badgeOn && this.now >= obj.badgeHeld;
+    if (obj.badgePop !== null && this.now >= obj.badgePop + BADGE_POP_MS) obj.badgePop = null;
+    const pop = obj.badgePop !== null ? (this.now - obj.badgePop) / BADGE_POP_MS : 1;
+    // Out of nothing to a little too big, then settling to size.
+    const popScale = pop < 0.45 ? THREE.MathUtils.lerp(0.2, 1.45, pop / 0.45) : THREE.MathUtils.lerp(1.45, 1, (pop - 0.45) / 0.55);
+    obj.badge.scale.set(BADGE_SIZE * popScale, BADGE_SIZE * popScale, 1);
 
     if (obj.flash > 0) obj.flash = Math.max(0, obj.flash - (dtMs / 1000) * 3);
     if (obj.whiteout > 0) obj.whiteout = Math.max(0, obj.whiteout - (dtMs / 1000) * PICK_FLASH_FADE);
@@ -3565,7 +3677,7 @@ export class BoardView {
     }
     for (const [id, obj] of this.units) {
       const kind = vm.badges?.[id];
-      obj.badge.visible = kind !== undefined;
+      obj.badgeOn = kind !== undefined;
       if (kind && obj.badge.material.map !== this.badgeTexture(kind)) {
         obj.badge.material.map = this.badgeTexture(kind);
         obj.badge.material.needsUpdate = true;
