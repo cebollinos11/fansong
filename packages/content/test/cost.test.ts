@@ -45,7 +45,7 @@ describe('unitCost', () => {
 
   it('adds 3 per favorable trait, scaled by Quality', () => {
     // (3*5 + 3) * (7-3) / 2 = 36
-    for (const trait of ['fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage', 'armored', 'sharpshooter'] as const) {
+    for (const trait of ['fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage', 'armored', 'sharpshooter', 'pincer', 'shieldwall', 'rusher', 'slippery', 'woodwise', 'trample'] as const) {
       expect(unitCost({ ...baseline, [trait]: true })).toBe(36);
     }
     for (const shooter of SHOOTER_KINDS) expect(unitCost({ ...baseline, shooter })).toBe(36);
@@ -64,9 +64,19 @@ describe('unitCost', () => {
   });
 
 
+  it('prices Whirling and Immovable as two favorable traits each', () => {
+    // (3*5 + 6) * (7-3) / 2 = 42
+    expect(unitCost({ ...baseline, whirling: true })).toBe(42);
+    expect(unitCost({ ...baseline, immovable: true })).toBe(42);
+  });
+
   it('takes 3 off per unfavorable trait, scaled by Quality', () => {
     // (3*5 - 3) * (7-3) / 2 = 24
-    expect(unitCost({ ...baseline, slow: true })).toBe(24);
+    for (const trait of ['slow', 'dumb', 'disloyal', 'badBalance'] as const) {
+      expect(unitCost({ ...baseline, [trait]: true })).toBe(24);
+    }
+    // (3*5 - 6) * (7-3) / 2 = 18
+    expect(unitCost({ ...baseline, dumb: true, disloyal: true })).toBe(18);
     expect(COST_WEIGHTS.unfavorable).toBe(-COST_WEIGHTS.favorable);
   });
 

@@ -1,5 +1,5 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
-import { carryFlags, regrabOnStandUp } from './mode.js';
+import { carryFlags, dropFlag, finishGame, isKing, regrabOnStandUp } from './mode.js';
 import { rollD6 } from './rng.js';
 import { airborne, aliveUnits, isOccupied, livingCount, occupiedKeys } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
@@ -16,6 +16,9 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  *  - **Rout** — the first time a warband is ground down to a third of its
  *    starting strength it *breaks*: every survivor takes a nerve check, and each
  *    that fails flees. It happens once per side.
+ *
+ * A **Disloyal** unit that rolls a natural 1 on any of these checks does not
+ * flee: it changes sides where it stands (see {@link defect}).
  *
  * A unit that fails any nerve check loses its inspiration (see `Unit.inspired`).
  * A unit that **flees** runs for its own edge of the map (see {@link homeColumn}),
@@ -53,8 +56,8 @@ export function homeColumn(board: Board, owner: Owner): number {
   return owner === 0 ? 0 : board.width - 1;
 }
 
-/** Roll one nerve check for a unit, record it, and report whether it passed. */
-function nerveCheck(s: GameState, events: GameEvent[], unit: Unit): boolean {
+/** Roll one nerve check for a unit, record it, and report the natural die and whether it passed. */
+function nerveCheck(s: GameState, events: GameEvent[], unit: Unit): { passed: boolean; die: number } {
   const roll = rollD6(s.rngState);
   s.rngState = roll.state;
   const passed = roll.die >= unit.quality;
@@ -68,7 +71,7 @@ function nerveCheck(s: GameState, events: GameEvent[], unit: Unit): boolean {
     passed,
     ...(inspirationLost ? { inspirationLost: true as const } : {}),
   });
-  return passed;
+  return { passed, die: roll.die };
 }
 
 /**
@@ -89,20 +92,23 @@ export function resolveCombatMorale(
   hacks: FreeHacks = noHacks,
 ): void {
   if (gruesome) fearCheck(s, events, victim, board, hacks);
-  if (victim.traits.leader) leaderCheck(s, events, victim, board, hacks);
+  if (victim.traits.leader) {
+    events.push({ type: 'LeaderFallen', unitId: victim.id });
+    leaderCheck(s, events, victim, victim.owner, board, hacks);
+  }
   routCheck(s, events, victim.owner, board, hacks);
 }
 
 /**
- * A Leader has fallen: every standing friend with line of sight to where it
- * lay — the same sight line a shot needs, so terrain and other units block it
- * — tests nerve, however far away.
+ * `owner`'s side has lost the Leader `leader` — killed, or gone over to the
+ * enemy: every standing friend with line of sight to where it is — the same
+ * sight line a shot needs, so terrain and other units block it — tests nerve,
+ * however far away.
  */
-function leaderCheck(s: GameState, events: GameEvent[], leader: Unit, board: Board, hacks: FreeHacks): void {
-  events.push({ type: 'LeaderFallen', unitId: leader.id });
+function leaderCheck(s: GameState, events: GameEvent[], leader: Unit, owner: Owner, board: Board, hacks: FreeHacks): void {
   const occ = occupiedKeys(s);
   const blocks = (v: Vec) => occ.has(vecKey(v));
-  const tested = aliveUnits(s, leader.owner).filter(
+  const tested = aliveUnits(s, owner).filter(
     (u) => u.id !== leader.id && !u.knockedDown && board.lineOfSight(u.pos, leader.pos, blocks),
   );
   fleeFailures(s, events, tested, board, hacks);
@@ -136,15 +142,47 @@ function routCheck(s: GameState, events: GameEvent[], owner: Owner, board: Board
 
 /**
  * Every unit in `tested` checks nerve at once; then those that failed flee, in
- * unit order. A runner already caught up in an earlier one's cascade — cut
- * down, or sent running by it — is not sent running twice.
+ * unit order — or, Disloyal and on a natural 1, change sides. A unit already
+ * caught up in an earlier one's cascade — cut down, sent running or turned by
+ * it — is not dealt with twice.
  */
 function fleeFailures(s: GameState, events: GameEvent[], tested: Unit[], board: Board, hacks: FreeHacks): void {
-  const failed = tested.filter((u) => !nerveCheck(s, events, u)).map((u) => ({ unit: u, at: vecKey(u.pos) }));
-  for (const { unit, at } of failed) {
-    if (unit.dead || vecKey(unit.pos) !== at) continue;
-    flee(s, events, unit, board, hacks);
+  const failed = tested
+    .map((u) => ({ unit: u, at: vecKey(u.pos), owner: u.owner, ...nerveCheck(s, events, u) }))
+    .filter((f) => !f.passed);
+  for (const { unit, at, owner, die } of failed) {
+    if (s.phase === 'gameOver') return;
+    if (unit.dead || vecKey(unit.pos) !== at || unit.owner !== owner) continue;
+    if (unit.traits.disloyal && die === 1) defect(s, events, unit, board, hacks);
+    else flee(s, events, unit, board, hacks);
   }
+}
+
+/**
+ * A Disloyal `unit` goes over to the enemy where it stands (mutates `s`). It
+ * drops its stance, any flag it carries and its place in a group activation,
+ * and counts as activated for the round. A King that turns hands its new side
+ * the game at once. Otherwise the side it left is a unit short: a Leader's
+ * desertion shakes the friends who see it, and the loss can break the warband
+ * (see {@link routCheck}) — or leave it with no one, which the caller's
+ * game-over check picks up.
+ */
+function defect(s: GameState, events: GameEvent[], unit: Unit, board: Board, hacks: FreeHacks): void {
+  const from = unit.owner;
+  const to: Owner = from === 0 ? 1 : 0;
+  dropFlag(s, events, unit);
+  unit.owner = to;
+  unit.guarding = false;
+  unit.activatedThisRound = true;
+  if (s.group) s.group.pending = s.group.pending.filter((p) => p.unitId !== unit.id);
+  events.push({ type: 'UnitDefected', unitId: unit.id, to });
+
+  if (isKing(s, unit.id)) {
+    finishGame(s, events, to, 'king');
+    return;
+  }
+  if (unit.traits.leader) leaderCheck(s, events, unit, from, board, hacks);
+  if (s.phase !== 'gameOver') routCheck(s, events, from, board, hacks);
 }
 
 /**

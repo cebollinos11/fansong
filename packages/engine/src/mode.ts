@@ -423,6 +423,20 @@ export function captureIfHome(s: GameState, events: GameEvent[], unit: Unit): bo
 }
 
 /**
+ * Capture-the-flag (mutates `s`): `unit` lets go of the flag it carries, which
+ * falls on its hex. For a carrier that changes sides: it cannot carry what is
+ * now its own flag.
+ */
+export function dropFlag(s: GameState, events: GameEvent[], unit: Unit): void {
+  s.mode?.flags?.forEach((f, p) => {
+    if (f.carrier !== unit.id) return;
+    f.carrier = null;
+    f.at = { x: unit.pos.x, y: unit.pos.y };
+    events.push({ type: 'FlagDropped', player: p as Owner, unitId: unit.id, at: { x: unit.pos.x, y: unit.pos.y } });
+  });
+}
+
+/**
  * Capture-the-flag (mutates `s`): a carrier that has been knocked down or has
  * died (killed or routed) drops the flag on its hex. Checked after every
  * combat and activation, before the game-over checks. A carrier that was only

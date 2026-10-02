@@ -152,6 +152,17 @@ export function parseWarband(raw: unknown): Warband {
     if (u.armored === true) unit.armored = true;
     if (u.sharpshooter === true) unit.sharpshooter = true;
     if (u.mastery === true) unit.mastery = true;
+    if (u.pincer === true) unit.pincer = true;
+    if (u.shieldwall === true) unit.shieldwall = true;
+    if (u.rusher === true) unit.rusher = true;
+    if (u.slippery === true) unit.slippery = true;
+    if (u.whirling === true) unit.whirling = true;
+    if (u.immovable === true) unit.immovable = true;
+    if (u.woodwise === true) unit.woodwise = true;
+    if (u.trample === true) unit.trample = true;
+    if (u.dumb === true) unit.dumb = true;
+    if (u.disloyal === true) unit.disloyal = true;
+    if (u.badBalance === true) unit.badBalance = true;
     if (typeof u.look === 'string') unit.look = u.look;
     if (isTint(u.tint)) unit.tint = u.tint.toLowerCase();
     return unit;

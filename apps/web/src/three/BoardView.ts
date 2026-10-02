@@ -1467,6 +1467,14 @@ export class BoardView {
           this.rolls.addVerdict({ text: 'Supported', on: [e.supporterId], tone: 'save' }, this.now);
           this.braceFx(e.unitId, e.supporterId);
         });
+      } else if (e.type === 'UnitHeldGround') {
+        this.at(lastHit, () => this.rolls.addVerdict({ text: 'Immovable', on: [e.unitId], tone: 'save' }, this.now));
+      } else if (e.type === 'UnitDefected') {
+        const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
+        this.at(at, () =>
+          this.rolls.addVerdict({ text: 'Changes sides!', detail: `now fights for P${e.to}`, on: [e.unitId], tone: 'kill' }, this.now),
+        );
+        settle = at;
       } else if (e.type === 'UnitPushedOff') {
         // Only a push that kills slides off the table; a Tough save stays on the edge.
         const fate = after.find((x) => (x.type === 'UnitKilled' || x.type === 'ToughnessSaved') && x.unitId === e.unitId);

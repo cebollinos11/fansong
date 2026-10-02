@@ -44,7 +44,7 @@ const PRESETS_TS = join(ROOT, 'packages', 'content', 'src', 'presets.ts');
 const MATCH_TS = join(ROOT, 'packages', 'content', 'src', 'match.ts');
 
 /** The order unit fields are written in (a unit left untouched keeps its own order). */
-const FIELD_ORDER = ['quality', 'combat', 'shooter', 'slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage', 'leader', 'armored', 'sharpshooter', 'mastery', 'look', 'tint'] as const;
+const FIELD_ORDER = ['quality', 'combat', 'shooter', 'slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage', 'leader', 'armored', 'sharpshooter', 'mastery', 'pincer', 'shieldwall', 'rusher', 'slippery', 'whirling', 'immovable', 'woodwise', 'trample', 'dumb', 'disloyal', 'badBalance', 'look', 'tint'] as const;
 
 function main(): void {
   const args = process.argv.slice(2);

@@ -45,6 +45,28 @@ export interface Profile {
   sharpshooter?: boolean;
   /** Combat Mastery: a melee it ties against a foe without it kills that foe. */
   mastery?: boolean;
+  /** Pincer: +1 striking a foe that has one of its standing friends directly opposite. */
+  pincer?: boolean;
+  /** Shieldwall: +1 defending against a melee attack while next to a standing friend. */
+  shieldwall?: boolean;
+  /** Rusher: +1 on the first attack after a Move that brought it into contact with its target. */
+  rusher?: boolean;
+  /** Slippery: leaving contact draws no free hack, unless it carries a flag. */
+  slippery?: boolean;
+  /** Whirling: never outnumbered in melee while on its feet. */
+  whirling?: boolean;
+  /** Immovable: never pushed. Never with `badBalance`. */
+  immovable?: boolean;
+  /** Woodwise: +1 on every combat roll while standing in a forest hex. */
+  woodwise?: boolean;
+  /** Trample: a foe it pushes in melee goes two hexes instead of one. */
+  trample?: boolean;
+  /** Dumb: at most 2 activation dice. */
+  dumb?: boolean;
+  /** Disloyal: a natural 1 on a nerve check makes it change sides. */
+  disloyal?: boolean;
+  /** Bad Balance: a push that moves it also knocks it down. Never with `immovable`. */
+  badBalance?: boolean;
 }
 
 /** The kinds of Shooter trait: short range, plain Shooter, and long range. */
@@ -96,18 +118,20 @@ export const COST_WEIGHTS = {
   perCombat: 5,
   /**
    * Each favorable trait adds this much, before the Quality multiplier: Fast,
-   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Mounted, Opportunist, Savage, Armored and Sharpshooter.
-   * Leader lifts the whole warband and Combat Mastery turns every melee tie
-   * into a kill, so each counts as two favorable traits.
+   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Mounted, Opportunist, Savage, Armored, Sharpshooter,
+   * Pincer, Shieldwall, Rusher, Slippery, Woodwise and Trample.
+   * Leader lifts the whole warband, Combat Mastery turns every melee tie into a
+   * kill, Whirling shrugs off being ganged up on and Immovable shrugs off half of
+   * every lost fight, so each of those counts as two favorable traits.
    */
   favorable: 3,
-  /** Each unfavorable trait adds this much (a rebate), before the Quality multiplier: Slow. */
+  /** Each unfavorable trait adds this much (a rebate), before the Quality multiplier: Slow, Dumb, Disloyal and Bad Balance. */
   unfavorable: -3,
   /** Quality is scored as `qualityBase - quality`, so Quality 2 multiplies by 5 and Quality 6 by 1. */
   qualityBase: 7,
 };
 
-/** How many of a profile's traits are favorable (Leader counting twice) and how many unfavorable. */
+/** How many of a profile's traits are favorable (Leader, Combat Mastery, Whirling and Immovable counting twice) and how many unfavorable. */
 export function traitCounts(p: Profile): { favorable: number; unfavorable: number } {
   const favorable = [
     p.fast,
@@ -122,8 +146,14 @@ export function traitCounts(p: Profile): { favorable: number; unfavorable: numbe
     p.savage,
     p.armored,
     p.sharpshooter,
-  ].filter(Boolean).length + (p.leader ? 2 : 0) + (p.mastery ? 2 : 0);
-  const unfavorable = p.slow ? 1 : 0;
+    p.pincer,
+    p.shieldwall,
+    p.rusher,
+    p.slippery,
+    p.woodwise,
+    p.trample,
+  ].filter(Boolean).length + [p.leader, p.mastery, p.whirling, p.immovable].filter(Boolean).length * 2;
+  const unfavorable = [p.slow, p.dumb, p.disloyal, p.badBalance].filter(Boolean).length;
   return { favorable, unfavorable };
 }
 
@@ -141,6 +171,7 @@ export function statErrors(p: Profile): string[] {
   if (p.shooter !== undefined && !SHOOTER_KINDS.includes(p.shooter))
     errors.push(`unknown shooter trait ${String(p.shooter)}`);
   if (p.slow && p.fast) errors.push('cannot be both slow and fast');
+  if (p.immovable && p.badBalance) errors.push('cannot be both immovable and badly balanced');
   return errors;
 }
 

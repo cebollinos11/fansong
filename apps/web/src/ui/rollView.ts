@@ -111,18 +111,20 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
   let b: RollSide;
   if (e.type === 'GuardRiposte') {
     const [oa, ob] = outcomes(e.guardScore, e.attackerScore);
-    a = side(e.guardId, 'Riposte', e.guardDie, e.guardScore, [['High ground', e.guardBonus], ['Size', e.guardBig], ['Swoop', e.guardFly], ['Mounted', e.guardMounted], ['Opportunist', e.guardOpportunist], ['Outnumbered', minus(e.guardOutnumbered)]], oa);
-    b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Size', e.attackerBig], ['Mounted', e.attackerMounted], ['Opportunist', e.attackerOpportunist], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
+    a = side(e.guardId, 'Riposte', e.guardDie, e.guardScore, [['High ground', e.guardBonus], ['Size', e.guardBig], ['Swoop', e.guardFly], ['Mounted', e.guardMounted], ['Opportunist', e.guardOpportunist], ['Pincer', e.guardPincer], ['Woodwise', e.guardWoodwise], ['Outnumbered', minus(e.guardOutnumbered)]], oa);
+    b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Size', e.attackerBig], ['Mounted', e.attackerMounted], ['Opportunist', e.attackerOpportunist], ['Woodwise', e.attackerWoodwise], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
   } else if (e.type === 'ShotResolved') {
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Flying target', e.flyingTarget], ['Opportunist', e.attackOpportunist], ['Sharpshooter', e.attackSharpshooter], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
-    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Aimed at', minus(e.aimPenalty)]], ob);
+    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Flying target', e.flyingTarget], ['Opportunist', e.attackOpportunist], ['Sharpshooter', e.attackSharpshooter], ['Woodwise', e.attackWoodwise], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
+    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Woodwise', e.defenseWoodwise], ['Aimed at', minus(e.aimPenalty)]], ob);
   } else {
     const hack = e.type === 'FreeHackResolved';
     const power = e.type === 'AttackResolved' ? e.powerPenalty : undefined;
+    const rusher = e.type === 'AttackResolved' ? e.attackRusher : undefined;
+    const shieldwall = e.type === 'AttackResolved' ? e.defenseShieldwall : undefined;
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Size', e.attackBig], ['Swoop', e.attackFly], ['Mounted', e.attackMounted], ['Opportunist', e.attackOpportunist], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
-    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Size', e.defenseBig], ['Mounted', e.defenseMounted], ['Opportunist', e.defenseOpportunist], ['Outnumbered', minus(e.defenseOutnumbered)], ['Power blow', minus(power)]], ob);
+    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Size', e.attackBig], ['Swoop', e.attackFly], ['Mounted', e.attackMounted], ['Opportunist', e.attackOpportunist], ['Pincer', e.attackPincer], ['Rusher', rusher], ['Woodwise', e.attackWoodwise], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
+    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Size', e.defenseBig], ['Mounted', e.defenseMounted], ['Opportunist', e.defenseOpportunist], ['Shieldwall', shieldwall], ['Woodwise', e.defenseWoodwise], ['Outnumbered', minus(e.defenseOutnumbered)], ['Power blow', minus(power)]], ob);
   }
 
   // A higher total that did nothing: a shot never hurts the shooter, a unit
@@ -234,6 +236,9 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
       // The supporter gets its own "Supported" over its head; this names what it saved.
       return { text: 'Holds ground', detail: `${odd} — braced by a friend`, on: [loser.unitId], tone: 'save' };
     }
+    if (after.some((x) => x.type === 'UnitHeldGround' && x.unitId === loser.unitId)) {
+      return { text: 'Immovable!', detail: `${odd} — it does not give way`, on: [loser.unitId], tone: 'save' };
+    }
     if (after.some((x) => x.type === 'UnitPushedOff' && x.unitId === loser.unitId)) {
       const saved = after.some((x) => x.type === 'ToughnessSaved' && x.unitId === loser.unitId);
       return saved
@@ -246,6 +251,10 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
       return e.gruesome
         ? gory(`${odd} — savagely shoved into the lava`, loser)
         : { text: 'Into the lava!', detail: `${odd} — pushed into the lava`, on: [loser.unitId], tone: 'kill' };
+    }
+    // Bad Balance, or a Trample that drove it up against something: it lands flat.
+    if (after.some((x) => x.type === 'UnitKnockedDown' && x.unitId === loser.unitId)) {
+      return { text: 'Pushed over', detail: `${odd} — pushed back and knocked down`, on: [loser.unitId], tone: 'down' };
     }
     return { text: 'Pushed back', detail: odd, on: [loser.unitId], tone: 'down' };
   }
@@ -293,13 +302,14 @@ export function describeActivation(
   return { kind: 'activation', unitId: e.unitId, quality: e.quality, dice, inspired, summary, turnover, verdict };
 }
 
-/** Describe a nerve check; `after` tells a runner leaving the field from one running for its edge. */
+/** Describe a nerve check; `after` tells a runner leaving the field from one running for its edge, and from a Disloyal unit changing sides. */
 export function describeNerve(
   e: Extract<GameEvent, { type: 'NerveCheck' }>,
   after: readonly GameEvent[] = [],
 ): NerveRoll {
   const gone = after.some((x) => x.type === 'UnitRouted' && x.unitId === e.unitId);
-  const failed = gone ? 'Flees the field!' : 'Flees!';
+  const turned = after.some((x) => x.type === 'UnitDefected' && x.unitId === e.unitId);
+  const failed = turned ? 'Changes sides!' : gone ? 'Flees the field!' : 'Flees!';
   const summary = e.passed ? 'Holds firm' : e.inspirationLost ? `${failed} Inspiration lost` : failed;
   return { kind: 'nerve', unitId: e.unitId, quality: e.quality, die: e.die, passed: e.passed, summary };
 }

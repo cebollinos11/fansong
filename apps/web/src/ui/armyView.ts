@@ -1,4 +1,4 @@
-import { BASE_MOVE, SPEED_STEP } from '@fansong/engine';
+import { BASE_MOVE, DUMB_MAX_DICE, SPEED_STEP } from '@fansong/engine';
 import {
   ARMY_RULES,
   PRESET_IDS,
@@ -69,6 +69,17 @@ export const TOGGLE_TRAITS = [
   'armored',
   'sharpshooter',
   'mastery',
+  'pincer',
+  'shieldwall',
+  'rusher',
+  'slippery',
+  'whirling',
+  'immovable',
+  'woodwise',
+  'trample',
+  'dumb',
+  'disloyal',
+  'badBalance',
 ] as const;
 export type ToggleTrait = (typeof TOGGLE_TRAITS)[number];
 
@@ -117,6 +128,17 @@ export const TRAIT_INFO: Record<TraitKey, { label: string; desc: string }> = {
   armored: { label: 'Armored', desc: 'a combat it loses by exactly 1 point does it no harm, even knocked down' },
   sharpshooter: { label: 'Sharpshooter', desc: '+1 to every shot it takes (only matters with a Shooter trait)' },
   mastery: { label: 'Combat Mastery', desc: 'a melee it ties against a foe without Combat Mastery kills that foe. Costs as two traits' },
+  pincer: { label: 'Pincer', desc: '+1 striking a foe that has one of its standing friends on the hex directly opposite' },
+  shieldwall: { label: 'Shieldwall', desc: '+1 defending against a melee attack while next to a standing friend' },
+  rusher: { label: 'Rusher', desc: '+1 on the first attack after a Move that brought it into contact with its target' },
+  slippery: { label: 'Slippery', desc: 'leaving contact draws no free hacks, unless it carries a flag' },
+  whirling: { label: 'Whirling', desc: 'never outnumbered in melee while on its feet. Costs as two traits' },
+  immovable: { label: 'Immovable', desc: 'never pushed: a push leaves it standing where it is. Costs as two traits' },
+  woodwise: { label: 'Woodwise', desc: '+1 on every combat roll, melee or shot, while standing in a forest hex' },
+  trample: { label: 'Trample', desc: 'a foe it pushes in melee goes two hexes, and falls if the second is blocked' },
+  dumb: { label: 'Dumb', desc: `rolls at most ${DUMB_MAX_DICE} activation dice. A drawback: lowers its cost` },
+  disloyal: { label: 'Disloyal', desc: 'a natural 1 on a nerve check makes it change sides. A drawback: lowers its cost' },
+  badBalance: { label: 'Bad Balance', desc: 'a push that moves it also knocks it down. A drawback: lowers its cost' },
 };
 
 /** A trait's tooltip: its name and what it does. */
@@ -134,10 +156,12 @@ export function traitsOf(unit: WarbandUnit): TraitKey[] {
   return EDITOR_TRAITS.filter((t) => hasTrait(unit, t));
 }
 
-/** The trait adding `trait` to `unit` would displace (Slow and Fast, or another Shooter trait), if any. */
+/** The trait adding `trait` to `unit` would displace (Slow and Fast, Immovable and Bad Balance, or another Shooter trait), if any. */
 export function traitReplaced(unit: WarbandUnit, trait: TraitKey): TraitKey | undefined {
   if (trait === 'slow' && unit.fast) return 'fast';
   if (trait === 'fast' && unit.slow) return 'slow';
+  if (trait === 'immovable' && unit.badBalance) return 'badBalance';
+  if (trait === 'badBalance' && unit.immovable) return 'immovable';
   if (isShooterTrait(trait) && unit.shooter && unit.shooter !== shooterKind(trait)) return `shooter-${unit.shooter}`;
   return undefined;
 }
@@ -145,7 +169,7 @@ export function traitReplaced(unit: WarbandUnit, trait: TraitKey): TraitKey | un
 /**
  * The fields switching `trait` on or off changes: `false` for an on/off trait
  * switched off, `shooter: undefined` for melee only. Slow and Fast exclude each
- * other, so switching one on switches the other off.
+ * other, as do Immovable and Bad Balance, so switching one on switches the other off.
  */
 export function traitPatch(unit: WarbandUnit, trait: TraitKey, on: boolean): Partial<WarbandUnit> {
   if (isShooterTrait(trait)) {
@@ -154,6 +178,8 @@ export function traitPatch(unit: WarbandUnit, trait: TraitKey, on: boolean): Par
   const patch: Partial<WarbandUnit> = { [trait]: on };
   if (on && trait === 'slow') patch.fast = false;
   if (on && trait === 'fast') patch.slow = false;
+  if (on && trait === 'immovable') patch.badBalance = false;
+  if (on && trait === 'badBalance') patch.immovable = false;
   return patch;
 }
 
