@@ -648,16 +648,122 @@ export class Effects {
     let t = this.textures.get(kind);
     if (t) return t;
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 128;
-    drawTexture(canvas.getContext('2d')!, kind);
+    if (kind === 'scorch') {
+      canvas.width = canvas.height = SCORCH_PX;
+      drawScorch(canvas.getContext('2d')!);
+    } else {
+      canvas.width = canvas.height = 128;
+      drawTexture(canvas.getContext('2d')!, kind);
+    }
     t = new THREE.CanvasTexture(canvas);
     t.colorSpace = THREE.SRGBColorSpace;
+    if (kind === 'scorch') t.magFilter = THREE.NearestFilter; // crisp pixels, like the ground it is burned into
     this.textures.set(kind, t);
     return t;
   }
 }
 
 const INK = '#1b1f27';
+
+/**
+ * Pixels across the scorch a gruesome kill leaves. It is laid 1.5 hexes wide,
+ * which is 54 of Wesnoth's terrain pixels, so its pixels match the ground's.
+ */
+const SCORCH_PX = 54;
+
+/** The scorch's few colours, darkest first: Wesnoth-style pixel art shades in steps, never gradients. */
+const SCORCH_SHADES = ['#070505', '#140f0d', '#231a16', '#34281f', '#4d3d30'] as const;
+
+/**
+ * A charred blotch with cracks running out of it, drawn pixel by pixel: a ragged
+ * burn in a few flat shades, its rim broken up by an ordered dither rather than
+ * faded, dark cracks a pixel wide stepping outward with a lit edge along one
+ * side, and flecks of pale ash. Drawn from a fixed seed, so every scorch is
+ * the same burn.
+ */
+function drawScorch(g: CanvasRenderingContext2D): void {
+  const n = SCORCH_PX;
+  const c = (n - 1) / 2;
+  const rand = seeded(0x5c0c4);
+  const img = g.createImageData(n, n);
+  const put = (x: number, y: number, shade: number, alpha = 1): void => {
+    if (x < 0 || y < 0 || x >= n || y >= n) return;
+    const hex = SCORCH_SHADES[shade]!;
+    const i = (y * n + x) * 4;
+    img.data[i] = parseInt(hex.slice(1, 3), 16);
+    img.data[i + 1] = parseInt(hex.slice(3, 5), 16);
+    img.data[i + 2] = parseInt(hex.slice(5, 7), 16);
+    img.data[i + 3] = Math.round(alpha * 255);
+  };
+  const alphaAt = (x: number, y: number): number => img.data[(y * n + x) * 4 + 3]! / 255;
+
+  // The burn: a ragged edge (a few overlapping waves round the rim), darker toward the middle.
+  const waves = Array.from({ length: 4 }, (_, k) => ({ f: k + 3, phase: rand() * Math.PI * 2, amp: 0.07 / (k + 1) + rand() * 0.05 }));
+  const bayer = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const dx = x - c;
+      const dy = y - c;
+      const a = Math.atan2(dy, dx);
+      const rim = 17 * (1 + waves.reduce((sum, w) => sum + w.amp * Math.sin(w.f * a + w.phase), 0));
+      const k = Math.hypot(dx, dy) / rim + (rand() - 0.5) * 0.08;
+      const dither = (bayer[(y % 4) * 4 + (x % 4)]! + 0.5) / 16;
+      if (k < 0.45) put(x, y, 1, 0.95);
+      else if (k < 0.8) put(x, y, 2, 0.85);
+      else if (k < 1.0) put(x, y, (k - 0.8) / 0.2 < dither ? 2 : 3, 0.75);
+      else if (k < 1.35 && (k - 1) / 0.35 < dither * 0.8) put(x, y, 3, 0.6); // the rim breaking up into specks
+    }
+  }
+
+  // Cracks: walk out from the middle a pixel at a step, wandering a little, sometimes forking.
+  const crack = (x0: number, y0: number, angle: number, length: number, depth: number): void => {
+    let x = x0;
+    let y = y0;
+    let a = angle;
+    for (let step = 0; step < length; step++) {
+      a += (rand() - 0.5) * 0.6;
+      x += Math.cos(a);
+      y += Math.sin(a);
+      const px = Math.round(x);
+      const py = Math.round(y);
+      if (px < 1 || py < 1 || px >= n - 1 || py >= n - 1) return;
+      // A lit lip on the side away from the light, so the crack reads as cut into the ground.
+      const lx = px + (Math.cos(a + Math.PI / 2) > 0 ? 1 : -1);
+      const ly = py + (Math.sin(a + Math.PI / 2) > 0 ? 1 : -1);
+      if (alphaAt(lx, py) < 0.9 && step % 2 === 0) put(lx, py, 4, 0.7);
+      if (alphaAt(px, ly) < 0.9 && step % 3 === 0) put(px, ly, 4, 0.6);
+      put(px, py, 0, 1);
+      if (depth > 0 && step > 3 && rand() < 0.12) crack(x, y, a + (rand() < 0.5 ? -1 : 1) * (0.5 + rand() * 0.4), length - step - 2, depth - 1);
+    }
+  };
+  const spokes = 7;
+  for (let i = 0; i < spokes; i++) {
+    const a = (i / spokes) * Math.PI * 2 + rand() * 0.5;
+    crack(c + Math.cos(a) * 4, c + Math.sin(a) * 4, a, 11 + Math.floor(rand() * 7), 1);
+  }
+
+  // Pale ash flecks, a pixel each, on the burn.
+  for (let i = 0; i < 22; i++) {
+    const a = rand() * Math.PI * 2;
+    const d = rand() * 14;
+    const x = Math.round(c + Math.cos(a) * d);
+    const y = Math.round(c + Math.sin(a) * d);
+    if (alphaAt(x, y) > 0.8) put(x, y, 4, 0.9);
+  }
+  g.putImageData(img, 0, 0);
+}
+
+/** A small seeded generator (mulberry32), so a drawn texture comes out the same every time. */
+function seeded(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 /**
  * Draw one effect image on a 128px canvas. Shapes are white (tinted by the
@@ -827,47 +933,6 @@ function drawTexture(g: CanvasRenderingContext2D, kind: FxTexture): void {
       g.arc(c, 104, 13, 0, Math.PI * 2);
       g.stroke();
       g.fill();
-      return;
-    }
-    case 'scorch': {
-      // A charred blotch with cracks running out of it: where a gruesome kill burned into the ground.
-      const burn = g.createRadialGradient(c, c, 0, c, c, 62);
-      burn.addColorStop(0, 'rgba(14,11,10,0.95)');
-      burn.addColorStop(0.55, 'rgba(26,22,20,0.8)');
-      burn.addColorStop(1, 'rgba(26,22,20,0)');
-      g.fillStyle = burn;
-      g.fillRect(0, 0, 128, 128);
-      for (let i = 0; i < 9; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const d = 28 + Math.random() * 22;
-        const r = 9 + Math.random() * 11;
-        const x = c + Math.cos(a) * d;
-        const y = c + Math.sin(a) * d;
-        const blot = g.createRadialGradient(x, y, 0, x, y, r);
-        blot.addColorStop(0, 'rgba(22,19,17,0.7)');
-        blot.addColorStop(1, 'rgba(22,19,17,0)');
-        g.fillStyle = blot;
-        g.fillRect(x - r, y - r, r * 2, r * 2);
-      }
-      g.strokeStyle = 'rgba(6,5,5,0.9)';
-      g.lineWidth = 3;
-      for (let i = 0; i < 7; i++) {
-        let a = (i / 7) * Math.PI * 2 + Math.random() * 0.5;
-        g.beginPath();
-        g.moveTo(c + Math.cos(a) * 14, c + Math.sin(a) * 14);
-        for (let r = 24; r <= 58; r += 11) {
-          a += (Math.random() - 0.5) * 0.5;
-          g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
-        }
-        g.stroke();
-      }
-      // Pale ash flecks.
-      g.fillStyle = 'rgba(150,142,134,0.55)';
-      for (let i = 0; i < 18; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const d = Math.random() * 44;
-        g.fillRect(c + Math.cos(a) * d, c + Math.sin(a) * d, 2, 2);
-      }
       return;
     }
     case 'query': {
