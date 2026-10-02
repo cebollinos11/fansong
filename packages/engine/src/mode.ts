@@ -423,16 +423,18 @@ export function captureIfHome(s: GameState, events: GameEvent[], unit: Unit): bo
 }
 
 /**
- * Capture-the-flag (mutates `s`): `unit` lets go of the flag it carries, which
- * falls on its hex. For a carrier that changes sides: it cannot carry what is
- * now its own flag.
+ * Capture-the-flag (mutates `s`): the flag `unit` carries goes straight back to
+ * its base. For a carrier that has just changed sides: the flag in its hands is
+ * now its own side's, so it returns it as a friend stepping onto it would.
  */
-export function dropFlag(s: GameState, events: GameEvent[], unit: Unit): void {
+export function returnCarriedFlag(s: GameState, events: GameEvent[], unit: Unit): void {
+  const bases = s.mode?.objectives.flags;
+  if (!bases) return;
   s.mode?.flags?.forEach((f, p) => {
     if (f.carrier !== unit.id) return;
     f.carrier = null;
-    f.at = { x: unit.pos.x, y: unit.pos.y };
-    events.push({ type: 'FlagDropped', player: p as Owner, unitId: unit.id, at: { x: unit.pos.x, y: unit.pos.y } });
+    f.at = { x: bases[p]!.x, y: bases[p]!.y };
+    events.push({ type: 'FlagReturned', player: p as Owner, unitId: unit.id });
   });
 }
 

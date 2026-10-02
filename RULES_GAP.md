@@ -377,9 +377,10 @@ short paraphrase, and the exact effects should be checked before building one.
   `getLegalCommands` never offers it 3, alone or in a group.
 - ✅ **Done — Disloyal** *(FanSong's own, unfavorable)*. *Implemented:* a
   `disloyal` trait. A natural 1 on a nerve check makes it change sides where it
-  stands instead of fleeing (`UnitDefected`). It drops its Guard stance and any
-  flag it carries, leaves a group activation it was waiting in, counts as
-  activated for the round, and keeps the trait. The side it left is a unit
+  stands instead of fleeing (`UnitDefected`). It drops its Guard stance, leaves
+  a group activation it was waiting in, counts as activated for the round, and
+  keeps the trait. A flag it was carrying is now its own side's, and goes
+  straight back to base (`FlagReturned`). The side it left is a unit
   short, so the rout check runs for it, and a side left with no one loses. A
   defecting Leader makes the friends who see it test nerve; a defecting King
   ends the game for its new side.

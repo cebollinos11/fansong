@@ -115,7 +115,8 @@ action; the AI, the tests, and any future UI all pick from that list.
   costs −1. A **Whirling** unit on its feet is never outnumbered.
 - **Disloyal:** a Disloyal unit that rolls a natural 1 on a nerve check changes
   sides where it stands instead of fleeing, and counts as activated for the
-  round. It keeps the trait, so it can turn again. The side it left is a unit
+  round. It keeps the trait, so it can turn again. A flag it was carrying goes
+  straight back to its base. The side it left is a unit
   short, which can break it; a Leader's defection makes the friends who see it
   test nerve; a King's defection ends the game in its new side's favour.
 - **Shooting:** −1 beyond short range (the first half of the shooter's reach)

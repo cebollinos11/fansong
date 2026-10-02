@@ -382,7 +382,7 @@ describe('Disloyal trait', () => {
     expect(events).toContainEqual({ type: 'GameOver', winner: 1, reason: 'king' });
   });
 
-  it('drops a flag it was carrying', () => {
+  it('sends a flag it was carrying back to its base', () => {
     const cfg = (seed: number): GameConfig => ({
       ...config(band(), enemy, seed),
       mode: 'capture-the-flag',
@@ -391,8 +391,9 @@ describe('Disloyal trait', () => {
     const { s, events } = fearUntil(1, cfg, (state) => {
       state.mode!.flags![1].carrier = 'p0u1';
     });
-    expect(s.mode!.flags![1]).toEqual({ at: { x: 3, y: 4 }, carrier: null });
-    expect(events.some((e) => e.type === 'FlagDropped' && e.unitId === 'p0u1')).toBe(true);
+    expect(s.mode!.flags![1]).toEqual({ at: { x: 6, y: 8 }, carrier: null });
+    expect(events).toContainEqual({ type: 'FlagReturned', player: 1, unitId: 'p0u1' });
+    expect(events.some((e) => e.type === 'FlagDropped')).toBe(false);
   });
 
   it('leaves its place in a group activation', () => {
