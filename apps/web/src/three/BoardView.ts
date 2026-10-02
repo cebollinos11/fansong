@@ -553,6 +553,10 @@ const SMOKE_COLORS = [0x3a3431, 0x55504c, 0x2a2624];
 const STICK_MS = 500; // an arrow that lands stays in its target this long
 const SHOT_ARC = 0.18; // a shot's apex rises this fraction of its length above the straight line...
 const LOB_ARC = 0.3; // ...and a lobbed stone or spear's this much
+const FLIGHT_MS_PER_UNIT = 55; // a missile's flight lasts this much longer per world unit past its first hex...
+const FLIGHT_FREE = HEX_STEP; // ...so a shot at an adjacent hex keeps its clip's own timing
+const TRAIL_STEP = 0.025; // a flying missile leaves a trail puff every this many world units
+const TRAIL_COLORS = [0xfff4d6, 0xffe2a8, 0xffffff];
 const BLINKS = 3; // a knocked-down unit blinks this many times as it lands
 const BLINK_MS = 160; // one blink: hidden for the first half, shown for the second
 const PICK_FLASH = 1.25; // whiteout on a unit as it is picked to activate; above 1 it holds as a pure white shape first
@@ -651,6 +655,8 @@ interface Missile {
   ending: ShotEnding;
   /** Its landing effect has played. */
   landed: boolean;
+  /** Where its trail last left a puff (null before it sets off). */
+  trailAt: THREE.Vector3 | null;
 }
 
 /** Where a shot ends: in its target, in the ground past it, or in the cover in front of it. */
@@ -2967,8 +2973,11 @@ export class BoardView {
     const coil = range === 'melee' ? lead : 0;
     const peaked = picked && windup > 0 ? holdPeak(picked, release(picked), windup) : picked;
     const clip = peaked && lead > 0 ? holdPeak(peaked, 1, lead) : peaked;
-    const dur = clip ? clipDuration(clip) : 400 + windup + lead;
-    const hit = clip?.hitMs ?? (clip ? dur / 2 : 200 + windup + lead);
+    // A missile in the air longer the farther it has to go: the hit (and the
+    // target's reaction to it) waits for it, while the release stays on the clip.
+    const flight = range === 'ranged' && clip?.missile ? this.extraFlightMs(a, d) : 0;
+    const dur = (clip ? clipDuration(clip) : 400 + windup + lead) + flight;
+    const hit = (clip?.hitMs ?? (clip ? dur / 2 : 200 + windup + lead)) + flight;
     const land = opts.land ?? true;
     const ending: ShotEnding = land ? 'hit' : opts.cover ? 'cover' : 'miss';
     if (windup > 0) {
@@ -2987,7 +2996,7 @@ export class BoardView {
         a.lunge = { dir, start: this.now, hit: this.now + hit, end: this.now + dur, coil, depth: windup > 0 ? DREAD_COIL_DEPTH : 1 };
         if (coil > 0 && windup === 0) this.coilFx(a, d, coil);
       } else if (clip?.missile) {
-        this.launchMissile(a, d, clip.missile, hit - (clip.missileMs ?? 150), hit, ending);
+        this.launchMissile(a, d, clip.missile, hit - flight - (clip.missileMs ?? 150), hit, ending);
       } else {
         this.at(hit, () => {
           const to = this.shotEnd(a, d, ending);
@@ -3095,6 +3104,12 @@ export class BoardView {
     };
   }
 
+  /** How much longer than its clip's own flight a missile from `from` takes to reach `to`. */
+  private extraFlightMs(from: UnitObj, to: UnitObj): number {
+    const dist = Math.hypot(to.targetPos.x - from.targetPos.x, to.targetPos.z - from.targetPos.z);
+    return Math.max(0, dist - FLIGHT_FREE) * FLIGHT_MS_PER_UNIT;
+  }
+
   private launchMissile(
     from: UnitObj,
     to: UnitObj,
@@ -3119,6 +3134,7 @@ export class BoardView {
       arc: shotArc(start, end, /stone|spear|pitchfork/.test(image) ? LOB_ARC : SHOT_ARC),
       ending,
       landed: false,
+      trailAt: null,
     });
   }
 
@@ -3612,12 +3628,38 @@ export class BoardView {
       m.sprite.visible = f >= 0;
       if (f < 0) continue;
       arcPoint(m.from, m.to, m.arc, f, m.sprite.position);
+      this.missileTrail(m);
       // Point the (north-facing) image along its on-screen direction of travel:
       // nose up as it climbs, nose down as it drops.
       const a = arcPoint(m.from, m.to, m.arc, Math.max(0, f - 0.02)).project(this.camera);
       const b = arcPoint(m.from, m.to, m.arc, Math.min(1, f + 0.02)).project(this.camera);
       m.sprite.material.rotation = Math.atan2(b.y - a.y, (b.x - a.x) * this.camera.aspect) - Math.PI / 2;
     }
+  }
+
+  /** Leave a fading streak of puffs along the path a missile has flown since last frame. */
+  private missileTrail(m: Missile): void {
+    const here = m.sprite.position;
+    if (!m.trailAt) {
+      m.trailAt = here.clone();
+      return;
+    }
+    const gap = m.trailAt.distanceTo(here);
+    const steps = Math.floor(gap / TRAIL_STEP);
+    for (let i = 1; i <= steps; i++) {
+      this.effects.burst({
+        at: m.trailAt.clone().lerp(here, (i * TRAIL_STEP) / gap),
+        count: 1,
+        colors: TRAIL_COLORS,
+        speed: [0, 0.04],
+        life: [0.14, 0.2],
+        size: [0.07, 0.09],
+        grow: 0.15,
+        blend: 'add',
+        opacity: 0.45,
+      });
+    }
+    if (steps > 0) m.trailAt.lerp(here, (steps * TRAIL_STEP) / gap);
   }
 
   /**
