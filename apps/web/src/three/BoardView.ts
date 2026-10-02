@@ -423,6 +423,9 @@ const LEAF_GLOW = 0x9be07a; // the rim on a Woodwise unit fighting from the tree
 const WHIRL_COLOR = 0xe8f0ff; // the blade trails round a Whirling unit beset on all sides
 const STONE = 0xd8cfc0; // an Immovable unit digging in
 const SLIP_COLOR = 0xbfe9ff; // the afterimages a Slippery unit leaves as it ducks away
+const SLIP_GHOSTS = 6; // how many afterimages it leaves...
+const SLIP_GHOST_MS = 100; // ...this far apart...
+const SLIP_GHOST_LIFE = 0.9; // ...each lasting this many seconds
 const QUERY_COLOR = 0xffe9a8; // the question mark over a Dumb unit told to act
 const TRAMPLE_MS_PER_HEX = 190; // a trampled unit is driven back at this pace, faster than a walk
 const TEETER = 0.4; // radians a Bad Balance unit rocks as it loses its footing...
@@ -3964,10 +3967,12 @@ export class BoardView {
   private slipFx(obj: UnitObj): void {
     const foes = this.beside(obj, false);
     if (foes.length === 0) return;
-    this.rolls.addVerdict({ text: 'Slips away', detail: 'Slippery: no free hack', on: [obj.id], tone: 'neutral' }, this.now);
+    // Along the bottom, not over the unit: a verdict there would cover the afterimages.
+    this.rolls.addVerdict({ text: 'Slips away', detail: 'Slippery: no free hack', on: [obj.id], tone: 'neutral' }, this.now, 'bottom');
     const was = obj.group.position.clone();
     const gap = this.chest(obj);
-    for (let i = 0; i < 4; i++) this.at(i * 70, () => this.afterimage(obj));
+    // One where it stood, then one every third of a hex over the first two it runs.
+    for (let i = 0; i < SLIP_GHOSTS; i++) this.at(i * SLIP_GHOST_MS, () => this.afterimage(obj));
     this.dust(this.feet(obj), 6, 0.8);
     for (const foe of foes) {
       const swing = was.clone().sub(foe.group.position);
@@ -3991,9 +3996,10 @@ export class BoardView {
     root.position.y += obj.hover;
     this.effects.add(
       root,
-      0.4,
+      SLIP_GHOST_LIFE,
       (k) => {
-        mat.opacity = 0.5 * (1 - k);
+        // Holds bright, then fades over its second half.
+        mat.opacity = 0.85 * Math.min(1, (1 - k) / 0.5);
       },
       () => {
         mat.dispose();
