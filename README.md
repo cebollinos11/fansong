@@ -72,7 +72,8 @@ action; the AI, the tests, and any future UI all pick from that list.
   within **5 hexes** in line of sight is **inspired** for the round (rock,
   buildings and forest block the cry; other units don't): the first die of its activation roll is a sure 6.
   A failed nerve check costs a unit its inspiration. When a Leader is killed,
-  every standing friend with line of sight to it tests its nerve.
+  every standing friend the cry would have reached (within 5 hexes, in line of
+  sight) tests its nerve.
 - The other player then continues **solo** until they turn over or run out.
 - **Group activation:** a unit may activate together with every friend like it
   (same Quality, Combat, traits, sprite and tint) that has yet to activate and
@@ -242,7 +243,8 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
 
 - **Morale depth** — beyond the activation turnover:
   - **Fear** — when a unit suffers a gruesome kill in combat, standing friends
-    within four hexes take a nerve check (d6 ≥ Quality) or flee.
+    that see it — within five hexes in line of sight, just as a war cry
+    carries — take a nerve check (d6 ≥ Quality) or flee.
   - **Rout** — the first time a warband is ground to a third of its starting
     strength it *breaks*: every survivor tests nerve, and each that fails flees.
     It happens once per side.

@@ -84,7 +84,8 @@ describe('kill-the-king', () => {
     const g = createGame(
       config(
         [A('hero', 3, 2, { combat: 12, king: true })],
-        [A('king', 4, 2, { combat: 0, king: true }), A('guard1', 7, 0), A('guard2', 7, 4), A('guard3', 7, 5)],
+        [A('king', 4, 2, { combat: 0, king: true }), A('guard1', 11, 0), A('guard2', 11, 4), A('guard3', 11, 5)],
+        { board: { width: 12, height: 6 } }, // the guards stand too far off to see their King fall
       ),
     );
     const { state, events } = playOut(g, 'p0u0', 'p1u0');

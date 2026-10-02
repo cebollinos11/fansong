@@ -137,7 +137,7 @@ describe('capture-the-flag', () => {
   it('drops the flag when combat fells the carrier', () => {
     let hits = 0;
     for (let seed = 1; seed <= 40; seed++) {
-      const g = createGame({ ...config([U('a', 3, 2, { combat: 5 })], [U('b', 4, 2, { combat: 1 }), U('c', 7, 5)]), seed });
+      const g = createGame({ ...config([U('a', 3, 2, { combat: 5 })], [U('b', 4, 2, { combat: 1 }), U('c', 7, 5, { quality: 1 })]), seed });
       const s = acting(g, 'p0u0', 1);
       s.mode!.flags![0] = { at: { x: 4, y: 2 }, carrier: 'p1u0' };
       const { state, events } = run(s, [{ type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' }]);

@@ -57,14 +57,14 @@ describe('gruesome kills', () => {
   // units that one death never breaks the warband, so any nerve check is fear.
   const cfg = (seed: number): GameConfig => ({
     seed,
-    board: { width: 9, height: 5 },
+    board: { width: 10, height: 5 },
     warbands: [
       [{ name: 'Brute', quality: 3, combat: 6, pos: { x: 2, y: 2 } }],
       [
         { name: 'Victim', quality: 4, combat: 1, pos: { x: 3, y: 2 } },
         { name: 'Friend', quality: 4, combat: 3, pos: { x: 3, y: 4 } },
-        { name: 'Far1', quality: 4, combat: 3, pos: { x: 8, y: 0 } },
-        { name: 'Far2', quality: 4, combat: 3, pos: { x: 8, y: 4 } },
+        { name: 'Far1', quality: 4, combat: 3, pos: { x: 9, y: 0 } },
+        { name: 'Far2', quality: 4, combat: 3, pos: { x: 9, y: 4 } },
       ],
     ],
   });

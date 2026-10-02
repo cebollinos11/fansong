@@ -10,7 +10,6 @@ import {
   type GameEvent,
   type GameState,
   type UnitSpec,
-  type Vec,
 } from '../src/index.js';
 
 /**
@@ -1351,12 +1350,12 @@ describe('Leader trait', () => {
 
   /**
    * P0's Brute next to P1's Leader at the west edge. Seer sees the Leader;
-   * Blind stands behind the Brute (no line of sight); Downed lies knocked down.
-   * Far units keep one death from routing P1.
+   * Blind stands behind a rock (no line of sight); Downed lies knocked down.
+   * Far units, out of sight range, keep one death from routing P1.
    */
   const deathConfig = (seed: number, victim: Partial<UnitSpec>): GameConfig => ({
     seed,
-    board: { width: 9, height: 5 },
+    board: { width: 9, height: 5, terrain: { '2,2': { feature: 'rock' } } },
     warbands: [
       [{ name: 'Brute', quality: 3, combat: 5, pos: { x: 1, y: 2 } }],
       [
@@ -1385,19 +1384,20 @@ describe('Leader trait', () => {
   }
   const tested = (events: GameEvent[]) => events.flatMap((x) => (x.type === 'NerveCheck' ? [x.unitId] : []));
 
-  it('has every standing friend with line of sight test nerve when a Leader falls', () => {
+  it('has every standing friend in sight and within war cry range test nerve when a Leader falls', () => {
     const board = makeHexGrid(createGame(deathConfig(1, {})).board);
-    const brute = (v: Vec) => v.x === 1 && v.y === 2;
-    expect(board.lineOfSight({ x: 0, y: 4 }, { x: 0, y: 2 }, brute)).toBe(true);
-    expect(board.lineOfSight({ x: 4, y: 2 }, { x: 0, y: 2 }, brute)).toBe(false);
+    expect(board.lineOfSight({ x: 0, y: 2 }, { x: 0, y: 4 })).toBe(true);
+    expect(board.lineOfSight({ x: 0, y: 2 }, { x: 4, y: 2 })).toBe(false);
 
     const { events } = kill({ leader: true });
     const fallen = events.findIndex((e) => e.type === 'LeaderFallen' && e.unitId === 'p1u0');
     expect(fallen).toBeGreaterThan(-1);
     const checks = tested(events.slice(fallen + 1));
     expect(checks).toContain('p1u1'); // Seer saw it
-    expect(checks).not.toContain('p1u2'); // Blind, behind the Brute
+    expect(checks).not.toContain('p1u2'); // Blind, behind the rock
     expect(checks).not.toContain('p1u3'); // Downed
+    expect(checks).not.toContain('p1u4'); // Far, out of range
+    expect(checks).not.toContain('p1u5');
   });
 
   it('shakes no one when an ordinary unit dies an ordinary death', () => {

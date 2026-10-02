@@ -5,6 +5,7 @@ import {
   makeHexGrid,
   resolveCombatMorale,
   MORALE_RADIUS,
+  WAR_CRY_RANGE,
   type FreeHacks,
   type GameConfig,
   type GameEvent,
@@ -28,28 +29,42 @@ function nerveTargets(events: GameEvent[]): string[] {
 // --- Fear ---------------------------------------------------------------------
 
 describe('fear (nearby-casualty nerve check)', () => {
-  // P0 clustered around a casualty; one friend sits outside the radius. A lone
-  // P1 unit far away keeps the game two-sided.
+  // P0 clustered around a casualty; one friend sits outside the radius, and one
+  // inside it is hidden behind a rock. A lone P1 unit far away keeps the game
+  // two-sided.
   const config: GameConfig = {
     seed: 3,
-    board: { width: 14, height: 14 },
+    board: { width: 14, height: 14, terrain: { '7,5': { feature: 'rock' } } },
     warbands: [
       [
         { name: 'Victim', quality: 4, combat: 3, pos: { x: 5, y: 5 } },
         { name: 'Near1', quality: 4, combat: 3, pos: { x: 5, y: 4 } }, // hex dist 1
-        { name: 'Near2', quality: 4, combat: 3, pos: { x: 5, y: 1 } }, // hex dist 4 = radius
-        { name: 'Far', quality: 4, combat: 3, pos: { x: 5, y: 10 } }, // hex dist 5 > radius
+        { name: 'Near2', quality: 4, combat: 3, pos: { x: 5, y: 0 } }, // hex dist 5 = radius
+        { name: 'Far', quality: 4, combat: 3, pos: { x: 5, y: 11 } }, // hex dist 6 > radius
+        { name: 'Hidden', quality: 4, combat: 3, pos: { x: 9, y: 5 } }, // hex dist 4, behind the rock
       ],
       [{ name: 'Enemy', quality: 3, combat: 3, pos: { x: 13, y: 13 } }],
     ],
   };
 
-  it('tests exactly the living friends within the morale radius', () => {
+  it('tests exactly the living friends within the morale radius and in sight', () => {
     const s = createGame(config);
+    const board = boardOf(s);
+    expect(board.lineOfSight({ x: 5, y: 5 }, { x: 9, y: 5 })).toBe(false);
     unit(s, 'p0u0').dead = true; // the casualty
     const events: GameEvent[] = [];
+    resolveCombatMorale(s, events, unit(s, 'p0u0'), board, true);
+    expect(nerveTargets(events)).toEqual(['p0u1', 'p0u2']); // Near1, Near2 — not Far, not Hidden, not the victim
+  });
+
+  it('other units do not hide a casualty from a friend', () => {
+    const s = createGame(config);
+    unit(s, 'p0u0').dead = true;
+    // An enemy stands right between the casualty and Near2.
+    unit(s, 'p1u0').pos = { x: 5, y: 2 };
+    const events: GameEvent[] = [];
     resolveCombatMorale(s, events, unit(s, 'p0u0'), boardOf(s), true);
-    expect(nerveTargets(events)).toEqual(['p0u1', 'p0u2']); // Near1, Near2 — not Far, not the victim
+    expect(nerveTargets(events)).toContain('p0u2');
   });
 
   it('a failed nerve check sends the friend running, never down', () => {
@@ -84,8 +99,9 @@ describe('fear (nearby-casualty nerve check)', () => {
     expect(nerveTargets(events)).toEqual([]);
   });
 
-  it('MORALE_RADIUS is the published hex reach', () => {
-    expect(MORALE_RADIUS).toBe(4);
+  it('MORALE_RADIUS is the published hex reach, the same as a war cry', () => {
+    expect(MORALE_RADIUS).toBe(5);
+    expect(MORALE_RADIUS).toBe(WAR_CRY_RANGE);
   });
 });
 

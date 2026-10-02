@@ -182,21 +182,26 @@ export function canWarCry(state: GameState, unit: Unit): boolean {
   return unit.traits.leader && !unit.dead && !unit.knockedDown && !unit.warCried && !state.benched[unit.owner];
 }
 
-/** Farthest a war cry carries, in hexes. */
+/** Farthest a war cry carries, in hexes — and how far off a friend sees a gruesome kill or its Leader fall. */
 export const WAR_CRY_RANGE = 5;
 
 /**
+ * Whether a unit at `to` hears a war cry from `from` — and, by the same
+ * reckoning, sees a gruesome kill or a Leader fall there: within
+ * {@link WAR_CRY_RANGE} hexes and in line of sight. Terrain that blocks a shot
+ * (rock, building, forest) blocks it; other units don't.
+ */
+export function inEarshot(board: Board, from: Vec, to: Vec): boolean {
+  return board.distance(from, to) <= WAR_CRY_RANGE && board.lineOfSight(from, to);
+}
+
+/**
  * The friends a war cry from `leader` inspires: every living non-Leader of its
- * side still to activate this round, within {@link WAR_CRY_RANGE} hexes and in
- * line of sight. Terrain that blocks a shot (rock, building, forest) blocks the
- * cry too; other units don't, so a crowd of friends all hear it.
+ * side still to activate this round and {@link inEarshot in earshot}, so a
+ * crowd of friends all hear it.
  */
 export function warCryTargets(state: GameState, leader: Unit, board: Board): Unit[] {
   return aliveUnits(state, leader.owner).filter(
-    (u) =>
-      !u.traits.leader &&
-      !u.activatedThisRound &&
-      board.distance(leader.pos, u.pos) <= WAR_CRY_RANGE &&
-      board.lineOfSight(leader.pos, u.pos),
+    (u) => !u.traits.leader && !u.activatedThisRound && inEarshot(board, leader.pos, u.pos),
   );
 }

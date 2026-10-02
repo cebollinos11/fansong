@@ -1,18 +1,19 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
 import { carryFlags, finishGame, isKing, regrabOnStandUp, returnCarriedFlag } from './mode.js';
 import { rollD6 } from './rng.js';
-import { airborne, aliveUnits, isOccupied, livingCount, occupiedKeys } from './query.js';
+import { airborne, aliveUnits, inEarshot, isOccupied, livingCount, WAR_CRY_RANGE } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
 
 /**
  * Morale. Beyond the activation turnover, casualties shake the survivors:
  *
  *  - **Fear** — when a unit suffers a *gruesome* kill in combat (the winner
- *    tripled its score, or is Savage), every standing friend within {@link MORALE_RADIUS}
+ *    tripled its score, or is Savage), every standing friend that sees it —
+ *    within {@link MORALE_RADIUS} and in line of sight, as for a war cry —
  *    must pass a nerve check (a d6 ≥ its Quality) or flee. An ordinary kill
  *    shakes no one.
- *  - **Leader** — when a Leader is killed, every standing friend with line of
- *    sight to where it fell must pass a nerve check or flee.
+ *  - **Leader** — when a Leader is killed, every standing friend that sees it
+ *    fall, by the same reckoning, must pass a nerve check or flee.
  *  - **Rout** — the first time a warband is ground down to a third of its
  *    starting strength it *breaks*: every survivor takes a nerve check, and each
  *    that fails flees. It happens once per side.
@@ -30,10 +31,10 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  */
 
 /**
- * Friends within this board-distance radius of a gruesome casualty must test
- * nerve (a little under the base Move of 5).
+ * How far off a friend sees a gruesome casualty or a fallen Leader, and must
+ * test nerve: the reach of a war cry (see `inEarshot`).
  */
-export const MORALE_RADIUS = 4;
+export const MORALE_RADIUS = WAR_CRY_RANGE;
 
 /** A warband breaks when its living count falls to this fraction of its start. */
 export const ROUT_FRACTION = 1 / 3;
@@ -101,24 +102,24 @@ export function resolveCombatMorale(
 
 /**
  * `owner`'s side has lost the Leader `leader` — killed, or gone over to the
- * enemy: every standing friend with line of sight to where it is — the same
- * sight line a shot needs, so terrain and other units block it — tests nerve,
- * however far away.
+ * enemy: every standing friend that sees it happen tests nerve (see
+ * {@link witnesses}).
  */
 function leaderCheck(s: GameState, events: GameEvent[], leader: Unit, owner: Owner, board: Board, hacks: FreeHacks): void {
-  const occ = occupiedKeys(s);
-  const blocks = (v: Vec) => occ.has(vecKey(v));
-  const tested = aliveUnits(s, owner).filter(
-    (u) => u.id !== leader.id && !u.knockedDown && board.lineOfSight(u.pos, leader.pos, blocks),
-  );
-  fleeFailures(s, events, tested, board, hacks);
+  fleeFailures(s, events, witnesses(s, leader, owner, board), board, hacks);
 }
 
 function fearCheck(s: GameState, events: GameEvent[], victim: Unit, board: Board, hacks: FreeHacks): void {
-  const tested = aliveUnits(s, victim.owner).filter(
-    (u) => u.id !== victim.id && !u.knockedDown && board.distance(u.pos, victim.pos) <= MORALE_RADIUS,
-  );
-  fleeFailures(s, events, tested, board, hacks);
+  fleeFailures(s, events, witnesses(s, victim, victim.owner, board), board, hacks);
+}
+
+/**
+ * The standing friends on `owner`'s side that see what befalls `unit`: those
+ * {@link inEarshot in earshot} of it, as a war cry would carry — within
+ * {@link MORALE_RADIUS} hexes, with terrain but not other units blocking sight.
+ */
+function witnesses(s: GameState, unit: Unit, owner: Owner, board: Board): Unit[] {
+  return aliveUnits(s, owner).filter((u) => u.id !== unit.id && !u.knockedDown && inEarshot(board, unit.pos, u.pos));
 }
 
 /**

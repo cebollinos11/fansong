@@ -53,7 +53,7 @@ These are implemented, so they are not listed again below:
 | Only a **Leader** calls a group activation: friends near it of any kind roll on its Quality and make a group move or attack. | **Any** unit may activate with the friends *identical* to it within 2 hexes (up to 5). They share one roll, and each then acts on its own. | Made to speed up large armies rather than to model command (§6). |
 | Whoever goes first is decided by a roll, and players then alternate turns. | Initiative flips each round. | Part of the twist. |
 | An attack against a fallen model gets **+2**, and any win kills it. | A fallen defender only hurts its attacker on a natural 6, and any win against it kills. | This is a different mechanism with a similar feel. The original's +2 also makes a double, and so a kill, much easier. |
-| Fear: a **gruesome** kill (see §3) makes nearby friends test, and a failure means fleeing. | A gruesome kill makes friends within 4 hexes test with one die, and a failure means a knockdown. | The trigger now matches (M8); the 3-dice test and fleeing are still open (§5). |
+| Fear: a **gruesome** kill (see §3) makes nearby friends test, and a failure means fleeing. | A gruesome kill makes friends within 5 hexes and in line of sight test with one die, and a failure means a knockdown. | The trigger now matches (M8); the 3-dice test and fleeing are still open (§5). |
 | The player whose model is leaving contact chooses the order of the free hacks. | Free hacks come in unit order. | Avoids a new command mid-move; could become a choice later. |
 | Range penalties are counted in measuring-stick bands. | One −1 band beyond short range (the first half of the reach, rounded up). | Our ranges are only 3–7 hexes, so a second band would make long shots nearly useless. |
 
@@ -151,10 +151,10 @@ The original morale model is very different from FanSong's:
 
 1. **Triggers:**
    - a **gruesome kill** (§3.1), tested by friends of the victim within **Long**
-     range. ✅ *Done (M8):* friends within 4 hexes test;
+     range. ✅ *Done (M8):* friends within 5 hexes and in line of sight test;
    - **the Leader being killed**, tested by the whole warband. ✅ *Done
-     (FanSong's version):* every standing friend with line of sight to the
-     fallen Leader tests (`LeaderFallen`, then the checks);
+     (FanSong's version):* every standing friend within 5 hexes and in line of
+     sight of the fallen Leader tests (`LeaderFallen`, then the checks);
    - the warband falling to **half or less** of its starting models, tested by
      the whole warband. FanSong uses a third, and tests only once;
    - fear-causing traits such as Terror (§7).
@@ -218,7 +218,7 @@ combined moves and attacks) is still not done.
    exact mechanics)*.
 3. **Group shooting.** Shooters in a group fire together.
 4. **Leader death** makes the whole warband test morale (§5.1). ✅ *Done*, but
-   only for friends with line of sight to the fallen Leader.
+   only for friends within 5 hexes and in line of sight of the fallen Leader.
 5. **Sub-commanders** for large warbands *(revised, optional)*.
 
 ## 7. Special rules (traits)
