@@ -179,6 +179,10 @@ interface Fight {
   /** The loser went into lava: pushed in, or knocked out of the air over it. */
   lava: boolean;
   recoiled: boolean;
+  /** The loser was pushed back and knocked down where it landed (Bad Balance, or a blocked Trample). */
+  floored: boolean;
+  /** The loser is Immovable: the push did not shift it. */
+  held: boolean;
   supportedBy: UnitRef | null;
   armor: UnitRef | null;
   /** Whose Combat Mastery turned the tie into a kill. */
@@ -197,7 +201,7 @@ const bonus = (label: string, n: number | undefined): [string, number | undefine
 const penalty = (label: string, n: number | undefined): [string, number | undefined] => [label, n ? -n : n];
 
 function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
-  const base = { item, gruesome: false, prevented: false, tough: false, pushedOff: false, lava: false, recoiled: false, supportedBy: null, armor: null, mastery: null };
+  const base = { item, gruesome: false, prevented: false, tough: false, pushedOff: false, lava: false, recoiled: false, floored: false, held: false, supportedBy: null, armor: null, mastery: null };
   switch (e.type) {
     case 'AttackResolved':
     case 'FreeHackResolved': {
@@ -217,6 +221,9 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('flying', e.attackFly),
             bonus('mounted', e.attackMounted),
             bonus('opportunist', e.attackOpportunist),
+            bonus('pincer', e.attackPincer),
+            bonus('rusher', e.type === 'AttackResolved' ? e.attackRusher : undefined),
+            bonus('woodwise', e.attackWoodwise),
             penalty('outnumbered', e.attackOutnumbered),
           ],
         },
@@ -229,6 +236,8 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('size', e.defenseBig),
             bonus('mounted', e.defenseMounted),
             bonus('opportunist', e.defenseOpportunist),
+            bonus('shieldwall', e.type === 'AttackResolved' ? e.defenseShieldwall : undefined),
+            bonus('woodwise', e.defenseWoodwise),
             penalty('outnumbered', e.defenseOutnumbered),
             penalty('power blow', power),
           ],
@@ -251,6 +260,7 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('flying target', e.flyingTarget),
             bonus('opportunist', e.attackOpportunist),
             bonus('sharpshooter', e.attackSharpshooter),
+            bonus('woodwise', e.attackWoodwise),
             penalty('long range', e.rangePenalty),
             penalty('cover', e.coverPenalty),
           ],
@@ -259,7 +269,7 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
           unit: ref(state, e.targetId),
           die: e.defenseDie,
           score: e.defenseScore,
-          mods: [bonus('high ground', e.defenseBonus), penalty('aimed at', e.aimPenalty)],
+          mods: [bonus('high ground', e.defenseBonus), bonus('woodwise', e.defenseWoodwise), penalty('aimed at', e.aimPenalty)],
         },
       };
     case 'GuardRiposte':
@@ -279,6 +289,8 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('flying', e.guardFly),
             bonus('mounted', e.guardMounted),
             bonus('opportunist', e.guardOpportunist),
+            bonus('pincer', e.guardPincer),
+            bonus('woodwise', e.guardWoodwise),
             penalty('outnumbered', e.guardOutnumbered),
           ],
         },
@@ -291,6 +303,7 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('size', e.attackerBig),
             bonus('mounted', e.attackerMounted),
             bonus('opportunist', e.attackerOpportunist),
+            bonus('woodwise', e.attackerWoodwise),
             penalty('outnumbered', e.attackerOutnumbered),
           ],
         },
@@ -340,9 +353,15 @@ function absorb(f: Fight, e: GameEvent, state: GameState): boolean {
       f.supportedBy = ref(state, e.supporterId);
       f.item.unitIds.push(e.supporterId);
       return true;
+    case 'UnitHeldGround':
+      if (!involved(e.unitId)) return false;
+      f.held = true;
+      return true;
     case 'UnitKnockedDown':
-      // Already said by the result (or by a Tough save).
-      return involved(e.unitId);
+      // Already said by the result (or by a Tough save) — unless it was only pushed.
+      if (!involved(e.unitId)) return false;
+      if (f.recoiled && f.result.endsWith('Recoiled')) f.floored = true;
+      return true;
     default:
       return false;
   }
@@ -371,6 +390,10 @@ function finishFight(f: Fight): void {
     } else if (f.supportedBy) {
       [label, short, cls] = ['braced by ', 'held', undefined];
       braced = true;
+    } else if (f.held) {
+      [label, short, cls] = ['holds its ground (Immovable)', 'held', undefined];
+    } else if (f.floored) {
+      [label, short, cls] = ['pushed back and knocked down', 'down', 'down'];
     } else if (!f.recoiled && f.kind === 'hack') {
       [label, short, cls] = ['slips away', 'slipped', undefined];
     } else {
@@ -611,6 +634,19 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
           category: 'combat',
           unitIds: [e.unitId],
         });
+        break;
+      case 'UnitDefected':
+        add({
+          icon: '🗡',
+          parts: [unit(ref(state, e.unitId)), ' changes sides, joining ', { player: e.to }],
+          brief: ['🗡 ', unit(ref(state, e.unitId))],
+          tone: 'danger',
+          category: 'combat',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'UnitHeldGround':
+        add({ icon: '⛨', parts: [unit(ref(state, e.unitId)), ' holds its ground (Immovable)'], category: 'combat', unitIds: [e.unitId] });
         break;
       case 'UnitFled':
         add({

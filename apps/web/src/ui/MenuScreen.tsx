@@ -1,7 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PRESET_IDS, PRESETS } from '@fansong/content';
-import type { Replay } from '@fansong/engine';
-import { parseReplay } from '../game/replay-io.js';
 import { animationsFor, framesOf, type Clip } from '../three/unitAnimations.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
 import type { Mode } from './SetupScreen.js';
@@ -9,7 +7,6 @@ import type { Mode } from './SetupScreen.js';
 interface Props {
   /** Open the setup for a way to play. */
   onPlay: (mode: Mode) => void;
-  onLoadReplay: (replay: Replay) => void;
   onOpenEditor: () => void;
   onOpenArmies: () => void;
   /** With `?dev=1` in the URL: open the preset unit editor. */
@@ -47,9 +44,7 @@ function freshMatchup(): [MenuTeam, MenuTeam] {
 const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** The first screen: pick a way to play, or open one of the workshop tools. */
-export function MenuScreen({ onPlay, onLoadReplay, onOpenEditor, onOpenArmies, onOpenPresets }: Props): JSX.Element {
-  const [replayError, setReplayError] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
+export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }: Props): JSX.Element {
   const [[home, away]] = useState(freshMatchup);
   const units = [...home.rank, home.leader, away.leader, ...away.rank];
   // Every so often one unit, picked at random, takes a swing.
@@ -63,15 +58,6 @@ export function MenuScreen({ onPlay, onLoadReplay, onOpenEditor, onOpenArmies, o
     return () => clearTimeout(timer);
   }, [strike]);
   const strikeOf = (path: string): number => (strike.unit === path ? strike.n : 0);
-
-  const loadReplayFile = async (file: File): Promise<void> => {
-    setReplayError(null);
-    try {
-      onLoadReplay(parseReplay(await file.text()));
-    } catch (e) {
-      setReplayError(e instanceof Error ? e.message : String(e));
-    }
-  };
 
   return (
     <div className="menu">
@@ -105,10 +91,6 @@ export function MenuScreen({ onPlay, onLoadReplay, onOpenEditor, onOpenArmies, o
             <strong>Play vs AI</strong>
             <span>Solo battle</span>
           </button>
-          <button className="menu-item" onClick={() => onPlay('hotseat')}>
-            <strong>Hotseat</strong>
-            <span>Two players, one screen</span>
-          </button>
           <button className="menu-item" onClick={() => onPlay('online')}>
             <strong>Online</strong>
             <span>Create or join a room</span>
@@ -119,29 +101,16 @@ export function MenuScreen({ onPlay, onLoadReplay, onOpenEditor, onOpenArmies, o
           <div className="menu-tools">
             <button onClick={onOpenArmies}>Army builder</button>
             <button onClick={onOpenEditor}>Map editor</button>
-            <button onClick={() => fileInput.current?.click()}>Load replay</button>
             {onOpenPresets ? (
               <button title="Dev tool: edit the preset warbands and export them" onClick={onOpenPresets}>
                 Preset units
               </button>
             ) : null}
           </div>
-          <input
-            ref={fileInput}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void loadReplayFile(file);
-              e.target.value = ''; // allow re-selecting the same file
-            }}
-          />
-          {replayError ? <p className="error">{replayError}</p> : null}
         </div>
       </nav>
 
-      <p className="menu-foot">A fan project. Unit art from Battle for Wesnoth (GPL).</p>
+      <p className="menu-foot">A fan project. Game design inspired by the wargame <em>Song of Blades and Heroes</em>. Unit art from Battle for Wesnoth (GPL).</p>
     </div>
   );
 }

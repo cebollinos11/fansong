@@ -1,4 +1,4 @@
-import { BASE_MOVE, livingCount, routThreshold, SPEED_STEP, type GameState, type Owner, type Unit } from '@fansong/engine';
+import { BASE_MOVE, DUMB_MAX_DICE, livingCount, routThreshold, SPEED_STEP, type GameState, type Owner, type Unit } from '@fansong/engine';
 import { getPreset, isAiSeat, type MatchSetup } from '@fansong/content';
 
 // Pure HUD presentation (no DOM), so every label and warning is unit-testable.
@@ -93,6 +93,17 @@ export const TRAIT_HELP = {
   armored: 'Turns blows aside: a combat it loses by exactly 1 point does it no harm, even knocked down',
   sharpshooter: 'A deadly eye: +1 to every shot it takes',
   mastery: 'A master of arms: a melee it ties against a foe without Combat Mastery kills that foe (knocked down, only on a natural 6)',
+  pincer: 'Closes the trap: +1 striking a foe that has one of its standing friends on the hex directly opposite',
+  shieldwall: 'Locks shields: +1 defending against a melee attack while next to a standing friend',
+  rusher: 'Hits hardest on the charge: +1 on the first attack after a Move that brought it into contact with its target',
+  slippery: 'Ducks away: leaving contact draws no free hacks, unless it carries a flag',
+  whirling: 'Fights all comers: never outnumbered in melee while on its feet',
+  immovable: 'Gives no ground: a push leaves it standing where it is',
+  woodwise: 'At home among the trees: +1 on every combat roll, melee or shot, while standing in a forest hex',
+  trample: 'Drives foes back: a foe it pushes in melee goes two hexes, and falls if the second is blocked',
+  dumb: `Slow-witted: rolls at most ${DUMB_MAX_DICE} activation dice`,
+  disloyal: 'Not to be trusted: a natural 1 on a nerve check makes it change sides',
+  badBalance: 'Unsteady on its feet: a push that moves it also knocks it down',
 } as const;
 
 /** Why a flyer carrying a flag has lost its flight. */
@@ -128,6 +139,17 @@ export function traitTags(unit: Pick<Unit, 'traits'>, grounded = false): TraitTa
   if (unit.traits.armored) tags.push({ label: 'Armored', help: TRAIT_HELP.armored });
   if (unit.traits.sharpshooter) tags.push({ label: 'Sharpshooter', help: TRAIT_HELP.sharpshooter });
   if (unit.traits.mastery) tags.push({ label: 'Combat Mastery', help: TRAIT_HELP.mastery });
+  if (unit.traits.pincer) tags.push({ label: 'Pincer', help: TRAIT_HELP.pincer });
+  if (unit.traits.shieldwall) tags.push({ label: 'Shieldwall', help: TRAIT_HELP.shieldwall });
+  if (unit.traits.rusher) tags.push({ label: 'Rusher', help: TRAIT_HELP.rusher });
+  if (unit.traits.slippery) tags.push({ label: 'Slippery', help: TRAIT_HELP.slippery });
+  if (unit.traits.whirling) tags.push({ label: 'Whirling', help: TRAIT_HELP.whirling });
+  if (unit.traits.immovable) tags.push({ label: 'Immovable', help: TRAIT_HELP.immovable });
+  if (unit.traits.woodwise) tags.push({ label: 'Woodwise', help: TRAIT_HELP.woodwise });
+  if (unit.traits.trample) tags.push({ label: 'Trample', help: TRAIT_HELP.trample });
+  if (unit.traits.dumb) tags.push({ label: 'Dumb', help: TRAIT_HELP.dumb });
+  if (unit.traits.disloyal) tags.push({ label: 'Disloyal', help: TRAIT_HELP.disloyal });
+  if (unit.traits.badBalance) tags.push({ label: 'Bad Balance', help: TRAIT_HELP.badBalance });
   return tags;
 }
 

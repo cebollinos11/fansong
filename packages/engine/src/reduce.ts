@@ -14,7 +14,11 @@ import {
   masteryStruck,
   mountedMeleeBonus,
   opportunistBonus,
+  pincerBonus,
+  rusherBonus,
   sharpshooterBonus,
+  shieldwallBonus,
+  woodwiseBonus,
   POWER_BLOW_PENALTY,
   PRESSED_COST,
   rangePenalty,
@@ -41,9 +45,11 @@ import {
   inMelee,
   isOccupied,
   livingCount,
+  maxActivationDice,
   occupiedKeys,
   outnumberedPenalty,
   playerHasAvailable,
+  slipsAway,
   unitAvailable,
   unitById,
   unitMove,
@@ -126,6 +132,7 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   if (!unitAvailable(unit)) throw new Error(`unit '${unitId}' is not available to activate`);
   if (s.benched[s.active]) throw new Error(`player ${s.active} is benched this round`);
   if (diceCount < 1 || diceCount > 3) throw new Error(`diceCount must be 1..3, got ${diceCount}`);
+  if (diceCount > maxActivationDice(unit)) throw new Error(`unit '${unitId}' may roll at most ${maxActivationDice(unit)} dice`);
 
   // A group activation: the unit's whole group shares this one roll, for
   // better or worse. Alone, the "group" is just the unit.
@@ -202,6 +209,7 @@ function beginActivation(s: GameState, events: GameEvent[], unit: Unit, actions:
   }
 
   s.activationCount += 1;
+  delete s.rushed;
   s.activeUnitId = unit.id;
   s.actionsRemaining = actions;
   if (s.group) s.group.allotted = actions;
@@ -252,6 +260,9 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   const path = board.pathWithin(unit.pos, to, move, rules)!;
 
   s.actionsRemaining -= 1;
+  // A Rusher's charge counts against the foes this Move brings it up against.
+  delete s.rushed;
+  const touching = unit.traits.rusher ? new Set(adjacentEnemies(s, unit, board).map((e) => e.id)) : null;
   // Leaving contact: each standing enemy in contact takes a free hack first. A
   // leaver that is cut down or knocked down goes nowhere, and its activation ends.
   if (!resolveFreeHacks(s, events, unit, board)) {
@@ -263,6 +274,10 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
   const from = { ...unit.pos };
   unit.pos = { x: to.x, y: to.y };
   events.push({ type: 'UnitMoved', unitId, from, to: { x: to.x, y: to.y }, path });
+  if (touching) {
+    const rushed = adjacentEnemies(s, unit, board).flatMap((e) => (touching.has(e.id) ? [] : [e.id]));
+    if (rushed.length > 0) s.rushed = rushed;
+  }
   if (flagsAfterMove(s, events, unitId)) return;
 
   if (s.actionsRemaining <= 0) endActivation(s, events);
@@ -299,16 +314,19 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     const prevented = resolveRiposte(s, events, target, attacker, board);
     // The attacker can also fall to a fleeing master's tie in the rout a
     // guard's death sets off (see `resolveFreeHacks`).
-    const attackerDown = prevented || attacker.dead || attacker.knockedDown;
-    // A master who ties the riposte cuts the guard down: that was the blow.
-    if (attackerDown || target.dead) {
+    const attackerDown = prevented || outOfAction(s, attacker);
+    // A master who ties the riposte cuts the guard down: that was the blow. (And
+    // a guard that turned its coat in that rout is no longer a foe to strike.)
+    if (attackerDown || target.dead || target.owner === attacker.owner) {
       if (checkGameOver(s, events)) return;
       if (attackerDown || s.actionsRemaining <= 0) endActivation(s, events);
       return;
     }
   }
 
-  const roll = rollMelee(s, board, attacker, target, powerPenalty);
+  const roll = rollMelee(s, board, attacker, target, 'attack', powerPenalty);
+  // A Rusher's charge is spent on this blow, whoever it was aimed at.
+  delete s.rushed;
   const { attackDie, defenseDie, attackScore, defenseScore } = roll;
   const attackerPush = pushOutcome(s, board, attacker, target);
   const targetPush = pushOutcome(s, board, target, attacker);
@@ -366,7 +384,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
       // Pushed back or braced it is still standing, so it may act again; pushed
       // off the map it is dead (or, Tough, knocked down at the edge), and pushed
       // into lava it is dead for sure.
-      attackerEnded = attacker.dead || attacker.knockedDown;
+      attackerEnded = outOfAction(s, attacker);
       break;
     case 'clash':
       break;
@@ -374,7 +392,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
 
   if (checkGameOver(s, events)) return;
   // A rout the blow set off can bring the attacker down too (see `resolveFreeHacks`).
-  attackerEnded ||= attacker.dead || attacker.knockedDown;
+  attackerEnded ||= outOfAction(s, attacker);
   if (attackerEnded || s.actionsRemaining <= 0) endActivation(s, events);
 }
 
@@ -410,11 +428,11 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   const { attackDie, defenseDie } = rollPair(s);
   const { attackBase, defenseBase, mods } = shotScoring(s, board, attacker, target, aimPenalty);
   const { attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget } = mods;
-  const { attackOpportunist, attackSharpshooter } = mods;
+  const { attackOpportunist, attackSharpshooter, attackWoodwise, defenseWoodwise } = mods;
   const attackScore = attackBase + attackDie;
   const defenseScore = defenseBase + defenseDie;
 
-  const targetPush = pushOutcome(s, board, target, attacker);
+  const targetPush = pushOutcome(s, board, target, attacker, false);
   // A shot only ever harms the target — the shooter takes no return damage.
   const shotSide: CombatSide = { score: attackScore, die: attackDie, knockedDown: attacker.knockedDown, canRecoil: false };
   const targetSide: CombatSide = {
@@ -435,7 +453,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     defenseDie,
     attackScore,
     defenseScore,
-    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, attackOpportunist, attackSharpshooter, aimPenalty }),
+    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, attackOpportunist, attackSharpshooter, attackWoodwise, defenseWoodwise, aimPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -445,7 +463,8 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   hitDefender(s, events, result, target, attacker.id, board, gruesome, targetPush);
 
   if (checkGameOver(s, events)) return;
-  if (s.actionsRemaining <= 0) endActivation(s, events);
+  // A rout the shot set off can, at the end of a long chain, turn the shooter's coat.
+  if (outOfAction(s, attacker) || s.actionsRemaining <= 0) endActivation(s, events);
 }
 
 /** A shot's scores before the dice, and the modifiers behind them (see {@link handleShoot}). */
@@ -462,6 +481,8 @@ function shotScoring(s: GameState, board: Board, attacker: Unit, target: Unit, a
     flyingTarget: flyingTargetBonus(s, target),
     attackOpportunist: opportunistBonus(attacker, target),
     attackSharpshooter: sharpshooterBonus(attacker),
+    attackWoodwise: woodwiseBonus(s, board, attacker),
+    defenseWoodwise: woodwiseBonus(s, board, target),
   };
   return {
     attackBase:
@@ -470,10 +491,11 @@ function shotScoring(s: GameState, board: Board, attacker: Unit, target: Unit, a
       mods.bigTarget +
       mods.flyingTarget +
       mods.attackOpportunist +
-      mods.attackSharpshooter -
+      mods.attackSharpshooter +
+      mods.attackWoodwise -
       mods.rangePenalty -
       mods.coverPenalty,
-    defenseBase: target.combat + mods.defenseBonus - aimPenalty,
+    defenseBase: target.combat + mods.defenseBonus + mods.defenseWoodwise - aimPenalty,
     mods,
   };
 }
@@ -520,7 +542,7 @@ function handleWarCry(s: GameState, events: GameEvent[], unitId: string): void {
  * attack is prevented (the attacker killed, knocked down or pushed back).
  */
 function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker: Unit, board: Board): boolean {
-  const roll = rollMelee(s, board, guard, attacker);
+  const roll = rollMelee(s, board, guard, attacker, 'riposte');
   const { attackDie: guardDie, defenseDie: attackerDie, attackScore: guardScore, defenseScore: attackerScore } = roll;
   const {
     attackBonus: guardBonus,
@@ -534,6 +556,9 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     defenseMounted: attackerMounted,
     attackOpportunist: guardOpportunist,
     defenseOpportunist: attackerOpportunist,
+    attackPincer: guardPincer,
+    attackWoodwise: guardWoodwise,
+    defenseWoodwise: attackerWoodwise,
   } = roll.mods;
   const attackerPush = pushOutcome(s, board, attacker, guard);
   // A knocked-down guard's riposte only lands on a natural 6. And a guard never
@@ -559,8 +584,8 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
   // The one way a guard *is* hurt parrying: an attacker's Combat Mastery on a tie.
   const master = masteryStruck(guardSide, attackerSide);
   const result = defenderOnly(lands || master ? computeCombatResult(guardSide, attackerSide) : 'clash', master);
-  // An attacker braced by a friend is not driven back, so its blow still lands.
-  const prevented = result.startsWith('defender') && !(result === 'defenderRecoiled' && attackerPush.kind === 'supported');
+  // An attacker braced by a friend, or too solid to shift, is not driven back, so its blow still lands.
+  const prevented = result.startsWith('defender') && !(result === 'defenderRecoiled' && standsFirm(attackerPush));
   const gruesome = gruesomeKill(s, board, result, guard, attacker, guardScore, attackerScore, null, attackerPush);
 
   events.push({
@@ -583,6 +608,9 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
       attackerMounted,
       guardOpportunist,
       attackerOpportunist,
+      guardPincer,
+      guardWoodwise,
+      attackerWoodwise,
     }),
     result,
     ...(gruesome ? { gruesome } : {}),
@@ -607,12 +635,16 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
  * just lets it slip away. Returns whether the leaver may carry on moving.
  */
 function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board: Board): boolean {
-  // A flyer lifts straight up out of contact — no ground blade can catch it.
-  if (airborne(s, mover)) return true;
+  // A flyer lifts straight up out of contact — no ground blade can catch it —
+  // and a Slippery unit ducks away under every one.
+  if (slipsAway(s, mover)) return true;
+  const side = mover.owner;
   for (const hacker of adjacentEnemies(s, mover, board)) {
-    // A hacker already cut down, or put to flight, by an earlier hack's rout has no swing.
-    if (hacker.knockedDown || hacker.dead || board.distance(hacker.pos, mover.pos) !== 1) continue;
-    const roll = rollMelee(s, board, hacker, mover);
+    // A leaver that turned its coat in an earlier hack's rout is going nowhere.
+    if (mover.owner !== side) return false;
+    // A hacker already cut down, put to flight or turned by an earlier hack's rout has no swing.
+    if (hacker.knockedDown || hacker.dead || hacker.owner === side || board.distance(hacker.pos, mover.pos) !== 1) continue;
+    const roll = rollMelee(s, board, hacker, mover, 'hack');
     const { attackDie, defenseDie, attackScore, defenseScore } = roll;
     // Only the leaver can be hurt — unless it is a master who ties the hacker.
     const hackSide: CombatSide = {
@@ -662,7 +694,7 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
     hitDefender(s, events, result, mover, hacker.id, board, gruesome, null);
     if (result === 'defenderKilled' || result === 'defenderKnockedDown') return false;
   }
-  return true;
+  return mover.owner === side;
 }
 
 // --- The shared shape of one opposed roll ---------------------------------
@@ -684,7 +716,18 @@ interface MeleeMods {
   defenseMounted: number;
   attackOpportunist: number;
   defenseOpportunist: number;
+  /** The striker's Pincer (a friend directly opposite the foe). Only ever the aggressor's. */
+  attackPincer: number;
+  /** A Rusher's charge. Only ever on an attack. */
+  attackRusher: number;
+  /** The target's Shieldwall. Only ever against an attack. */
+  defenseShieldwall: number;
+  attackWoodwise: number;
+  defenseWoodwise: number;
 }
+
+/** Which melee an opposed roll is: an attack, a guard's riposte, or a free hack at a leaver. */
+type MeleeKind = 'attack' | 'riposte' | 'hack';
 
 /** One opposed melee: both dice, both scores, and the modifiers behind them. */
 interface MeleeRoll {
@@ -716,10 +759,11 @@ function rollMelee(
   board: Board,
   aggressor: Unit,
   defender: Unit,
+  kind: MeleeKind,
   defensePenalty = 0,
 ): MeleeRoll {
   const { attackDie, defenseDie } = rollPair(s);
-  const { attackBase, defenseBase, mods } = meleeScoring(s, board, aggressor, defender, defensePenalty);
+  const { attackBase, defenseBase, mods } = meleeScoring(s, board, aggressor, defender, kind, defensePenalty);
   return { attackDie, defenseDie, attackScore: attackBase + attackDie, defenseScore: defenseBase + defenseDie, mods };
 }
 
@@ -729,6 +773,7 @@ function meleeScoring(
   board: Board,
   aggressor: Unit,
   defender: Unit,
+  kind: MeleeKind,
   defensePenalty = 0,
 ): { attackBase: number; defenseBase: number; mods: MeleeMods } {
   const mods: MeleeMods = {
@@ -743,6 +788,11 @@ function meleeScoring(
     defenseMounted: mountedMeleeBonus(defender, aggressor),
     attackOpportunist: opportunistBonus(aggressor, defender),
     defenseOpportunist: opportunistBonus(defender, aggressor),
+    attackPincer: pincerBonus(s, board, aggressor, defender),
+    attackRusher: kind === 'attack' ? rusherBonus(s, aggressor, defender) : 0,
+    defenseShieldwall: kind === 'attack' ? shieldwallBonus(s, board, defender) : 0,
+    attackWoodwise: woodwiseBonus(s, board, aggressor),
+    defenseWoodwise: woodwiseBonus(s, board, defender),
   };
   return {
     attackBase:
@@ -751,14 +801,19 @@ function meleeScoring(
       mods.attackBig +
       mods.attackFly +
       mods.attackMounted +
-      mods.attackOpportunist -
+      mods.attackOpportunist +
+      mods.attackPincer +
+      mods.attackRusher +
+      mods.attackWoodwise -
       mods.attackOutnumbered,
     defenseBase:
       defender.combat +
       mods.defenseBonus +
       mods.defenseBig +
       mods.defenseMounted +
-      mods.defenseOpportunist -
+      mods.defenseOpportunist +
+      mods.defenseShieldwall +
+      mods.defenseWoodwise -
       mods.defenseOutnumbered -
       defensePenalty,
     mods,
@@ -811,10 +866,18 @@ export function combatOdds(
   const target = unitById(s, targetId);
   if (!attacker || !target) throw new Error('unknown combatant');
   const board = makeHexGrid(s.board);
+  // Striking from somewhere else is a charge: a Rusher's bonus rides on it when
+  // the walk there is what brings it up against the target.
+  const stands = unitById(state, attackerId)!.pos;
+  if (from && (from.x !== stands.x || from.y !== stands.y)) {
+    s.activeUnitId = attackerId;
+    if (board.distance(stands, target.pos) !== 1) s.rushed = [targetId];
+    else delete s.rushed;
+  }
   const penalty = options.pressed ? (options.ranged ? AIMED_SHOT_PENALTY : POWER_BLOW_PENALTY) : 0;
   const { attackBase, defenseBase } = options.ranged
     ? shotScoring(s, board, attacker, target, penalty)
-    : meleeScoring(s, board, attacker, target, penalty);
+    : meleeScoring(s, board, attacker, target, 'attack', penalty);
 
   // Mastery only ever turns melee ties into kills; a shot knows nothing of it.
   const attackerMastery = !options.ranged && attacker.traits.mastery;
@@ -827,8 +890,8 @@ export function combatOdds(
   let lose = 0;
   let slain = 0;
   if (!options.ranged && target.guarding && target.traits.guard) {
-    const riposte = meleeScoring(s, board, target, attacker);
-    const braced = pushOutcome(s, board, attacker, target).kind === 'supported';
+    const riposte = meleeScoring(s, board, target, attacker, 'riposte');
+    const braced = standsFirm(pushOutcome(s, board, attacker, target));
     let stopped = 0;
     for (let g = 1; g <= 6; g++) {
       for (let a = 1; a <= 6; a++) {
@@ -861,8 +924,8 @@ export function combatOdds(
 
   // Lava turns a push, or a flyer's knockdown over it, into a kill. A target
   // with nowhere to be pushed falls instead, as in play.
-  const targetPush = pushOutcome(s, board, target, attacker);
-  const pushedIn = targetPush.kind === 'lava';
+  const targetPush = pushOutcome(s, board, target, attacker, !options.ranged);
+  const pushedIn = targetPush.kind === 'lava' || (targetPush.kind === 'back' && targetPush.fatal === true);
   const fallsIn = fallsIntoLava(s, board, target);
   let win = 0;
   let kill = 0;
@@ -1025,23 +1088,61 @@ function gruesomeKill(
 }
 
 /**
- * What pushing `unit` one hex directly away from `by` would do:
- * - `back`: the hex is free, so it recoils into it;
+ * What pushing `unit` directly away from `by` would do:
+ * - `back`: the hex is free, so it recoils into it — and is knocked `down` there
+ *   if it has Bad Balance or a Trample drove it up against something (`fatal`
+ *   when that drops a flyer into lava);
  * - `supported`: a standing friend holds that hex and braces it — it stays put, on its feet;
+ * - `held`: it is Immovable, and does not give way at all;
  * - `off`: the hex is off the map, so the push kills it;
  * - `lava`: the hex is empty lava and `unit` is not airborne, so the push kills
  *   it — and no Tough save helps (an airborne flyer just recoils over it);
  * - `blocked`: impassable terrain, an enemy or a knocked-down friend — it falls instead.
+ *
+ * A Trample push in melee goes two hexes: `off` and `lava` then carry the hex
+ * it was driven across first (`via`).
  */
 type Push =
-  | { kind: 'back'; to: Vec }
+  | { kind: 'back'; to: Vec; down?: true; fatal?: true }
   | { kind: 'supported'; by: Unit }
-  | { kind: 'off' }
-  | { kind: 'lava'; to: Vec }
+  | { kind: 'held' }
+  | { kind: 'off'; via?: Vec }
+  | { kind: 'lava'; to: Vec; via?: Vec }
   | { kind: 'blocked' };
 
-function pushOutcome(s: GameState, board: Board, unit: Unit, by: Unit): Push {
-  const to = board.stepAway(by.pos, unit.pos);
+/** `melee`: whether the push comes from a blow (a shot never tramples). */
+function pushOutcome(s: GameState, board: Board, unit: Unit, by: Unit, melee = true): Push {
+  if (unit.traits.immovable) return { kind: 'held' };
+  const first = pushStep(s, board, unit, by.pos, unit.pos);
+  if (first.kind !== 'back') return first;
+  const lands = (to: Vec, down: boolean): Push => ({
+    kind: 'back',
+    to,
+    ...(down ? { down: true as const } : {}),
+    ...(down && board.isDeadly(to) && airborne(s, unit) ? { fatal: true as const } : {}),
+  });
+  const unsteady = unit.traits.badBalance;
+  if (!melee || !by.traits.trample) return lands(first.to, unsteady);
+
+  // Trample: on across a second hex. A friend there stops it after one; the
+  // edge or lava there kills it; anything else there floors it on the first.
+  const second = pushStep(s, board, unit, unit.pos, first.to);
+  switch (second.kind) {
+    case 'back':
+      return lands(second.to, unsteady);
+    case 'supported':
+      return lands(first.to, unsteady);
+    case 'off':
+    case 'lava':
+      return { ...second, via: first.to };
+    default:
+      return lands(first.to, true);
+  }
+}
+
+/** One hex of a push: what lies directly beyond `at`, going away from `from`. */
+function pushStep(s: GameState, board: Board, unit: Unit, from: Vec, at: Vec): Push {
+  const to = board.stepAway(from, at);
   if (!board.inBounds(to)) return { kind: 'off' };
   if (board.isBlocked(to)) return { kind: 'blocked' };
   const there = s.units.find((u) => !u.dead && u.id !== unit.id && u.pos.x === to.x && u.pos.y === to.y);
@@ -1052,12 +1153,19 @@ function pushOutcome(s: GameState, board: Board, unit: Unit, by: Unit): Push {
 /** Whether a push has somewhere to resolve other than a fall (see {@link pushOutcome}). */
 const canBePushed = (p: Push) => p.kind !== 'blocked';
 
-/** Whether a push is a killing one: off the map, or into lava. */
-const pushKills = (p: Push | null) => p?.kind === 'off' || p?.kind === 'lava';
+/** Whether a push leaves its target standing exactly where it was: braced by a friend, or Immovable. */
+const standsFirm = (p: Push) => p.kind === 'supported' || p.kind === 'held';
+
+/** Whether a push is a killing one: off the map, into lava, or a flyer floored over it. */
+const pushKills = (p: Push | null) => p?.kind === 'off' || p?.kind === 'lava' || (p?.kind === 'back' && p.fatal === true);
+
+/** Whether the activating `unit` can no longer act: dead, floored, or gone over to the enemy. */
+const outOfAction = (s: GameState, unit: Unit) => unit.dead || unit.knockedDown || unit.owner !== s.active;
 
 /**
  * Resolve a winning odd-die push on `unit` (mutates `s`): recoil into the free
- * hex, stand braced against a supporting friend, or go off the map or into lava
+ * hex (and fall there, if the push said so), stand braced against a supporting
+ * friend or hold as an Immovable does, or go off the map or into lava
  * — a combat kill by `byId`, `gruesome` when a Savage did the shoving (at the
  * edge a Tough unit is knocked down instead; lava it does not survive).
  */
@@ -1070,12 +1178,25 @@ function push(
   board: Board,
   gruesome: boolean,
 ): void {
-  if (p.kind === 'back') recoil(s, events, unit, p.to);
-  else if (p.kind === 'supported') events.push({ type: 'UnitSupported', unitId: unit.id, supporterId: p.by.id });
-  else if (p.kind === 'off') {
+  if (p.kind === 'back') {
+    recoil(s, events, unit, p.to);
+    // A carrier shoved home has already won; otherwise it may land flat.
+    if (p.down && s.phase !== 'gameOver') knockDown(s, events, unit, byId, board, gruesome);
+    return;
+  }
+  if (p.kind === 'supported') events.push({ type: 'UnitSupported', unitId: unit.id, supporterId: p.by.id });
+  else if (p.kind === 'held') events.push({ type: 'UnitHeldGround', unitId: unit.id });
+  if (p.kind !== 'off' && p.kind !== 'lava') return;
+
+  // Trampled across a hex first: that is where it goes over the edge from.
+  if (p.via) {
+    recoil(s, events, unit, p.via);
+    if (s.phase === 'gameOver') return;
+  }
+  if (p.kind === 'off') {
     events.push({ type: 'UnitPushedOff', unitId: unit.id });
     strike(s, unit, byId, events, board, gruesome);
-  } else if (p.kind === 'lava') {
+  } else {
     // It keeps its last position in the state, so nothing (a dropped flag
     // included) ever lies on the lava; the event says where it went in.
     events.push({ type: 'UnitPushedIntoLava', unitId: unit.id, to: { x: p.to.x, y: p.to.y } });
@@ -1151,6 +1272,7 @@ function handleEndActivation(s: GameState, events: GameEvent[]): void {
 function endActivation(s: GameState, events: GameEvent[]): void {
   const endedId = s.activeUnitId;
   if (endedId) events.push({ type: 'ActivationEnded', unitId: endedId });
+  delete s.rushed;
   s.activeUnitId = null;
   s.actionsRemaining = 0;
 

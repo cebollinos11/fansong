@@ -74,6 +74,17 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     armored: unit.armored,
     sharpshooter: unit.sharpshooter,
     mastery: unit.mastery,
+    pincer: unit.pincer,
+    shieldwall: unit.shieldwall,
+    rusher: unit.rusher,
+    slippery: unit.slippery,
+    whirling: unit.whirling,
+    immovable: unit.immovable,
+    woodwise: unit.woodwise,
+    trample: unit.trample,
+    dumb: unit.dumb,
+    disloyal: unit.disloyal,
+    badBalance: unit.badBalance,
   };
   if (unit.look !== undefined) spec.look = unit.look;
   if (unit.tint !== undefined) spec.tint = unit.tint;

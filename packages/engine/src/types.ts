@@ -106,6 +106,57 @@ export interface UnitTraits {
    * unless the master is Savage. Reported by a `MasteryStruck` event.
    */
   mastery: boolean;
+  /**
+   * Pincer: +1 whenever it strikes in melee — an attack, a riposte or a free
+   * hack — at a foe with one of its standing friends on the hex directly
+   * opposite (see `pincerBonus` in combat.ts). Lapses while it is knocked down.
+   */
+  pincer: boolean;
+  /**
+   * Shieldwall: +1 defending against a melee attack while it stands next to a
+   * standing friend (see `shieldwallBonus` in combat.ts). Not against a riposte
+   * or a free hack, and not while it is knocked down.
+   */
+  shieldwall: boolean;
+  /**
+   * Rusher: +1 on the first attack it makes after a Move that brought it into
+   * contact with its target, in the same activation (see {@link GameState.rushed}).
+   */
+  rusher: boolean;
+  /**
+   * Slippery: leaving contact draws no free hack, on a Move or in flight from a
+   * failed nerve check — unless it is carrying a flag (see `slipsAway` in query.ts).
+   */
+  slippery: boolean;
+  /** Whirling: it is never outnumbered in melee while on its feet (see `outnumberedPenalty` in query.ts). */
+  whirling: boolean;
+  /**
+   * Immovable: it is never pushed. A push result — from a blow, a riposte or a
+   * shot — leaves it standing where it is, reported by a `UnitHeldGround` event.
+   * Never with {@link badBalance}.
+   */
+  immovable: boolean;
+  /**
+   * Woodwise: standing in a forest hex (and not airborne) it scores +1 on every
+   * combat roll — melee on either side, a shot it takes and a shot taken at it
+   * (see `woodwiseBonus` in combat.ts).
+   */
+  woodwise: boolean;
+  /**
+   * Trample: a foe it pushes in melee goes two hexes instead of one. A standing
+   * friend of the foe on the second hex stops it after one; the map edge or lava
+   * there kills it; anything else there leaves it knocked down on the first hex.
+   */
+  trample: boolean;
+  /** Dumb: it may roll at most {@link DUMB_MAX_DICE} activation dice (see `maxActivationDice` in query.ts). */
+  dumb: boolean;
+  /**
+   * Disloyal: a natural 1 on a nerve check makes it change sides instead of
+   * fleeing (see `defect` in morale.ts). It keeps the trait, so it can turn again.
+   */
+  disloyal: boolean;
+  /** Bad Balance: a push that moves it also knocks it down where it lands. Never with {@link immovable}. */
+  badBalance: boolean;
 }
 
 export interface Unit {
@@ -187,6 +238,13 @@ export interface GameState {
    * state's shape (and every replay hash) is unchanged.
    */
   group?: GroupState;
+  /**
+   * Rusher: the enemies the activating unit's last Move brought it into contact
+   * with. Its next attack on one of them gets the Rusher bonus, and any attack
+   * or further Move clears it. Omitted when empty, so an ordinary state's shape
+   * is unchanged.
+   */
+  rushed?: string[];
 }
 
 /** A group activation in progress: the members still to act behind the active one. */
@@ -354,6 +412,16 @@ export type GameEvent =
       attackOpportunist?: number;
       /** Opportunist bonus added to the defense score (an Opportunist facing a knocked-down attacker); present only when non-zero. */
       defenseOpportunist?: number;
+      /** Pincer bonus added to the attack score (a friend stands directly opposite the target); present only when non-zero. */
+      attackPincer?: number;
+      /** Rusher bonus added to the attack score (it moved into contact with the target this activation); present only when non-zero. */
+      attackRusher?: number;
+      /** Shieldwall bonus added to the defense score (the target stands next to a standing friend); present only when non-zero. */
+      defenseShieldwall?: number;
+      /** Woodwise bonus added to the attack score (a Woodwise attacker standing in forest); present only when non-zero. */
+      attackWoodwise?: number;
+      /** Woodwise bonus added to the defense score (a Woodwise defender standing in forest); present only when non-zero. */
+      defenseWoodwise?: number;
       /** Power-blow penalty subtracted from the defense score; present only on a two-action attack. */
       powerPenalty?: number;
       result: CombatResult;
@@ -384,6 +452,10 @@ export type GameEvent =
       attackOpportunist?: number;
       /** Sharpshooter bonus added to the attack score (the shooter is a Sharpshooter); present only when non-zero. */
       attackSharpshooter?: number;
+      /** Woodwise bonus added to the attack score (a Woodwise shooter standing in forest); present only when non-zero. */
+      attackWoodwise?: number;
+      /** Woodwise bonus added to the defense score (a Woodwise target standing in forest); present only when non-zero. */
+      defenseWoodwise?: number;
       /** Aimed-shot penalty subtracted from the defense score; present only on a two-action shot. */
       aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
@@ -426,6 +498,12 @@ export type GameEvent =
       attackOpportunist?: number;
       /** Opportunist bonus added to the leaver's score (never in practice: a knocked-down hacker draws no hack); present only when non-zero. */
       defenseOpportunist?: number;
+      /** Pincer bonus added to the hacker's score (a friend stands directly opposite the leaver); present only when non-zero. */
+      attackPincer?: number;
+      /** Woodwise bonus added to the hacker's score (a Woodwise hacker standing in forest); present only when non-zero. */
+      attackWoodwise?: number;
+      /** Woodwise bonus added to the leaver's score (a Woodwise leaver standing in forest); present only when non-zero. */
+      defenseWoodwise?: number;
       result: CombatResult;
       /** Present when the hack made a gruesome kill, which spreads fear: it tripled the leaver's score, or the hacker is Savage. */
       gruesome?: true;
@@ -465,6 +543,12 @@ export type GameEvent =
       guardOpportunist?: number;
       /** Opportunist bonus added to the attacker's score (an Opportunist attacking a knocked-down guard); present only when non-zero. */
       attackerOpportunist?: number;
+      /** Pincer bonus added to the guard's score (a friend stands directly opposite the attacker); present only when non-zero. */
+      guardPincer?: number;
+      /** Woodwise bonus added to the guard's score (a Woodwise guard standing in forest); present only when non-zero. */
+      guardWoodwise?: number;
+      /** Woodwise bonus added to the attacker's score (a Woodwise attacker standing in forest); present only when non-zero. */
+      attackerWoodwise?: number;
       result: CombatResult;
       /** Present when the riposte made a gruesome kill: it tripled the attacker's score, or the guard is Savage. */
       gruesome?: true;
@@ -501,6 +585,13 @@ export type GameEvent =
   | { type: 'UnitRecoiled'; unitId: string; from: Vec; to: Vec }
   /** A push that would have driven `unitId` back into its standing friend `supporterId`: braced, it holds its ground. */
   | { type: 'UnitSupported'; unitId: string; supporterId: string }
+  /** A push that an Immovable `unitId` simply did not give way to: it holds its ground, on its feet. */
+  | { type: 'UnitHeldGround'; unitId: string }
+  /**
+   * A Disloyal unit rolled a natural 1 on the nerve check just before this event
+   * and changed sides: it now belongs to `to`, and has activated for the round.
+   */
+  | { type: 'UnitDefected'; unitId: string; to: Owner }
   /** Pushed off the edge of the map; the kill (or a Tough save) follows. */
   | { type: 'UnitPushedOff'; unitId: string }
   /**
@@ -521,7 +612,7 @@ export type GameEvent =
   | { type: 'FlagPickedUp'; player: Owner; unitId: string }
   /** Capture-the-flag: `player`'s flag falls from its knocked-down or slain carrier onto `at`. */
   | { type: 'FlagDropped'; player: Owner; unitId: string; at: Vec }
-  /** Capture-the-flag: `unitId` returned its own side's (`player`'s) dropped flag to base. */
+  /** Capture-the-flag: `unitId` returned its own side's (`player`'s) flag to base: it stepped onto it where it lay, or was carrying it when it changed sides. */
   | { type: 'FlagReturned'; player: Owner; unitId: string }
   /** Capture-the-flag: `player` carried the enemy flag home with `unitId` (and wins). */
   | { type: 'FlagCaptured'; player: Owner; unitId: string }
