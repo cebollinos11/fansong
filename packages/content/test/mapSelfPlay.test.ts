@@ -21,6 +21,16 @@ import { PRESET_IDS, getPreset } from '../src/presets.js';
 
 const STEP_CAP = 20_000;
 
+/**
+ * A seed's matchup: a preset against the same size of the warband `apart` places
+ * on (each warband's three sizes sit together in {@link PRESET_IDS}), so the
+ * objective modes are played between armies of equal strength.
+ */
+function sameSizeMatchup(seed: number, apart: number): [string, string] {
+  const n = PRESET_IDS.length;
+  return [PRESET_IDS[seed % n]!, PRESET_IDS[(seed + 3 * apart) % n]!];
+}
+
 /** Play a full AI-vs-AI game on `map`, checking terrain invariants each step. */
 function playOn(
   map: MapDef,
@@ -99,7 +109,7 @@ describe('AI in the zone modes', () => {
         let scored = 0;
         for (let seed = 1; seed <= 3; seed++) {
           const events: GameEvent[] = [];
-          const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 1) % PRESET_IDS.length]!];
+          const presets: [string, string] = sameSizeMatchup(seed, 1);
           const final = playOn(map, seed, presets, mode, events);
           expect(final.phase).toBe('gameOver');
           expect(final.round).toBeLessThanOrEqual(12);
@@ -125,7 +135,7 @@ describe('AI in capture-the-flag', () => {
       // assertion about the AI rather than about the seeds it happened to draw.
       for (let seed = 1; seed <= 8; seed++) {
         const events: GameEvent[] = [];
-        const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 1) % PRESET_IDS.length]!];
+        const presets: [string, string] = sameSizeMatchup(seed, 1);
         const final = playOn(map, seed, presets, 'capture-the-flag', events);
         expect(final.phase).toBe('gameOver');
         pickups += events.filter((e) => e.type === 'FlagPickedUp').length;
@@ -143,7 +153,7 @@ describe('AI in kill-the-king', () => {
       let byKing = 0;
       for (let seed = 1; seed <= 3; seed++) {
         const events: GameEvent[] = [];
-        const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 1) % PRESET_IDS.length]!];
+        const presets: [string, string] = sameSizeMatchup(seed, 1);
         const final = playOn(map, seed, presets, 'kill-the-king', events);
         expect(final.phase).toBe('gameOver');
         expect(final.winner === 0 || final.winner === 1).toBe(true);
@@ -353,7 +363,7 @@ describe('every built-in map × every supported mode', () => {
     for (const mode of supportedModes(map)) {
       it(`${map.id}: ${mode} completes with a consistent result`, () => {
         for (let seed = 11; seed <= 12; seed++) {
-          const presets: [string, string] = [PRESET_IDS[seed % PRESET_IDS.length]!, PRESET_IDS[(seed + 2) % PRESET_IDS.length]!];
+          const presets: [string, string] = sameSizeMatchup(seed, 2);
           let state = createGame(buildMatch(getPreset(presets[0])!, getPreset(presets[1])!, { seed, map, mode }));
           expect(gameMode(state)).toBe(mode);
           const events: GameEvent[] = [];

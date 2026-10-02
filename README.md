@@ -45,7 +45,7 @@ pnpm test                 # 600+ tests: rng, hex board, terrain/LOS, combat, tur
                           #            wire schemas, server rooms + lobby
 pnpm play                 # watch two demo AIs fight (seed 42)
 pnpm play --list          # list preset warbands, built-in maps and modes
-pnpm play --p0 iron-wardens --p1 ashfang-raiders   # a preset matchup
+pnpm play --p0 iron-wardens-medium --p1 ashfang-raiders-medium   # a preset matchup
 pnpm play --map twin-towers --mode capture-the-flag  # a map + game mode
 pnpm play --seed 7 -q     # a specific seed, result only
 pnpm play --help          # every option
@@ -145,8 +145,10 @@ seed replays identically).
 - **Validation** (`validateWarband`) — checks stat ranges and roster size,
   reporting every problem at once for a builder UI. There is no point limit:
   the total cost is shown next to each warband's name so players can agree on a size.
-- **Presets** — five original warbands (`iron-wardens`, `ashfang-raiders`,
-  `free-company`, `hollow-watch`, `thorn-patrol`), each proven legal by the test suite.
+- **Presets** — four original warbands (`iron-wardens`, `ashfang-raiders`,
+  `bonefield-legion`, `wild-menagerie`), each in three sizes (`-small`: 3 units, about 120 points;
+  `-medium`: about 250; `-large`: about 400). Between them they field every trait, and each is
+  proven legal by the test suite.
 - **Deploy** (`buildMatch`) — lays two warbands out facing off and emits an
   engine `GameConfig`; the CLI and any future UI share it.
 
@@ -235,7 +237,7 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
     attack outright (resolved synchronously — no turn interrupts).
 
   The AI (`chooseCommand`) uses them: shooters seek a standoff and fire, and the
-  `hollow-watch` preset fields all three.
+  `iron-wardens` presets field all three.
 
 - **Morale depth** — beyond the activation turnover:
   - **Fear** — when a unit suffers a gruesome kill in combat, standing friends

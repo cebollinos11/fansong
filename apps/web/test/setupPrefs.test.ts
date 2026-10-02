@@ -17,7 +17,7 @@ describe('setup prefs', () => {
     const storage = memoryStorage();
     const prefs: SetupPrefs = {
       mode: 'hotseat',
-      sides: ['army:a1', 'ashfang-raiders'],
+      sides: ['army:a1', 'ashfang-raiders-medium'],
       mapId: 'old-forest',
       gameMode: 'kill-the-king',
       kings: [2, 0],
@@ -33,7 +33,7 @@ describe('setup prefs', () => {
   });
 
   it('drops fields that do not parse and keeps the rest', () => {
-    const stored = { mode: 'solo', sides: ['iron-wardens'], mapId: 3, gameMode: 'tag', kings: [1, -1], extra: 1 };
+    const stored = { mode: 'solo', sides: ['iron-wardens-medium'], mapId: 3, gameMode: 'tag', kings: [1, -1], extra: 1 };
     expect(loadSetupPrefs(memoryStorage({ [SETUP_PREFS_KEY]: JSON.stringify(stored) }))).toEqual({});
     const partly = { mode: 'vsAI', sides: ['a', 2], mapId: 'rolling-hills' };
     expect(loadSetupPrefs(memoryStorage({ [SETUP_PREFS_KEY]: JSON.stringify(partly) }))).toEqual({

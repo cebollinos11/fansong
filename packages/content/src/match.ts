@@ -54,7 +54,7 @@ export interface MatchSetup {
 export type MapLookup = (id: string) => MapDef | undefined;
 
 export const DEFAULT_SETUP: MatchSetup = {
-  presets: ['iron-wardens', 'ashfang-raiders'],
+  presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
   seats: ['human', 'ai'],
   seed: 42,
 };

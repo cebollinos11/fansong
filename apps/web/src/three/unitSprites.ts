@@ -23,6 +23,10 @@ export const UNIT_SPRITES: Record<string, string> = {
   Outrider: 'goblins/knight.png',
   Whelp: 'goblins/spearman.png',
 
+  // The groups from here to Grave Knights are named after retired presets. Their
+  // sprites are still looks in the army builder, and the current presets reuse
+  // some (Longbow, Crossbow, the skeletons).
+
   // Free Company — sellswords and hired locals.
   Sergeant: 'human-loyalists/sergeant.png',
   Swordsman: 'human-loyalists/swordsman.png',
@@ -72,7 +76,7 @@ export const UNIT_SPRITES: Record<string, string> = {
   Crocodile: 'monsters/croc/crocodile.png',
 
   // Walkers — sprites with a real multi-frame Wesnoth walk cycle, offered as
-  // looks in the army builder (no preset fields them yet).
+  // looks in the army builder (of these, only the Ghost is in a preset).
   'Elvish Fighter': 'elves-wood/fighter/fighter.png',
   Ghost: 'undead-spirit/ghost-base.png',
   Shadow: 'undead-spirit/shadow-s-2.png',

@@ -1,12 +1,12 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
-import { unitMove, type GameState } from '@fansong/engine';
+import { unitMove, type GameState, type Unit } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { describeHex, oddsLine, type HexLine } from '../src/ui/hexInfo.js';
 import type { PlanPreview } from '../src/game/planView.js';
 import { TRAIT_HELP } from '../src/ui/hudView.js';
 
 const SETUP: MatchSetup = {
-  presets: ['iron-wardens', 'ashfang-raiders'],
+  presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
   seats: ['human', 'ai'],
   seed: 42,
 };
@@ -44,13 +44,17 @@ describe('describeHex', () => {
   });
 
   it('spells out the abilities that change how a unit must be fought', () => {
-    const plain = state.units[0]!;
+    // Every preset unit has an ability now, so strip the first unit's to get a plain one.
+    const first = state.units[0]!;
+    const noTraits = Object.fromEntries(Object.keys(first.traits).map((k) => [k, k === 'ranged' ? 0 : false])) as unknown as Unit['traits'];
+    const plain: Unit = { ...first, traits: noTraits };
+    const bare: GameState = { ...state, units: state.units.map((u) => (u.id === plain.id ? plain : u)) };
     // A unit with no abilities says nothing extra.
-    expect(describeHex(state, plain.pos)?.lines.at(-1)).toEqual({ quality: plain.quality, combat: plain.combat, move: unitMove(plain) });
+    expect(describeHex(bare, plain.pos)?.lines.at(-1)).toEqual({ quality: plain.quality, combat: plain.combat, move: unitMove(plain) });
 
     const armed: GameState = {
-      ...state,
-      units: state.units.map((u) =>
+      ...bare,
+      units: bare.units.map((u) =>
         u.id === plain.id
           ? { ...u, guarding: true, traits: { ...u.traits, ranged: 4, tough: true, guard: true, big: true } }
           : u,

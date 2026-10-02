@@ -6,7 +6,7 @@ import { commandsEqual, MatchController } from '../src/game/controller.js';
 import { deriveInteraction } from '../src/game/interaction.js';
 
 const SETUP: MatchSetup = {
-  presets: ['iron-wardens', 'ashfang-raiders'],
+  presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
   seats: ['human', 'ai'],
   seed: 42,
 };

@@ -25,7 +25,7 @@ describe('custom game limits', () => {
   });
 
   it('puts the limits in the local setup, and they reach the game and its HUD', () => {
-    const { setup } = launchFor('hotseat', ['iron-wardens', 'ashfang-raiders'], 1, 'open-field', {
+    const { setup } = launchFor('hotseat', ['iron-wardens-medium', 'ashfang-raiders-medium'], 1, 'open-field', {
       mode: 'conquest',
       limits: { roundLimit: 6, targetScore: 3 },
     });
@@ -36,10 +36,10 @@ describe('custom game limits', () => {
   });
 
   it('leaves default setups without limits, and annihilation shows a HUD only with a round limit', () => {
-    const plain = launchFor('hotseat', ['iron-wardens', 'ashfang-raiders'], 1).setup;
+    const plain = launchFor('hotseat', ['iron-wardens-medium', 'ashfang-raiders-medium'], 1).setup;
     expect(plain.limits).toBeUndefined();
     expect(modeHud(createGame(configFromSetup(plain)))).toBeNull();
-    const capped = launchFor('hotseat', ['iron-wardens', 'ashfang-raiders'], 1, undefined, {
+    const capped = launchFor('hotseat', ['iron-wardens-medium', 'ashfang-raiders-medium'], 1, undefined, {
       mode: 'annihilation',
       limits: { roundLimit: 8 },
     }).setup;

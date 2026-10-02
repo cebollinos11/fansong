@@ -8,7 +8,7 @@ import { parseReplay, replayToJson } from '../src/game/replay-io.js';
 // Hotseat = two human seats, so no AiDriver timer ever schedules; we can drive
 // the whole game synchronously through `send` and inspect the recording.
 const SETUP: MatchSetup = {
-  presets: ['hollow-watch', 'free-company'],
+  presets: ['wild-menagerie-medium', 'bonefield-legion-medium'],
   seats: ['human', 'human'],
   seed: 11,
 };

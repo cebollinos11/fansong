@@ -4,7 +4,7 @@ import { launchFor, launchProblem, modeFor } from '../src/ui/SetupScreen.js';
 import { armyChoice, type SavedArmy } from '../src/game/armies.js';
 
 describe('launchFor', () => {
-  const presets: [string, string] = ['iron-wardens', 'ashfang-raiders'];
+  const presets: [string, string] = ['iron-wardens-medium', 'ashfang-raiders-medium'];
 
   it('leaves the default map implicit so default setups are unchanged', () => {
     expect(launchFor('vsAI', presets, 7)).toEqual({
@@ -27,7 +27,7 @@ describe('launchFor', () => {
 });
 
 describe('launchFor game modes', () => {
-  const presets: [string, string] = ['iron-wardens', 'ashfang-raiders'];
+  const presets: [string, string] = ['iron-wardens-medium', 'ashfang-raiders-medium'];
 
   it('leaves annihilation implicit and drops Kings outside kill-the-king', () => {
     expect(launchFor('vsAI', presets, 7, DEFAULT_MAP_ID, { mode: 'annihilation', kings: [1, 2] })).toEqual({
@@ -71,12 +71,12 @@ describe('launchFor with saved armies', () => {
   const armies: SavedArmy[] = [{ id: 'a1', warband: horde }];
 
   it('writes both rosters out when a side is a saved army, labelling it custom', () => {
-    const launch = launchFor('vsAI', [armyChoice('a1'), 'iron-wardens'], 7, DEFAULT_MAP_ID, undefined, armies);
+    const launch = launchFor('vsAI', [armyChoice('a1'), 'iron-wardens-medium'], 7, DEFAULT_MAP_ID, undefined, armies);
     expect(launch).toEqual({
       kind: 'local',
       setup: {
-        presets: ['custom', 'iron-wardens'],
-        warbands: [horde, getPreset('iron-wardens')],
+        presets: ['custom', 'iron-wardens-medium'],
+        warbands: [horde, getPreset('iron-wardens-medium')],
         seats: ['human', 'ai'],
         seed: 7,
       },
@@ -89,7 +89,7 @@ describe('launchFor with saved armies', () => {
 
   it('launches an army too big for the map deploy zone, spilling it onto nearby ground', () => {
     const huge: SavedArmy = { id: 'a2', warband: { name: 'Huge', units: Array.from({ length: 30 }, () => horde.units[0]!) } };
-    const launch = launchFor('hotseat', [armyChoice('a2'), 'iron-wardens'], 7, 'twin-towers', undefined, [huge]);
+    const launch = launchFor('hotseat', [armyChoice('a2'), 'iron-wardens-medium'], 7, 'twin-towers', undefined, [huge]);
     expect(launchProblem(launch, getMap)).toBeNull();
     if (launch.kind !== 'local') throw new Error('expected local');
     expect(configFromSetup(launch.setup).warbands[0]).toHaveLength(30);

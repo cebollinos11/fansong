@@ -5,30 +5,25 @@ import type { Warband, WarbandUnit } from './warband.js';
  * no trademarked names or published profiles. Each is built to be legal under
  * {@link DEFAULT_RULES}; the preset test asserts that invariant.
  *
- * Design intent (so the AI-vs-AI matchups stay interesting):
- * *  - iron-wardens : tough, disciplined — wins by grinding; a shield wall of
- *    Guard foot around a Slow, Big, Tough, Guard bulwark that towers over the
- *    rank and file (and draws every arrow).
- *  - ashfang-raiders : fast and fragile — wins by reaching you first (melee only):
- *    Mounted wolves and outriders, Opportunists who pile onto the fallen, and a
- *    Slow raid-leader bringing up the rear.
- *  - free-company : a balanced generalist baseline — a Tough, Guard sergeant,
- *    foot, a fast slinger and a long-ranged bowman.
- *  - hollow-watch : a defensive garrison — long bows and crossbows behind a
- *    Tough, Guard shield-warden and Guard sentries.
- *  - thorn-patrol : a minimum-size (3-unit) band — one long bow, two foot — for
- *    quick games and small boards.
- *  - sky-talons : an all-air wing — two Flying gryphons (one Big) and a Flying
- *    falcon that vault terrain and gang up in melee, backed by a falconer's bow.
- *  - bonefield-legion : a Reassembling undead host — a Slow mass of middling foot
- *    and bows that refuse to stay down, standing back up for free every round.
- *    Wins by attrition: you must kill them, not just knock them over.
- *  - grave-knights : the skeletal elite, all Reassembling — a Mounted rider, a
- *    fast Opportunist twin-blade, and a Slow, Guard crowned commander.
- *  - wild-menagerie : wandering beasts — a Flying falcon, a Big, Guard-pincered
- *    scorpion, a Slow, Tough, hard-biting crocodile, and a pack of animals.
- *  - monstrous-horde : the big brutes — a bear, a yeti and a giant (web-spitting)
- *    spider, led into the sky by a Flying wyvern.
+ * Four warbands, each in three sizes: small (3 units, about 120 points), medium
+ * (about 250) and large (about 400). Between them they field every trait, which
+ * the preset test also asserts.
+ *
+ * Design intent (so the matchups stay interesting):
+ *  - iron-wardens : a shield wall that grinds forward and is hard to shift —
+ *    Shieldwall foot and Guard, Armored veterans around an Armored Leader and a
+ *    Slow, Big, Tough, Immovable bulwark, covered by long bows and a Slow
+ *    Sharpshooter crossbow.
+ *  - ashfang-raiders : fast and fragile — wins on first contact (melee only):
+ *    Rusher foot, a Big but Dumb brute, Mounted outriders that Trample, and
+ *    Disloyal Opportunist goblins, behind a Savage Leader.
+ *  - bonefield-legion : a Reassembling undead host that wins by attrition — you
+ *    must kill them, not just knock them over. Badly balanced foot and bows, Fast
+ *    Mounted riders, a Whirling twin-blade and a Flying, Armored ghost, under a
+ *    Slow Leader with Combat Mastery.
+ *  - wild-menagerie : leaderless beasts — Flying hunters (one Savage), Fast
+ *    Pincer wolves, Slippery rats, Woodwise forest ambushers (a Trampling boar
+ *    and a web-spitting spider) and Big, Tough brutes.
  */
 
 /** A preset unit's profile. Its name is its key in {@link PRESET_UNITS}. */
@@ -52,165 +47,170 @@ export interface PresetRoster {
  */
 export const PRESET_UNITS: Record<string, PresetUnit> = {
   // Iron Wardens
-  'Warden-Captain': { quality: 3, combat: 4 },
-  Ironguard: { quality: 4, combat: 3, guard: true },
-  Bulwark: { quality: 4, combat: 4, slow: true, tough: true, guard: true, big: true },
-  Sentinel: { quality: 3, combat: 3, guard: true },
-  Halberdier: { quality: 4, combat: 3 },
-  Levy: { quality: 4, combat: 2 },
+  'Warden-Captain': { quality: 3, combat: 4, leader: true, armored: true },
+  Sentinel: { quality: 3, combat: 3, guard: true, armored: true },
+  Bulwark: { quality: 4, combat: 4, slow: true, tough: true, big: true, immovable: true },
+  Ironguard: { quality: 4, combat: 3, guard: true, shieldwall: true },
+  Halberdier: { quality: 4, combat: 3, shieldwall: true },
+  Crossbow: { quality: 4, combat: 3, shooter: 'long', sharpshooter: true, slow: true },
+  Longbow: { quality: 3, combat: 2, shooter: 'long' },
+  Levy: { quality: 4, combat: 2, shieldwall: true },
 
   // Ashfang Raiders
-  'Raid-Leader': { quality: 2, combat: 4, slow: true },
-  Marauder: { quality: 3, combat: 3 },
-  Reaver: { quality: 4, combat: 3, big: true, opportunist: true },
-  'Wolf-Prowler': { quality: 4, combat: 2, fast: true, mounted: true },
-  Outrider: { quality: 3, combat: 2, fast: true, mounted: true },
-  Whelp: { quality: 4, combat: 1, opportunist: true },
-
-  // Free Company
-  Sergeant: { quality: 3, combat: 4, tough: true, guard: true },
-  Swordsman: { quality: 4, combat: 3 },
-  Pikeman: { quality: 4, combat: 3, opportunist: true },
-  Slinger: { quality: 3, combat: 2, shooter: 'normal', fast: true },
-  Bowman: { quality: 4, combat: 3, shooter: 'long', look: 'Halberd-Recruit' },
-  Recruit: { quality: 4, combat: 3 },
-
-  // Hollow Watch
-  'Watch-Captain': { quality: 2, combat: 4 },
-  'Shield-Warden': { quality: 3, combat: 3, tough: true, guard: true },
-  Longbow: { quality: 3, combat: 2, shooter: 'long' },
-  Crossbow: { quality: 4, combat: 4, shooter: 'long' },
-  Sentry: { quality: 4, combat: 3, guard: true },
-
-  // Thorn Patrol
-  'Thorn-Bow': { quality: 3, combat: 2, shooter: 'long' },
-  'Thorn-Blade': { quality: 3, combat: 4 },
-  'Thorn-Spear': { quality: 3, combat: 3, opportunist: true },
-
-  // Sky Talons
-  'Sky-Talon': { quality: 3, combat: 3, flying: true },
-  'Storm-Talon': { quality: 3, combat: 4, big: true, flying: true },
-  'Talon-Falconer': { quality: 3, combat: 2, shooter: 'normal' },
+  'Raid-Leader': { quality: 3, combat: 4, leader: true, savage: true },
+  Outrider: { quality: 3, combat: 3, fast: true, mounted: true, trample: true },
+  Reaver: { quality: 4, combat: 4, big: true, rusher: true, dumb: true },
+  Marauder: { quality: 4, combat: 3, rusher: true },
+  'Wolf-Prowler': { quality: 4, combat: 2, fast: true, mounted: true, opportunist: true, disloyal: true },
+  Whelp: { quality: 4, combat: 2, opportunist: true, disloyal: true },
 
   // Bonefield Legion
-  'Skeleton Infantry': { quality: 4, combat: 3, slow: true, reassembling: true },
-  'Skeleton Archer': { quality: 4, combat: 2, shooter: 'normal', slow: true, reassembling: true },
-
-  // Grave Knights
-  'Skeleton Rider': { quality: 4, combat: 3, reassembling: true, mounted: true },
-  Deathblade: { quality: 4, combat: 3, fast: true, reassembling: true, opportunist: true },
-  'Death Knight': { quality: 3, combat: 4, slow: true, guard: true, reassembling: true },
+  'Death Knight': { quality: 3, combat: 4, slow: true, leader: true, mastery: true, reassembling: true },
+  Deathblade: { quality: 4, combat: 3, fast: true, whirling: true, reassembling: true },
+  'Skeleton Rider': { quality: 4, combat: 3, fast: true, mounted: true, reassembling: true },
+  'Skeleton Archer': { quality: 4, combat: 2, shooter: 'normal', reassembling: true },
+  Ghost: { quality: 4, combat: 2, flying: true, armored: true },
+  'Skeleton Infantry': { quality: 4, combat: 3, reassembling: true, badBalance: true },
 
   // Wild Menagerie
-  Falcon: { quality: 4, combat: 2, fast: true, flying: true },
-  'Giant Scorpion': { quality: 4, combat: 3, fast: true, guard: true, big: true },
-  Crocodile: { quality: 4, combat: 5, slow: true, tough: true },
-  Wolf: { quality: 4, combat: 2, fast: true },
-  Boar: { quality: 4, combat: 4 },
-  'Giant Rat': { quality: 5, combat: 2, fast: true },
-
-  // Monstrous Horde
-  'Wild Wyvern': { quality: 3, combat: 4, fast: true, flying: true },
-  Bear: { quality: 4, combat: 4, big: true },
   Yeti: { quality: 3, combat: 5, big: true },
-  'Giant Spider': { quality: 3, combat: 3, shooter: 'short', big: true },
+  'Wild Wyvern': { quality: 3, combat: 4, flying: true, savage: true },
+  'Giant Spider': { quality: 3, combat: 3, shooter: 'short', woodwise: true },
+  Bear: { quality: 4, combat: 4, big: true, tough: true },
+  Boar: { quality: 4, combat: 4, trample: true, woodwise: true },
+  'Giant Scorpion': { quality: 4, combat: 3, guard: true, pincer: true, armored: true },
+  Crocodile: { quality: 4, combat: 5, slow: true, tough: true, dumb: true },
+  Falcon: { quality: 4, combat: 2, fast: true, flying: true },
+  Wolf: { quality: 4, combat: 2, fast: true, pincer: true },
+  'Giant Rat': { quality: 5, combat: 2, fast: true, slippery: true },
 };
 
 /** Which units each preset warband fields, in menu order. */
 export const PRESET_ROSTERS: Record<string, PresetRoster> = {
-  'iron-wardens': {
-    name: 'Iron Wardens',
+  'iron-wardens-small': {
+    name: 'Iron Wardens (Small)',
     units: [
       { unit: 'Warden-Captain' },
       { unit: 'Ironguard' },
-      { unit: 'Bulwark' },
+      { unit: 'Crossbow' },
+    ],
+  },
+  'iron-wardens-medium': {
+    name: 'Iron Wardens (Medium)',
+    units: [
+      { unit: 'Warden-Captain' },
       { unit: 'Sentinel' },
+      { unit: 'Bulwark' },
+      { unit: 'Ironguard' },
       { unit: 'Halberdier' },
+      { unit: 'Crossbow' },
       { unit: 'Levy' },
     ],
   },
-  'ashfang-raiders': {
-    name: 'Ashfang Raiders',
+  'iron-wardens-large': {
+    name: 'Iron Wardens (Large)',
+    units: [
+      { unit: 'Warden-Captain' },
+      { unit: 'Sentinel', count: 2 },
+      { unit: 'Bulwark' },
+      { unit: 'Ironguard', count: 2 },
+      { unit: 'Halberdier', count: 2 },
+      { unit: 'Crossbow' },
+      { unit: 'Longbow', count: 2 },
+      { unit: 'Levy' },
+    ],
+  },
+  'ashfang-raiders-small': {
+    name: 'Ashfang Raiders (Small)',
     units: [
       { unit: 'Raid-Leader' },
-      { unit: 'Marauder' },
-      { unit: 'Reaver' },
-      { unit: 'Wolf-Prowler' },
       { unit: 'Outrider' },
       { unit: 'Whelp' },
     ],
   },
-  'free-company': {
-    name: 'Free Company',
+  'ashfang-raiders-medium': {
+    name: 'Ashfang Raiders (Medium)',
     units: [
-      { unit: 'Sergeant' },
-      { unit: 'Swordsman' },
-      { unit: 'Pikeman' },
-      { unit: 'Slinger' },
-      { unit: 'Bowman' },
-      { unit: 'Recruit' },
+      { unit: 'Raid-Leader' },
+      { unit: 'Outrider' },
+      { unit: 'Reaver' },
+      { unit: 'Marauder', count: 2 },
+      { unit: 'Wolf-Prowler' },
+      { unit: 'Whelp', count: 2 },
     ],
   },
-  'hollow-watch': {
-    name: 'Hollow Watch',
+  'ashfang-raiders-large': {
+    name: 'Ashfang Raiders (Large)',
     units: [
-      { unit: 'Watch-Captain' },
-      { unit: 'Shield-Warden' },
-      { unit: 'Longbow' },
-      { unit: 'Crossbow' },
-      { unit: 'Sentry' },
+      { unit: 'Raid-Leader' },
+      { unit: 'Outrider', count: 2 },
+      { unit: 'Reaver', count: 2 },
+      { unit: 'Marauder', count: 3 },
+      { unit: 'Wolf-Prowler', count: 3 },
+      { unit: 'Whelp' },
     ],
   },
-  'thorn-patrol': {
-    name: 'Thorn Patrol',
+  'bonefield-legion-small': {
+    name: 'Bonefield Legion (Small)',
     units: [
-      { unit: 'Thorn-Bow' },
-      { unit: 'Thorn-Blade' },
-      { unit: 'Thorn-Spear' },
-    ],
-  },
-  'sky-talons': {
-    name: 'Sky Talons',
-    units: [
-      { unit: 'Sky-Talon' },
-      { unit: 'Storm-Talon' },
-      { unit: 'Talon-Falconer' },
-      { unit: 'Falcon' },
-    ],
-  },
-  'bonefield-legion': {
-    name: 'Bonefield Legion',
-    units: [
-      { unit: 'Skeleton Infantry', count: 5 },
-      { unit: 'Skeleton Archer', count: 3 },
-    ],
-  },
-  'grave-knights': {
-    name: 'Grave Knights',
-    units: [
-      { unit: 'Skeleton Rider' },
-      { unit: 'Deathblade' },
       { unit: 'Death Knight' },
+      { unit: 'Skeleton Rider' },
+      { unit: 'Skeleton Infantry' },
     ],
   },
-  'wild-menagerie': {
-    name: 'Wild Menagerie',
+  'bonefield-legion-medium': {
+    name: 'Bonefield Legion (Medium)',
     units: [
-      { unit: 'Falcon' },
-      { unit: 'Giant Scorpion' },
-      { unit: 'Crocodile' },
-      { unit: 'Wolf' },
-      { unit: 'Boar' },
-      { unit: 'Giant Rat' },
+      { unit: 'Death Knight' },
+      { unit: 'Deathblade' },
+      { unit: 'Skeleton Rider' },
+      { unit: 'Skeleton Infantry', count: 3 },
+      { unit: 'Skeleton Archer', count: 2 },
     ],
   },
-  'monstrous-horde': {
-    name: 'Monstrous Horde',
+  'bonefield-legion-large': {
+    name: 'Bonefield Legion (Large)',
+    units: [
+      { unit: 'Death Knight' },
+      { unit: 'Deathblade', count: 2 },
+      { unit: 'Skeleton Rider', count: 3 },
+      { unit: 'Ghost' },
+      { unit: 'Skeleton Infantry', count: 3 },
+      { unit: 'Skeleton Archer', count: 2 },
+    ],
+  },
+  'wild-menagerie-small': {
+    name: 'Wild Menagerie (Small)',
+    units: [
+      { unit: 'Wild Wyvern' },
+      { unit: 'Giant Spider' },
+      { unit: 'Wolf' },
+    ],
+  },
+  'wild-menagerie-medium': {
+    name: 'Wild Menagerie (Medium)',
     units: [
       { unit: 'Wild Wyvern' },
       { unit: 'Bear' },
-      { unit: 'Yeti' },
+      { unit: 'Boar' },
       { unit: 'Giant Spider' },
+      { unit: 'Wolf', count: 2 },
+      { unit: 'Giant Rat', count: 2 },
+    ],
+  },
+  'wild-menagerie-large': {
+    name: 'Wild Menagerie (Large)',
+    units: [
+      { unit: 'Wild Wyvern' },
+      { unit: 'Yeti' },
+      { unit: 'Bear' },
+      { unit: 'Boar' },
+      { unit: 'Giant Spider' },
+      { unit: 'Giant Scorpion' },
+      { unit: 'Crocodile' },
+      { unit: 'Falcon' },
+      { unit: 'Wolf', count: 2 },
+      { unit: 'Giant Rat', count: 2 },
     ],
   },
 };

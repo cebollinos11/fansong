@@ -12,8 +12,8 @@ describe('parseArgs', () => {
   });
 
   it('reads --map, --mode and the other flags', () => {
-    const opts = parseArgs(['--map', 'crossroads', '--mode', 'conquest', '--seed', '7', '-q', '--p0', 'iron-wardens']);
-    expect(opts).toMatchObject({ map: 'crossroads', mode: 'conquest', seed: 7, quiet: true, p0: 'iron-wardens' });
+    const opts = parseArgs(['--map', 'crossroads', '--mode', 'conquest', '--seed', '7', '-q', '--p0', 'iron-wardens-medium']);
+    expect(opts).toMatchObject({ map: 'crossroads', mode: 'conquest', seed: 7, quiet: true, p0: 'iron-wardens-medium' });
     expect(parseArgs(['--list']).list).toBe(true);
     expect(parseArgs(['-h']).help).toBe(true);
   });
@@ -30,9 +30,9 @@ describe('parseArgs', () => {
 
 describe('setupMatch', () => {
   it('without map or mode keeps the legacy preset config (no mode keys)', () => {
-    const { state } = setupMatch(parseArgs(['--p0', 'iron-wardens', '--p1', 'ashfang-raiders', '--seed', '3']));
+    const { state } = setupMatch(parseArgs(['--p0', 'iron-wardens-medium', '--p1', 'ashfang-raiders-medium', '--seed', '3']));
     const legacy = createGame(
-      buildMatch(PRESETS['iron-wardens']!, PRESETS['ashfang-raiders']!, { seed: 3, board: DEFAULT_BOARD }),
+      buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['ashfang-raiders-medium']!, { seed: 3, board: DEFAULT_BOARD }),
     );
     expect(state).toEqual(legacy);
     expect(state.mode).toBeUndefined();
@@ -46,7 +46,7 @@ describe('setupMatch', () => {
     expect(state.mode).toBeUndefined();
     expect(label).toContain(map.name);
     // Unspecified sides field the fallback preset.
-    expect(label).toContain(`${PRESETS['free-company']!.name} (P0)`);
+    expect(label).toContain(`${PRESETS['iron-wardens-medium']!.name} (P0)`);
   });
 
   it('--mode sets up every mode on every map that supports it', () => {
