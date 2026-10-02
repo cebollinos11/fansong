@@ -3040,6 +3040,13 @@ button.army-item.active {
   gap: 4px;
 }
 
+.sb-demos {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-top: 3px;
+}
+
 .sb-hint {
   margin: 0;
   color: var(--muted);

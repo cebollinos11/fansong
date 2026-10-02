@@ -22,6 +22,7 @@ import { traitPatch } from './armyView.js';
 import { StatIcon } from './StatIcons.js';
 import { TraitEditor } from './TraitEditor.js';
 import { browserStorage } from '../game/customMaps.js';
+import { DEMO_GROUPS, EFFECT_DEMOS, stageDemo, type EffectDemo } from '../game/effectDemos.js';
 import * as sandboxOps from '../game/sandbox.js';
 import {
   activateUnit,
@@ -162,6 +163,29 @@ export function SandboxScreen({ initial, setup, onExit }: Props): JSX.Element {
     }
   };
 
+  // Play a trait's effect demo: stage its scene, give it a beat to be seen
+  // (and its sprites to load), then set it off.
+  const demoTimer = useRef<number | null>(null);
+  useEffect(() => () => window.clearTimeout(demoTimer.current ?? undefined), []);
+  const playDemo = (demo: EffectDemo): void => {
+    window.clearTimeout(demoTimer.current ?? undefined);
+    try {
+      const staged = stageDemo(client.getState(), demo.id);
+      client.edit(() => staged.state);
+      setSelectedId(null);
+      say(`${demo.label}: ${demo.hint}`);
+      demoTimer.current = window.setTimeout(() => {
+        try {
+          client.send(staged.command);
+        } catch (e) {
+          say(e instanceof Error ? e.message : String(e), true);
+        }
+      }, DEMO_LEAD_MS);
+    } catch (e) {
+      say(e instanceof Error ? e.message : String(e), true);
+    }
+  };
+
   // Devtools access: `fansong.state()`, `fansong.edit(s => ...)`, `fansong.ops.spawnUnit(...)`.
   useEffect(() => {
     const w = window as unknown as { fansong?: unknown };
@@ -297,6 +321,7 @@ export function SandboxScreen({ initial, setup, onExit }: Props): JSX.Element {
 
             <TurnSection state={state} client={client} info={info} edit={edit} />
             <DiceSection state={state} client={client} info={info} edit={edit} say={say} />
+            <EffectsSection onPlay={playDemo} />
             <StateSection state={state} edit={edit} say={say} />
           </div>
         )}
@@ -557,6 +582,33 @@ function UnitSection({
 }
 
 type EditFn = (fn: (s: GameState) => GameState, done?: string) => boolean;
+
+/** How long a staged effect demo stands on the board before it plays. */
+const DEMO_LEAD_MS = 900;
+
+/** One button per combat outcome and per trait: each replaces the board's units with a small scene and plays it. */
+function EffectsSection({ onPlay }: { onPlay: (demo: EffectDemo) => void }) {
+  return (
+    <Section title="Animations" open={false}>
+      <p className="sb-hint">
+        Plays one outcome or trait in the middle of the board. It replaces every unit (Undo brings them back). Add{' '}
+        <code>&amp;animSpeed=0.25</code> to the address to watch in slow motion.
+      </p>
+      {DEMO_GROUPS.map((group) => (
+        <div key={group}>
+          <div className="sb-label">{group}</div>
+          <div className="sb-demos">
+            {EFFECT_DEMOS.filter((demo) => demo.group === group).map((demo) => (
+              <button key={demo.id} type="button" title={demo.hint} onClick={() => onPlay(demo)}>
+                {demo.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </Section>
+  );
+}
 
 function TurnSection({
   state,

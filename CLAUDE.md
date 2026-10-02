@@ -45,6 +45,7 @@ Tests live in each package's `test/` directory (`**/test/**/*.test.ts`) and run 
 
 **Verifying UI changes live.** Run the web dev server and drive it with Playwright. On this machine Playwright is installed globally, and ESM must import it by absolute URL: `file:///C:/Users/cebol/AppData/Roaming/npm/node_modules/playwright/index.mjs`. With `headless: false` it renders on the real GPU. Headless needs `--use-angle=swiftshader --enable-unsafe-swiftshader --ignore-gpu-blocklist`, or the three.js board renders blank.
 - The board is a single canvas picked by raycast, so units have no DOM handle. To set up a scenario, use the dev sandbox instead of clicking: open `http://localhost:5173/?dev=1&sandbox` and script it through `window.fansong` (`fansong.edit(s => fansong.ops.spawnUnit(s, 0, profile, {x,y}))`, `ops.activateUnit`, `ops.clearUnits`, `fansong.client.send(cmd)`, `fansong.state()`).
+- The sandbox panel's **Animations** section has one button per melee outcome, shooting outcome and trait; each stages a small scene and plays it (`src/game/effectDemos.ts`). Add a demo there when an outcome or trait gets a new effect.
 - `?animSpeed=0.25` slows animations so screenshots catch them. The console 404 on `/favicon.ico` is expected.
 
 **Unit sprites and terrain art** are imported from a local Wesnoth checkout (`C:\Repos\wesnoth`), not fetched. To add or change a unit's sprite:
