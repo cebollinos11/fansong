@@ -2087,9 +2087,9 @@ export class BoardView {
     return Math.abs(turnBetween(yaw, side)) <= Math.PI / 2 ? side : side + Math.PI;
   }
 
-  /** How tall a unit's body stands on screen: its pose's art from the feet up. */
-  private bodyHeight(obj: UnitObj): number {
-    const rect = obj.atlas?.frames.get(obj.animator.base);
+  /** How tall a unit's body stands on screen: its pose's art (its base pose, unless `image` is given) from the feet up. */
+  private bodyHeight(obj: UnitObj, image?: string | null): number {
+    const rect = obj.atlas?.frames.get(image ?? obj.animator.base) ?? obj.atlas?.frames.get(obj.animator.base);
     return obj.atlas && rect ? (obj.atlas.anchorY - rect.top) * SPRITE_PX * obj.size : BODY_HEIGHT * obj.size;
   }
 
@@ -3056,7 +3056,7 @@ export class BoardView {
       } else {
         this.at(hit, () => {
           const to = this.shotEnd(a, d, ending);
-          this.addTracer(a.group.position.clone().setY(a.targetPos.y + 0.7), to, SHOT_COLOR);
+          this.addTracer(this.shotPoint(a), to, SHOT_COLOR);
           this.shotFx(to, ending);
         });
       }
@@ -3204,7 +3204,7 @@ export class BoardView {
     if (toward.lengthSq() < 1e-6) return;
     toward.normalize();
     this.joltUnit(a, toward.clone().negate(), 0.09, false, 280);
-    const bow = a.group.position.clone().setY(a.targetPos.y + TILE_TOP + BASE_HEIGHT + 0.55 + a.hover);
+    const bow = this.shotPoint(a);
     this.effects.pop('hoop', bow, 0.15, 1.1, { life: 0.28, color: 0xffffff, opacity: 0.75 });
     this.effects.burst({
       at: bow,
@@ -3243,8 +3243,7 @@ export class BoardView {
     sprite.scale.setScalar(72 * SPRITE_PX * 0.8);
     sprite.visible = false;
     this.scene.add(sprite);
-    const lift = TILE_TOP + BASE_HEIGHT + 0.55;
-    const start = from.group.position.clone().setY(from.targetPos.y + lift);
+    const start = this.shotPoint(from);
     const end = this.shotEnd(from, to, ending);
     this.missiles.push({
       sprite,
@@ -3304,7 +3303,22 @@ export class BoardView {
     const ground = to.targetPos.y + TILE_TOP;
     if (ending === 'miss') return to.group.position.clone().addScaledVector(dir, HEX_SIZE * 0.8).setY(ground + 0.02);
     if (ending === 'cover') return to.group.position.clone().addScaledVector(dir, -HEX_SIZE * 0.55).setY(ground + 0.3);
-    return to.group.position.clone().setY(to.targetPos.y + TILE_TOP + BASE_HEIGHT + 0.55 + to.hover);
+    return this.shotPoint(to);
+  }
+
+  /**
+   * Where a shot leaves a shooter, or strikes a target: the middle of its
+   * art (see {@link bodyHeight}), so up with a flyer as it hovers and higher
+   * on a Big one. The cutout leans back to face the camera (see
+   * {@link spriteLean}), so that middle sits back along the lean, not straight
+   * above its feet.
+   */
+  private shotPoint(obj: UnitObj): THREE.Vector3 {
+    // The pose on screen now (a flyer's wings-up frame stands taller than its base pose).
+    const up = this.bodyHeight(obj, obj.shownImage) / 2;
+    const toCam = this.camera.position.clone().sub(this.controls.target).setY(0).normalize();
+    const feet = obj.group.position.clone().add(obj.facing.position);
+    return feet.addScaledVector(toCam, -up * Math.sin(this.spriteLean)).setY(feet.y + up * Math.cos(this.spriteLean));
   }
 
   /** Apply held-back state changes (knockdown, death, guard) once their blow has landed. */
@@ -5275,7 +5289,7 @@ export class BoardView {
     const at = this.chest(victim);
     const along = this.screenAngle(killer.group.position, victim.group.position);
     if (ranged) {
-      const from = killer.group.position.clone().setY(killer.targetPos.y + TILE_TOP + BASE_HEIGHT + 0.55 + killer.hover);
+      const from = this.shotPoint(killer);
       const mid = from.clone().lerp(at, 0.5);
       // A shot with an arrow to watch leaves its own trail of smoke down the line instead.
       const missile = killer.anims.ranged?.some((c) => c.missile) === true;
