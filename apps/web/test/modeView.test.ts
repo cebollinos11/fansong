@@ -6,7 +6,7 @@ import { ZONE_COLORS } from '../src/ui/editorView.js';
 import { modeHud, modeMarkers, modeMarkingsKey, modeOverlays, unitBadges, zoneScore } from '../src/ui/modeView.js';
 
 function match(mode: GameMode | undefined, mapId?: string): GameState {
-  const setup: MatchSetup = { presets: ['iron-wardens', 'ashfang-raiders'], seats: ['ai', 'ai'], seed: 5 };
+  const setup: MatchSetup = { presets: ['iron-wardens-medium', 'ashfang-raiders-medium'], seats: ['ai', 'ai'], seed: 5 };
   return createMatchFromPresets({ ...setup, ...(mapId ? { mapId } : {}), ...(mode ? { mode } : {}) });
 }
 

@@ -7,8 +7,8 @@ const board = DEFAULT_BOARD;
 
 describe('layOutWarband', () => {
   it('places player 0 on the left edge and player 1 on the right edge', () => {
-    const p0 = layOutWarband(PRESETS['iron-wardens']!.units, 0, board);
-    const p1 = layOutWarband(PRESETS['ashfang-raiders']!.units, 1, board);
+    const p0 = layOutWarband(PRESETS['iron-wardens-medium']!.units, 0, board);
+    const p1 = layOutWarband(PRESETS['ashfang-raiders-medium']!.units, 1, board);
     expect(p0.every((s) => s.pos.x === 0)).toBe(true); // one column fits
     expect(p1.every((s) => s.pos.x === board.width - 1)).toBe(true);
   });
@@ -48,13 +48,13 @@ describe('layOutWarband', () => {
 
 describe('buildMatch', () => {
   it('produces a config that createGame accepts and can start reducing', () => {
-    const config = buildMatch(PRESETS['iron-wardens']!, PRESETS['free-company']!, {
+    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['bonefield-legion-medium']!, {
       seed: 7,
       board,
     });
     const state = createGame(config);
     expect(state.units).toHaveLength(
-      PRESETS['iron-wardens']!.units.length + PRESETS['free-company']!.units.length,
+      PRESETS['iron-wardens-medium']!.units.length + PRESETS['bonefield-legion-medium']!.units.length,
     );
     // No two units start stacked, and there is a legal opening move.
     expect(new Set(state.units.map((u) => vecKey(u.pos))).size).toBe(state.units.length);
@@ -65,7 +65,7 @@ describe('buildMatch', () => {
   });
 
   it('honours the requested initiative leader', () => {
-    const config = buildMatch(PRESETS['iron-wardens']!, PRESETS['free-company']!, {
+    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['bonefield-legion-medium']!, {
       seed: 1,
       board,
       initiativeLeader: 1,

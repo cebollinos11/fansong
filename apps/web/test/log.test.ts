@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { appendEvents, buildLog, emptyLog, itemText, partsText, type BattleLog, type LogItem } from '../src/ui/log.js';
 
 function match(mode: GameMode | undefined, mapId?: string): GameState {
-  const setup: MatchSetup = { presets: ['iron-wardens', 'ashfang-raiders'], seats: ['ai', 'ai'], seed: 5 };
+  const setup: MatchSetup = { presets: ['iron-wardens-medium', 'ashfang-raiders-medium'], seats: ['ai', 'ai'], seed: 5 };
   return createMatchFromPresets({ ...setup, ...(mapId ? { mapId } : {}), ...(mode ? { mode } : {}) });
 }
 

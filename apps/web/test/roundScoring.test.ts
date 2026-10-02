@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { splitRoundScoring } from '../src/game/roundScoring.js';
 
 function match(mode: GameMode, mapId: string): GameState {
-  return createMatchFromPresets({ presets: ['iron-wardens', 'ashfang-raiders'], seats: ['ai', 'ai'], seed: 5, mapId, mode });
+  return createMatchFromPresets({ presets: ['iron-wardens-medium', 'ashfang-raiders-medium'], seats: ['ai', 'ai'], seed: 5, mapId, mode });
 }
 
 /** End the round with a bare EndActivation, every unit already spent. */

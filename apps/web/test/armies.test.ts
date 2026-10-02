@@ -67,7 +67,7 @@ describe('saved armies', () => {
 
   it('resolves setup choices to presets or saved armies', () => {
     const armies = [{ id: 'a1', warband: ARMY }];
-    expect(choiceWarband('iron-wardens', armies)).toBe(PRESETS['iron-wardens']);
+    expect(choiceWarband('iron-wardens-medium', armies)).toBe(PRESETS['iron-wardens-medium']);
     expect(choiceWarband(armyChoice('a1'), armies)).toBe(ARMY);
     expect(choiceWarband(armyChoice('gone'), armies)).toBeUndefined();
   });
@@ -154,9 +154,9 @@ describe('army builder helpers', () => {
     expect(units[0]!.name).toBe('Soldier');
     expect(blankUnit(units).name).toBe('Soldier 2');
     expect(uniqueName('X', [])).toBe('X');
-    const bow = PRESETS['hollow-watch']!.units[2]!;
+    const bow = PRESETS['iron-wardens-large']!.units.find((u) => u.name === 'Longbow')!;
     expect(templateUnit(bow, [bow])).toMatchObject({ name: 'Longbow 2', look: 'Longbow', shooter: 'long' });
-    expect(armyFromPreset('thorn-patrol').units.map((u) => u.look)).toEqual(['Thorn-Bow', 'Thorn-Blade', 'Thorn-Spear']);
+    expect(armyFromPreset('iron-wardens-small').units.map((u) => u.look)).toEqual(['Warden-Captain', 'Ironguard', 'Crossbow']);
   });
 
   it('tints a unit and drops the key when the tint is switched off', () => {

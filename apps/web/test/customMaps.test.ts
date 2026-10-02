@@ -109,7 +109,7 @@ describe('parseMapText', () => {
 });
 
 // Hotseat: no AI timers, so the game can be driven synchronously.
-const SETUP: MatchSetup = { presets: ['hollow-watch', 'free-company'], seats: ['human', 'human'], seed: 5 };
+const SETUP: MatchSetup = { presets: ['wild-menagerie-medium', 'bonefield-legion-medium'], seats: ['human', 'human'], seed: 5 };
 
 describe('LocalMatchClient on a custom map', () => {
   it('plays a saved custom map and records it in the replay', () => {

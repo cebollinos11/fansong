@@ -37,7 +37,7 @@ export interface Options {
 }
 
 /** Preset fielded by a side the command line leaves unspecified in a warband match. */
-const FALLBACK_PRESET = 'free-company';
+const FALLBACK_PRESET = 'iron-wardens-medium';
 
 function isGameMode(s: string): s is GameMode {
   return (GAME_MODES as readonly string[]).includes(s);

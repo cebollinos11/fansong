@@ -32,8 +32,8 @@ describe('preset warband matches (engine + content + ai)', () => {
   });
 
   it('replays a preset match identically for a fixed seed', () => {
-    const a = playPresetMatch('iron-wardens', 'ashfang-raiders', 99);
-    const b = playPresetMatch('iron-wardens', 'ashfang-raiders', 99);
+    const a = playPresetMatch('iron-wardens-medium', 'ashfang-raiders-medium', 99);
+    const b = playPresetMatch('iron-wardens-medium', 'ashfang-raiders-medium', 99);
     expect(a).toEqual(b);
   });
 });

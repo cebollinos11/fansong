@@ -56,7 +56,7 @@ describe('server messages', () => {
     const welcome: ServerMessage = {
       t: 'welcome',
       seat: 0,
-      setup: { presets: ['iron-wardens', 'ashfang-raiders'], seats: ['human', 'human'], seed: 5 },
+      setup: { presets: ['iron-wardens-medium', 'ashfang-raiders-medium'], seats: ['human', 'human'], seed: 5 },
       state,
       presence: [true, false],
     };
@@ -122,7 +122,7 @@ describe('lobby messages', () => {
   });
 
   it('round-trips a lobby', () => {
-    const seat = { present: true, preset: 'iron-wardens', warband: { name: 'W', units: [] }, king: 0, ready: false };
+    const seat = { present: true, preset: 'iron-wardens-medium', warband: { name: 'W', units: [] }, king: 0, ready: false };
     const lobby: ServerMessage = {
       t: 'lobby',
       seat: 1,
@@ -137,7 +137,7 @@ describe('lobby messages', () => {
       t: 'welcome',
       seat: 1,
       setup: {
-        presets: ['iron-wardens', 'ashfang-raiders'],
+        presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
         seats: ['human', 'human'],
         seed: 5,
         mapId: 'rolling-hills',
