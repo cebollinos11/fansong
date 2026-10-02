@@ -45,13 +45,26 @@ const STAMP_TOP = 0.15;
 /** World heights (above a unit's base) that cards and verdicts anchor at. */
 const CARD_HEIGHT = 1.5;
 const VERDICT_HEIGHT = 0.9;
+/** A compact verdict's foot: just over the unit's head, so the unit itself stays in view. */
+const HEAD_HEIGHT = 1.5;
 
 /** Inset of a pinned card from the bottom corner it sits in. */
 const PIN_MARGIN = 14;
 /** How far a pinned verdict's foot sits above the bottom edge. */
 const VERDICT_BOTTOM = 30;
-/** Narrower than this, the two corner cards leave no room between them for the verdict. */
-const NARROW_BOARD = 560;
+/**
+ * Narrower or shorter than this (a phone), the overlay goes compact: small
+ * labels over units' heads in place of the big floating words (a fight's
+ * conclusion included), and smaller dice. Upright, where the two corner cards
+ * would meet, one combat strip along an edge replaces them and takes the
+ * conclusion; on its side (short but wide), the corner cards stay, shrunk.
+ */
+const COMPACT_WIDTH = 560;
+const COMPACT_HEIGHT = 480;
+/** Where a strip docked at the top sits: under the camera tools. */
+const STRIP_TOP = 54;
+/** Room kept for the verdict a strip gains on the blow, when choosing its edge. */
+const STRIP_VERDICT_ROOM = 44;
 
 /** A unit's anchor on screen, in container pixels; null when off screen. */
 export type Projector = (unitId: string, height: number) => { x: number; y: number } | null;
@@ -86,8 +99,11 @@ interface Reveal {
   done: boolean;
 }
 
-/** A bottom corner a card is parked in, rather than following its unit. */
-type Pin = 'left' | 'right' | null;
+/**
+ * Where a card is parked rather than following its unit: a bottom corner, or
+ * (compact) the one combat strip along the top or bottom edge.
+ */
+type Pin = 'left' | 'right' | 'strip' | null;
 
 interface Card {
   el: HTMLElement;
@@ -96,6 +112,8 @@ interface Card {
   partnerId: string | null;
   /** Bottom corner this card is pinned to, or null to follow its unit. */
   pin: Pin;
+  /** A strip's edge, chosen on its first frame (away from the fight) and kept. */
+  dock?: 'top' | 'bottom';
   height: number;
   dice: Die[];
   reveals: Reveal[];
@@ -126,6 +144,8 @@ interface Verdict {
   pin: boolean;
   /** A gruesome kill's headline, stamped across the upper middle of the view. */
   stamp: boolean;
+  /** A small label just over its unit's head (compact), rather than big words across it. */
+  compact: boolean;
   start: number;
   endAt: number;
 }
@@ -166,6 +186,10 @@ export class RollOverlay {
       c.el.remove();
       return false;
     });
+    if (this.layer.clientWidth < COMPACT_WIDTH) {
+      this.addStrip(roll, now, lifeMs);
+      return;
+    }
     for (const [s, other] of [
       [roll.a, roll.b],
       [roll.b, roll.a],
@@ -245,18 +269,22 @@ export class RollOverlay {
   /**
    * Big floating text: over the affected unit(s) (mid-board when `on` is
    * empty), or — with `place` 'bottom' — across the bottom centre, between the
-   * two combat cards, where a fight's conclusion always reads the same way.
-   * A gruesome kill's verdict is stamped as a headline over the fight instead.
+   * two combat cards, where a fight's conclusion always reads the same way
+   * (on an upright phone, it joins the combat strip). A gruesome kill's
+   * verdict is stamped as a headline over the fight instead.
    */
   addVerdict(v: RollVerdict, now: number, place: 'unit' | 'bottom' = 'unit'): void {
     this.now = now;
     const stamp = v.gruesome === true;
     const pin = !stamp && place === 'bottom';
-    const el = h('div', `roll-verdict ${v.tone}${pin ? ' pinned' : ''}${stamp ? ' stamp' : ''}`);
+    const compact = !stamp && this.compact();
+    // On an upright phone a fight's conclusion joins its strip.
+    if (pin && compact && this.stripVerdict(v, now)) return;
+    const el = h('div', `roll-verdict ${v.tone}${pin ? ' pinned' : ''}${stamp ? ' stamp' : ''}${compact ? ' compact' : ''}`);
     el.append(h('div', 'verdict-text', v.text));
     if (v.detail) el.append(h('div', 'verdict-detail', v.detail));
     this.layer.append(el);
-    this.verdicts.push({ el, on: v.on, pin, stamp, start: now, endAt: now + (stamp ? STAMP_MS : VERDICT_MS) });
+    this.verdicts.push({ el, on: v.on, pin, stamp, compact: compact && !pin, start: now, endAt: now + (stamp ? STAMP_MS : VERDICT_MS) });
   }
 
   /**
@@ -276,7 +304,7 @@ export class RollOverlay {
     count.append(h('b', 'p0', String(z.counts[0])), document.createTextNode(' vs '), h('b', 'p1', String(z.counts[1])));
     el.append(h('div', 'zone-score-name', z.name), count, h('div', 'verdict-text', z.headline), h('div', 'verdict-detail', z.reason));
     this.layer.append(el);
-    this.verdicts.push({ el, on: [], anchor, pin: false, stamp: false, start: now, endAt: now + lifeMs });
+    this.verdicts.push({ el, on: [], anchor, pin: false, stamp: false, compact: false, start: now, endAt: now + lifeMs });
   }
 
   /**
@@ -316,6 +344,7 @@ export class RollOverlay {
     this.now = now;
     const width = this.layer.clientWidth;
     const height = this.layer.clientHeight;
+    this.layer.classList.toggle('compact', this.compact());
 
     this.cards = this.cards.filter((c) => {
       if (now >= c.endAt) {
@@ -338,6 +367,16 @@ export class RollOverlay {
 
     const placed: { left: number; top: number; w: number; h: number }[] = [];
     for (const c of this.cards) {
+      if (c.pin === 'strip') {
+        c.el.style.visibility = '';
+        const w = c.el.offsetWidth;
+        const hgt = c.el.offsetHeight;
+        c.dock ??= this.dockAway(c, project, height, hgt);
+        const left = Math.max(4, (width - w) / 2);
+        const top = c.dock === 'top' ? STRIP_TOP : Math.max(4, height - hgt - PIN_MARGIN);
+        c.el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+        continue;
+      }
       if (c.pin) {
         // A bottom corner, whatever the camera does: the pair reads left to
         // right (aggressor, then defender) and never covers the fight.
@@ -388,7 +427,7 @@ export class RollOverlay {
         return false;
       }
       const f = (now - v.start) / (v.endAt - v.start);
-      const rise = v.stamp || v.anchor ? 0 : 28 * f;
+      const rise = v.stamp || v.anchor ? 0 : (v.compact ? 10 : 28) * f;
       const w = v.el.offsetWidth;
       const hgt = v.el.offsetHeight;
       let x = width / 2;
@@ -403,11 +442,28 @@ export class RollOverlay {
           y = Math.max(hgt / 2 + 4, Math.min(height - hgt / 2 - 4, p.y - hgt / 2 - 6));
         }
       } else if (v.pin) {
-        // Between the corner cards — or, on a board too narrow to leave a gap
-        // between them (a phone), above them.
-        const cards = this.cards.filter((c) => c.pin).map((c) => c.el.offsetHeight);
-        const foot = width < NARROW_BOARD && cards.length > 0 ? PIN_MARGIN + Math.max(...cards) + 8 : VERDICT_BOTTOM;
-        y = height - foot - hgt / 2;
+        // Between the corner cards: level with their middles on a phone on its
+        // side, clear of the action panel along the bottom.
+        const cards = this.cards.filter((c) => c.pin === 'left' || c.pin === 'right').map((c) => c.el.offsetHeight);
+        y =
+          this.compact() && cards.length > 0
+            ? height - PIN_MARGIN - Math.max(...cards) / 2
+            : height - VERDICT_BOTTOM - hgt / 2;
+      } else if (v.compact) {
+        // Its foot just over the unit's head, lifted clear of any card there.
+        const points = v.on.map((id) => project(id, HEAD_HEIGHT)).filter((p) => p !== null);
+        if (points.length > 0) {
+          x = points.reduce((s, p) => s + p.x, 0) / points.length;
+          y = Math.min(...points.map((p) => p.y)) - hgt / 2;
+        }
+        // Lifted clear of any card or label already over the same units.
+        const left = Math.max(4, Math.min(width - w - 4, x - w / 2));
+        for (const r of placed) {
+          const top = y - rise - hgt / 2;
+          if (left < r.left + r.w && r.left < left + w && top < r.top + r.h && r.top < top + hgt) y = r.top - 4 - hgt / 2 + rise;
+        }
+        y = Math.max(hgt / 2 + 4, y);
+        placed.push({ left, top: y - rise - hgt / 2, w, h: hgt });
       } else {
         const points = v.on.map((id) => project(id, VERDICT_HEIGHT)).filter((p) => p !== null);
         if (points.length > 0) {
@@ -423,6 +479,78 @@ export class RollOverlay {
   }
 
   // --- internals ----------------------------------------------------------
+
+  /** Whether the board is phone-sized, and the overlay goes compact. */
+  private compact(): boolean {
+    return this.layer.clientWidth < COMPACT_WIDTH || this.layer.clientHeight < COMPACT_HEIGHT;
+  }
+
+  /**
+   * A fight on a phone: both sides on one slim strip, aggressor left and
+   * defender right, each with its die, its modifiers summed into one number
+   * (the battle log has the breakdown) and its total.
+   */
+  private addStrip(roll: OpposedRoll, now: number, lifeMs: number): void {
+    this.retire(roll.a.unitId);
+    this.retire(roll.b.unitId);
+    const card = this.card(roll.a.unitId, roll.b.unitId, lifeMs, 'roll-strip', 'strip');
+    card.el.classList.remove('p0', 'p1'); // the strip is both sides'
+    const row = h('div', 'strip-row');
+    for (const s of [roll.a, roll.b]) {
+      const owner = this.owners(s.unitId);
+      const el = h('div', `strip-side ${s === roll.a ? 'aggressor' : 'defender'}${owner === undefined ? '' : ` p${owner}`}`);
+      const head = h('div', 'strip-head');
+      head.append(h('span', 'roll-role', s.role));
+      const name = this.nameOf(s.unitId);
+      if (name) head.append(h('span', 'strip-name', name));
+      const line = h('div', 'strip-line');
+      const die = this.die(s.unitId, s.die, now);
+      card.dice.push(die);
+      line.append(die.el);
+      const mods = s.mods.reduce((sum, m) => sum + m.value, 0);
+      if (s.mods.length > 0) {
+        const chip = h('span', `strip-mod${mods === 0 ? ' zero' : ''}`, signed(mods));
+        chip.title = s.mods.map((m) => `${signed(m.value)} ${m.label}`).join(', ');
+        line.append(chip);
+      }
+      line.append(h('span', 'strip-total', `= ${s.total}`));
+      el.append(head, line);
+      if (s.note) el.append(h('div', 'strip-note', s.note));
+      this.reveal(card, el, now, outcomeClass(s));
+      row.append(el);
+    }
+    row.insertBefore(h('div', 'strip-vs', 'vs'), row.lastChild);
+    card.el.append(row);
+  }
+
+  /** Put a fight's conclusion on its strip, under the dice. False when no strip is up for it. */
+  private stripVerdict(v: RollVerdict, now: number): boolean {
+    const card = this.cards.find((c) => c.pin === 'strip' && !c.leaving);
+    if (!card) return false;
+    card.el.querySelector('.strip-verdict')?.remove();
+    const el = h('div', `strip-verdict ${v.tone}`);
+    el.append(h('span', 'verdict-text', v.text));
+    if (v.detail) el.append(h('span', 'verdict-detail', v.detail));
+    card.el.append(el);
+    card.endAt = Math.max(card.endAt, now + VERDICT_MS);
+    return true;
+  }
+
+  /**
+   * The edge a strip docks on: the bottom, unless it (and the verdict it will
+   * gain) would cover the two fighters there and the top covers them less.
+   */
+  private dockAway(c: Card, project: Projector, height: number, hgt: number): 'top' | 'bottom' {
+    const ys = [c.unitId, c.partnerId]
+      .flatMap((id) => (id ? [project(id, 0), project(id, CARD_HEIGHT)] : []))
+      .filter((p) => p !== null)
+      .map((p) => p.y);
+    if (ys.length === 0) return 'bottom';
+    const room = hgt + STRIP_VERDICT_ROOM;
+    const below = height - PIN_MARGIN - room - Math.max(...ys);
+    const above = Math.min(...ys) - (STRIP_TOP + room);
+    return below >= 8 || below >= above ? 'bottom' : 'top';
+  }
 
   private card(unitId: string, partnerId: string | null, lifeMs: number, cls: string, pin: Pin = null): Card {
     const owner = this.owners(unitId);

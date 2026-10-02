@@ -186,10 +186,22 @@ export function SandboxScreen({ initial, setup, onExit }: Props): JSX.Element {
     }
   };
 
-  // Devtools access: `fansong.state()`, `fansong.edit(s => ...)`, `fansong.ops.spawnUnit(...)`.
+  const playDemoRef = useRef(playDemo);
+  playDemoRef.current = playDemo;
+
+  // Devtools access: `fansong.state()`, `fansong.demo('supported')`, `fansong.edit(s => ...)`, `fansong.ops.spawnUnit(...)`.
   useEffect(() => {
     const w = window as unknown as { fansong?: unknown };
-    w.fansong = { client, state: () => client.getState(), edit: (fn: (s: GameState) => GameState) => client.edit(fn), ops: sandboxOps };
+    w.fansong = {
+      client,
+      state: () => client.getState(),
+      edit: (fn: (s: GameState) => GameState) => client.edit(fn),
+      ops: sandboxOps,
+      demo: (id: string) => {
+        const demo = EFFECT_DEMOS.find((d) => d.id === id);
+        if (demo) playDemoRef.current(demo);
+      },
+    };
     return () => {
       delete w.fansong;
     };

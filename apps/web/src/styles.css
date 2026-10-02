@@ -984,6 +984,251 @@ button.ghost {
   color: #ff5252;
 }
 
+/* --- Compact overlay (phone-sized board): see COMPACT_WIDTH in rollOverlay.ts --- */
+
+/* A fight's two rolls on one slim strip along an edge, the verdict underneath. */
+.roll-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: min(420px, calc(100% - 16px));
+  padding: 5px 8px 6px;
+  color: var(--text);
+  background: rgba(13, 17, 23, 0.88);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+  line-height: 1.25;
+  transition: opacity 0.25s;
+  animation: roll-card-in 0.18s ease-out;
+}
+
+.roll-strip.leaving {
+  opacity: 0;
+}
+
+.strip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.strip-side {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 6px 4px;
+  border-radius: 7px;
+  border-top: 2px solid var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+  transition:
+    opacity 0.25s,
+    filter 0.25s,
+    box-shadow 0.25s;
+}
+
+.strip-side.p0 {
+  border-top-color: var(--p0);
+}
+
+.strip-side.p1 {
+  border-top-color: var(--p1);
+}
+
+.strip-side.defender {
+  text-align: right;
+}
+
+.strip-side.won {
+  box-shadow: inset 0 0 0 1px #ffd54a;
+}
+
+.strip-side.lost {
+  opacity: 0.6;
+  filter: saturate(0.5);
+}
+
+.strip-head {
+  display: flex;
+  gap: 5px;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.strip-side.defender .strip-head,
+.strip-side.defender .strip-line {
+  justify-content: flex-end;
+}
+
+.strip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.strip-side.p0 .strip-name {
+  color: var(--p0);
+}
+
+.strip-side.p1 .strip-name {
+  color: var(--p1);
+}
+
+.strip-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.strip-line .die {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 5px;
+}
+
+.strip-line .die .pip {
+  width: 4px;
+  height: 4px;
+}
+
+.strip-mod {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.strip-mod.zero {
+  color: var(--muted);
+}
+
+.strip-total {
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.strip-side.won .strip-total {
+  color: #ffd54a;
+}
+
+.strip-note {
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.strip-vs {
+  flex: none;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.strip-verdict {
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+  animation: roll-verdict-in 0.3s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.strip-verdict .verdict-text {
+  font-size: 15px;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+.strip-verdict .verdict-detail {
+  display: inline;
+  margin: 0 0 0 6px;
+  padding: 0;
+  font-size: 10px;
+  color: var(--muted);
+  background: none;
+}
+
+.strip-verdict.kill .verdict-text {
+  color: #ff5252;
+}
+
+.strip-verdict.down .verdict-text {
+  color: #ffb74a;
+}
+
+.strip-verdict.save .verdict-text {
+  color: #53e0d0;
+}
+
+.strip-verdict.neutral .verdict-text {
+  color: #cfd8e3;
+}
+
+/* Words over a unit shrink to a small label sitting over its head. */
+.roll-verdict.compact {
+  padding: 2px 8px 3px;
+  background: rgba(13, 17, 23, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+}
+
+.roll-verdict.compact .verdict-text,
+.roll-verdict.compact.neutral .verdict-text {
+  font-size: 13px;
+  font-weight: 800;
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+.roll-verdict.compact .verdict-detail,
+.roll-verdict.pinned.compact .verdict-detail {
+  display: block;
+  margin: 0;
+  padding: 0;
+  font-size: 10px;
+  color: var(--muted);
+  background: none;
+}
+
+/* Activation and nerve cards over a unit, and corner combat cards on a phone on its side, shrunk to match. */
+.roll-layer.compact .roll-card.pinned .die {
+  width: 28px;
+  height: 28px;
+}
+
+.roll-layer.compact .roll-card.pinned .roll-total {
+  font-size: 18px;
+}
+
+
+.roll-layer.compact .roll-card {
+  min-width: 0;
+  padding: 4px 7px 5px;
+  font-size: 11px;
+}
+
+.roll-layer.compact .roll-head {
+  margin-bottom: 3px;
+  font-size: 9px;
+}
+
+.roll-layer.compact .roll-card .die {
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border-radius: 5px;
+}
+
+.roll-layer.compact .roll-card .die .pip {
+  width: 4px;
+  height: 4px;
+}
+
+.roll-layer.compact .roll-total {
+  font-size: 16px;
+}
+
 /* A d6 with pips on a 3×3 grid; tinted with the roller's colour. */
 .die {
   --die: #e9eef5;
