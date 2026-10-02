@@ -111,6 +111,14 @@ function volley(scene: Scene, shooter: WarbandUnit = BOW, target: WarbandUnit = 
   return SHOOT;
 }
 
+/** A shooter that triples its score on a weak target four hexes off: a gruesome shot. */
+function longShot(scene: Scene): Command {
+  scene.spawn(0, { ...BOW, combat: 5 }, scene.behind);
+  scene.spawn(1, { ...BONES, combat: 1 }, scene.beyond);
+  scene.act('p0u0');
+  return SHOOT;
+}
+
 /** The rest of a warband, well away, so one loss doesn't break it. */
 function reserve(scene: Scene, owner: Owner, unit: WarbandUnit): void {
   for (const pos of scene.corner) scene.spawn(owner, unit, pos);
@@ -330,9 +338,22 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     id: 'shotGruesome',
     group: 'Shooting',
     label: 'Gruesome shot',
-    hint: 'A tripled score: the draw is held, and a streak hangs down the whole flight of the arrow.',
+    hint: 'A tripled score from four hexes: the draw is held, the bow kicks, the arrow flies in slow motion trailing dread and smoke over hexes that light as it passes, bursts out the back of its victim and stays stuck in the ground behind.',
     stage: (s) => {
-      const command = volley(s, { ...BOW, combat: 5 }, { ...BONES, combat: 1 });
+      const command = longShot(s);
+      reserve(s, 1, BONES);
+      return command;
+    },
+    shows: (ev) => shot(ev)?.gruesome === true,
+  },
+  {
+    id: 'shotGruesomeBlocked',
+    group: 'Shooting',
+    label: 'Gruesome shot, friend behind',
+    hint: 'The same shot with another unit right behind the victim: the arrow goes into the ground inside the victim’s own hex, never into the one behind.',
+    stage: (s) => {
+      const command = longShot(s);
+      s.spawn(1, BONES, { x: s.beyond.x, y: s.beyond.y - 1 });
       reserve(s, 1, BONES);
       return command;
     },

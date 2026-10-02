@@ -4,8 +4,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import {
   airborne,
   isDeadlyFeature,
+  isImpassableFeature,
   makeHexGrid,
   MORALE_RADIUS,
+  vecEq,
   vecKey,
   WAR_CRY_RANGE,
   type BoardData,
@@ -557,6 +559,21 @@ const FLIGHT_MS_PER_UNIT = 55; // a missile's flight lasts this much longer per 
 const FLIGHT_FREE = HEX_STEP; // ...so a shot at an adjacent hex keeps its clip's own timing
 const TRAIL_STEP = 0.025; // a flying missile leaves a trail puff every this many world units
 const TRAIL_COLORS = [0xfff4d6, 0xffe2a8, 0xffffff];
+// A gruesome shot (see launchMissile and killFx): watched all the way in, and through.
+const DREAD_SHOT_FLIGHT_MS = 260; // it stays in the air this much longer than an ordinary shot
+const DREAD_SHOT_SLOW_AT = 0.35; // from this far into its flight...
+const DREAD_SHOT_SLOW_MS = 900; // ...the rest plays in slow motion this long (wall clock), easing back
+const DREAD_SHOT_SLOW_SCALE = 0.25;
+const DREAD_SHOT_FOLLOW = 0.35; // the camera slides this far toward the victim while it flies
+const CURSE_COLORS = [0x9a6ad0, 0xb25cff, 0xff4a2a, 0xff7a4a]; // its trail: dread and embers
+const SHOT_SMOKE_COLORS = [0x6f6a78, 0x8d8896, 0xa9a4b2]; // the line of smoke it leaves hanging
+const SMOKE_EVERY = 4; // trail steps between puffs of that smoke
+const PIERCE_MS = 140; // it bursts out of its victim and buries itself in the ground behind in this long
+const PIERCE_REACH = HEX_STEP * 0.95; // that far behind the victim, when the hex there is free...
+const PIERCE_SHORT = HEX_SIZE * 0.45; // ...or this far, inside the victim's own hex, when someone stands behind
+const SPEED_LINES = 14; // lines rushing in on its impact during the freeze
+const PATH_HEX_MS = 520; // a hex under its flight stays lit this long as it passes
+const LONG_SHOT_HEXES = 4; // a gruesome shot from this many hexes or more is called out by its length
 const BLINKS = 3; // a knocked-down unit blinks this many times as it lands
 const BLINK_MS = 160; // one blink: hidden for the first half, shown for the second
 const PICK_FLASH = 1.25; // whiteout on a unit as it is picked to activate; above 1 it holds as a pure white shape first
@@ -657,6 +674,21 @@ interface Missile {
   landed: boolean;
   /** Where its trail last left a puff (null before it sets off). */
   trailAt: THREE.Vector3 | null;
+  /** Trail puffs left so far, to space out a gruesome shot's smoke. */
+  puffs: number;
+  /**
+   * A gruesome shot: it trails dread, embers and smoke, and once through its
+   * victim it carries on into `pierce`, low behind it, and stays stuck there.
+   */
+  dread?: { pierce: THREE.Vector3 };
+}
+
+/** A gruesome shot's arrow, stuck in the ground behind its victim for the rest of the round. */
+interface StuckArrow {
+  sprite: THREE.Sprite;
+  /** The way it was flying when it went in, to keep it pointing that way as the camera turns. */
+  from: THREE.Vector3;
+  to: THREE.Vector3;
 }
 
 /** Where a shot ends: in its target, in the ground past it, or in the cover in front of it. */
@@ -882,6 +914,7 @@ export class BoardView {
   /** See {@link BoardViewModel.localSeats}; null traces every move. */
   private localSeats: readonly Owner[] | null = null;
   private readonly missiles: Missile[] = [];
+  private readonly stuckArrows: StuckArrow[] = [];
   private readonly effects = new Effects();
   /** Wall-clock time (ms, at animation speed): unlike {@link now} it runs on through a hit-stop. */
   private wallNow = 0;
@@ -1541,7 +1574,7 @@ export class BoardView {
         // Now and then the two trade blocked blows first, and the fight is settled straight off the last of them.
         const sparring = e.type === 'AttackResolved' || e.type === 'GuardRiposte';
         const go = sparring ? this.spar(pair[0], pair[1], start + cards) : start + cards;
-        const s = mastered
+        const s: { hit: number; end: number; loosed?: number } = mastered
           ? this.exchange(pair[0], pair[1], go, { land: true, windup, heavy: slain === pair[0], lethal: true })
           : e.type === 'AttackResolved' && armored !== pair[1] && this.answered(e)
             ? this.exchange(pair[0], pair[1], go, {
@@ -1560,7 +1593,7 @@ export class BoardView {
         // The camera and the dread close in on the blow that settles it, not on the sparring before.
         const closing = go - cards;
         if (dread) {
-          aftermath = this.dreadPlay(dread, closing, s.hit);
+          aftermath = this.dreadPlay(dread, closing, s.hit, ranged ? s.loosed : undefined);
           for (const id of dread.shaken) dreaded.add(id);
         } else if (kill) {
           this.closeIn(kill.victim, closing, s.hit, KILL_DOLLY, KILL_PUSH_IN);
@@ -1592,7 +1625,13 @@ export class BoardView {
         const life = Math.max(COMBAT_CARD_LINGER_MS, s.hit - start + COMBAT_CARD_HOLD_MS);
         this.at(start, () => this.rolls.addOpposed(roll, this.now, life));
         // The conclusion lands along the bottom centre, between the two dice cards.
-        this.at(s.hit, () => this.rolls.addVerdict(roll.verdict, this.now, 'bottom'));
+        // A long gruesome shot is called out by its length.
+        const hexes = ranged && gruesome ? this.unitsShotHexes(pair[0], pair[1]) : null;
+        const verdict =
+          hexes !== null && hexes >= LONG_SHOT_HEXES
+            ? { ...roll.verdict, detail: [roll.verdict.detail, `a ${hexes}-hex shot!`].filter(Boolean).join(' · ') }
+            : roll.verdict;
+        this.at(s.hit, () => this.rolls.addVerdict(verdict, this.now, 'bottom'));
         lastHit = s.hit;
         settle = s.hit;
         t = Math.max(s.end, dread ? aftermath : 0);
@@ -1766,7 +1805,10 @@ export class BoardView {
         t += this.pause(this.frameUnits([e.unitId], t));
       } else if (e.type === 'RoundEnded') {
         // The marks where units fell last only for the round they fell in.
-        this.at(t, () => this.effects.clearMarks());
+        this.at(t, () => {
+          this.effects.clearMarks();
+          this.clearStuckArrows();
+        });
       } else if (e.type === 'GameOver') {
         this.at(t + 400, () => {
           for (const obj of this.units.values()) {
@@ -2056,13 +2098,19 @@ export class BoardView {
    * at `hit`: it creeps in on the pair to `dolly` of its distance, then lurches
    * in to `pushIn` of that on the victim as the blow lands.
    */
-  private closeIn(victimId: string, start: number, hit: number, dolly: number, pushIn: number): void {
+  private closeIn(victimId: string, start: number, hit: number, dolly: number, pushIn: number, loosed?: number): void {
     if (this.cameraMode !== 'cinematic' || this.handOnCamera) return;
     const held = this.plannedCamera();
     const dist = held.dist * dolly;
-    this.at(start, () => this.moveCamera(held.target, dist, hit - start, true));
-    this.planned = { ...held, dist };
     const victim = this.units.get(victimId);
+    // A gruesome shot: creep in until it is loosed, then slide after it toward its victim.
+    const follow = victim && loosed !== undefined && loosed > start && loosed < hit;
+    this.at(start, () => this.moveCamera(held.target, dist, (follow ? loosed : hit) - start, true));
+    if (follow) {
+      const along = this.pivotFor(this.bodyAt(victim, victim.targetPos), held.yaw).lerp(held.target, 1 - DREAD_SHOT_FOLLOW);
+      this.at(loosed, () => this.moveCamera(along, dist, hit - loosed, true));
+      this.planned = { ...held, target: along, dist };
+    } else this.planned = { ...held, dist };
     if (!victim) return;
     // Halfway to the victim, so the killer stays in the shot.
     const view = this.plannedCamera();
@@ -2078,8 +2126,8 @@ export class BoardView {
    * killer's triumph, played where the camera already holds it.
    * Returns when that triumph is over.
    */
-  private dreadPlay(d: Kill, start: number, hit: number): number {
-    this.closeIn(d.victim, start, hit, DREAD_DOLLY, PUSH_IN);
+  private dreadPlay(d: Kill, start: number, hit: number, loosed?: number): number {
+    this.closeIn(d.victim, start, hit, DREAD_DOLLY, PUSH_IN, loosed);
     const triumph = hit + VICTORY_AT_MS;
     this.at(triumph, () => this.exult(d.killer));
     const end = triumph + VICTORY_HOLD_MS;
@@ -2208,57 +2256,58 @@ export class BoardView {
     for (const c of grid.cellsWithin(origin, WAR_CRY_RANGE)) {
       if (grid.lineOfSight(origin, c)) rings[grid.distance(origin, c) - 1]!.push(c);
     }
-    // Each hex lights with a soft fill and a bright rim, so the wave reads over
-    // any ground (and over the move highlights).
-    const fillGeo = new THREE.CircleGeometry(HEX_SIZE * 0.92, 6);
-    const rimGeo = new THREE.RingGeometry(HEX_SIZE * 0.85, HEX_SIZE * 0.94, 6);
-    let left = rings.filter((r) => r.length > 0).length;
     rings.forEach((cells, i) => {
       if (cells.length === 0) return;
-      this.at(i * WAR_CRY_WAVE_STEP_MS, () => {
-        const fade = 1 - i * 0.1;
-        const place = cells.map((c) => (tile: THREE.Object3D) => {
-          tile.rotation.set(-Math.PI / 2, 0, 0);
-          const w = this.cellToWorld(c);
-          tile.position.set(w.x, this.surfaceAt(c) + 0.02, w.z);
-        });
-        const layers = [
-          { geo: fillGeo, peak: 0.16 * fade },
-          { geo: rimGeo, peak: 0.45 * fade },
-        ].map(({ geo, peak }) => {
-          const mat = new THREE.MeshBasicMaterial({
-            color: INSPIRED_GLOW,
-            transparent: true,
-            opacity: 0,
-            blending: THREE.AdditiveBlending,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-          });
-          return { mesh: instanced(geo, mat, place), mat, peak };
-        });
-        const group = new THREE.Group();
-        for (const l of layers) group.add(l.mesh);
-        this.effects.add(
-          group,
-          WAR_CRY_WAVE_HEX_MS / 1000,
-          // A sharp flash as the wave arrives, then a slower fade behind it.
-          (k) => {
-            const env = k < 0.12 ? k / 0.12 : (1 - k) / 0.88;
-            for (const l of layers) l.mat.opacity = l.peak * env;
-          },
-          () => {
-            for (const l of layers) {
-              l.mesh.dispose();
-              l.mat.dispose();
-            }
-            if (--left === 0) {
-              fillGeo.dispose();
-              rimGeo.dispose();
-            }
-          },
-        );
-      });
+      const fade = 1 - i * 0.1; // each ring fainter than the last
+      this.at(i * WAR_CRY_WAVE_STEP_MS, () =>
+        this.flashHexes(cells, INSPIRED_GLOW, 0.16 * fade, 0.45 * fade, WAR_CRY_WAVE_HEX_MS),
+      );
     });
+  }
+
+  /**
+   * Light `cells` for `ms`: each glows `color` with a soft fill and a brighter
+   * rim (peaking at `fill` and `rim` opacity), so it reads over any ground and
+   * over the move highlights — a sharp flash, then a slower fade.
+   */
+  private flashHexes(cells: Vec[], color: number, fill: number, rim: number, ms: number): void {
+    if (cells.length === 0) return;
+    const place = cells.map((c) => (tile: THREE.Object3D) => {
+      tile.rotation.set(-Math.PI / 2, 0, 0);
+      const w = this.cellToWorld(c);
+      tile.position.set(w.x, this.surfaceAt(c) + 0.02, w.z);
+    });
+    const layers = [
+      { geo: new THREE.CircleGeometry(HEX_SIZE * 0.92, 6), peak: fill },
+      { geo: new THREE.RingGeometry(HEX_SIZE * 0.85, HEX_SIZE * 0.94, 6), peak: rim },
+    ].map(({ geo, peak }) => {
+      const mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      return { mesh: instanced(geo, mat, place), geo, mat, peak };
+    });
+    const group = new THREE.Group();
+    for (const l of layers) group.add(l.mesh);
+    this.effects.add(
+      group,
+      ms / 1000,
+      (k) => {
+        const env = k < 0.12 ? k / 0.12 : (1 - k) / 0.88;
+        for (const l of layers) l.mat.opacity = l.peak * env;
+      },
+      () => {
+        for (const l of layers) {
+          l.mesh.dispose();
+          l.geo.dispose();
+          l.mat.dispose();
+        }
+      },
+    );
   }
 
   /**
@@ -2639,6 +2688,7 @@ export class BoardView {
     this.rolls.clear();
     this.effects.clear();
     this.effects.clearMarks(true);
+    this.clearStuckArrows();
     this.clearRoutes();
     this.resetTime();
     for (const obj of this.units.values()) {
@@ -2957,7 +3007,7 @@ export class BoardView {
     range: 'melee' | 'ranged',
     at: number,
     opts: { land?: boolean; cover?: boolean; windup?: number; heavy?: boolean; lethal?: boolean; block?: boolean } = {},
-  ): { hit: number; end: number } {
+  ): { hit: number; end: number; loosed?: number } {
     const a = this.units.get(attackerId);
     const d = this.units.get(targetId);
     if (!a || !d) return { hit: at, end: at };
@@ -2975,7 +3025,10 @@ export class BoardView {
     const clip = peaked && lead > 0 ? holdPeak(peaked, 1, lead) : peaked;
     // A missile in the air longer the farther it has to go: the hit (and the
     // target's reaction to it) waits for it, while the release stays on the clip.
-    const flight = range === 'ranged' && clip?.missile ? this.extraFlightMs(a, d) : 0;
+    // A gruesome shot stays up longer still, so its flight can be watched.
+    const dreadShot = range === 'ranged' && windup > 0;
+    const flight =
+      range === 'ranged' && clip?.missile ? this.extraFlightMs(a, d) + (dreadShot ? DREAD_SHOT_FLIGHT_MS : 0) : 0;
     const dur = (clip ? clipDuration(clip) : 400 + windup + lead) + flight;
     const hit = (clip?.hitMs ?? (clip ? dur / 2 : 200 + windup + lead)) + flight;
     const land = opts.land ?? true;
@@ -2984,6 +3037,9 @@ export class BoardView {
       const peak = (clip ? release(clip) : hit) - windup;
       this.at(at + Math.max(0, peak), () => this.gatherFx(a, windup));
     }
+    // When a shot leaves the bow (a tracer, on its hit).
+    const loosed = range === 'ranged' && clip?.missile ? Math.max(0, hit - flight - (clip.missileMs ?? 150)) : hit;
+    if (dreadShot) this.dreadShot(a, d, at + loosed, at + hit);
 
     this.at(at, () => {
       const toTarget = d.group.position.clone().sub(a.group.position).setY(0);
@@ -2996,7 +3052,7 @@ export class BoardView {
         a.lunge = { dir, start: this.now, hit: this.now + hit, end: this.now + dur, coil, depth: windup > 0 ? DREAD_COIL_DEPTH : 1 };
         if (coil > 0 && windup === 0) this.coilFx(a, d, coil);
       } else if (clip?.missile) {
-        this.launchMissile(a, d, clip.missile, hit - flight - (clip.missileMs ?? 150), hit, ending);
+        this.launchMissile(a, d, clip.missile, hit - flight - (clip.missileMs ?? 150), hit, ending, dreadShot);
       } else {
         this.at(hit, () => {
           const to = this.shotEnd(a, d, ending);
@@ -3031,7 +3087,7 @@ export class BoardView {
       this.at(at + hit, () => this.blockFx(a, d));
       return { hit: at + hit, end: at + dur + BLOCK_BEAT_MS };
     }
-    return { hit: at + hit, end: at + dur };
+    return { hit: at + hit, end: at + dur, loosed: at + loosed };
   }
 
   /**
@@ -3104,6 +3160,70 @@ export class BoardView {
     };
   }
 
+  /**
+   * What sets a gruesome shot apart from a gruesome blow, from its loosing at
+   * `loosed` to its landing at `hit` (both ms from now): a loud release, the
+   * last of its flight in slow motion and the hexes under it lighting as it
+   * passes. (A long one is called out by its length in its verdict.)
+   */
+  private dreadShot(a: UnitObj, d: UnitObj, loosed: number, hit: number): void {
+    this.at(loosed, () => this.releaseFx(a, d));
+    if (hit > loosed) {
+      this.at(loosed + (hit - loosed) * DREAD_SHOT_SLOW_AT, () => this.slowMotion(DREAD_SHOT_SLOW_MS, DREAD_SHOT_SLOW_SCALE));
+    }
+    const from = this.worldToCell(a.targetPos);
+    const to = this.worldToCell(d.targetPos);
+    if (!from || !to || !this.board) return;
+    // The hexes under the flight, each lit as the shot passes over it (its
+    // ground track runs evenly from bow to victim).
+    const span = d.targetPos.clone().sub(a.targetPos).setY(0);
+    const seen = new Set<string>([vecKey(from)]);
+    for (let k = 0; k <= 1.0001; k += 0.02) {
+      const cell = this.worldToCell(a.targetPos.clone().addScaledVector(span, k));
+      if (!cell || seen.has(vecKey(cell))) continue;
+      seen.add(vecKey(cell));
+      this.at(loosed + (hit - loosed) * k, () => this.flashHexes([cell], DREAD_COLOR, 0.14, 0.4, PATH_HEX_MS));
+    }
+  }
+
+  /** How many hexes a shot from `shooterId` at `targetId` crosses (null when either is missing). */
+  private unitsShotHexes(shooterId: string, targetId: string): number | null {
+    const a = this.units.get(shooterId);
+    const d = this.units.get(targetId);
+    const from = a && this.worldToCell(a.targetPos);
+    const to = d && this.worldToCell(d.targetPos);
+    return from && to && this.board ? makeHexGrid(this.board).distance(from, to) : null;
+  }
+
+  /**
+   * A gruesome shot let go: the shooter rocks back, the air bursts at the bow,
+   * sparks fly after the arrow, dust kicks up at its feet and the camera punches in.
+   */
+  private releaseFx(a: UnitObj, d: UnitObj): void {
+    const toward = d.group.position.clone().sub(a.group.position).setY(0);
+    if (toward.lengthSq() < 1e-6) return;
+    toward.normalize();
+    this.joltUnit(a, toward.clone().negate(), 0.09, false, 280);
+    const bow = a.group.position.clone().setY(a.targetPos.y + TILE_TOP + BASE_HEIGHT + 0.55 + a.hover);
+    this.effects.pop('hoop', bow, 0.15, 1.1, { life: 0.28, color: 0xffffff, opacity: 0.75 });
+    this.effects.burst({
+      at: bow,
+      count: 16,
+      colors: CURSE_COLORS,
+      speed: [1.2, 2.6],
+      dir: toward,
+      cone: 0.35,
+      drag: 4,
+      life: [0.18, 0.35],
+      size: [0.03, 0.06],
+      blend: 'add',
+    });
+    const feet = this.feet(a);
+    this.dust(feet, 8, 0.9);
+    this.effects.ring(feet, 0xffffff, 0.2, HEX_SIZE * 1.1, { life: 0.35, opacity: 0.6, additive: true });
+    this.shakeCamera('nudge', 0.14, 220, this.camera.getWorldDirection(new THREE.Vector3()));
+  }
+
   /** How much longer than its clip's own flight a missile from `from` takes to reach `to`. */
   private extraFlightMs(from: UnitObj, to: UnitObj): number {
     const dist = Math.hypot(to.targetPos.x - from.targetPos.x, to.targetPos.z - from.targetPos.z);
@@ -3117,6 +3237,7 @@ export class BoardView {
     startIn: number,
     hitIn: number,
     ending: ShotEnding,
+    dread = false,
   ): void {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: projectileTexture(image), alphaTest: 0.5 }));
     sprite.scale.setScalar(72 * SPRITE_PX * 0.8);
@@ -3135,7 +3256,43 @@ export class BoardView {
       ending,
       landed: false,
       trailAt: null,
+      puffs: 0,
+      ...(dread && ending === 'hit' ? { dread: { pierce: this.piercePoint(from, to) } } : {}),
     });
+  }
+
+  /**
+   * Where a gruesome shot buries itself once through its victim: in the ground
+   * most of a hex behind it, carrying on the way it flew — unless that would
+   * take it through or into anyone else (or into rock, a building or off the
+   * board), when it goes into the ground inside the victim's own hex instead.
+   */
+  private piercePoint(from: UnitObj, to: UnitObj): THREE.Vector3 {
+    const dir = to.targetPos.clone().sub(from.targetPos).setY(0);
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    dir.normalize();
+    const own = this.worldToCell(to.targetPos);
+    const grid = this.board ? makeHexGrid(this.board) : null;
+    const taken = new Set<string>();
+    for (const obj of this.units.values()) {
+      if (obj === to || obj.state.dead || obj.fade) continue;
+      const cell = this.worldToCell(obj.targetPos);
+      if (cell) taken.add(vecKey(cell));
+    }
+    // Every hex the arrow would cross on its way down must be clear.
+    const clear = (reach: number): boolean => {
+      for (let k = 0.1; k <= 1.0001; k += 0.1) {
+        const cell = this.worldToCell(to.targetPos.clone().addScaledVector(dir, reach * k));
+        if (!cell || !grid || !grid.inBounds(cell)) return false;
+        if (own && vecEq(cell, own)) continue;
+        if (taken.has(vecKey(cell)) || grid.isBlocked(cell) || isImpassableFeature(grid.feature(cell))) return false;
+      }
+      return true;
+    };
+    const reach = clear(PIERCE_REACH) ? PIERCE_REACH : PIERCE_SHORT;
+    const point = to.targetPos.clone().addScaledVector(dir, reach);
+    const cell = this.worldToCell(point);
+    return point.setY((cell ? this.surfaceAt(cell) : to.targetPos.y + TILE_TOP) + 0.06);
   }
 
   /**
@@ -3603,6 +3760,10 @@ export class BoardView {
     for (let i = this.missiles.length - 1; i >= 0; i--) {
       const m = this.missiles[i]!;
       const f = (this.now - m.start) / (m.end - m.start);
+      if (m.dread && f >= 1) {
+        if (this.pierceMissile(m, m.dread.pierce)) this.missiles.splice(i, 1);
+        continue;
+      }
       if (f >= 1 && !m.landed) {
         m.landed = true;
         this.shotFx(m.to, m.ending);
@@ -3631,10 +3792,62 @@ export class BoardView {
       this.missileTrail(m);
       // Point the (north-facing) image along its on-screen direction of travel:
       // nose up as it climbs, nose down as it drops.
-      const a = arcPoint(m.from, m.to, m.arc, Math.max(0, f - 0.02)).project(this.camera);
-      const b = arcPoint(m.from, m.to, m.arc, Math.min(1, f + 0.02)).project(this.camera);
-      m.sprite.material.rotation = Math.atan2(b.y - a.y, (b.x - a.x) * this.camera.aspect) - Math.PI / 2;
+      const a = arcPoint(m.from, m.to, m.arc, Math.max(0, f - 0.02));
+      const b = arcPoint(m.from, m.to, m.arc, Math.min(1, f + 0.02));
+      m.sprite.material.rotation = this.screenAngle(a, b);
     }
+    for (const arrow of this.stuckArrows) arrow.sprite.material.rotation = this.screenAngle(arrow.from, arrow.to);
+  }
+
+  /**
+   * A gruesome shot past its victim's chest: it bursts out the back in a spray
+   * of ash and shards, flies on low into the ground behind (see
+   * {@link piercePoint}) and stays stuck there. True once it has gone in, when
+   * it leaves the flying missiles for the stuck arrows.
+   */
+  private pierceMissile(m: Missile, pierce: THREE.Vector3): boolean {
+    const dir = pierce.clone().sub(m.to);
+    if (!m.landed) {
+      m.landed = true;
+      this.shotFx(m.to, 'hit');
+      const out = dir.clone().setY(0).normalize();
+      this.effects.burst({
+        at: m.to,
+        count: 26,
+        colors: [...ASH_COLORS, ...CURSE_COLORS],
+        speed: [1.6, 3.6],
+        dir: out,
+        cone: 0.3,
+        up: 0.4,
+        gravity: 6,
+        drag: 1.2,
+        life: [0.35, 0.7],
+        size: [0.03, 0.07],
+        shape: 'square',
+        floor: pierce.y,
+      });
+    }
+    const g = Math.min(1, (this.now - m.end) / PIERCE_MS);
+    m.sprite.position.copy(m.to).lerp(pierce, g);
+    m.sprite.material.rotation = this.screenAngle(m.to, pierce);
+    this.missileTrail(m);
+    if (g < 1) return false;
+    // In: a puff of grit, and it stays where it struck for the rest of the round.
+    this.dust(pierce, 7, 0.8);
+    this.effects.ring(pierce.clone().setY(pierce.y - 0.03), DREAD_COLOR, 0.1, HEX_SIZE * 0.6, { life: 0.4, opacity: 0.6, additive: true });
+    // Its head in the ground, the shaft sticking out back the way it came.
+    m.sprite.position.addScaledVector(dir.normalize(), -m.sprite.scale.x * 0.28);
+    this.stuckArrows.push({ sprite: m.sprite, from: m.to.clone(), to: pierce.clone() });
+    return true;
+  }
+
+  /** Pull out every arrow left stuck in the ground (a new round, or a replay jump). */
+  private clearStuckArrows(): void {
+    for (const arrow of this.stuckArrows) {
+      this.scene.remove(arrow.sprite);
+      arrow.sprite.material.dispose();
+    }
+    this.stuckArrows.length = 0;
   }
 
   /** Leave a fading streak of puffs along the path a missile has flown since last frame. */
@@ -3647,19 +3860,76 @@ export class BoardView {
     const gap = m.trailAt.distanceTo(here);
     const steps = Math.floor(gap / TRAIL_STEP);
     for (let i = 1; i <= steps; i++) {
-      this.effects.burst({
-        at: m.trailAt.clone().lerp(here, (i * TRAIL_STEP) / gap),
-        count: 1,
-        colors: TRAIL_COLORS,
-        speed: [0, 0.04],
-        life: [0.14, 0.2],
-        size: [0.07, 0.09],
-        grow: 0.15,
-        blend: 'add',
-        opacity: 0.45,
-      });
+      const at = m.trailAt.clone().lerp(here, (i * TRAIL_STEP) / gap);
+      if (m.dread) this.curseTrail(m, at);
+      else {
+        this.effects.burst({
+          at,
+          count: 1,
+          colors: TRAIL_COLORS,
+          speed: [0, 0.04],
+          life: [0.14, 0.2],
+          size: [0.07, 0.09],
+          grow: 0.15,
+          blend: 'add',
+          opacity: 0.45,
+        });
+      }
     }
     if (steps > 0) m.trailAt.lerp(here, (steps * TRAIL_STEP) / gap);
+    // A gruesome shot glows as it flies.
+    if (m.dread) {
+      this.effects.burst({ at: here, count: 1, colors: CURSE_COLORS, speed: [0, 0], life: [0.06, 0.06], size: [0.26, 0.3], blend: 'add', opacity: 0.6 });
+    }
+  }
+
+  /**
+   * One step of a gruesome shot's trail: a thick streak of dread and embers
+   * that hangs longer than an ordinary one, embers dropping from it, and now and
+   * then a puff of smoke that lingers along the line of fire after the kill.
+   */
+  private curseTrail(m: Missile, at: THREE.Vector3): void {
+    const n = m.puffs++;
+    this.effects.burst({
+      at,
+      count: 1,
+      colors: CURSE_COLORS,
+      speed: [0, 0.05],
+      life: [0.3, 0.5],
+      size: [0.1, 0.14],
+      grow: 0.2,
+      blend: 'add',
+      opacity: 0.6,
+    });
+    if (n % 3 === 0) {
+      this.effects.burst({
+        at,
+        count: 1,
+        colors: EMBER_COLORS,
+        speed: [0.05, 0.25],
+        gravity: 2.5,
+        drag: 1,
+        life: [0.35, 0.6],
+        size: [0.025, 0.04],
+        shape: 'square',
+        blend: 'add',
+      });
+    }
+    if (n % SMOKE_EVERY === 0) {
+      this.effects.burst({
+        at,
+        count: 1,
+        colors: SHOT_SMOKE_COLORS,
+        speed: [0, 0.05],
+        gravity: -0.12, // it drifts up as it thins
+        drag: 1,
+        life: [1.3, 1.9],
+        size: [0.08, 0.11],
+        grow: 2.6,
+        opacity: 0.32,
+        jitter: 0.02,
+      });
+    }
   }
 
   /**
@@ -4833,6 +5103,7 @@ export class BoardView {
     this.effects.ring(ground, 0xffffff, 0.3, 2.2, { life: 0.7, opacity: 0.9, additive: true });
     this.shakeCamera('rumble', 0.1, 380);
     const killer = killerId ? this.units.get(killerId) : undefined;
+    if (ranged) this.speedLinesFx(this.chest(obj));
     if (killer) {
       this.slashFx(killer, obj, ranged);
       if (this.cameraMode !== 'off' && !this.handOnCamera) {
@@ -5006,12 +5277,35 @@ export class BoardView {
     if (ranged) {
       const from = killer.group.position.clone().setY(killer.targetPos.y + TILE_TOP + BASE_HEIGHT + 0.55 + killer.hover);
       const mid = from.clone().lerp(at, 0.5);
-      this.effects.streak(mid, this.screenAngle(from, at), this.viewLength(from, at), 0.14, { life: SLASH_S, color: SLASH_COLOR, opacity: 0.9 });
+      // A shot with an arrow to watch leaves its own trail of smoke down the line instead.
+      const missile = killer.anims.ranged?.some((c) => c.missile) === true;
+      if (!missile) {
+        this.effects.streak(mid, this.screenAngle(from, at), this.viewLength(from, at), 0.14, { life: SLASH_S, color: SLASH_COLOR, opacity: 0.9 });
+      }
       this.effects.streak(at, along + Math.PI / 2, 0.9, 0.22, { life: SLASH_S * 0.8, color: SLASH_COLOR });
     } else {
       const tilt = Math.random() < 0.5 ? -0.6 : 0.6;
       this.effects.streak(at, along + tilt, 1.7, 0.32, { life: SLASH_S, color: SLASH_COLOR });
       this.effects.streak(at.clone().setY(at.y + 0.12), along + tilt * 1.25, 1.2, 0.12, { life: SLASH_S * 0.8, color: DREAD_COLOR, opacity: 0.8 });
+    }
+  }
+
+  /**
+   * A gruesome shot's impact: lines rushing in on it from all round, held on
+   * the frozen frame (they run on board time) and gone as the slow motion starts.
+   */
+  private speedLinesFx(at: THREE.Vector3): void {
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+    for (let i = 0; i < SPEED_LINES; i++) {
+      const turn = ((i + Math.random() * 0.6) / SPEED_LINES) * Math.PI * 2;
+      const r = 0.75 + Math.random() * 0.45;
+      const pos = at.clone().addScaledVector(right, Math.cos(turn) * r).addScaledVector(up, Math.sin(turn) * r);
+      this.effects.streak(pos, turn - Math.PI / 2, 0.45 + Math.random() * 0.35, 0.05, {
+        life: 0.4,
+        color: i % 3 === 0 ? DREAD_COLOR : SLASH_COLOR,
+        opacity: 0.85,
+      });
     }
   }
 
