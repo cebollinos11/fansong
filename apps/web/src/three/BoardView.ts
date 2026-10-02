@@ -551,6 +551,8 @@ const LAVA_DEATH_MS = 1100; // a unit going into lava slides in, then sinks glow
 const EMBER_COLORS = [0xffe08a, 0xffb13a, 0xff6a1a];
 const SMOKE_COLORS = [0x3a3431, 0x55504c, 0x2a2624];
 const STICK_MS = 500; // an arrow that lands stays in its target this long
+const SHOT_ARC = 0.18; // a shot's apex rises this fraction of its length above the straight line...
+const LOB_ARC = 0.3; // ...and a lobbed stone or spear's this much
 const BLINKS = 3; // a knocked-down unit blinks this many times as it lands
 const BLINK_MS = 160; // one blink: hidden for the first half, shown for the second
 const PICK_FLASH = 1.25; // whiteout on a unit as it is picked to activate; above 1 it holds as a pure white shape first
@@ -643,7 +645,7 @@ interface Missile {
   to: THREE.Vector3;
   start: number;
   end: number;
-  /** Lobbed projectiles (stones, spears) arc; arrows and bolts fly flat. */
+  /** Height of the flight's apex above the straight line; longer shots arc higher. */
   arc: number;
   /** What happens where it ends: it sticks in its target, or kicks up the ground or the cover it hit. */
   ending: ShotEnding;
@@ -653,6 +655,24 @@ interface Missile {
 
 /** Where a shot ends: in its target, in the ground past it, or in the cover in front of it. */
 type ShotEnding = 'hit' | 'miss' | 'cover';
+
+/** A shot's apex height: it grows with the shot's length, so a long shot curves more. */
+function shotArc(from: THREE.Vector3, to: THREE.Vector3, rate: number): number {
+  return Math.hypot(to.x - from.x, to.z - from.z) * rate;
+}
+
+/** The point a fraction `f` of the way along a parabola from `from` to `to`, peaking `arc` above the chord. */
+function arcPoint(
+  from: THREE.Vector3,
+  to: THREE.Vector3,
+  arc: number,
+  f: number,
+  out = new THREE.Vector3(),
+): THREE.Vector3 {
+  out.lerpVectors(from, to, f);
+  out.y += 4 * arc * f * (1 - f);
+  return out;
+}
 
 /** The middle of a set of points. */
 function middle(points: THREE.Vector3[]): THREE.Vector3 {
@@ -3088,13 +3108,15 @@ export class BoardView {
     sprite.visible = false;
     this.scene.add(sprite);
     const lift = TILE_TOP + BASE_HEIGHT + 0.55;
+    const start = from.group.position.clone().setY(from.targetPos.y + lift);
+    const end = this.shotEnd(from, to, ending);
     this.missiles.push({
       sprite,
-      from: from.group.position.clone().setY(from.targetPos.y + lift),
-      to: this.shotEnd(from, to, ending),
+      from: start,
+      to: end,
       start: this.now + Math.max(0, startIn),
       end: this.now + Math.max(1, hitIn),
-      arc: /stone|spear|pitchfork/.test(image) ? 0.35 : 0.08,
+      arc: shotArc(start, end, /stone|spear|pitchfork/.test(image) ? LOB_ARC : SHOT_ARC),
       ending,
       landed: false,
     });
@@ -3589,11 +3611,11 @@ export class BoardView {
       }
       m.sprite.visible = f >= 0;
       if (f < 0) continue;
-      m.sprite.position.lerpVectors(m.from, m.to, f);
-      m.sprite.position.y += Math.sin(Math.PI * f) * m.arc;
-      // Point the (north-facing) image along its on-screen direction of travel.
-      const a = m.from.clone().project(this.camera);
-      const b = m.to.clone().project(this.camera);
+      arcPoint(m.from, m.to, m.arc, f, m.sprite.position);
+      // Point the (north-facing) image along its on-screen direction of travel:
+      // nose up as it climbs, nose down as it drops.
+      const a = arcPoint(m.from, m.to, m.arc, Math.max(0, f - 0.02)).project(this.camera);
+      const b = arcPoint(m.from, m.to, m.arc, Math.min(1, f + 0.02)).project(this.camera);
       m.sprite.material.rotation = Math.atan2(b.y - a.y, (b.x - a.x) * this.camera.aspect) - Math.PI / 2;
     }
   }
@@ -5255,7 +5277,9 @@ export class BoardView {
 
   /** Draw a short-lived bolt between two points (a shot without a missile image). */
   private addTracer(a: THREE.Vector3, b: THREE.Vector3, color: number): void {
-    const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
+    const arc = shotArc(a, b, SHOT_ARC);
+    const points = Array.from({ length: 17 }, (_, i) => arcPoint(a, b, arc, i / 16));
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1 });
     const line = new THREE.Line(geo, mat);
     this.scene.add(line);
