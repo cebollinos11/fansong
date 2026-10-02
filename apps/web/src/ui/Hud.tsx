@@ -239,7 +239,7 @@ export function Hud(props: Props): JSX.Element {
             <div className="play-actions">
               {interaction.canWarCry ? (
                 <button
-                  title="Press C — one action: every friend still to activate this round is inspired, its first activation die a sure 6"
+                  title="Press C — one action: every friend still to activate within 5 hexes and in sight is inspired, its first activation die a sure 6"
                   onClick={props.onWarCry}
                 >
                   War cry <kbd>C</kbd>

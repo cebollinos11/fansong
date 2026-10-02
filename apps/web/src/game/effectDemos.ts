@@ -462,7 +462,7 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     id: 'warCry',
     group: 'Traits',
     label: 'Leader: war cry',
-    hint: 'The Leader rallies: the camera takes in every friend yet to act, and each blinks gold three times as its star lands.',
+    hint: 'The Leader rallies: the camera takes in every friend yet to act within 5 hexes and in sight, and each blinks gold three times as its star lands.',
     stage: (s) => {
       s.spawn(0, { name: 'Death Knight', quality: 3, combat: 3, leader: true }, s.target);
       s.spawn(0, ELF, s.side);

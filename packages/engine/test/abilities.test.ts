@@ -1249,6 +1249,38 @@ describe('Leader trait', () => {
     expect(unit(state, 'p1u0').inspired).toBe(false);
   });
 
+  it('carries only 5 hexes, and only to friends in sight: terrain blocks it, friends do not', () => {
+    // Leader at (1,2). A forest at (1,3) hides (1,4); (1,1) stands between the
+    // Leader and (1,0) but doesn't block; (7,2) is out of range.
+    const board = { width: 9, height: 5, blocked: [], terrain: { '1,3': { feature: 'forest' as const } } };
+    const cfg: GameConfig = {
+      seed: 1,
+      board,
+      warbands: [
+        [
+          { name: 'Captain', quality: 3, combat: 3, leader: true, pos: { x: 1, y: 2 } },
+          { name: 'Near', quality: 4, combat: 3, pos: { x: 1, y: 1 } },
+          { name: 'Behind', quality: 4, combat: 3, pos: { x: 1, y: 0 } },
+          { name: 'Hidden', quality: 4, combat: 3, pos: { x: 1, y: 4 } },
+          { name: 'Edge', quality: 4, combat: 3, pos: { x: 6, y: 2 } },
+          { name: 'Far', quality: 4, combat: 3, pos: { x: 7, y: 2 } },
+        ],
+        [{ name: 'Foe', quality: 4, combat: 3, pos: { x: 8, y: 0 } }],
+      ],
+    };
+    const grid = makeHexGrid(board);
+    const leader = { x: 1, y: 2 };
+    expect(grid.distance(leader, { x: 6, y: 2 })).toBe(5);
+    expect(grid.distance(leader, { x: 7, y: 2 })).toBe(6);
+    expect(grid.lineOfSight(leader, { x: 6, y: 2 })).toBe(true);
+    expect(grid.lineOfSight(leader, { x: 1, y: 4 })).toBe(false);
+
+    const { state, events } = reduce(acting(cfg, 'p0u0'), warCry);
+    expect(events).toContainEqual({ type: 'WarCry', unitId: 'p0u0', inspired: ['p0u1', 'p0u2', 'p0u4'] });
+    expect(unit(state, 'p0u3').inspired).toBe(false);
+    expect(unit(state, 'p0u5').inspired).toBe(false);
+  });
+
   it('can be cried only once a round, and ends the activation on the last action', () => {
     const s = acting(config(), 'p0u0');
     s.actionsRemaining = 2;

@@ -5,6 +5,7 @@ import {
   bigMeleeBonus,
   bigTargetBonus,
   canWarCry,
+  warCryTargets,
   combatOdds,
   enemiesOf,
   flyingMeleeBonus,
@@ -428,11 +429,12 @@ function targetZone(zones: ZoneView[], unit: Unit): ZoneView | undefined {
 
 /**
  * How many friends a war cry from `leader` would inspire right now: the living
- * non-Leaders of its side still to activate this round. Zero when it can't cry.
+ * non-Leaders of its side still to activate this round, in its range and sight.
+ * Zero when it can't cry.
  */
 function warCryReach(state: GameState, leader: Unit): number {
   if (!canWarCry(state, leader)) return 0;
-  return aliveUnits(state, leader.owner).filter((u) => !u.traits.leader && !u.activatedThisRound).length;
+  return warCryTargets(state, leader, makeHexGrid(state.board)).length;
 }
 
 /**

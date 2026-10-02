@@ -68,8 +68,9 @@ action; the AI, the tests, and any future UI all pick from that list.
   round** — though the unit still spends any action its successes earned first.
   With a single die you can never turn over.
 - **Leaders:** once a round, a **Leader** on its feet may spend an action on a
-  **war cry**. Every friend that isn't a Leader and has yet to activate is
-  **inspired** for the round: the first die of its activation roll is a sure 6.
+  **war cry**. Every friend that isn't a Leader, has yet to activate, and stands
+  within **5 hexes** in line of sight is **inspired** for the round (rock,
+  buildings and forest block the cry; other units don't): the first die of its activation roll is a sure 6.
   A failed nerve check costs a unit its inspiration. When a Leader is killed,
   every standing friend with line of sight to it tests its nerve.
 - The other player then continues **solo** until they turn over or run out.

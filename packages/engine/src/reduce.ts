@@ -41,6 +41,7 @@ import {
   adjacentEnemies,
   airborne,
   canWarCry,
+  warCryTargets,
   groupFor,
   inMelee,
   isOccupied,
@@ -524,10 +525,9 @@ function handleWarCry(s: GameState, events: GameEvent[], unitId: string): void {
 
   s.actionsRemaining -= 1;
   unit.warCried = true;
-  // Only a friend still to activate can use it; everyone else has had their roll.
+  // Only a friend still to activate can use it, and only one near enough to hear.
   const inspired: string[] = [];
-  for (const u of s.units) {
-    if (u.owner !== unit.owner || u.dead || u.traits.leader || u.activatedThisRound) continue;
+  for (const u of warCryTargets(s, unit, makeHexGrid(s.board))) {
     u.inspired = true;
     inspired.push(u.id);
   }

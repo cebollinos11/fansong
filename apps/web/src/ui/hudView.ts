@@ -89,7 +89,7 @@ export const TRAIT_HELP = {
   mounted: 'Rides into battle: +1 in melee against foes on foot, lost while knocked down',
   opportunist: 'Strikes when a foe is down: +1 in melee or shooting against a knocked-down foe',
   savage: 'Kills horribly: every kill it deals is gruesome, so the victim\'s friends must test for fear',
-  leader: 'Once a round, one action: a war cry inspires every friend still to activate (first activation die a sure 6). Friends who see it fall must test nerve',
+  leader: 'Once a round, one action: a war cry inspires every friend still to activate within 5 hexes and in sight (first activation die a sure 6). Friends who see it fall must test nerve',
   armored: 'Turns blows aside: a combat it loses by exactly 1 point does it no harm, even knocked down',
   sharpshooter: 'A deadly eye: +1 to every shot it takes',
   mastery: 'A master of arms: a melee it ties against a foe without Combat Mastery kills that foe (knocked down, only on a natural 6)',

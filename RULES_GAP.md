@@ -188,7 +188,9 @@ The `kings` of kill-the-king only exist for that objective and are not leaders.
 ✅ **Done — Leader and war cry** *(FanSong's own take)*. *Implemented:* a
 `leader` trait, priced as two favorable traits. Once a round, a Leader that is
 not knocked down may spend one action on a `WarCry`. Every living friend that
-isn't a Leader and has yet to activate this round becomes `inspired`: the first
+isn't a Leader, has yet to activate this round, and stands within 5 hexes in
+line of sight becomes `inspired` (terrain that blocks a shot blocks the cry;
+other units don't): the first
 die of its next activation roll is a sure 6 (still drawn from the RNG, and the
 inspiration is spent on that roll). A failed nerve check strips a unit's
 inspiration, and all of it lapses at the end of the round. A warband may field

@@ -30,6 +30,11 @@ describe('AI Leader', () => {
     expect(chooseCommand(reduce(s, cry).state).type).toBe('Attack');
   });
 
+  it('fights rather than cries when its friends are out of earshot', () => {
+    const s = activate(game([U('cap', 5, 4, { leader: true }), U('a', 11, 0), U('b', 11, 7)], [U('foe', 5, 3)]), 'p0u0');
+    expect(chooseCommand(s).type).toBe('Attack');
+  });
+
   it('does not waste an action inspiring a single friend while there is fighting to do', () => {
     const s = activate(game([U('cap', 5, 4, { leader: true }), U('a', 1, 1)], [U('foe', 5, 3)]), 'p0u0');
     expect(chooseCommand(s).type).toBe('Attack');
@@ -37,7 +42,7 @@ describe('AI Leader', () => {
 
   it('activates its Leader first while the war cry would reach a quorum', () => {
     // The friend can already attack, which normally goes first.
-    const s = game([U('a', 5, 4), U('b', 1, 6), U('cap', 0, 0, { leader: true })], [U('foe', 5, 3)]);
+    const s = game([U('a', 5, 4), U('b', 1, 6), U('cap', 2, 4, { leader: true })], [U('foe', 5, 3)]);
     const first = chooseCommand(s);
     expect(first.type === 'ChooseActivation' && first.unitId).toBe('p0u2');
   });

@@ -123,7 +123,7 @@ export const TRAIT_INFO: Record<TraitKey, { label: string; desc: string }> = {
   savage: { label: 'Savage', desc: "every kill it deals is gruesome, so the victim's friends must test for fear" },
   leader: {
     label: 'Leader',
-    desc: 'once a round, war cries to inspire every friend still to activate; friends who see it fall must test nerve. Costs as two traits',
+    desc: 'once a round, war cries to inspire every friend still to activate within 5 hexes and in sight; friends who see it fall must test nerve. Costs as two traits',
   },
   armored: { label: 'Armored', desc: 'a combat it loses by exactly 1 point does it no harm, even knocked down' },
   sharpshooter: { label: 'Sharpshooter', desc: '+1 to every shot it takes (only matters with a Shooter trait)' },

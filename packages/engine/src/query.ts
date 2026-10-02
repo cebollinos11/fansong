@@ -181,3 +181,22 @@ export function moveReach(state: GameState, unit: Unit, board: Board): Set<strin
 export function canWarCry(state: GameState, unit: Unit): boolean {
   return unit.traits.leader && !unit.dead && !unit.knockedDown && !unit.warCried && !state.benched[unit.owner];
 }
+
+/** Farthest a war cry carries, in hexes. */
+export const WAR_CRY_RANGE = 5;
+
+/**
+ * The friends a war cry from `leader` inspires: every living non-Leader of its
+ * side still to activate this round, within {@link WAR_CRY_RANGE} hexes and in
+ * line of sight. Terrain that blocks a shot (rock, building, forest) blocks the
+ * cry too; other units don't, so a crowd of friends all hear it.
+ */
+export function warCryTargets(state: GameState, leader: Unit, board: Board): Unit[] {
+  return aliveUnits(state, leader.owner).filter(
+    (u) =>
+      !u.traits.leader &&
+      !u.activatedThisRound &&
+      board.distance(leader.pos, u.pos) <= WAR_CRY_RANGE &&
+      board.lineOfSight(leader.pos, u.pos),
+  );
+}
