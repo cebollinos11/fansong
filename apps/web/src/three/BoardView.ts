@@ -7,6 +7,7 @@ import {
   makeHexGrid,
   MORALE_RADIUS,
   vecKey,
+  WAR_CRY_RANGE,
   type BoardData,
   type GameEvent,
   type GameState,
@@ -410,8 +411,8 @@ const WAR_CRY_MS = 1100; // a Leader's war cry: its rallying clip and verdict be
 const WAR_CRY_SHOUT_MS = 650; // the shout rolls out from the Leader this long before the camera turns to who hears it
 const WAR_CRY_RINGS = 3; // rings of the shout rolling out from the Leader
 const WAR_CRY_RING_GAP_MS = 170;
-const WAR_CRY_REACH_MS_PER_UNIT = 90; // a friend further from the Leader takes heart this much later per world unit
-const WAR_CRY_REACH_MAX_MS = 800; // but never later than this after the nearest
+const WAR_CRY_WAVE_STEP_MS = 150; // the cry's wave lights the hexes one ring further out this often
+const WAR_CRY_WAVE_HEX_MS = 700; // how long one hex stays lit as the wave passes
 const INSPIRE_BLINKS = 3; // gold blinks an inspired friend gives, the star landing on the last
 const INSPIRE_BLINK_MS = 260; // one blink
 const INSPIRE_HOLD_MS = 450; // the stars stay in view this long before play goes on
@@ -2104,8 +2105,8 @@ export class BoardView {
   /**
    * A Leader's war cry, starting `at` ms from now: frame the Leader as it rallies
    * and its shout rolls out in rings, then bring every friend it inspired into
-   * view and have each one blink gold in turn, nearest first, its star popping
-   * in on the last blink. Returns when the beat is over.
+   * view and roll the cry's wave out over the hexes it reaches, each friend
+   * blinking gold as the wave gets to it, its star popping in on the last blink. Returns when the beat is over.
    */
   private warCry(leaderId: string, inspired: string[], at: number): number {
     let t = at + this.pause(this.frameUnits([leaderId], at));
@@ -2129,18 +2130,25 @@ export class BoardView {
         this.now,
       );
     });
-    if (friends.length === 0) return t + WAR_CRY_MS;
+    if (friends.length === 0) {
+      // Nobody to rally, but the wave still shows how far the cry carried.
+      const origin = leader ? this.worldToCell(leader.group.position) : null;
+      if (origin) this.at(t, () => this.warCryWaveFx(origin));
+      return t + Math.max(WAR_CRY_MS, WAR_CRY_RANGE * WAR_CRY_WAVE_STEP_MS);
+    }
     t += WAR_CRY_SHOUT_MS;
     // Pull back to hold the Leader and everyone who heard it.
     t += this.pause(this.frameUnits([leaderId, ...friends.map((obj) => obj.id)], t));
-    // The cry reaches the nearest first, as a wave rolling out from the Leader.
-    const from = leader?.group.position ?? friends[0]!.group.position;
-    const reach = friends.map((obj) => ({ obj, dist: obj.group.position.distanceTo(from) }));
-    const nearest = Math.min(...reach.map((r) => r.dist));
+    // Then the cry rolls out over the hexes it carries to, ring by ring, and
+    // each friend takes heart as the wave reaches it.
+    const origin = leader ? this.worldToCell(leader.group.position) : null;
+    const grid = this.board ? makeHexGrid(this.board) : null;
+    if (leader && origin) this.at(t, () => this.warCryWaveFx(origin));
     let end = t;
-    for (const { obj, dist } of reach) {
-      const start = t + Math.min(WAR_CRY_REACH_MAX_MS, (dist - nearest) * WAR_CRY_REACH_MS_PER_UNIT);
-      end = Math.max(end, this.inspireFx(obj, start));
+    for (const obj of friends) {
+      const cell = this.worldToCell(obj.group.position);
+      const rings = origin && cell && grid ? grid.distance(origin, cell) : 1;
+      end = Math.max(end, this.inspireFx(obj, t + Math.max(0, rings - 1) * WAR_CRY_WAVE_STEP_MS));
     }
     return Math.max(at + WAR_CRY_MS, end + INSPIRE_HOLD_MS);
   }
@@ -2158,6 +2166,73 @@ export class BoardView {
         }),
       );
     }
+  }
+
+  /**
+   * A war cry's reach, lit as a wave: every hex it carries to (within
+   * {@link WAR_CRY_RANGE} and in the Leader's line of sight, as the engine
+   * rules it) glows gold, one ring further out every
+   * {@link WAR_CRY_WAVE_STEP_MS}, each ring fainter than the last. Hexes
+   * behind a rock or a wood stay dark, so the cry's shadow shows.
+   */
+  private warCryWaveFx(origin: Vec): void {
+    if (!this.board) return;
+    const grid = makeHexGrid(this.board);
+    const rings: Vec[][] = Array.from({ length: WAR_CRY_RANGE }, () => []);
+    for (const c of grid.cellsWithin(origin, WAR_CRY_RANGE)) {
+      if (grid.lineOfSight(origin, c)) rings[grid.distance(origin, c) - 1]!.push(c);
+    }
+    // Each hex lights with a soft fill and a bright rim, so the wave reads over
+    // any ground (and over the move highlights).
+    const fillGeo = new THREE.CircleGeometry(HEX_SIZE * 0.92, 6);
+    const rimGeo = new THREE.RingGeometry(HEX_SIZE * 0.78, HEX_SIZE * 0.95, 6);
+    let left = rings.filter((r) => r.length > 0).length;
+    rings.forEach((cells, i) => {
+      if (cells.length === 0) return;
+      this.at(i * WAR_CRY_WAVE_STEP_MS, () => {
+        const fade = 1 - i * 0.1;
+        const place = cells.map((c) => (tile: THREE.Object3D) => {
+          tile.rotation.set(-Math.PI / 2, 0, 0);
+          const w = this.cellToWorld(c);
+          tile.position.set(w.x, this.surfaceAt(c) + 0.02, w.z);
+        });
+        const layers = [
+          { geo: fillGeo, peak: 0.45 * fade },
+          { geo: rimGeo, peak: 1 * fade },
+        ].map(({ geo, peak }) => {
+          const mat = new THREE.MeshBasicMaterial({
+            color: INSPIRED_GLOW,
+            transparent: true,
+            opacity: 0,
+            blending: THREE.AdditiveBlending,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+          });
+          return { mesh: instanced(geo, mat, place), mat, peak };
+        });
+        const group = new THREE.Group();
+        for (const l of layers) group.add(l.mesh);
+        this.effects.add(
+          group,
+          WAR_CRY_WAVE_HEX_MS / 1000,
+          // A sharp flash as the wave arrives, then a slower fade behind it.
+          (k) => {
+            const env = k < 0.12 ? k / 0.12 : (1 - k) / 0.88;
+            for (const l of layers) l.mat.opacity = l.peak * env;
+          },
+          () => {
+            for (const l of layers) {
+              l.mesh.dispose();
+              l.mat.dispose();
+            }
+            if (--left === 0) {
+              fillGeo.dispose();
+              rimGeo.dispose();
+            }
+          },
+        );
+      });
+    });
   }
 
   /**

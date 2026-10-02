@@ -462,11 +462,15 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     id: 'warCry',
     group: 'Traits',
     label: 'Leader: war cry',
-    hint: 'The Leader rallies: the camera takes in every friend yet to act within 5 hexes and in sight, and each blinks gold three times as its star lands.',
+    hint: 'The Leader rallies: the camera takes in every friend yet to act within 5 hexes and in sight, a gold wave rolls out over the hexes the cry reaches (the rock casts a shadow), and each friend blinks gold three times as the wave reaches it and its star lands.',
     stage: (s) => {
       s.spawn(0, { name: 'Death Knight', quality: 3, combat: 3, leader: true }, s.target);
       s.spawn(0, ELF, s.side);
-      s.spawn(0, ELF, s.attacker);
+      // Down the column (four hexes, or as far as a small board allows), so the
+      // wave is seen to travel before it reaches this one.
+      s.spawn(0, ELF, { x: s.target.x, y: Math.min(s.target.y + 4, s.state().board.height - 1) });
+      // A rock beside the Leader, whose shadow the wave leaves dark.
+      s.paint({ x: s.target.x - 1, y: s.target.y }, { feature: 'rock' });
       s.spawn(1, BONES, s.corner[0]!);
       s.fresh(0);
       s.act('p0u0');
