@@ -1481,6 +1481,8 @@ export class BoardView {
           // Walk hex by hex at a steady pace, so a longer move takes proportionally longer.
           const path = cells.map((c) => this.unitWorld(c));
           const dur = (path.length - 1) * WALK_MS_PER_HEX;
+          // A runner bolting off-screen takes the camera with it.
+          if (e.type === 'UnitFled') t += this.followRun(obj, path, t, dur);
           obj.walk = { path, start: this.now + t };
           this.at(t, () => {
             obj.animator.stop(); // an idle flourish mustn't play over the walk
@@ -1959,6 +1961,28 @@ export class BoardView {
     const dur = this.scheduleMove(at, centre, this.fitAround(points, centre, end.dist, end.yaw, head));
     if (dur > 0) this.focusUnits(ids, at);
     return dur;
+  }
+
+  /**
+   * Follow a unit running `path` (world points, over `dur` ms from when it
+   * sets off) when the run won't fit in view: bring it into view where it
+   * breaks if it isn't, then glide alongside it to where it stops. Returns how
+   * long the runner must wait for that first pan (0 when it needs none).
+   */
+  private followRun(obj: UnitObj, path: THREE.Vector3[], at: number, dur: number): number {
+    if (this.cameraMode === 'off' || this.handOnCamera || path.length < 2) return 0;
+    const view = this.plannedCamera();
+    const head = this.headroom([obj.id]);
+    if (this.inView(path, view, head)) return 0;
+    let lead = 0;
+    if (!this.inView([path[0]!], view, head)) {
+      lead = this.pause(this.scheduleMove(at, this.pivotFor(this.bodyAt(obj, path[0]!), view.yaw), null));
+      if (lead > 0) this.focusUnits([obj.id], at);
+    }
+    const goal = this.pivotFor(this.bodyAt(obj, path.at(-1)!), view.yaw);
+    this.planned = { target: goal.clone(), dist: view.dist, yaw: view.yaw };
+    this.at(at + lead, () => this.moveCamera(goal, null, dur, true));
+    return lead;
   }
 
   /**
