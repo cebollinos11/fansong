@@ -1,5 +1,5 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
-import { carryFlags, dropFlag, finishGame, isKing, regrabOnStandUp } from './mode.js';
+import { carryFlags, finishGame, isKing, regrabOnStandUp, returnCarriedFlag } from './mode.js';
 import { rollD6 } from './rng.js';
 import { airborne, aliveUnits, isOccupied, livingCount, occupiedKeys } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
@@ -160,8 +160,9 @@ function fleeFailures(s: GameState, events: GameEvent[], tested: Unit[], board: 
 
 /**
  * A Disloyal `unit` goes over to the enemy where it stands (mutates `s`). It
- * drops its stance, any flag it carries and its place in a group activation,
- * and counts as activated for the round. A King that turns hands its new side
+ * drops its stance and its place in a group activation, sends any flag it
+ * carries — now its own side's — back to base, and counts as activated for
+ * the round. A King that turns hands its new side
  * the game at once. Otherwise the side it left is a unit short: a Leader's
  * desertion shakes the friends who see it, and the loss can break the warband
  * (see {@link routCheck}) — or leave it with no one, which the caller's
@@ -170,12 +171,12 @@ function fleeFailures(s: GameState, events: GameEvent[], tested: Unit[], board: 
 function defect(s: GameState, events: GameEvent[], unit: Unit, board: Board, hacks: FreeHacks): void {
   const from = unit.owner;
   const to: Owner = from === 0 ? 1 : 0;
-  dropFlag(s, events, unit);
   unit.owner = to;
   unit.guarding = false;
   unit.activatedThisRound = true;
   if (s.group) s.group.pending = s.group.pending.filter((p) => p.unitId !== unit.id);
   events.push({ type: 'UnitDefected', unitId: unit.id, to });
+  returnCarriedFlag(s, events, unit);
 
   if (isKing(s, unit.id)) {
     finishGame(s, events, to, 'king');

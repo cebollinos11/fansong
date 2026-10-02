@@ -612,7 +612,7 @@ export type GameEvent =
   | { type: 'FlagPickedUp'; player: Owner; unitId: string }
   /** Capture-the-flag: `player`'s flag falls from its knocked-down or slain carrier onto `at`. */
   | { type: 'FlagDropped'; player: Owner; unitId: string; at: Vec }
-  /** Capture-the-flag: `unitId` returned its own side's (`player`'s) dropped flag to base. */
+  /** Capture-the-flag: `unitId` returned its own side's (`player`'s) flag to base: it stepped onto it where it lay, or was carrying it when it changed sides. */
   | { type: 'FlagReturned'; player: Owner; unitId: string }
   /** Capture-the-flag: `player` carried the enemy flag home with `unitId` (and wins). */
   | { type: 'FlagCaptured'; player: Owner; unitId: string }
