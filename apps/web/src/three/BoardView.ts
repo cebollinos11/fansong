@@ -11,6 +11,7 @@ import {
   type GameEvent,
   type GameState,
   type Owner,
+  type UnitTraits,
   type Vec,
 } from '@fansong/engine';
 import { loadSpriteAtlas, projectileTexture, type SpriteAtlas } from './spriteTextures.js';
@@ -413,6 +414,20 @@ const TOUGH_HITCH_MS = 320; // a Tough unit freezes mid-death this long before i
 const GLOW_MS = 1200; // gold rim glow on a Tough save
 const BONE = 0xe8e0c8; // a Reassembling unit's bones pulling back together
 const BONE_COLORS = [0xf4eedc, 0xe8e0c8, 0xbfb49a];
+const PINCER_COLOR = 0xffa64a; // the jaws closing on a foe caught between two
+const SHIELDWALL_COLOR = 0x8fc8ff; // shields locked along a line of friends
+const RUSH_COLOR = 0xfff0c8; // the streaks a Rusher's charge trails
+const RUSH_LUNGE = 1.7; // how much further a Rusher's charge leans into its target
+const LEAF_COLORS = [0x3a7a42, 0x6fae4a, 0xa9d46a, 0xc9a13a];
+const LEAF_GLOW = 0x9be07a; // the rim on a Woodwise unit fighting from the trees
+const WHIRL_COLOR = 0xe8f0ff; // the blade trails round a Whirling unit beset on all sides
+const STONE = 0xd8cfc0; // an Immovable unit digging in
+const SLIP_COLOR = 0xbfe9ff; // the afterimages a Slippery unit leaves as it ducks away
+const QUERY_COLOR = 0xffe9a8; // the question mark over a Dumb unit told to act
+const TRAMPLE_MS_PER_HEX = 190; // a trampled unit is driven back at this pace, faster than a walk
+const TEETER = 0.4; // radians a Bad Balance unit rocks as it loses its footing...
+const TEETER_MS = 350; // ...for this long after the shove ends, before it goes over
+const DEFECT_MS = 450; // a turncoat's old colours drain this long before it turns
 const REASSEMBLE_GATHER_MS = 650; // the bones drawing in, before the unit starts to climb up
 const REASSEMBLE_STAGGER_MS = 250; // between one unit's reassembly and the next
 const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the player's view
@@ -678,8 +693,19 @@ interface UnitObj {
   blink: { start: number; end: number } | null;
   /** A shove the cutout rides out and recovers from: a strike's lunge in, or a dodge back. */
   lunge: { dir: THREE.Vector3; start: number; hit: number; end: number } | null;
-  /** A move in progress: hex centres from origin to destination, walked from board time `start`. `backward` keeps the facing (a recoil). */
-  walk: { path: THREE.Vector3[]; start: number; backward?: boolean } | null;
+  /**
+   * A move in progress: hex centres from origin to destination, walked from board
+   * time `start` at `pace` ms a hex (a walk's, unless given). `backward` keeps the facing (a recoil).
+   */
+  walk: { path: THREE.Vector3[]; start: number; backward?: boolean; pace?: number } | null;
+  /** Board times a Bad Balance unit rocks between as a shove takes its footing. */
+  teeter: { start: number; end: number } | null;
+  /** Its traits from the latest GameState (null until the first update). */
+  traits: UnitTraits | null;
+  /** The side the state says it has gone over to, while it is still drawn in its old colours (see `turnCoat`). */
+  turnTo: Owner | null;
+  /** Its change of sides is on the timeline: the colours hold until that plays. */
+  turning: boolean;
   /** 0..1 transient hit flash, decays each frame. */
   flash: number;
   /** Transient pick whiteout, decays each frame; 1 and above shows only the white shape. */
@@ -1161,13 +1187,12 @@ export class BoardView {
       seen.add(u.id);
       let obj = this.units.get(u.id);
       // A unit whose look changed (an online host's stand-in opponent replaced
-      // by the real army), or whose side, size or flight the dev sandbox
-      // rewrote, is rebuilt with its new sprite.
+      // by the real army), or whose size or flight the dev sandbox rewrote, is
+      // rebuilt with its new sprite.
       if (
         obj &&
         (obj.spriteName !== spriteFor(u.look ?? u.name) ||
           obj.tint !== u.tint ||
-          obj.owner !== u.owner ||
           obj.size !== (u.traits.big ? BIG_SCALE : 1) ||
           obj.flying !== u.traits.flying)
       ) {
@@ -1181,6 +1206,9 @@ export class BoardView {
         obj.group.position.copy(this.unitWorld(u.pos));
       }
       obj.targetPos = this.unitWorld(u.pos);
+      // One that changed sides keeps its mini, and its old colours until its defection plays.
+      obj.turnTo = obj.owner !== u.owner ? u.owner : null;
+      obj.traits = u.traits;
       obj.name = u.name;
       obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead };
       obj.grounded = u.traits.flying && !airborne(state, u);
@@ -1270,6 +1298,7 @@ export class BoardView {
     let fleeSlowed = false; // whether the first of them to run has slowed time yet
     const toughSaved = new Set<string>(); // units whose killing blow Tough turned into a knockdown
     let reassembling = false; // whether this batch's Reassembling stand-ups are already laid out
+    const landing = new Map<string, number>(); // when the latest blow's shove sets each unit down
     const hold = (id: string, until: number) => {
       const obj = this.units.get(id);
       if (obj) obj.holdUntil = Math.max(obj.holdUntil, this.now + until);
@@ -1298,6 +1327,9 @@ export class BoardView {
             this.at(t, () => this.traceRoute(obj.owner, cells, start));
             t += ROUTE_LEAD_MS;
           }
+          // A Slippery unit ducks out of contact, and no one gets a hack at it.
+          const hacked = events.slice(0, i).some((x) => x.type === 'FreeHackResolved' && x.targetId === e.unitId);
+          if (obj.traits?.slippery && !hacked) this.at(t, () => this.slipFx(obj));
           // Walk hex by hex at a steady pace, so a longer move takes proportionally longer.
           const path = cells.map((c) => this.unitWorld(c));
           const dur = (path.length - 1) * WALK_MS_PER_HEX;
@@ -1317,6 +1349,7 @@ export class BoardView {
         // A group lights up together, so it is plain who shares the roll.
         for (const id of e.group ?? [e.unitId]) if (id !== this.ownPick) this.at(t, () => this.flashPick(id));
         this.ownPick = null;
+        for (const id of e.group ?? [e.unitId]) if (this.units.get(id)?.traits?.dumb) this.at(t, () => this.dumbFx(id));
         if (obj?.anims.leading) this.at(t, () => obj.animator.play(obj.anims.leading));
       } else if (e.type === 'GroupMemberActivated') {
         // The next member of a group steps up once the last one's doings have shown.
@@ -1354,6 +1387,7 @@ export class BoardView {
         pair = e.type === 'GuardRiposte' ? [e.guardId, e.attackerId] : [e.attackerId, e.targetId];
         gruesome = e.gruesome === true;
         ranged = e.type === 'ShotResolved';
+        landing.clear();
         // A gruesome kill is known before it plays: build up to it.
         const kill = killOf(e, pair, after);
         const dread = gruesome ? kill : null;
@@ -1391,6 +1425,19 @@ export class BoardView {
           this.closeIn(kill.victim, start, s.hit, KILL_DOLLY, KILL_PUSH_IN);
         }
         const [first, second] = pair;
+        // The traits that swung the roll show as the first swing starts.
+        const riposte = e.type === 'GuardRiposte';
+        const pincer = riposte ? e.guardPincer : e.type !== 'ShotResolved' ? e.attackPincer : 0;
+        const woods = riposte ? [e.guardWoodwise, e.attackerWoodwise] : [e.attackWoodwise, e.defenseWoodwise];
+        const melee = e.type !== 'ShotResolved';
+        this.at(start + cards, () => {
+          if (pincer) this.pincerFx(first, second);
+          if (e.type === 'AttackResolved' && e.defenseShieldwall) this.shieldwallFx(second, first);
+          if (e.type === 'AttackResolved' && e.attackRusher) this.rushFx(first, second);
+          if (woods[0]) this.woodwiseFx(first);
+          if (woods[1]) this.woodwiseFx(second);
+          if (melee) for (const id of [first, second]) this.whirlFx(id);
+        });
         if (e.result === 'clash' && !armored && e.type !== 'ShotResolved') this.at(s.hit, () => this.clashFx(first, second));
         if (e.type === 'GuardRiposte') {
           this.at(start + cards, () => this.guardFx(e.guardId));
@@ -1458,10 +1505,30 @@ export class BoardView {
       } else if (e.type === 'UnitRecoiled') {
         const obj = this.units.get(e.unitId);
         if (obj) {
-          // Shoved back one hex on the blow's hit frame, still facing its opponent.
-          obj.walk = { path: [this.unitWorld(e.from), this.unitWorld(e.to)], start: this.now + lastHit, backward: true };
-          this.recoilFx(obj, this.unitWorld(e.from), this.unitWorld(e.to), lastHit);
-          t = Math.max(t, lastHit + WALK_MS_PER_HEX);
+          // Shoved back on the blow's hit frame, still facing its opponent: one
+          // hex, or driven across two at a run by a Trample.
+          const by = pair && !ranged ? this.units.get(pair[0] === e.unitId ? pair[1] : pair[0]) : undefined;
+          const trampler = by?.traits?.trample ? by : null;
+          const from = this.unitWorld(e.from);
+          const to = this.unitWorld(e.to);
+          const path = [from, to];
+          if (Math.hypot(to.x - from.x, to.z - from.z) > HEX_STEP * 1.5) {
+            const half = from.clone().lerp(to, 0.5);
+            const mid = this.worldToCell(half);
+            path.splice(1, 0, mid ? this.unitWorld(mid) : half);
+          }
+          const pace = trampler ? TRAMPLE_MS_PER_HEX : WALK_MS_PER_HEX;
+          const dur = (path.length - 1) * pace;
+          obj.walk = { path, start: this.now + lastHit, backward: true, pace };
+          this.recoilFx(obj, from, to, lastHit, dur);
+          if (trampler) this.trampleFx(trampler, path, lastHit, pace);
+          // One the shove also floors goes down where it ends: a Bad Balance
+          // unit only after rocking there a moment, fighting for its footing.
+          const teeters = obj.traits?.badBalance === true && fallsAfter(e.unitId, after);
+          const lands = lastHit + dur + (teeters ? TEETER_MS : 0);
+          if (teeters) obj.teeter = { start: this.now + lastHit, end: this.now + lands };
+          landing.set(e.unitId, lands);
+          t = Math.max(t, lands);
         }
       } else if (e.type === 'UnitSupported') {
         // The friend behind braces the pushed unit on the blow's hit frame.
@@ -1470,13 +1537,21 @@ export class BoardView {
           this.braceFx(e.unitId, e.supporterId);
         });
       } else if (e.type === 'UnitHeldGround') {
-        this.at(lastHit, () => this.rolls.addVerdict({ text: 'Immovable', on: [e.unitId], tone: 'save' }, this.now));
+        const by = pair ? (pair[0] === e.unitId ? pair[1] : pair[0]) : null;
+        this.at(lastHit, () => {
+          this.rolls.addVerdict({ text: 'Immovable', on: [e.unitId], tone: 'save' }, this.now);
+          this.immovableFx(e.unitId, by);
+        });
       } else if (e.type === 'UnitDefected') {
         const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
-        this.at(at, () =>
-          this.rolls.addVerdict({ text: 'Changes sides!', detail: `now fights for P${e.to}`, on: [e.unitId], tone: 'kill' }, this.now),
-        );
+        const obj = this.units.get(e.unitId);
+        if (obj) obj.turning = true;
+        this.at(at, () => {
+          this.rolls.addVerdict({ text: 'Changes sides!', detail: `now fights for P${e.to}`, on: [e.unitId], tone: 'kill' }, this.now);
+          this.defectFx(e.unitId, e.to);
+        });
         settle = at;
+        t = Math.max(t, at + DEFECT_MS + GLOW_MS / 2);
       } else if (e.type === 'UnitPushedOff') {
         // Only a push that kills slides off the table; a Tough save stays on the edge.
         const fate = after.find((x) => (x.type === 'UnitKilled' || x.type === 'ToughnessSaved') && x.unitId === e.unitId);
@@ -1495,9 +1570,12 @@ export class BoardView {
         const obj = this.units.get(e.unitId);
         if (obj) obj.intoLava = new THREE.Vector3();
       } else if (e.type === 'UnitKnockedDown') {
-        // A Tough unit freezes mid-death for a beat before it drops.
-        const at = settle + (toughSaved.has(e.unitId) ? TOUGH_HITCH_MS : 0);
+        // A Tough unit freezes mid-death for a beat before it drops; one shoved
+        // off its feet drops where the shove sets it down, with a thump.
+        const shoved = landing.get(e.unitId);
+        const at = Math.max(settle, shoved ?? 0) + (toughSaved.has(e.unitId) ? TOUGH_HITCH_MS : 0);
         hold(e.unitId, at);
+        if (shoved !== undefined) this.at(shoved, () => this.thumpFx(e.unitId));
         // Struck down by the latest blow: the action catches on its impact.
         if (pair?.includes(e.unitId)) this.at(lastHit, () => this.hitStop(IMPACT_STOP_MS, [e.unitId]));
         const obj = this.units.get(e.unitId);
@@ -1506,7 +1584,7 @@ export class BoardView {
           this.at(at + (fall ? clipDuration(fall) : 200), () => this.blinkUnit(obj));
         }
       } else if (e.type === 'UnitKilled') {
-        hold(e.unitId, settle);
+        hold(e.unitId, Math.max(settle, landing.get(e.unitId) ?? 0));
         const obj = this.units.get(e.unitId);
         if (obj) {
           // A shove off the map is gruesome only when a Savage did the shoving.
@@ -2214,6 +2292,7 @@ export class BoardView {
       obj.holdUntil = 0;
       obj.pulse = null;
       obj.jolt = null;
+      obj.teeter = null;
       obj.blink = null;
       obj.facing.visible = true;
     }
@@ -2239,6 +2318,8 @@ export class BoardView {
       obj.pulse = null;
       obj.walk = null;
       obj.jolt = null;
+      obj.teeter = null;
+      obj.turning = false; // a change of sides left unplayed shows at once
       obj.glow = null;
       obj.blink = null;
       obj.facing.visible = true;
@@ -2436,6 +2517,10 @@ export class BoardView {
       blink: null,
       lunge: null,
       walk: null,
+      teeter: null,
+      traits: null,
+      turnTo: null,
+      turning: false,
       flash: 0,
       whiteout: 0,
       spent: false,
@@ -2448,25 +2533,8 @@ export class BoardView {
 
     loadSpriteAtlas(spriteName, framesOf(spriteName), owner, tint).then(
       (atlas) => {
-        if (this.disposed) return;
-        obj.atlas = atlas;
-        const map = atlas.texture.clone(); // shares the uploaded image; its own UV window
-        map.repeat.set(atlas.repeatU, atlas.repeatV);
-        map.needsUpdate = true;
-        sprite.material.map = map;
-        sprite.material.needsUpdate = true;
-        sprite.geometry.translate(0.5 - atlas.anchorX / atlas.cellW, atlas.anchorY / atlas.cellH - 0.5, 0);
-        // A Big model is drawn a head taller; the cutout's anchor is its feet,
-        // so it grows upward and stays planted on its hex.
-        sprite.scale.set(atlas.cellW * SPRITE_PX * obj.size, atlas.cellH * SPRITE_PX * obj.size, 1);
-        const u = outline.material.uniforms;
-        u.map!.value = map;
-        u.uOffset!.value = map.offset; // the same vector the frame animation moves
-        u.uRepeat!.value = map.repeat;
-        u.uPixel!.value.set(1 / atlas.cellW, 1 / atlas.cellH);
-        outline.scale.copy(sprite.scale);
-        obj.shownImage = null; // force the current frame onto the new map
-        sprite.visible = true;
+        // Not if it has turned its coat meanwhile: that side's atlas is on its way.
+        if (!this.disposed && obj.owner === owner) this.wearAtlas(obj, atlas);
       },
       (err) => console.error(err),
     );
@@ -2476,6 +2544,49 @@ export class BoardView {
     group.name = name;
     this.scene.add(group);
     return obj;
+  }
+
+  /** Dress a unit's cutout in `atlas`: its first, or its new side's once it has turned its coat. */
+  private wearAtlas(obj: UnitObj, atlas: SpriteAtlas): void {
+    const { sprite, outline } = obj;
+    const first = obj.atlas === null;
+    obj.atlas = atlas;
+    const map = atlas.texture.clone(); // shares the uploaded image; its own UV window
+    map.repeat.set(atlas.repeatU, atlas.repeatV);
+    map.needsUpdate = true;
+    sprite.material.map?.dispose();
+    sprite.material.map = map;
+    sprite.material.needsUpdate = true;
+    if (first) sprite.geometry.translate(0.5 - atlas.anchorX / atlas.cellW, atlas.anchorY / atlas.cellH - 0.5, 0);
+    // A Big model is drawn a head taller; the cutout's anchor is its feet,
+    // so it grows upward and stays planted on its hex.
+    sprite.scale.set(atlas.cellW * SPRITE_PX * obj.size, atlas.cellH * SPRITE_PX * obj.size, 1);
+    const u = outline.material.uniforms;
+    u.map!.value = map;
+    u.uOffset!.value = map.offset; // the same vector the frame animation moves
+    u.uRepeat!.value = map.repeat;
+    u.uPixel!.value.set(1 / atlas.cellW, 1 / atlas.cellH);
+    outline.scale.copy(sprite.scale);
+    obj.shownImage = null; // force the current frame onto the new map
+    sprite.visible = true;
+  }
+
+  /**
+   * Show a unit on the side the state says it has gone over to: its base takes
+   * that side's colour at once, its cutout as soon as that side's art is in.
+   */
+  private turnCoat(obj: UnitObj): void {
+    const owner = obj.turnTo;
+    obj.turnTo = null;
+    obj.turning = false;
+    if (owner === null || owner === obj.owner) return;
+    obj.owner = owner;
+    loadSpriteAtlas(obj.spriteName, framesOf(obj.spriteName), owner, obj.tint).then(
+      (atlas) => {
+        if (!this.disposed && obj.owner === owner && this.units.get(obj.id) === obj) this.wearAtlas(obj, atlas);
+      },
+      (err) => console.error(err),
+    );
   }
 
   /** Run `fn` once board time is `delayMs` from now. */
@@ -2754,6 +2865,8 @@ export class BoardView {
 
   /** Per-frame unit animation: frame, facing, lunge, tilt, fade and flash. */
   private animateUnit(obj: UnitObj, dtMs: number, lerp: number, camRight: THREE.Vector3): void {
+    // A change of sides no defection is waiting to play (a sandbox edit, a replay jump) shows at once.
+    if (obj.turnTo !== null && !obj.turning) this.turnCoat(obj);
     if (obj.walk) this.walkUnit(obj, obj.walk);
     else obj.group.position.lerp(obj.targetPos, lerp);
     if (this.now >= obj.holdUntil) this.syncShown(obj);
@@ -2821,6 +2934,12 @@ export class BoardView {
     }
 
     obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
+    if (obj.teeter && this.now >= obj.teeter.end) obj.teeter = null;
+    if (obj.teeter && this.now >= obj.teeter.start) {
+      // Losing its footing: it rocks wider and wider until it goes over.
+      const k = (this.now - obj.teeter.start) / (obj.teeter.end - obj.teeter.start);
+      obj.tilt.rotation.z = Math.sin(k * Math.PI * 4) * TEETER * (0.4 + 0.6 * k);
+    }
     const crouch = obj.shown.knocked && !obj.downPose && !obj.fade;
     obj.tilt.scale.x += ((crouch ? DOWN_WIDEN : 1) - obj.tilt.scale.x) * lerp;
     obj.tilt.scale.y += ((crouch ? DOWN_SQUASH : 1) - obj.tilt.scale.y) * lerp;
@@ -2925,7 +3044,7 @@ export class BoardView {
   /** Place a walking unit along its path (waiting at the origin until the walk starts), facing its current step. */
   private walkUnit(obj: UnitObj, walk: NonNullable<UnitObj['walk']>): void {
     const { path, start } = walk;
-    const f = (this.now - start) / WALK_MS_PER_HEX;
+    const f = (this.now - start) / (walk.pace ?? WALK_MS_PER_HEX);
     if (f >= path.length - 1) {
       obj.group.position.copy(path[path.length - 1]!);
       obj.mirror.rotation.z = 0;
@@ -3561,11 +3680,11 @@ export class BoardView {
   }
 
   /** 2a–2c. Pushed back: dust kicked up along the skid, chevrons streaking through, a nudge of the camera. */
-  private recoilFx(obj: UnitObj, from: THREE.Vector3, to: THREE.Vector3, at: number): void {
+  private recoilFx(obj: UnitObj, from: THREE.Vector3, to: THREE.Vector3, at: number, ms = WALK_MS_PER_HEX): void {
     const push = to.clone().sub(from).setY(0);
     // 2a: dust at its feet all along the skid (sampled as it slides).
     for (let i = 0; i < 4; i++) {
-      this.at(at + (i * WALK_MS_PER_HEX) / 4, () => this.dust(obj.group.position.clone().setY(this.groundY(obj)), 5, 0.7));
+      this.at(at + (i * ms) / 4, () => this.dust(obj.group.position.clone().setY(this.groundY(obj)), 5, 0.7));
     }
     this.at(at, () => {
       // 2b: chevrons pointing the way it is shoved.
@@ -3629,6 +3748,318 @@ export class BoardView {
         blend: 'add',
       });
       obj.glow = { color: BONE, start: this.now, end: this.now + GLOW_MS };
+    });
+  }
+
+  /** The ground under a unit where it is drawn now. */
+  private feet(obj: UnitObj): THREE.Vector3 {
+    return obj.group.position.clone().setY(this.groundY(obj) + 0.04);
+  }
+
+  /** The standing units in contact with `obj` as they are drawn now: its friends, or its foes. */
+  private beside(obj: UnitObj, friends: boolean): UnitObj[] {
+    const at = obj.group.position;
+    return [...this.units.values()].filter(
+      (o) =>
+        o !== obj &&
+        (o.owner === obj.owner) === friends &&
+        !o.shown.dead &&
+        !o.shown.knocked &&
+        !o.fade &&
+        Math.hypot(o.group.position.x - at.x, o.group.position.z - at.z) < HEX_STEP * 1.3,
+    );
+  }
+
+  /**
+   * Pincer: the striker and the friend on the far side of its foe close on it
+   * like jaws — a bar of light through the foe, chevrons driving in from both
+   * ends, a ring tightening under it, and the friend feinting in.
+   */
+  private pincerFx(strikerId: string, targetId: string): void {
+    const s = this.units.get(strikerId);
+    const t = this.units.get(targetId);
+    if (!s || !t) return;
+    const far = t.group.position.clone().multiplyScalar(2).sub(s.group.position);
+    const friend = this.beside(t, false).find(
+      (o) => o !== s && Math.hypot(o.group.position.x - far.x, o.group.position.z - far.z) < HEX_STEP * 0.5,
+    );
+    if (!friend) return;
+    const mid = this.chest(t);
+    this.effects.beam(this.chest(s), this.chest(friend), PINCER_COLOR, 0.03, { life: 0.6, opacity: 0.85 });
+    for (const jaw of [s, friend]) {
+      const from = this.chest(jaw).lerp(mid, 0.3);
+      this.effects.icon('chevron', from, 0.4, {
+        life: 0.5,
+        color: PINCER_COLOR,
+        rotation: this.screenAngle(jaw.group.position, t.group.position),
+        drift: mid.clone().sub(from).multiplyScalar(0.6),
+      });
+    }
+    this.effects.ring(this.feet(t), PINCER_COLOR, HEX_SIZE * 1.2, 0.3, { life: 0.5, opacity: 0.8, additive: true });
+    const close = t.group.position.clone().sub(friend.group.position);
+    this.setHeading(friend, close.clone());
+    this.joltUnit(friend, close, 0.14, false, 320);
+  }
+
+  /**
+   * Shieldwall: the defender and every friend standing with it raise shields
+   * toward the blow, joined along the line, and the friends lean in to lock them.
+   */
+  private shieldwallFx(defenderId: string, attackerId: string): void {
+    const d = this.units.get(defenderId);
+    const a = this.units.get(attackerId);
+    if (!d) return;
+    const friends = this.beside(d, true);
+    if (friends.length === 0) return;
+    const toward = a ? a.group.position.clone().sub(d.group.position).setY(0).normalize().multiplyScalar(0.22) : new THREE.Vector3();
+    const low = (o: UnitObj) => this.feet(o).setY(this.groundY(o) + 0.32);
+    for (const o of [d, ...friends]) {
+      this.effects.icon('shield', this.chest(o).add(toward), o === d ? 0.5 : 0.4, { life: 0.8, color: SHIELDWALL_COLOR, opacity: 0.9 });
+      if (o === d) continue;
+      this.effects.beam(low(d), low(o), SHIELDWALL_COLOR, 0.03, { life: 0.8, opacity: 0.7 });
+      this.joltUnit(o, d.group.position.clone().sub(o.group.position), 0.08, false, 300);
+    }
+    this.effects.ring(this.feet(d), SHIELDWALL_COLOR, 0.3, HEX_SIZE * 0.9, { life: 0.5, opacity: 0.7, additive: true });
+  }
+
+  /** Rusher: the charge carries on into the blow — a deeper lunge, streaks trailing behind it and dirt thrown back. */
+  private rushFx(attackerId: string, targetId: string): void {
+    const a = this.units.get(attackerId);
+    const d = this.units.get(targetId);
+    if (!a || !d) return;
+    const dir = d.group.position.clone().sub(a.group.position).setY(0).normalize();
+    if (a.lunge) a.lunge.dir.multiplyScalar(RUSH_LUNGE);
+    const feet = this.feet(a);
+    const behind = feet.clone().addScaledVector(dir, -HEX_SIZE * 0.7);
+    const along = this.screenAngle(behind, feet);
+    for (const lift of [0.2, 0.5, 0.8]) {
+      this.effects.streak(behind.clone().setY(feet.y + lift * a.size + a.hover), along, 1.1 - lift * 0.4, 0.07, {
+        life: 0.4,
+        color: RUSH_COLOR,
+        opacity: 0.85,
+      });
+    }
+    this.effects.burst({
+      at: feet,
+      count: 12,
+      colors: this.dustColors(feet),
+      speed: [0.8, 1.8],
+      dir: dir.clone().negate().setY(0.35),
+      cone: 0.45,
+      drag: 2.5,
+      life: [0.4, 0.7],
+      size: [0.1, 0.17],
+      grow: 2,
+      opacity: 0.75,
+      jitter: 0.1,
+    });
+    if (this.cameraMode === 'cinematic') this.shakeCamera('nudge', 0.05, 220, dir);
+  }
+
+  /** Woodwise: the forest fights with it — leaves whirl up off the unit and it takes a green rim. */
+  private woodwiseFx(id: string): void {
+    const obj = this.units.get(id);
+    if (!obj) return;
+    const ground = this.feet(obj);
+    this.effects.burst({
+      at: this.chest(obj),
+      count: 22,
+      colors: LEAF_COLORS,
+      speed: [0.5, 1.3],
+      flat: true,
+      up: 0.9,
+      gravity: 1.8,
+      drag: 1.8,
+      life: [0.8, 1.3],
+      size: [0.045, 0.085],
+      shape: 'square',
+      jitter: 0.3,
+      floor: ground.y,
+      bounce: 0,
+    });
+    this.effects.ring(ground, LEAF_GLOW, 0.25, HEX_SIZE * 0.85, { life: 0.6, opacity: 0.6, additive: true });
+    obj.glow = { color: LEAF_GLOW, start: this.now, end: this.now + GLOW_MS };
+  }
+
+  /**
+   * Whirling: with two or more foes on it, where anyone else would be
+   * outnumbered, its blade sweeps the whole ring of them and each gives a little.
+   */
+  private whirlFx(id: string): void {
+    const obj = this.units.get(id);
+    if (!obj?.traits?.whirling || obj.shown.knocked) return;
+    const foes = this.beside(obj, false);
+    if (foes.length < 2) return;
+    const ground = this.feet(obj);
+    this.effects.whirl(ground.clone().setY(ground.y + 0.4 * obj.size + obj.hover), WHIRL_COLOR, HEX_SIZE * 0.95, { life: 0.7, turns: 1.25, opacity: 1 });
+    this.effects.ring(ground, WHIRL_COLOR, 0.3, HEX_STEP * 0.95, { life: 0.45, opacity: 0.55, additive: true });
+    for (const foe of foes) this.joltUnit(foe, foe.group.position.clone().sub(obj.group.position), 0.07, false, 260);
+  }
+
+  /**
+   * Immovable: the shove breaks on it. It digs in — a ring drawing tight under
+   * it, grit thrown up from its heels, a stone rim — and whoever pushed bounces off.
+   */
+  private immovableFx(id: string, byId: string | null): void {
+    const obj = this.units.get(id);
+    if (!obj) return;
+    this.hitStop(IMPACT_STOP_MS, [id]);
+    const ground = this.feet(obj);
+    this.effects.ring(ground, STONE, HEX_SIZE * 1.15, 0.38, { life: 0.4, opacity: 0.9, additive: true });
+    this.effects.ring(ground, STONE, HEX_SIZE * 0.8, 0.38, { life: 0.55, opacity: 0.6, thick: true });
+    this.effects.burst({
+      at: ground,
+      count: 16,
+      colors: CHIP_COLORS,
+      speed: [0.5, 1.3],
+      flat: true,
+      up: 1.5,
+      gravity: 8,
+      life: [0.4, 0.7],
+      size: [0.035, 0.065],
+      shape: 'square',
+      jitter: 0.2,
+      floor: ground.y,
+    });
+    this.dust(ground, 8, 1.1);
+    obj.glow = { color: STONE, start: this.now, end: this.now + GLOW_MS };
+    const by = byId ? this.units.get(byId) : undefined;
+    if (by) this.joltUnit(by, by.group.position.clone().sub(obj.group.position), 0.16, false, 300);
+    if (this.cameraMode === 'cinematic') this.shakeCamera('nudge', 0.05, 200, new THREE.Vector3(0, -1, 0));
+  }
+
+  /**
+   * Trample: the trampler follows its blow through, and the ground takes a
+   * stamp on each hex of `path` its victim is driven across (at `pace` ms a hex).
+   */
+  private trampleFx(by: UnitObj, path: THREE.Vector3[], at: number, pace: number): void {
+    const push = path[path.length - 1]!.clone().sub(path[0]!).setY(0);
+    this.at(at, () => {
+      this.joltUnit(by, push, 0.14, false, 380);
+      this.shakeCamera('rumble', 0.035, 260);
+    });
+    path.slice(0, -1).forEach((p, i) =>
+      this.at(at + i * pace, () => {
+        const ground = p.clone().setY(p.y + TILE_TOP + 0.03);
+        this.effects.ring(ground, this.dustColors(ground)[2]!, 0.15, HEX_SIZE * 0.85, { life: 0.4, opacity: 0.7, thick: true });
+        this.dust(ground, 12, 1.4);
+      }),
+    );
+  }
+
+  /** A unit shoved off its feet hits the ground where the shove set it down: dust, a ripple and a jar of the camera. */
+  private thumpFx(id: string): void {
+    const obj = this.units.get(id);
+    if (!obj || obj.state.dead) return;
+    const ground = this.feet(obj);
+    this.dust(ground, 12, 1.2);
+    this.effects.ring(ground, this.dustColors(ground)[2]!, 0.2, HEX_SIZE * 0.8, { life: 0.4, opacity: 0.6 });
+    if (this.cameraMode === 'cinematic') this.shakeCamera('nudge', 0.04, 180, new THREE.Vector3(0, -1, 0));
+  }
+
+  /**
+   * Slippery: it ducks out of contact leaving afterimages behind, and every
+   * foe that would have had a hack at it swings at the air where it stood.
+   */
+  private slipFx(obj: UnitObj): void {
+    const foes = this.beside(obj, false);
+    if (foes.length === 0) return;
+    this.rolls.addVerdict({ text: 'Slips away', detail: 'Slippery: no free hack', on: [obj.id], tone: 'neutral' }, this.now);
+    const was = obj.group.position.clone();
+    const gap = this.chest(obj);
+    for (let i = 0; i < 4; i++) this.at(i * 70, () => this.afterimage(obj));
+    this.dust(this.feet(obj), 6, 0.8);
+    for (const foe of foes) {
+      const swing = was.clone().sub(foe.group.position);
+      this.setHeading(foe, swing.clone());
+      this.joltUnit(foe, swing, 0.1, false, 260);
+      this.effects.icon('arc', this.chest(foe).lerp(gap, 0.6), 0.5, {
+        life: 0.3,
+        opacity: 0.5,
+        color: SLIP_COLOR,
+        rotation: this.screenAngle(foe.group.position, was),
+        additive: true,
+      });
+    }
+  }
+
+  /** A pale copy of a unit left standing where it is this instant, fading out. */
+  private afterimage(obj: UnitObj): void {
+    const ghost = this.ghost(obj, obj.shownImage ?? obj.animator.base, SLIP_COLOR);
+    if (!ghost) return;
+    const { root, mat, map } = ghost;
+    root.position.y += obj.hover;
+    this.effects.add(
+      root,
+      0.4,
+      (k) => {
+        mat.opacity = 0.5 * (1 - k);
+      },
+      () => {
+        mat.dispose();
+        map.dispose();
+      },
+    );
+  }
+
+  /** Dumb: a question mark wobbles over its head as it is told to act. */
+  private dumbFx(id: string): void {
+    const obj = this.units.get(id);
+    if (!obj) return;
+    // Beside its head, clear of the dice card that sits over it.
+    const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    const chest = this.chest(obj);
+    const head = chest.setY(chest.y + 0.5 * obj.size).addScaledVector(camRight, -0.35);
+    this.effects.icon('query', head, 0.5, { life: 1.1, rise: 0.15, color: QUERY_COLOR, rotation: 0.3, spin: -0.6 });
+  }
+
+  /**
+   * Disloyal: it changes sides where it stands. Its old colours drain off it as
+   * it wavers; then, in a white flash, it turns on its old friends in its new
+   * side's colours, which burst out from under it.
+   */
+  private defectFx(id: string, to: Owner): void {
+    const obj = this.units.get(id);
+    if (!obj) return;
+    const was = OWNER_COLORS[to === 0 ? 1 : 0];
+    const now = OWNER_COLORS[to];
+    const ground = this.feet(obj);
+    const chest = this.chest(obj);
+    this.effects.ring(ground, was, HEX_SIZE * 1.3, 0.25, { life: DEFECT_MS / 1000, opacity: 0.9, additive: true });
+    this.effects.burst({
+      at: chest,
+      count: 16,
+      colors: [was],
+      speed: [0.3, 0.9],
+      flat: true,
+      up: 0.6,
+      gravity: 4,
+      drag: 1.5,
+      life: [0.4, 0.7],
+      size: [0.04, 0.07],
+      shape: 'square',
+      floor: ground.y,
+    });
+    this.joltUnit(obj, new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0), 0.05, true, DEFECT_MS);
+    this.at(DEFECT_MS, () => {
+      obj.whiteout = PICK_FLASH;
+      this.turnCoat(obj);
+      this.setHeading(obj, obj.heading.clone().negate());
+      this.effects.ring(ground, now, 0.25, HEX_SIZE * 1.6, { life: 0.6, opacity: 0.9, additive: true });
+      this.effects.wall(ground, now, 0.2, HEX_SIZE * 1.1, 0.9, { life: 0.6, opacity: 0.6 });
+      this.effects.burst({
+        at: chest,
+        count: 22,
+        colors: [now, 0xffffff],
+        speed: [0.4, 1.2],
+        up: 1.1,
+        gravity: 1.5,
+        drag: 1.5,
+        life: [0.5, 0.9],
+        size: [0.04, 0.07],
+        blend: 'add',
+      });
+      obj.glow = { color: now, start: this.now, end: this.now + GLOW_MS };
     });
   }
 
@@ -3815,18 +4246,21 @@ export class BoardView {
     }
   }
 
-  /** 6a. A pale ghost of the fallen unit, standing as it did in life, rises and fades. */
-  private releaseWisp(obj: UnitObj): void {
+  /**
+   * A glowing see-through copy of a unit's cutout where it is now, showing
+   * `image` (or its standing frame): the caller animates it, and frees its `mat` and `map`.
+   */
+  private ghost(obj: UnitObj, image: string, color: number) {
     const atlas = obj.atlas;
-    const rect = atlas?.frames.get(obj.animator.base);
+    const rect = atlas && (atlas.frames.get(image) ?? atlas.frames.get(obj.animator.base));
     const source = obj.sprite.material.map;
-    if (!atlas || !rect || !source) return;
+    if (!atlas || !rect || !source) return null;
     const map = source.clone(); // shares the uploaded image; its own UV window
     map.offset.set(rect.u, rect.v);
     map.needsUpdate = true;
     const mat = new THREE.MeshBasicMaterial({
       map,
-      color: WISP_COLOR,
+      color,
       transparent: true,
       opacity: 0,
       alphaTest: 0.02,
@@ -3851,6 +4285,14 @@ export class BoardView {
       obj.group.position.z + obj.facing.position.z,
     );
     root.rotation.y = obj.facing.rotation.y;
+    return { root, mesh, mat, map };
+  }
+
+  /** 6a. A pale ghost of the fallen unit, standing as it did in life, rises and fades. */
+  private releaseWisp(obj: UnitObj): void {
+    const ghost = this.ghost(obj, obj.animator.base, WISP_COLOR);
+    if (!ghost) return;
+    const { root, mesh, mat, map } = ghost;
     const y0 = root.position.y;
     const { x: sx, y: sy } = obj.sprite.scale;
     this.effects.add(
@@ -4567,6 +5009,12 @@ function killOf(e: Blow, pair: [string, string], after: readonly GameEvent[]): K
   const k = until.findIndex((x) => x.type === 'UnitKilled' && x.unitId === victim);
   if (k < 0) return null;
   return { killer, victim, shaken: shakenBy(until.slice(k + 1)) };
+}
+
+/** Whether `unitId` is knocked down before the next blow in `after`: the blow that shoved it also floors it. */
+function fallsAfter(unitId: string, after: readonly GameEvent[]): boolean {
+  const next = after.findIndex(isBlow);
+  return (next < 0 ? after : after.slice(0, next)).some((x) => x.type === 'UnitKnockedDown' && x.unitId === unitId);
 }
 
 /** The units testing their nerve over a death: the run of checks that comes straight after it. */

@@ -65,7 +65,8 @@ export type FxTexture =
   | 'slash'
   | 'alarm'
   | 'scorch'
-  | 'wall';
+  | 'wall'
+  | 'query';
 
 interface Fx {
   obj: THREE.Object3D;
@@ -479,6 +480,44 @@ export class Effects {
   }
 
   /**
+   * Blade trails sweeping round a point: `count` curved slashes laid flat on a
+   * circle of `radius`, turning `turns` times round it as they fade.
+   */
+  whirl(at: THREE.Vector3, color: number, radius: number, env: Envelope & { turns?: number; count?: number }): void {
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.texture('arc'),
+      color,
+      transparent: true,
+      side: THREE.DoubleSide,
+      forceSinglePass: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const root = new THREE.Group();
+    root.position.copy(at);
+    const count = env.count ?? 3;
+    for (let i = 0; i < count; i++) {
+      const mesh = new THREE.Mesh(this.plane, mat);
+      // Flat on the ground, the curve's back turned outward.
+      mesh.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
+      mesh.position.x = radius * 0.75;
+      mesh.scale.setScalar(radius * 2);
+      mesh.renderOrder = 2;
+      const spoke = new THREE.Group();
+      spoke.rotation.y = (i / count) * Math.PI * 2;
+      spoke.add(mesh);
+      root.add(spoke);
+    }
+    const peak = env.opacity ?? 0.9;
+    this.add(root, env.life, (k) => {
+      // Fast round, slowing as it fades.
+      root.rotation.y = -(env.turns ?? 1) * Math.PI * 2 * (1 - Math.pow(1 - k, 2));
+      root.scale.setScalar(0.7 + 0.3 * Math.min(1, k / 0.2));
+      mat.opacity = peak * Math.min(1, k / 0.1) * (1 - k);
+    }, () => mat.dispose());
+  }
+
+  /**
    * Any other short-lived object: `step` gets the 0..1 progress each frame and
    * `dispose` frees what the object owns once its `life` (seconds) runs out.
    */
@@ -828,6 +867,16 @@ function drawTexture(g: CanvasRenderingContext2D, kind: FxTexture): void {
         const d = Math.random() * 44;
         g.fillRect(c + Math.cos(a) * d, c + Math.sin(a) * d, 2, 2);
       }
+      return;
+    }
+    case 'query': {
+      // A question mark, outlined so it reads over anything.
+      g.font = 'bold 118px Georgia, serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.lineWidth = 14;
+      g.strokeText('?', c, c + 6);
+      g.fillText('?', c, c + 6);
       return;
     }
     case 'wall': {
