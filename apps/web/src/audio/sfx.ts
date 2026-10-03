@@ -1,8 +1,20 @@
-import { EMPTY_MANIFEST, pickTake, resolveSfx, sfxCue, takeFile, type SfxManifest, type SfxName } from './sfxCues.js';
+import {
+  EMPTY_MANIFEST,
+  pickTake,
+  resolvePlayable,
+  sfxCue,
+  STOCK_CLIPS,
+  stockFile,
+  takeFile,
+  type SfxManifest,
+  type SfxName,
+  type StockClip,
+} from './sfxCues.js';
 
 /**
  * The game's sound effects: recordings from `public/sfx/`, played through Web
- * Audio. Anything not recorded yet is silent, so callers just name the cue.
+ * Audio. A cue not recorded yet plays its stock clip if it has one (see
+ * `STOCK`), else nothing, so callers just name the cue.
  * The browser only lets sound start after a click or a key, so the first
  * effects of a page opened straight into a game may go unheard.
  */
@@ -53,6 +65,9 @@ class Sfx {
   private manifest: SfxManifest = EMPTY_MANIFEST;
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly loading = new Map<string, Promise<AudioBuffer | null>>();
+  /** Stock clips never change, so unlike the takes they survive a reload. */
+  private readonly stock = new Map<string, AudioBuffer>();
+  private stockRequested = false;
   private readonly lastPlay = new Map<string, { take: number; at: number }>();
   private readonly listeners = new Set<() => void>();
   private prefs: Prefs | null = null;
@@ -104,8 +119,14 @@ class Sfx {
     for (const [name, count] of Object.entries(this.manifest.takes)) {
       for (let take = 1; take <= count; take++) void this.load(name, take);
     }
+    this.loadStock();
     this.playAmbience(this.wantAmbient, true);
     this.notify();
+  }
+
+  /** Whether `name` plays a stock clip, for now: nothing down its chain is recorded but a stock sound fits. */
+  stockFor(name: string): StockClip | null {
+    return resolvePlayable(name, this.manifest)?.stock ?? null;
   }
 
   /** How many takes of `name` itself are recorded. */
@@ -119,27 +140,36 @@ class Sfx {
     const fresh = audition?.takes?.length ? audition.takes : null;
     // Takes the booth has not saved yet count as recorded, so they are found down a chain of stand-ins too.
     const takes = fresh ? { ...this.manifest.takes, [audition!.name]: fresh.length } : this.manifest.takes;
-    const playing = resolveSfx(name, { ...this.manifest, takes });
-    if (!ctx || !this.master || !playing || ctx.state !== 'running') return;
-    const auditioned = audition !== null && playing === audition.name;
+    const found = resolvePlayable(name, { ...this.manifest, takes });
+    if (!ctx || !this.master || !found || ctx.state !== 'running') return;
+    // A stock clip is only ever a stand-in: never what the booth is auditioning.
+    const playing = found.cue;
+    const stock: StockClip | undefined = found.stock;
+    const auditioned = !stock && audition !== null && playing === audition.name;
     if (!auditioned && (this.muted || this.hush)) return;
-    const last = this.lastPlay.get(playing);
+    const key = stock ? `stock:${stock}` : playing;
+    const last = this.lastPlay.get(key);
     const now = performance.now();
     if (last && now - last.at < REPEAT_GUARD_MS) return;
-    const take = pickTake(takes[playing] ?? 0, last?.take);
-    const buffer = auditioned && fresh ? fresh[take - 1] : this.buffers.get(takeFile(playing, take));
+    const take = pickTake(stock ? STOCK_CLIPS[stock].count : (takes[playing] ?? 0), last?.take);
+    const buffer = stock
+      ? this.stock.get(stockFile(stock, take))
+      : auditioned && fresh
+        ? fresh[take - 1]
+        : this.buffers.get(takeFile(playing, take));
     if (!buffer) return; // still loading
-    this.lastPlay.set(playing, { take, at: now });
+    this.lastPlay.set(key, { take, at: now });
     const rate = Math.max(0.3, Math.min(2, opts.rate ?? 1));
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = rate * (1 + (Math.random() * 2 - 1) * PITCH_SPREAD);
     const gain = ctx.createGain();
     // The loudness is the cue that was asked for's, even when a stand-in plays.
-    gain.gain.value = (opts.volume ?? 1) * (sfxCue(name)?.gain ?? 1);
+    gain.gain.value = (opts.volume ?? 1) * (sfxCue(name)?.gain ?? 1) * (stock ? STOCK_CLIPS[stock].level : 1);
     // An audition is heard even with the game's sound switched off.
     source.connect(gain).connect(auditioned && this.muted ? ctx.destination : this.master);
-    const delayMs = auditioned ? audition.delayMs : (this.manifest.delays?.[playing] ?? 0);
+    // A delay tuned in the booth belongs to a recording; stock clips start on their moment.
+    const delayMs = auditioned ? audition.delayMs : stock ? 0 : (this.manifest.delays?.[playing] ?? 0);
     // Late by the board's clock (longer in slow motion), or early by skipping into the recording.
     if (delayMs >= 0) source.start(ctx.currentTime + delayMs / 1000 / rate);
     else source.start(0, Math.min(buffer.duration, -delayMs / 1000));
@@ -223,6 +253,23 @@ class Sfx {
 
   private notify(): void {
     for (const fn of this.listeners) fn();
+  }
+
+  /** Fetch every stock clip once (about half a megabyte). */
+  private loadStock(): void {
+    const ctx = this.context();
+    if (!ctx || this.stockRequested) return;
+    this.stockRequested = true;
+    for (const [clip, { count }] of Object.entries(STOCK_CLIPS) as [StockClip, { count: number }][]) {
+      for (let take = 1; take <= count; take++) {
+        const file = stockFile(clip, take);
+        void fetch(`${import.meta.env.BASE_URL}sfx/${file}`)
+          .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error(`${res.status}`))))
+          .then((data) => ctx.decodeAudioData(data))
+          .then((buffer) => void this.stock.set(file, buffer))
+          .catch(() => {});
+      }
+    }
   }
 
   private load(name: string, take: number): Promise<AudioBuffer | null> {

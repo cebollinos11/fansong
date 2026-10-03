@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { pickTake, resolveSfx, SFX_CUES, sfxCue, voiceFamily, type SfxManifest } from '../src/audio/sfxCues.js';
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import {
+  pickTake,
+  resolvePlayable,
+  resolveSfx,
+  SFX_CUES,
+  sfxCue,
+  STOCK,
+  STOCK_CLIPS,
+  stockFile,
+  voiceFamily,
+  type SfxManifest,
+} from '../src/audio/sfxCues.js';
 import { UNIT_SPRITES } from '../src/three/unitSprites.js';
 
 const manifest = (takes: Record<string, number>): SfxManifest => ({ version: 1, takes });
@@ -75,3 +88,39 @@ describe('voiceFamily', () => {
     expect(by('Yeti')).toBe('beast');
   });
 });
+
+describe('stock sounds', () => {
+  const sfxDir = fileURLToPath(new URL('../public/sfx/', import.meta.url));
+
+  it('stand in only for cues that exist, with clip sets that exist', () => {
+    for (const [cue, clip] of Object.entries(STOCK)) {
+      expect(sfxCue(cue), cue).toBeDefined();
+      expect(STOCK_CLIPS[clip!], cue).toBeDefined();
+    }
+  });
+
+  it('have every variant on disk, and nothing on disk unlisted', () => {
+    const listed = Object.entries(STOCK_CLIPS).flatMap(([clip, { count }]) =>
+      Array.from({ length: count }, (_, i) => stockFile(clip as keyof typeof STOCK_CLIPS, i + 1).replace('stock/', '')),
+    );
+    const onDisk = readdirSync(`${sfxDir}stock`).filter((f) => f.endsWith('.mp3'));
+    expect(onDisk.sort()).toEqual(listed.sort());
+  });
+
+  it('are all credited', () => {
+    const credits = readFileSync(`${sfxDir}stock/CREDITS.md`, 'utf8');
+    for (const clip of Object.keys(STOCK_CLIPS)) expect(credits, clip).toContain(`\`${clip}-`);
+  });
+
+  it('play only while nothing down the chain is recorded', () => {
+    expect(resolvePlayable('hit', manifest({}))).toEqual({ cue: 'hit', stock: 'hit' });
+    expect(resolvePlayable('hit', manifest({ hit: 2 }))).toEqual({ cue: 'hit' });
+    // Down the fallback chain: a recorded stand-in still beats stock.
+    expect(resolvePlayable('hoof', manifest({}))).toEqual({ cue: 'step', stock: 'step' });
+    expect(resolvePlayable('bones-death', manifest({ death: 1 }))).toEqual({ cue: 'death' });
+    expect(resolvePlayable('bones-death', manifest({}))).toEqual({ cue: 'death', stock: 'death' });
+    expect(resolvePlayable('whoosh-trait', manifest({}))).toEqual({ cue: 'swing', stock: 'swing' });
+    expect(resolvePlayable('dizzy', manifest({}))).toBeNull();
+  });
+});
+

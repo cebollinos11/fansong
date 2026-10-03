@@ -596,7 +596,11 @@ function UnitSection({
   );
 }
 
-/** Every sound effect, with whether it has been recorded: click one to hear it (or the stand-in it falls back to). */
+/**
+ * Every sound effect, with whether it has been recorded (✓), plays a stock
+ * clip until it is (♪), or is silent (✗): click one to hear it, or whatever
+ * stands in for it.
+ */
 function SoundsSection() {
   // Redrawn when the recordings on disk change.
   useSyncExternalStore(
@@ -604,11 +608,12 @@ function SoundsSection() {
     () => SFX_CUES.reduce((sum, cue) => sum + sfx.recorded(cue.name), 0),
   );
   const done = SFX_CUES.filter((cue) => sfx.recorded(cue.name) > 0).length;
+  const stocked = SFX_CUES.filter((cue) => sfx.recorded(cue.name) === 0 && sfx.stockFor(cue.name)).length;
   return (
     <Section title="Sounds" open={false}>
       <p className="sb-hint">
-        {done} of {SFX_CUES.length} recorded. Record them in the <a href="?dev=1&amp;record">recording booth</a>, then play
-        the Animations above to hear each in place.
+        {done} of {SFX_CUES.length} recorded, and {stocked} more playing a stock sound (♪) until they are. Record them in
+        the <a href="?dev=1&amp;record">recording booth</a>, then play the Animations above to hear each in place.
       </p>
       {[1, 2, 3].map((tier) => (
         <div key={tier}>
@@ -619,10 +624,10 @@ function SoundsSection() {
                 key={cue.name}
                 type="button"
                 className={sfx.recorded(cue.name) > 0 ? '' : 'ghost'}
-                title={`${cue.when} (${cue.idea})`}
+                title={`${cue.when} (${cue.idea})${sfx.recorded(cue.name) === 0 && sfx.stockFor(cue.name) ? ` · stock: ${sfx.stockFor(cue.name)}` : ''}`}
                 onClick={() => sfx.play(cue.name as SfxName)}
               >
-                {sfx.recorded(cue.name) > 0 ? '✓' : '✗'} {cue.name}
+                {sfx.recorded(cue.name) > 0 ? '✓' : sfx.stockFor(cue.name) ? '♪' : '✗'} {cue.name}
               </button>
             ))}
           </div>

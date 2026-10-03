@@ -5,7 +5,9 @@
  * the game works with any subset of these on disk.
  *
  * Recordings live in `public/sfx/<name>-<take>.wav`, listed by
- * `public/sfx/manifest.json`; the booth writes both.
+ * `public/sfx/manifest.json`; the booth writes both. A cue with nothing
+ * recorded down its fallback chain may still have a {@link STOCK} clip (free
+ * library sounds in `public/sfx/stock/`), played until it is recorded.
  */
 export interface SfxCue {
   name: string;
@@ -180,6 +182,104 @@ export function resolveSfx(name: string, manifest: SfxManifest): string | null {
   const seen = new Set<string>();
   for (let at: string | undefined = name; at && !seen.has(at); at = BY_NAME.get(at)?.fallback) {
     if ((manifest.takes[at] ?? 0) > 0) return at;
+    seen.add(at);
+  }
+  return null;
+}
+
+// --- Stock sounds -------------------------------------------------------------
+
+/**
+ * Free library clip sets in `public/sfx/stock/` (`<clip>-<i>.mp3`, i from 0;
+ * sources and licences in its CREDITS.md): how many variants each has, and its
+ * level against the rest (the files are peak-normalised, unlike the takes).
+ */
+export const STOCK_CLIPS = {
+  swing: { count: 3, level: 0.35 },
+  hit: { count: 9, level: 0.6 },
+  'heavy-hit': { count: 5, level: 0.75 },
+  clang: { count: 4, level: 0.55 },
+  armor: { count: 5, level: 0.55 },
+  bow: { count: 4, level: 0.5 },
+  'arrow-hit': { count: 5, level: 0.5 },
+  death: { count: 5, level: 0.55 },
+  gore: { count: 1, level: 0.6 },
+  thud: { count: 3, level: 0.6 },
+  grunt: { count: 2, level: 0.45 },
+  'war-cry': { count: 2, level: 0.6 },
+  step: { count: 10, level: 0.12 },
+  dice: { count: 6, level: 0.4 },
+  flag: { count: 1, level: 0.5 },
+  capture: { count: 1, level: 0.55 },
+  victory: { count: 1, level: 0.6 },
+  defeat: { count: 1, level: 0.5 },
+  select: { count: 1, level: 0.35 },
+  press: { count: 1, level: 0.25 },
+  turnover: { count: 1, level: 0.45 },
+  alarm: { count: 1, level: 0.5 },
+  score: { count: 1, level: 0.5 },
+  round: { count: 1, level: 0.4 },
+  guard: { count: 1, level: 0.4 },
+} as const satisfies Record<string, { count: number; level: number }>;
+
+export type StockClip = keyof typeof STOCK_CLIPS;
+
+/** The stock clip set a cue plays until it is recorded. Cues missing here stay silent. */
+export const STOCK: Partial<Record<SfxName, StockClip>> = {
+  'dice-roll': 'dice',
+  turnover: 'turnover',
+  select: 'select',
+  'round-start': 'round',
+  step: 'step',
+  'stand-up': 'grunt',
+  swing: 'swing',
+  hit: 'hit',
+  block: 'clang',
+  clash: 'clang',
+  knockdown: 'thud',
+  'bow-release': 'bow',
+  'arrow-hit': 'arrow-hit',
+  death: 'death',
+  victory: 'victory',
+  defeat: 'defeat',
+  'gruesome-kill': 'gore',
+  'free-hack': 'heavy-hit',
+  'warband-broken': 'alarm',
+  'war-cry': 'war-cry',
+  'leader-falls': 'alarm',
+  'guard-set': 'guard',
+  'armor-clang': 'armor',
+  'tough-save': 'grunt',
+  mastery: 'heavy-hit',
+  brace: 'thud',
+  score: 'score',
+  'flag-pickup': 'flag',
+  'flag-drop': 'flag',
+  'flag-return': 'flag',
+  'flag-capture': 'capture',
+  'ui-click': 'press',
+};
+
+/** The file of a stock clip's variant `take` (from 1), under `public/sfx/`. */
+export function stockFile(clip: StockClip, take: number): string {
+  return `stock/${clip}-${take - 1}.mp3`;
+}
+
+/** What to play for a cue: a recorded cue, or (with nothing recorded) a stock clip standing in for `cue`. */
+export type Playable = { cue: string; stock?: undefined } | { cue: string; stock: StockClip };
+
+/**
+ * The sound to play for `name`: the first recorded cue down its fallback chain
+ * (see {@link resolveSfx}), else the first stock clip down the same chain, else
+ * nothing. A recording always wins over stock, wherever it is in the chain.
+ */
+export function resolvePlayable(name: string, manifest: SfxManifest): Playable | null {
+  const recorded = resolveSfx(name, manifest);
+  if (recorded) return { cue: recorded };
+  const seen = new Set<string>();
+  for (let at: string | undefined = name; at && !seen.has(at); at = BY_NAME.get(at)?.fallback) {
+    const stock = STOCK[at as SfxName];
+    if (stock) return { cue: at, stock };
     seen.add(at);
   }
   return null;
