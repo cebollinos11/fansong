@@ -669,29 +669,6 @@ button.ghost {
   color: var(--text);
 }
 
-.board-pitch {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  color: var(--muted);
-  background: rgba(22, 27, 34, 0.8);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-}
-
-.board-pitch input {
-  width: 90px;
-  margin: 0;
-}
-
-.board-pitch span {
-  min-width: 2.5em;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
 .board-edge {
   position: absolute;
   inset: 0;
@@ -1962,8 +1939,7 @@ button.ghost {
     display: none;
   }
 
-  .board-tools button,
-  .board-pitch {
+  .board-tools button {
     padding: 8px 12px;
   }
 

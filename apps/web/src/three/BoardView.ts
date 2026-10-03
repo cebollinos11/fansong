@@ -622,12 +622,9 @@ const HEADING_RETURN = Math.PI / 6; // a fight that left the camera turned furth
 const START_MIN_SPAN = 8; // world units kept in view (~8 hexes), however tightly they're deployed
 const START_FIT_STEPS = 18; // halvings used to find the closest framing that still holds every unit
 
-/** Swing `pos` around `target` to `polar` radians from straight down, keeping its heading and distance. */
-function setPolar(pos: THREE.Vector3, target: THREE.Vector3, polar: number): void {
-  const s = new THREE.Spherical().setFromVector3(pos.clone().sub(target));
-  s.phi = polar;
-  pos.setFromSpherical(s).add(target);
-}
+// Camera limits: stay above the table, and never tip over the top into a flip.
+const CAMERA_MIN_POLAR = 0.12; // radians from straight down
+const CAMERA_MAX_POLAR = 1.3; // ~75°, just above the tabletop
 
 /** Round fractional cube coords to the nearest hex (matches the engine's board). */
 function cubeRound(fq: number, fr: number, fs: number): { q: number; r: number } {
@@ -998,12 +995,10 @@ export class BoardView {
   private homeDist = 0;
   /**
    * How far the cutouts lean back (top away from the camera, radians): the
-   * camera's angle above the table, so they sit square to the screen rather
-   * than foreshortened (see {@link positionCamera}, which locks that angle).
+   * camera's angle above the table, followed every frame, so they sit square
+   * to the screen rather than foreshortened however the player tips the view.
    */
   private spriteLean = 0;
-  /** The pitch the player picked (radians from straight down), overriding the opening shot's; null: keep that. */
-  private pitchOverride: number | null = null;
   /**
    * The opening shot and the units it was fitted to, while it still stands: a
    * canvas that changes shape re-fits it (see {@link refitOpening}), until the
@@ -1098,12 +1093,14 @@ export class BoardView {
       this.effects.group,
     );
 
-    // Left-drag turns around the table (the pitch is fixed, see positionCamera),
-    // right-drag (or shift/ctrl + left) or WASD pans across it, wheel zooms. A press that barely moves is still a click (see handlePointerUp).
+    // Left-drag orbits (around the table, and up and down over it), right-drag
+    // (or shift/ctrl + left) or WASD pans across it, wheel zooms. A press that barely moves is still a click (see handlePointerUp).
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
     this.controls.screenSpacePanning = false; // pan along the ground, not the view plane
+    this.controls.minPolarAngle = CAMERA_MIN_POLAR;
+    this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
     this.controls.zoomToCursor = true;
     // A hand on the camera takes it back: drop the scripted move, and adopt the
     // framing the player leaves it in as theirs.
@@ -2519,7 +2516,7 @@ export class BoardView {
     };
   }
 
-  /** The direction from the pivot to the camera at heading `yaw`, at the fixed viewing angle. */
+  /** The direction from the pivot to the camera at heading `yaw`, at the angle the camera is tipped to. */
   private viewDir(yaw: number): THREE.Vector3 {
     const s = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
     return new THREE.Vector3().setFromSpherical(s.set(1, s.phi, yaw));
@@ -2750,29 +2747,9 @@ export class BoardView {
     this.controls.reset();
   }
 
-  /** The fixed viewing angle above the table, in degrees (90 looks straight down). */
-  get elevation(): number {
-    return THREE.MathUtils.radToDeg(Math.PI / 2 - this.controls.minPolarAngle);
-  }
-
-  /**
-   * Fix the viewing angle at `degrees` above the table, swinging the camera (and
-   * the framing "Reset view" returns to) onto it around the same pivot, at the
-   * same heading and distance.
-   */
-  setElevation(degrees: number): void {
-    const pitch = Math.PI / 2 - THREE.MathUtils.degToRad(degrees);
-    this.pitchOverride = pitch;
-    setPolar(this.camera.position, this.controls.target, pitch);
-    setPolar(this.controls.position0, this.controls.target0, pitch);
-    this.lockPitch(pitch);
-    this.controls.update();
-  }
-
-  /** Hold the camera at `pitch`, and lean the cutouts back to face it square on. */
-  private lockPitch(pitch: number): void {
-    this.controls.minPolarAngle = pitch;
-    this.controls.maxPolarAngle = pitch;
+  /** Lean the cutouts back by the camera's angle above the table, to face it square on. */
+  private followPitch(): void {
+    const pitch = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target)).phi;
     this.spriteLean = Math.PI / 2 - pitch;
   }
 
@@ -5686,6 +5663,7 @@ export class BoardView {
     this.stepKeyPan(Math.min(rawDt, 0.1));
     this.clampCameraTarget();
     this.controls.update();
+    this.followPitch();
 
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
@@ -5902,7 +5880,7 @@ export class BoardView {
   }
 
   /**
-   * Set the opening shot, at the fixed viewing angle: the pivot on the middle of
+   * Set the opening shot, at its own viewing angle: the pivot on the middle of
    * the deployed units and close enough in that they fill the view (see
    * {@link startView}), falling back to the whole table when nothing is deployed
    * (the editor). The player can still pull out past the table — that wider
@@ -5916,13 +5894,12 @@ export class BoardView {
     const span = Math.max(spanX, spanZ);
     this.camera.position.set(0, span * 0.95, spanZ * 0.62 + 3);
     this.controls.target.set(0, 0, 0);
-    if (this.pitchOverride !== null) setPolar(this.camera.position, this.controls.target, this.pitchOverride);
     this.standBehindHome(state);
     const table = this.camera.position.length();
     this.controls.minDistance = 3;
     this.controls.maxDistance = table * 1.8;
     // Swing the same viewing angle onto the units: only the pivot and the
-    // distance move, so the board is never seen from an angle it wasn't built for.
+    // distance move, so every match opens at the same angle.
     const living = state.units.filter((u) => !u.dead);
     const points = living.map((u) => this.unitWorld(u.pos));
     // The cutouts aren't loaded yet, so a flyer's hover and a Big unit's height are taken from its traits.
@@ -5938,9 +5915,7 @@ export class BoardView {
       this.controls.target.copy(start.target);
       this.camera.position.copy(start.target).addScaledVector(dir, start.dist);
     }
-    // Lock the pitch to this angle: the player can turn around the table, but
-    // not tip the view up or down.
-    this.lockPitch(Math.acos(this.camera.position.clone().sub(this.controls.target).normalize().y));
+    this.followPitch();
     this.homeDist = start ? start.dist : table;
     this.playerView = { ...this.currentView(), dist: this.homeDist };
     this.opening = start ? { points, head, ...start } : null;
