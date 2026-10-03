@@ -5,6 +5,7 @@ import {
   clearFlags,
   commitEdit,
   createHistory,
+  generateRandomMap,
   MAP_LIMITS,
   mapToJson,
   MAX_BRUSH_RADIUS,
@@ -266,6 +267,20 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
     setHistory(createHistory(newEditorMap(w, h, map.name)));
   };
 
+  /**
+   * Clear the board and generate a random, valid map at the chosen size that
+   * hosts every game mode. One undo step, so Undo brings the old map back.
+   */
+  const randomMap = (): void => {
+    const w = clampMapSize(width, 'width');
+    const h = clampMapSize(height, 'height');
+    setWidth(w);
+    setHeight(h);
+    setSelected(null);
+    const seed = Math.floor(Math.random() * 1_000_000);
+    setHistory((hist) => commitEdit(hist, generateRandomMap(w, h, seed)));
+  };
+
   /** Replace the edited map (load/import) — a fresh history, so undo can't cross maps. */
   const openMap = (next: MapDef): void => {
     setWidth(next.width);
@@ -483,6 +498,13 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
             />
           </label>
           <button onClick={newMap}>New map</button>
+          <button
+            type="button"
+            title="Replace the map with a random one of this size that supports every game mode (Undo restores it)"
+            onClick={randomMap}
+          >
+            Generate random
+          </button>
         </fieldset>
 
         <fieldset className="editor-tools">

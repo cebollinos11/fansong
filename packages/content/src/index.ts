@@ -7,3 +7,4 @@ export * from './map.js';
 export * from './mapValidate.js';
 export * from './mapRegistry.js';
 export * from './editor.js';
+export * from './mapGen.js';
