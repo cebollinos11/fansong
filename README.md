@@ -4,7 +4,7 @@ A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
 **Status: M0–M7 complete; M8 (source-game melee & shooting rules) in progress.** The game plays on a **flat-top hex grid** (M6) with
-**terrain, premade maps, a map editor and five game modes** (M7). A
+**terrain, premade maps, a map editor and six game modes** (M7). A
 full AI-vs-AI game is playable in the terminal —
 with original **preset warbands**, a **point-buy** cost model, **special-ability
 traits** (ranged, tough, guard) and **morale** (fear + rout) — there is a
@@ -312,7 +312,7 @@ absent when unused.
   with room for a warband, objectives valid for the mode); `supportedModes(map)`
   says which modes a map can host. Built-ins live in `packages/content/maps/`:
 
-  | Map | Character | Modes beyond annihilation / kill-the-king |
+  | Map | Character | Modes beyond annihilation / kill-the-king / golden-pig |
   |-----|-----------|-------------------------------------------|
   | Open Field | the flat default board | — |
   | Rolling Hills | elevation-heavy, few features | king-of-the-hill |
@@ -338,6 +338,16 @@ absent when unused.
     stands up); move onto your own dropped flag to return it; end a move on — or
     be pushed onto — your base with the enemy flag to win. A flying carrier is
     weighed down and walks until it drops the flag.
+  - **golden-pig** ("Extract the golden Pig") — an escort mission, and the one
+    lopsided mode. One side (picked in Setup, by the online host, or with
+    `--escort 0|1`; player 0 by default) gets the **golden Pig** for free on top
+    of its warband: Quality 2, Combat 3, Slow and Tough, deployed in the middle
+    of its back rank. The escort wins when the Pig **ends an activation on its
+    feet in the enemy's deploy zone** — out of actions, ended by choice, or a
+    turnover while it already stands there; being pushed in, or lying knocked
+    down there, wins nothing. The defender wins by killing or routing the Pig,
+    or when the round limit runs out. Wiping out the defenders still wins for
+    the escort. Every map hosts it: the goal is simply the enemy deploy zone.
 
   **Game length** — every mode takes a custom **round limit** (1–50, or none), and
   king-of-the-hill and conquest a custom **points to win** (1–50). Set them in the
@@ -346,8 +356,12 @@ absent when unused.
   when nothing is set; at the round limit the higher score wins, with the
   annihilation-style tiebreak (the only rule in annihilation, kill-the-king and
   capture-the-flag, which have no points). Capture-the-flag stays sudden death.
+  The golden Pig always has a clock, with no tiebreak — time up means the defender
+  wins. Its default limit depends on the map: one round per Move the Pig needs to
+  walk from the back of its zone to the goal, plus four (8 on the default board,
+  12–13 on the 40-wide maps).
 
-  The heuristic AI plays every mode (zones, flags, Kings, high ground, cover
+  The heuristic AI plays every mode (zones, flags, Kings, the Pig, high ground, cover
   and lava — it goes for foes with lava at their backs and keeps its own off it),
   and a self-play matrix runs every built-in map × every mode it supports.
 - **Map editor** — the web app's Setup screen has a **Map editor…** button: pick

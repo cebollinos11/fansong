@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 
 // What the board stands in: a sky dome that follows the camera (so it reads as
-// infinitely far) and, for some designs, a ground or cloud layer under the table
-// that fades into the sky's horizon colour with distance. Everything is unlit
-// shader work, posterised and dithered on a coarse screen grid to sit with the
-// Wesnoth pixel art rather than read as a photographic sky.
+// infinitely far) and a ground under the board, either a meadow or a wooden
+// table top in a dark room, that fades into the horizon colour with distance.
+// Everything is unlit shader work, posterised and dithered on a coarse screen
+// grid to sit with the Wesnoth pixel art rather than read as a photograph.
 
-export const BACKDROPS = ['void', 'meadow', 'clouds', 'dusk', 'night', 'table'] as const;
+export const BACKDROPS = ['table', 'meadow'] as const;
 export type BackdropKind = (typeof BACKDROPS)[number];
+export const DEFAULT_BACKDROP: BackdropKind = 'table';
 
 /** Wesnoth's hex grid in pixels (see lava.ts). */
 const WESNOTH_COL_PX = 54;
@@ -28,36 +29,20 @@ export const MEADOW_TILES = [...GREEN_TILES, ...DRY_TILES].map((n) => `terrain/g
 
 /** The names on the backdrop button. */
 export const BACKDROP_LABELS: Record<BackdropKind, string> = {
-  void: 'None',
-  meadow: 'Meadow',
-  clouds: 'Clouds',
-  dusk: 'Dusk',
-  night: 'Night',
   table: 'Table',
+  meadow: 'Meadow',
 };
 
-interface Palette {
-  zenith: number;
-  horizon: number;
-  /** Straight down: the horizon colour again wherever a floor fades into it, or the gap past its far edge shows. */
-  nadir: number;
-  /** Cloud tops (lit, shade) and the sky seen through gaps, or the ground colour. */
-  lit: number;
-  shade: number;
-  gap: number;
-}
+/** The meadow's sky. */
+const SKY = { zenith: 0x5a7fa8, horizon: 0xb9c9cf };
+/** The dark room a table stands in. */
+const ROOM = 0x07080a;
 
-const PALETTES: Record<Exclude<BackdropKind, 'void'>, Palette> = {
-  meadow: { zenith: 0x5a7fa8, horizon: 0xb9c9cf, nadir: 0xb9c9cf, lit: 0, shade: 0, gap: 0 },
-  clouds: { zenith: 0x3d6ea8, horizon: 0xbfd6ea, nadir: 0xbfd6ea, lit: 0xf4f6fa, shade: 0x9fb2cc, gap: 0x5d82b4 },
-  dusk: { zenith: 0x1d1f45, horizon: 0xf09a5c, nadir: 0xf09a5c, lit: 0xf7b98a, shade: 0x8a5a7a, gap: 0x2f2548 },
-  night: { zenith: 0x05060d, horizon: 0x0b0d1c, nadir: 0x05060d, lit: 0x5b3a8a, shade: 0x1f5a7a, gap: 0 },
-  table: { zenith: 0x07080a, horizon: 0x07080a, nadir: 0x07080a, lit: 0x6e4a2c, shade: 0x3e2716, gap: 0 },
-};
+/** The table's grain, light and dark. */
+const WOOD = { lit: 0x6e4a2c, shade: 0x3e2716 };
 
 const NOISE = /* glsl */ `
   float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-  float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
   float noise2(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
@@ -66,19 +51,6 @@ const NOISE = /* glsl */ `
   float fbm2(vec2 p) {
     float v = 0.0, a = 0.5;
     for (int i = 0; i < 5; i++) { v += a * noise2(p); p = p * 2.03 + vec2(17.0, 9.0); a *= 0.5; }
-    return v;
-  }
-  float noise3(vec3 p) {
-    vec3 i = floor(p), f = fract(p);
-    vec3 u = f * f * (3.0 - 2.0 * f);
-    return mix(
-      mix(mix(hash3(i), hash3(i + vec3(1, 0, 0)), u.x), mix(hash3(i + vec3(0, 1, 0)), hash3(i + vec3(1, 1, 0)), u.x), u.y),
-      mix(mix(hash3(i + vec3(0, 0, 1)), hash3(i + vec3(1, 0, 1)), u.x), mix(hash3(i + vec3(0, 1, 1)), hash3(i + vec3(1, 1, 1)), u.x), u.y),
-      u.z);
-  }
-  float fbm3(vec3 p) {
-    float v = 0.0, a = 0.5;
-    for (int i = 0; i < 4; i++) { v += a * noise3(p); p = p * 2.07 + vec3(5.0, 11.0, 3.0); a *= 0.5; }
     return v;
   }
   // Ordered dither threshold on a 3 px screen grid, 0..1.
@@ -96,35 +68,13 @@ const DOME_VERTEX = /* glsl */ `
   }`;
 
 const DOME_FRAGMENT = /* glsl */ `
-  uniform vec3 uZenith, uHorizon, uNadir, uLit, uShade;
-  uniform float uTime;
+  uniform vec3 uZenith, uHorizon;
   varying vec3 vDir;
-  ${NOISE}
   void main() {
     vec3 d = normalize(vDir);
     // Eased so the sky leaves the horizon colour gently, meeting the hazy floor without a seam.
     float up = 1.0 - pow(1.0 - clamp(d.y, 0.0, 1.0), 3.0);
-    float down = 1.0 - pow(1.0 - clamp(-d.y, 0.0, 1.0), 3.0);
-    vec3 c = d.y > 0.0 ? mix(uHorizon, uZenith, up) : mix(uHorizon, uNadir, down);
-    #ifdef STARS
-      // A nebula drifting through the whole sphere, in two posterised tints.
-      float n = fbm3(d * 2.2 + vec3(0.0, 0.0, uTime * 0.004));
-      float m = fbm3(d * 3.1 + vec3(9.0, 2.0, 0.0));
-      c += uLit * band(smoothstep(0.5, 0.8, n), 4.0) * 0.55;
-      c += uShade * band(smoothstep(0.55, 0.85, m), 4.0) * 0.5;
-      // Pixel stars: at most one per cell of a grid around the sphere, a small
-      // square of fixed angular size about a random point in the cell.
-      vec3 cell = floor(d * 120.0);
-      float h = hash3(cell);
-      vec3 star = normalize((cell + 0.3 + 0.4 * vec3(h, fract(h * 13.0), fract(h * 29.0))) / 120.0);
-      vec3 off = abs(d - star) * 120.0;
-      if (h > 0.93 && max(off.x, max(off.y, off.z)) < mix(0.05, 0.1, fract(h * 431.0))) {
-        float tw = 0.65 + 0.35 * sin(uTime * (1.0 + 3.0 * fract(h * 97.0)) + h * 50.0);
-        vec3 tint = mix(vec3(1.0, 0.85, 0.6), vec3(0.7, 0.85, 1.0), fract(h * 57.0));
-        c += tint * pow(fract(h * 431.0), 2.0) * 1.6 * tw;
-      }
-    #endif
-    gl_FragColor = vec4(c, 1.0);
+    gl_FragColor = vec4(mix(uHorizon, uZenith, up), 1.0);
     #include <colorspace_fragment>
   }`;
 
@@ -137,9 +87,8 @@ const FLOOR_VERTEX = /* glsl */ `
   }`;
 
 const FLOOR_FRAGMENT = /* glsl */ `
-  uniform vec3 uHorizon, uLit, uShade, uGap;
+  uniform vec3 uHorizon, uLit, uShade;
   uniform vec3 uCam;
-  uniform float uTime;
   uniform vec2 uFade;
   /** The board's centre and half extents on the ground, to shade the ground at its foot. */
   uniform vec2 uBoardCentre, uBoardHalf;
@@ -154,12 +103,12 @@ const FLOOR_FRAGMENT = /* glsl */ `
   void main() {
     vec2 p = vWorld.xz;
     vec3 c;
-    #if defined(MEADOW)
+    #ifdef MEADOW
       // Wesnoth's grass hexes on the board's own grid, cell (0, 0) at uOrigin.
       vec2 px = (p - uOrigin) / uTexel + vec2(36.0);
       c = texture2D(uMap, px / vec2(${MEADOW_W}.0, ${MEADOW_H}.0)).rgb * 0.72;
       c *= mix(0.5, 1.0, band(smoothstep(0.0, 1.6, boardDist(p)), 4.0));
-    #elif defined(TABLE)
+    #else
       // Planks running across the table, pixelated on Wesnoth's pixel grid.
       vec2 q = floor(p / (uTexel * 2.0)) * uTexel * 2.0;
       float plank = floor(q.y / 1.1);
@@ -171,14 +120,6 @@ const FLOOR_FRAGMENT = /* glsl */ `
       float r = length(p - uBoardCentre) / (length(uBoardHalf) * 1.5);
       c *= band(1.0 / (1.0 + r * r * 2.2), 12.0);
       c *= mix(0.45, 1.0, band(smoothstep(0.0, 0.9, boardDist(p)), 3.0));
-    #else
-      // A sea of cloud, lit from one side, drifting slowly.
-      vec2 q = p * 0.07 + vec2(uTime * 0.006, uTime * 0.002);
-      float n = fbm2(q);
-      float lit = fbm2(q + vec2(0.035, 0.05));
-      float cover = band(smoothstep(0.47, 0.55, n), 2.0);
-      vec3 top = mix(uShade, uLit, band(clamp((n - lit) * 8.0 + 0.55, 0.0, 1.0), 3.0));
-      c = mix(uGap, top, cover);
     #endif
     // Into the haze with distance from the board (not the camera, so zooming out
     // still shows the ground beside it), and fully by the horizon so the floor
@@ -250,10 +191,10 @@ function meadowMap(): THREE.Texture {
 /** The sky and ground around the board. */
 export class Backdrop {
   readonly group = new THREE.Group();
-  private readonly dome: THREE.Mesh | null = null;
-  private readonly floor: THREE.Mesh | null = null;
+  private readonly dome: THREE.Mesh;
+  private readonly floor: THREE.Mesh;
   private readonly materials: THREE.ShaderMaterial[] = [];
-  /** How far below the table the floor lies (a cloud sea sits well below it). */
+  /** Just under the board's tiles. */
   private readonly floorY: number;
 
   constructor(
@@ -263,25 +204,18 @@ export class Backdrop {
     rowStep: number,
     tileBottom: number,
   ) {
-    this.floorY = kind === 'clouds' || kind === 'dusk' ? -7 : tileBottom - 0.002;
-    if (kind === 'void') return;
-    const pal = PALETTES[kind];
+    this.floorY = tileBottom - 0.002;
+    const wood = kind === 'table';
     const color = (hex: number) => ({ value: new THREE.Color(hex) });
     const shared = {
-      uZenith: color(pal.zenith),
-      uHorizon: color(pal.horizon),
-      uNadir: color(pal.nadir),
-      uLit: color(pal.lit),
-      uShade: color(pal.shade),
-      uGap: color(pal.gap),
-      uTime: { value: 0 },
+      uZenith: color(wood ? ROOM : SKY.zenith),
+      uHorizon: color(wood ? ROOM : SKY.horizon),
     };
 
     const domeMat = new THREE.ShaderMaterial({
       uniforms: shared,
       vertexShader: DOME_VERTEX,
       fragmentShader: DOME_FRAGMENT,
-      defines: kind === 'night' ? { STARS: '' } : {},
       side: THREE.BackSide,
       depthWrite: false,
       depthTest: false,
@@ -292,54 +226,50 @@ export class Backdrop {
     this.group.add(this.dome);
     this.materials.push(domeMat);
 
-    if (kind !== 'night') {
-      const floorMat = new THREE.ShaderMaterial({
-        uniforms: {
-          ...shared,
-          uCam: { value: new THREE.Vector3() },
-          uFade: { value: kind === 'table' ? new THREE.Vector2(60, 80) : new THREE.Vector2(10, 90) },
-          uBoardCentre: { value: new THREE.Vector2() },
-          uBoardHalf: { value: new THREE.Vector2(1, 1) },
-          uMap: { value: kind === 'meadow' ? meadowMap() : null },
-          uTexel: { value: new THREE.Vector2(colStep / WESNOTH_COL_PX, rowStep / WESNOTH_ROW_PX) },
-          uOrigin: { value: new THREE.Vector2() },
-        },
-        vertexShader: FLOOR_VERTEX,
-        fragmentShader: FLOOR_FRAGMENT,
-        defines: kind === 'meadow' ? { MEADOW: '' } : kind === 'table' ? { TABLE: '' } : {},
-      });
-      const plane = new THREE.PlaneGeometry(300, 300);
-      plane.rotateX(-Math.PI / 2);
-      this.floor = new THREE.Mesh(plane, floorMat);
-      this.floor.position.y = this.floorY;
-      this.floor.frustumCulled = false;
-      this.floor.renderOrder = -999;
-      this.group.add(this.floor);
-      this.materials.push(floorMat);
-    }
+    const floorMat = new THREE.ShaderMaterial({
+      uniforms: {
+        ...shared,
+        uLit: color(WOOD.lit),
+        uShade: color(WOOD.shade),
+        uCam: { value: new THREE.Vector3() },
+        uFade: { value: wood ? new THREE.Vector2(60, 80) : new THREE.Vector2(10, 90) },
+        uBoardCentre: { value: new THREE.Vector2() },
+        uBoardHalf: { value: new THREE.Vector2(1, 1) },
+        uMap: { value: wood ? null : meadowMap() },
+        uTexel: { value: new THREE.Vector2(colStep / WESNOTH_COL_PX, rowStep / WESNOTH_ROW_PX) },
+        uOrigin: { value: new THREE.Vector2() },
+      },
+      vertexShader: FLOOR_VERTEX,
+      fragmentShader: FLOOR_FRAGMENT,
+      defines: wood ? {} : { MEADOW: '' },
+    });
+    const plane = new THREE.PlaneGeometry(300, 300);
+    plane.rotateX(-Math.PI / 2);
+    this.floor = new THREE.Mesh(plane, floorMat);
+    this.floor.position.y = this.floorY;
+    this.floor.frustumCulled = false;
+    this.floor.renderOrder = -999;
+    this.group.add(this.floor);
+    this.materials.push(floorMat);
   }
 
   /** Where the board lies: its centre and half extents on the ground, and the world position of cell (0, 0). */
   setBoard(centre: { x: number; z: number }, half: { x: number; z: number }, origin: { x: number; z: number }): void {
-    const u = (this.floor?.material as THREE.ShaderMaterial | undefined)?.uniforms;
-    if (!u) return;
+    const u = (this.floor.material as THREE.ShaderMaterial).uniforms;
     u.uBoardCentre!.value.set(centre.x, centre.z);
     u.uBoardHalf!.value.set(half.x, half.z);
     u.uOrigin!.value.set(origin.x, origin.z);
   }
 
-  /** Keep the sky centred on the camera and the floor under it, and run the clock (seconds). */
-  update(camera: THREE.Camera, seconds: number): void {
-    this.dome?.position.copy(camera.position);
-    if (this.floor) {
-      this.floor.position.set(camera.position.x, this.floorY, camera.position.z);
-      (this.floor.material as THREE.ShaderMaterial).uniforms.uCam!.value.copy(camera.position);
-    }
-    for (const m of this.materials) m.uniforms.uTime!.value = seconds;
+  /** Keep the sky centred on the camera and the floor under it. */
+  update(camera: THREE.Camera): void {
+    this.dome.position.copy(camera.position);
+    this.floor.position.set(camera.position.x, this.floorY, camera.position.z);
+    (this.floor.material as THREE.ShaderMaterial).uniforms.uCam!.value.copy(camera.position);
   }
 
   dispose(): void {
-    for (const child of [this.dome, this.floor]) child?.geometry.dispose();
+    for (const child of [this.dome, this.floor]) child.geometry.dispose();
     for (const m of this.materials) m.dispose();
   }
 }

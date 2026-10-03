@@ -274,3 +274,30 @@ describe('matchSetupSchema', () => {
     expect(matchSetupSchema.safeParse({ ...base, kings: [0.5, 1] }).success).toBe(false);
   });
 });
+
+describe('extract the golden Pig', () => {
+  it('round-trips a golden-pig state and its game-over events', () => {
+    const state = createGame({
+      seed: 1,
+      board: { width: 6, height: 4 },
+      warbands: [[{ name: 'pig', quality: 3, combat: 3, pos: { x: 0, y: 0 }, pig: true }], [{ name: 'd', quality: 3, combat: 3, pos: { x: 5, y: 0 } }]],
+      mode: 'golden-pig',
+      objectives: { extraction: [{ x: 5, y: 0 }, { x: 5, y: 1 }] },
+      limits: { roundLimit: 6 },
+    });
+    expect(gameStateSchema.parse(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    for (const reason of ['pig', 'extracted'] as const) {
+      const e = { type: 'GameOver', winner: 1, reason };
+      expect(gameEventSchema.parse(e)).toEqual(e);
+    }
+    const bad = { ...state, mode: { ...state.mode, pig: { unitId: 'p0u0', escort: 2 } } };
+    expect(gameStateSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('accepts an escort seat in a setup, rejecting anything but 0 or 1', () => {
+    const base = { presets: ['a', 'b'], seats: ['human', 'ai'], seed: 1, mode: 'golden-pig' };
+    const ok = matchSetupSchema.safeParse({ ...base, escort: 1 });
+    expect(ok.success && ok.data).toEqual({ ...base, escort: 1 });
+    expect(matchSetupSchema.safeParse({ ...base, escort: 2 }).success).toBe(false);
+  });
+});

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { airborne, unitById, vecKey, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay, type ZoneScore } from '../three/BoardView.js';
-import { BACKDROP_LABELS, BACKDROPS, type BackdropKind } from '../three/backdrop.js';
+import { BACKDROP_LABELS, BACKDROPS, DEFAULT_BACKDROP, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
 import { InfoLines } from './StatIcons.js';
@@ -9,7 +9,6 @@ import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeVi
 import { traitTags } from './hudView.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 import { canOfferFullscreen, toggleFullscreen, useFullscreen } from './fullscreen.js';
-import { useSoundSettings } from './sound.js';
 import { sfx } from '../audio/sfx.js';
 
 interface Props {
@@ -120,38 +119,23 @@ function saveCameraMode(mode: CameraMode): void {
   }
 }
 
-const ELEVATION_KEY = 'fansong.cameraElevation';
-/** The range the camera-angle slider offers, in degrees above the table. */
-const MIN_ELEVATION = 15;
-const MAX_ELEVATION = 89;
-
-/** The camera angle the player picked, or null to keep the opening shot's. */
-function loadElevation(): number | null {
-  try {
-    const saved = Number(localStorage.getItem(ELEVATION_KEY));
-    return saved >= MIN_ELEVATION && saved <= MAX_ELEVATION ? saved : null;
-  } catch {
-    return null;
-  }
-}
-
-function saveElevation(degrees: number): void {
-  try {
-    localStorage.setItem(ELEVATION_KEY, String(degrees));
-  } catch {
-    // Not remembered; the slider still works for this session.
-  }
-}
-
 const BACKDROP_KEY = 'fansong.backdrop';
 
-/** The remembered backdrop (none unless changed; storage may be unavailable). */
+/** The sound control's two settings, as one value that only changes when either does. */
+let soundNow = { volume: sfx.volume, muted: sfx.muted };
+function soundSetting(): { volume: number; muted: boolean } {
+  if (soundNow.volume !== sfx.volume || soundNow.muted !== sfx.muted) soundNow = { volume: sfx.volume, muted: sfx.muted };
+  return soundNow;
+}
+const subscribeSound = (fn: () => void) => sfx.subscribe(fn);
+
+/** The remembered backdrop (the table unless changed; storage may be unavailable). */
 function loadBackdrop(): BackdropKind {
   try {
     const saved = localStorage.getItem(BACKDROP_KEY);
-    return BACKDROPS.find((b) => b === saved) ?? 'void';
+    return BACKDROPS.find((b) => b === saved) ?? DEFAULT_BACKDROP;
   } catch {
-    return 'void';
+    return DEFAULT_BACKDROP;
   }
 }
 
@@ -175,9 +159,14 @@ export function BoardCanvas(props: Props): JSX.Element {
   // On a phone the camera tools fold away behind one button.
   const [toolsOpen, setToolsOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState(loadCameraMode);
-  const sound = useSoundSettings();
-  const [elevation, setElevation] = useState(loadElevation);
   const [backdrop, setBackdrop] = useState(loadBackdrop);
+  const sound = useSyncExternalStore(subscribeSound, soundSetting);
+  // A match plays over its backdrop's own background sound.
+  useEffect(() => {
+    if (!props.playing) return;
+    sfx.playAmbience(`amb-${backdrop}`);
+    return () => sfx.playAmbience(null);
+  }, [props.playing, backdrop]);
   // Phones and tablets can hide the browser's bars to give the board the whole screen.
   const [offerFullscreen] = useState(canOfferFullscreen);
   const fullscreen = useFullscreen();
@@ -205,10 +194,6 @@ export function BoardCanvas(props: Props): JSX.Element {
     view.onCellClick = (cell) => handlers.current.onCellClick(cell);
     view.onCellHover = setHover;
     view.buildBoard(props.state);
-    // Show the opening shot's angle until the player picks their own.
-    const saved = loadElevation();
-    if (saved === null) setElevation(Math.round(view.elevation));
-    else view.setElevation(saved);
     view.setBackdrop(loadBackdrop());
     viewRef.current = view;
     return () => {
@@ -483,23 +468,6 @@ export function BoardCanvas(props: Props): JSX.Element {
             {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
           </button>
         ) : null}
-        <label className="board-pitch" title="The camera's angle above the table">
-          Angle
-          <input
-            type="range"
-            min={MIN_ELEVATION}
-            max={MAX_ELEVATION}
-            step={1}
-            value={elevation ?? MAX_ELEVATION}
-            onChange={(e) => {
-              const degrees = Number(e.target.value);
-              setElevation(degrees);
-              saveElevation(degrees);
-              viewRef.current?.setElevation(degrees);
-            }}
-          />
-          <span>{elevation ?? '–'}°</span>
-        </label>
         <button
           type="button"
           className="board-follow"
@@ -513,27 +481,21 @@ export function BoardCanvas(props: Props): JSX.Element {
         >
           Backdrop: {BACKDROP_LABELS[backdrop]}
         </button>
-        <button
-          type="button"
-          className={`board-follow${sound.muted ? '' : ' on'}`}
-          title={sound.muted ? 'Turn sound effects on' : 'Turn sound effects off'}
-          onClick={() => sfx.setMuted(!sound.muted)}
-        >
-          {sound.muted ? 'Sound: off' : 'Sound: on'}
-        </button>
-        <label className="board-pitch" title="Sound effects volume">
-          Volume
+        <span className={`board-follow board-sound${sound.muted ? '' : ' on'}`}>
+          <button type="button" title={sound.muted ? 'Turn the sound on' : 'Turn the sound off'} onClick={() => sfx.setMuted(!sound.muted)}>
+            Sound: {sound.muted ? 'off' : 'on'}
+          </button>
           <input
             type="range"
             min={0}
-            max={100}
-            step={5}
-            value={Math.round(sound.volume * 100)}
-            disabled={sound.muted}
-            onChange={(e) => sfx.setVolume(Number(e.target.value) / 100)}
+            max={1}
+            step={0.05}
+            value={sound.muted ? 0 : sound.volume}
+            title="Volume"
+            aria-label="Volume"
+            onChange={(ev) => sfx.setVolume(Number(ev.target.value))}
           />
-          <span>{Math.round(sound.volume * 100)}%</span>
-        </label>
+        </span>
       </div>
     </div>
   );

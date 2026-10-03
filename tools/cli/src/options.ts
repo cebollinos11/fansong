@@ -32,6 +32,8 @@ export interface Options {
   rounds: number | 'none' | null;
   /** Points to win (`--points`); null = the mode's default. */
   points: number | null;
+  /** Seat escorting the Pig (`--escort`, golden-pig only); null = player 0. */
+  escort: 0 | 1 | null;
   list: boolean;
   help: boolean;
 }
@@ -61,6 +63,7 @@ export function parseArgs(argv: string[]): Options {
     mode: null,
     rounds: null,
     points: null,
+    escort: null,
     list: false,
     help: false,
   };
@@ -85,6 +88,11 @@ export function parseArgs(argv: string[]): Options {
       const v = value(++i, arg);
       opts.rounds = v === 'none' ? 'none' : numberArg(arg, v);
     } else if (arg === '--points') opts.points = numberArg(arg, argv[++i]);
+    else if (arg === '--escort') {
+      const v = value(++i, arg);
+      if (v !== '0' && v !== '1') throw new CliError('--escort needs 0 or 1');
+      opts.escort = v === '0' ? 0 : 1;
+    }
     else if (arg === '--list') opts.list = true;
     else if (arg === '--help' || arg === '-h') opts.help = true;
     else throw new CliError(`Unknown option "${arg}". Try --help.`);
@@ -105,6 +113,7 @@ Options:
   --mode <mode>    Game mode (default annihilation); must be supported by the map
   --rounds <n|none>  Round limit (1-50, or none); default depends on the mode
   --points <n>     Points to win in king-of-the-hill and conquest (1-50)
+  --escort <0|1>   Player escorting the Pig in golden-pig (default 0)
   --list           List preset warbands, maps and modes, then exit
   --max-steps <n>  Safety cap on reduce steps (default 5000)
   --quiet, -q      Only print setup and final result
@@ -155,7 +164,7 @@ function requireMap(id: string): MapDef {
  * suggesting maps that host it otherwise.
  */
 function checkMode(mode: GameMode, map: MapDef | null): void {
-  const ok = map ? supportedModes(map).includes(mode) : mode === 'annihilation' || mode === 'kill-the-king';
+  const ok = map ? supportedModes(map).includes(mode) : mode === 'annihilation' || mode === 'kill-the-king' || mode === 'golden-pig';
   if (ok) return;
   const hosts = listMaps()
     .filter((m) => supportedModes(m).includes(mode))
@@ -171,7 +180,7 @@ function checkMode(mode: GameMode, map: MapDef | null): void {
  * unsupported mode.
  */
 export function setupMatch(opts: Options): { state: GameState; label: string } {
-  if (!opts.p0 && !opts.p1 && opts.map === null && opts.mode === null && opts.rounds === null && opts.points === null)
+  if (!opts.p0 && !opts.p1 && opts.map === null && opts.mode === null && opts.rounds === null && opts.points === null && opts.escort === null)
     return { state: createDemoGame(opts.seed), label: 'demo warbands' };
 
   const w0 = requirePreset(opts.p0 ?? FALLBACK_PRESET);
@@ -187,7 +196,8 @@ export function setupMatch(opts: Options): { state: GameState; label: string } {
     if (MODE_RULES[mode].targetScore === undefined) throw new CliError(`--points does not apply to mode "${mode}"`);
     limits.targetScore = opts.points;
   }
-  const modeOpt = { ...(mode === 'annihilation' ? {} : { mode }), limits };
+  if (opts.escort !== null && mode !== 'golden-pig') throw new CliError(`--escort does not apply to mode "${mode}"`);
+  const modeOpt = { ...(mode === 'annihilation' ? {} : { mode }), ...(opts.escort !== null ? { escort: opts.escort } : {}), limits };
   let config;
   try {
     config = map
@@ -201,6 +211,7 @@ export function setupMatch(opts: Options): { state: GameState; label: string } {
   let label = `${w0.name} (P0) vs ${w1.name} (P1)`;
   if (map) label += ` on ${map.name}`;
   if (mode !== 'annihilation') label += ` · ${mode}`;
+  if (mode === 'golden-pig') label += ` (P${opts.escort ?? 0} escorts)`;
   return { state: createGame(config), label };
 }
 

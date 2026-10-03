@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   MAX_ELEVATION,
   TERRAIN_FEATURES,
@@ -23,6 +23,8 @@ import { StatIcon } from './StatIcons.js';
 import { TraitEditor } from './TraitEditor.js';
 import { browserStorage } from '../game/customMaps.js';
 import { DEMO_GROUPS, EFFECT_DEMOS, stageDemo, type EffectDemo } from '../game/effectDemos.js';
+import { sfx } from '../audio/sfx.js';
+import { SFX_CUES, type SfxName } from '../audio/sfxCues.js';
 import * as sandboxOps from '../game/sandbox.js';
 import {
   activateUnit,
@@ -334,6 +336,7 @@ export function SandboxScreen({ initial, setup, onExit }: Props): JSX.Element {
             <TurnSection state={state} client={client} info={info} edit={edit} />
             <DiceSection state={state} client={client} info={info} edit={edit} say={say} />
             <EffectsSection onPlay={playDemo} />
+            <SoundsSection />
             <StateSection state={state} edit={edit} say={say} />
           </div>
         )}
@@ -589,6 +592,42 @@ function UnitSection({
           Delete
         </button>
       </div>
+    </Section>
+  );
+}
+
+/** Every sound effect, with whether it has been recorded: click one to hear it (or the stand-in it falls back to). */
+function SoundsSection() {
+  // Redrawn when the recordings on disk change.
+  useSyncExternalStore(
+    (fn) => sfx.subscribe(fn),
+    () => SFX_CUES.reduce((sum, cue) => sum + sfx.recorded(cue.name), 0),
+  );
+  const done = SFX_CUES.filter((cue) => sfx.recorded(cue.name) > 0).length;
+  return (
+    <Section title="Sounds" open={false}>
+      <p className="sb-hint">
+        {done} of {SFX_CUES.length} recorded. Record them in the <a href="?dev=1&amp;record">recording booth</a>, then play
+        the Animations above to hear each in place.
+      </p>
+      {[1, 2, 3].map((tier) => (
+        <div key={tier}>
+          <div className="sb-label">Tier {tier}</div>
+          <div className="sb-demos">
+            {SFX_CUES.filter((cue) => cue.tier === tier).map((cue) => (
+              <button
+                key={cue.name}
+                type="button"
+                className={sfx.recorded(cue.name) > 0 ? '' : 'ghost'}
+                title={`${cue.when} (${cue.idea})`}
+                onClick={() => sfx.play(cue.name as SfxName)}
+              >
+                {sfx.recorded(cue.name) > 0 ? '✓' : '✗'} {cue.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
     </Section>
   );
 }

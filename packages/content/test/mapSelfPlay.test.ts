@@ -353,6 +353,7 @@ describe('every built-in map × every supported mode', () => {
     'king-of-the-hill': ['score', 'roundLimit', 'annihilation'],
     conquest: ['score', 'roundLimit', 'annihilation'],
     'capture-the-flag': ['flag', 'annihilation'],
+    'golden-pig': ['extracted', 'pig', 'roundLimit', 'annihilation'],
   };
 
   it('every built-in map hosts every mode', () => {

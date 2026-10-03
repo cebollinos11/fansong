@@ -210,8 +210,8 @@ describe('validateMap', () => {
 });
 
 describe('supportedModes', () => {
-  it('a bare valid map hosts annihilation and kill-the-king', () => {
-    expect(supportedModes(baseMap())).toEqual(['annihilation', 'kill-the-king']);
+  it('a bare valid map hosts annihilation, kill-the-king and the golden Pig', () => {
+    expect(supportedModes(baseMap())).toEqual(['annihilation', 'kill-the-king', 'golden-pig']);
   });
 
   it('each objective unlocks its mode', () => {

@@ -1,6 +1,6 @@
-import { makeHexGrid, vecKey, type GameConfig, type GameLimits, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { LIMIT_RANGE, makeHexGrid, vecKey, type GameConfig, type GameLimits, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
 import { profileRange, unitCost } from './cost.js';
-import { flatMap, mapToBoard, type MapDef } from './map.js';
+import { flatMap, mapHexAt, mapToBoard, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
 import type { Warband, WarbandUnit } from './warband.js';
 
@@ -27,8 +27,63 @@ export interface MatchOptions {
    * {@link defaultKing}. Ignored in every other mode.
    */
   kings?: [number, number];
+  /**
+   * Extract the golden Pig: the player escorting the Pig (default 0). The other
+   * defends. Ignored in every other mode.
+   */
+  escort?: Owner;
   /** Custom round limit / target score; omitted = the mode's defaults. */
   limits?: GameLimits;
+}
+
+/**
+ * The golden Pig: the unit the escort walks into the enemy camp in "Extract the
+ * golden Pig". It joins the escorting warband for free, on top of its roster.
+ */
+export const GOLDEN_PIG: WarbandUnit = {
+  name: 'Golden Pig',
+  quality: 2,
+  combat: 3,
+  slow: true,
+  tough: true,
+  look: 'Piglet',
+  tint: '#ffd700',
+};
+
+/** Hexes a Slow unit covers per Move: the pace {@link defaultPigRounds} budgets on. */
+const PIG_PACE = 3;
+
+/**
+ * Rounds allowed on top of the bare walk. Measured in AI self-play: each of the
+ * first four is worth escort wins, and more than four changes nothing (by then
+ * the Pig has either got home or been cut down).
+ */
+const PIG_SPARE_ROUNDS = 4;
+
+/**
+ * The default round limit of "Extract the golden Pig" on `map` with `escort`
+ * escorting: one round per Move the Pig needs to walk from the back of its own
+ * deploy zone to the nearest goal hex (the enemy zone), plus {@link PIG_SPARE_ROUNDS} to spare,
+ * within {@link LIMIT_RANGE}.
+ */
+export function defaultPigRounds(map: MapDef, escort: Owner = 0): number {
+  const board = makeHexGrid({ ...mapToBoard(map), blocked: [] });
+  const open = (v: Vec) => mapHexAt(map, v) !== undefined && !board.isBlocked(v) && !board.isDeadly(v);
+  const dist = new Map<string, number>();
+  let frontier = map.deployZones[escort === 0 ? 1 : 0].filter(open);
+  for (const v of frontier) dist.set(vecKey(v), 0);
+  for (let d = 1; frontier.length > 0; d++) {
+    const next: Vec[] = [];
+    for (const v of frontier)
+      for (const n of board.neighbors(v)) {
+        if (dist.has(vecKey(n)) || !open(n)) continue;
+        dist.set(vecKey(n), d);
+        next.push(n);
+      }
+    frontier = next;
+  }
+  const walk = Math.max(0, ...map.deployZones[escort].map((v) => dist.get(vecKey(v)) ?? 0));
+  return Math.min(LIMIT_RANGE.max, Math.max(LIMIT_RANGE.min, Math.ceil(walk / PIG_PACE) + PIG_SPARE_ROUNDS));
 }
 
 /**
@@ -204,36 +259,71 @@ function overflowHexes(map: MapDef, zone: Vec[], avoid: Vec[], count: number): V
  * (default {@link DEFAULT_BOARD}) with edge-column deployment is used.
  *
  * `opts.mode` adds `mode` to the config: objective modes take the map's
- * objectives (the map must provide them), kill-the-king flags each side's King.
+ * objectives (the map must provide them), kill-the-king flags each side's King,
+ * and "Extract the golden Pig" adds the {@link GOLDEN_PIG} to the escort's side,
+ * makes the defender's deploy zone the goal and sets the round limit (see
+ * {@link defaultPigRounds}) unless `opts.limits` names one.
  */
 export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameConfig {
   const mode = opts.mode ?? 'annihilation';
+  const escort: Owner | undefined = mode === 'golden-pig' ? (opts.escort ?? 0) : undefined;
+  if (escort !== undefined && escort !== 0 && escort !== 1) throw new Error(`escort must be player 0 or 1, got ${String(escort)}`);
+  // The Pig deploys first, so it lands in the back rank, and trades places with
+  // whoever stands in the middle of it; its spec then goes last, so every other
+  // unit keeps the id it has in any other mode.
+  const fielded = (w: Warband, owner: Owner) => (owner === escort ? [GOLDEN_PIG, ...w.units] : w.units);
+  const field = opts.map ?? flatMap((opts.board ?? DEFAULT_BOARD).width, (opts.board ?? DEFAULT_BOARD).height);
+  const pigLast = (specs: UnitSpec[], owner: Owner): UnitSpec[] => {
+    if (owner !== escort) return specs;
+    const [pig, ...rest] = specs;
+    const grid = makeHexGrid({ width: field.width, height: field.height, blocked: [] });
+    const enemy = field.deployZones[owner === 0 ? 1 : 0];
+    const depth = (v: Vec) => Math.min(...enemy.map((e) => grid.distance(v, e)));
+    const rank = specs.filter((s) => depth(s.pos) === depth(pig!.pos));
+    const centre = { x: rank.reduce((n, s) => n + s.pos.x, 0) / rank.length, y: rank.reduce((n, s) => n + s.pos.y, 0) / rank.length };
+    const off = (s: UnitSpec) => (s.pos.x - centre.x) ** 2 + (s.pos.y - centre.y) ** 2;
+    const middle = rank.reduce((best, s) => (off(s) < off(best) ? s : best));
+    [pig!.pos, middle.pos] = [middle.pos, pig!.pos];
+    return [...rest, { ...pig!, pig: true }];
+  };
   let config: GameConfig;
   if (opts.map) {
     const map = opts.map;
     const check = validateMap(map, mode === 'annihilation' ? undefined : mode);
     if (!check.ok) throw new Error(`map "${map.id}" is invalid: ${check.errors.join('; ')}`);
-    const first = layOutInZone(p0.units, 0, map);
+    const first = layOutInZone(fielded(p0, 0), 0, map);
+    const second = layOutInZone(fielded(p1, 1), 1, map, first.map((s) => s.pos));
     config = {
       seed: opts.seed,
       board: mapToBoard(map),
-      warbands: [first, layOutInZone(p1.units, 1, map, first.map((s) => s.pos))],
+      warbands: [pigLast(first, 0), pigLast(second, 1)],
       initiativeLeader: opts.initiativeLeader ?? 0,
     };
-    if (mode !== 'annihilation' && mode !== 'kill-the-king') config.objectives = objectivesFor(map, mode);
+    if (mode === 'golden-pig') config.objectives = { extraction: map.deployZones[escort === 0 ? 1 : 0].map((v) => ({ x: v.x, y: v.y })) };
+    else if (mode !== 'annihilation' && mode !== 'kill-the-king') config.objectives = objectivesFor(map, mode);
   } else {
-    if (mode !== 'annihilation' && mode !== 'kill-the-king')
+    if (mode !== 'annihilation' && mode !== 'kill-the-king' && mode !== 'golden-pig')
       throw new Error(`mode '${mode}' needs a map with its objectives`);
     const board = opts.board ?? DEFAULT_BOARD;
     config = {
       seed: opts.seed,
       board: { width: board.width, height: board.height },
-      warbands: [layOutWarband(p0.units, 0, board), layOutWarband(p1.units, 1, board)],
+      warbands: [pigLast(layOutWarband(fielded(p0, 0), 0, board), 0), pigLast(layOutWarband(fielded(p1, 1), 1, board), 1)],
       initiativeLeader: opts.initiativeLeader ?? 0,
     };
+    // The goal is the defender's edge column.
+    if (escort !== undefined) {
+      const x = escort === 0 ? board.width - 1 : 0;
+      config.objectives = { extraction: Array.from({ length: board.height }, (_, y) => ({ x, y })) };
+    }
   }
   // Default games add no keys, so their config (and every replay hash) is unchanged.
   if (opts.limits && Object.keys(opts.limits).length > 0) config.limits = opts.limits;
+  if (escort !== undefined && opts.limits?.roundLimit === undefined) {
+    const board = opts.board ?? DEFAULT_BOARD;
+    const map = opts.map ?? flatMap(board.width, board.height);
+    config.limits = { ...config.limits, roundLimit: defaultPigRounds(map, escort) };
+  }
   if (mode === 'annihilation') return config;
   config.mode = mode;
   if (mode === 'kill-the-king') {

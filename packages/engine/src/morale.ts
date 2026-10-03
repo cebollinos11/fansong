@@ -1,5 +1,5 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
-import { carryFlags, finishGame, isKing, regrabOnStandUp, returnCarriedFlag } from './mode.js';
+import { carryFlags, finishGame, isKing, isPig, regrabOnStandUp, returnCarriedFlag } from './mode.js';
 import { rollD6 } from './rng.js';
 import { airborne, aliveUnits, inEarshot, isOccupied, livingCount, WAR_CRY_RANGE } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
@@ -181,6 +181,11 @@ function defect(s: GameState, events: GameEvent[], unit: Unit, board: Board, hac
 
   if (isKing(s, unit.id)) {
     finishGame(s, events, to, 'king');
+    return;
+  }
+  // A golden Pig that turns is lost to its escort.
+  if (isPig(s, unit.id)) {
+    finishGame(s, events, to, 'pig');
     return;
   }
   if (unit.traits.leader) leaderCheck(s, events, unit, from, board, hacks);

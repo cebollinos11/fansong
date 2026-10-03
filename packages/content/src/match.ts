@@ -37,7 +37,7 @@ export interface MatchSetup {
   mapId?: string;
   /**
    * Game mode. Omitted = annihilation (the state then carries no mode data).
-   * Every mode but annihilation and kill-the-king needs a `mapId` whose map
+   * Every mode but annihilation, kill-the-king and golden-pig needs a `mapId` whose map
    * provides that mode's objectives.
    */
   mode?: GameMode;
@@ -46,6 +46,8 @@ export interface MatchSetup {
    * Omitted = each side's `defaultKing`. Ignored in other modes.
    */
   kings?: [number, number];
+  /** Extract the golden Pig: the seat escorting the Pig. Omitted = player 0. Ignored in other modes. */
+  escort?: Owner;
   /** Custom round limit / target score. Omitted = the mode's defaults. */
   limits?: GameLimits;
 }
@@ -108,7 +110,7 @@ export function configFromSetup(
   lookup: MapLookup = getMap,
 ): GameConfig {
   const [p0, p1] = warbandsFor(setup);
-  const mode = { mode: setup.mode, kings: setup.kings, limits: setup.limits };
+  const mode = { mode: setup.mode, kings: setup.kings, escort: setup.escort, limits: setup.limits };
   if (setup.mapId !== undefined)
     return buildMatch(p0, p1, { seed: setup.seed, map: resolveMap(setup.mapId, lookup), ...mode });
   return buildMatch(p0, p1, { seed: setup.seed, board, ...mode });

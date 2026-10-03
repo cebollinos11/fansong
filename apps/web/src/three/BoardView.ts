@@ -22,7 +22,9 @@ import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type
 import { UnitAnimator } from './unitAnimator.js';
 import { Effects } from './effects.js';
 import { LavaEmbers, lavaPixel, LavaSurface, type Ember } from './lava.js';
-import { Backdrop, type BackdropKind } from './backdrop.js';
+import { Backdrop, DEFAULT_BACKDROP, type BackdropKind } from './backdrop.js';
+import { sfx } from '../audio/sfx.js';
+import { voiceFamily, type SfxName, type VoiceLine } from '../audio/sfxCues.js';
 import { cellNoise, featureLayout } from './features.js';
 import {
   activationResolveMs,
@@ -35,7 +37,6 @@ import {
   type ZoneScoreText,
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
-import { sfx, type Cue, type PlayOptions } from '../audio/sfx.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { BoardChunks } from './chunks.js';
 import {
@@ -394,7 +395,6 @@ const STAR_COLOR = '#ffe066';
 // Animation timing (ms). Clip timings come from Wesnoth; these fill the gaps.
 const LUNGE = 0.3; // how far (world units) a melee strike leans into its target
 const WALK_MS_PER_HEX = 300; // a move walks its path hex by hex at this steady pace
-const SWING_LEAD_MS = 140; // a melee swing's whoosh starts this long before it lands
 const WALK_HOP = 0.12; // world units a walking mini hops up on each hex step
 const WALK_SWAY = 0.12; // radians it rocks side to side, alternating each step (for sprites without walk frames)
 const ROUTE_LEAD_MS = 450; // an opponent's route is traced this long before the unit sets off along it
@@ -530,6 +530,16 @@ const COIL_SQUASH = 0.14; // ...and how much it crouches into itself
 const DREAD_COIL_MS = 620; // a gruesome kill is gathered this long before the swing (or the draw) even starts...
 const DREAD_COIL_DEPTH = 1.6; // ...its killer sinking this much further back and down than for an ordinary heavy blow
 const DREAD_BEATS = 2; // the heartbeats that sound through that gathering
+/** How long before a melee blow lands its swing is heard. */
+const SWING_SOUND_LEAD_MS = 130;
+/** The beat between one activation die's sound and the next. */
+const DIE_SOUND_GAP_MS = 90;
+const FLAG_SOUNDS = {
+  FlagPickedUp: 'flag-pickup',
+  FlagDropped: 'flag-drop',
+  FlagReturned: 'flag-return',
+  FlagCaptured: 'flag-capture',
+} as const satisfies Record<string, SfxName>;
 const HEAVY_REACH = 1.5; // how much deeper than an ordinary lunge that blow drives in
 const DASH_MS = 90; // the last of the swing, when it covers nearly all that ground
 const DASH_STRETCH = 0.2; // how much the cutout stretches along the dash
@@ -600,6 +610,7 @@ const PAN_MAX_MS = 850;
 const PAN_MS_PER_UNIT = 70; // extra pan time per world unit travelled
 const CAMERA_SETTLE_MS = 150; // beat between the camera arriving and the dice starting
 const CAMERA_STILL = 0.25; // a move shorter than this (world units of travel + zoom) isn't worth making
+const HAND_MOVE_SLACK = 0.05; // a press that shifts the camera by less than this fraction of its distance was a click, not a camera move
 const ZOOM_STEADY = 0.2; // a close-up within this fraction of the current distance keeps that distance and only pans
 const FIT_STEPS = 18; // halvings used to find the nearest distance that holds a set of units
 const SELECT_PAN_STEPS = 12; // halvings used to find the shortest pan that brings a pick into frame
@@ -624,12 +635,9 @@ const HEADING_RETURN = Math.PI / 6; // a fight that left the camera turned furth
 const START_MIN_SPAN = 8; // world units kept in view (~8 hexes), however tightly they're deployed
 const START_FIT_STEPS = 18; // halvings used to find the closest framing that still holds every unit
 
-/** Swing `pos` around `target` to `polar` radians from straight down, keeping its heading and distance. */
-function setPolar(pos: THREE.Vector3, target: THREE.Vector3, polar: number): void {
-  const s = new THREE.Spherical().setFromVector3(pos.clone().sub(target));
-  s.phi = polar;
-  pos.setFromSpherical(s).add(target);
-}
+// Camera limits: stay above the table, and never tip over the top into a flip.
+const CAMERA_MIN_POLAR = 0.12; // radians from straight down
+const CAMERA_MAX_POLAR = 1.3; // ~75°, just above the tabletop
 
 /** Round fractional cube coords to the nearest hex (matches the engine's board). */
 function cubeRound(fq: number, fr: number, fs: number): { q: number; r: number } {
@@ -841,7 +849,7 @@ interface UnitObj {
    * A move in progress: hex centres from origin to destination, walked from board
    * time `start` at `pace` ms a hex (a walk's, unless given). `backward` keeps the facing (a recoil).
    */
-  walk: { path: THREE.Vector3[]; start: number; backward?: boolean; pace?: number } | null;
+  walk: { path: THREE.Vector3[]; start: number; backward?: boolean; pace?: number; /** The last step heard. */ stepped?: number } | null;
   /** Board times a Bad Balance unit rocks between as a shove takes its footing. */
   teeter: { start: number; end: number } | null;
   /** Its traits from the latest GameState (null until the first update). */
@@ -956,8 +964,6 @@ export class BoardView {
   private busyUntil = 0;
   /** Until this board time, what is playing can't be skipped (a zone being scored). */
   private noSkipUntil = 0;
-  /** Set while a skip runs the rest of the timeline at once, so its sounds don't all fire together. */
-  private quiet = false;
   /** The glow over the zone being scored, on board time. */
   private zoneGlow: { mesh: THREE.InstancedMesh; start: number; end: number } | null = null;
   /**
@@ -990,8 +996,12 @@ export class BoardView {
    * again (its heading only when a fight turned the camera well away from it).
    */
   private playerView: View | null = null;
+  /** Where the camera stood, and the scripted move it was making, when the press now held on it began. */
+  private press: { view: View; pos: THREE.Vector3; move: BoardView['cam']; at: number } | null = null;
   /** Whether the player could act at the last update, to spot the moment they can again. */
   private wasInteractive = false;
+  /** Whether the other side has activated a unit since the player could last act (see the "your turn" sound). */
+  private opponentActed = false;
   /** The selection the camera has already answered, so a pick is panned to once. */
   private pannedTo: string | null = null;
   /** The selection that last flashed, so a pick flashes once per time it is made. */
@@ -1002,12 +1012,10 @@ export class BoardView {
   private homeDist = 0;
   /**
    * How far the cutouts lean back (top away from the camera, radians): the
-   * camera's angle above the table, so they sit square to the screen rather
-   * than foreshortened (see {@link positionCamera}, which locks that angle).
+   * camera's angle above the table, followed every frame, so they sit square
+   * to the screen rather than foreshortened however the player tips the view.
    */
   private spriteLean = 0;
-  /** The pitch the player picked (radians from straight down), overriding the opening shot's; null: keep that. */
-  private pitchOverride: number | null = null;
   /**
    * The opening shot and the units it was fitted to, while it still stands: a
    * canvas that changes shape re-fits it (see {@link refitOpening}), until the
@@ -1075,7 +1083,7 @@ export class BoardView {
   private readonly dashedRingGeo = dashedRing();
   private clock = new THREE.Clock();
   /** The sky and ground around the table (see {@link setBackdrop}). */
-  private backdrop = new Backdrop('void', HEX_COL_STEP, HEX_ROW_STEP, TILE_BOTTOM);
+  private backdrop = new Backdrop(DEFAULT_BACKDROP, HEX_COL_STEP, HEX_ROW_STEP, TILE_BOTTOM);
 
   constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -1102,21 +1110,40 @@ export class BoardView {
       this.effects.group,
     );
 
-    // Left-drag turns around the table (the pitch is fixed, see positionCamera),
-    // right-drag (or shift/ctrl + left) or WASD pans across it, wheel zooms. A press that barely moves is still a click (see handlePointerUp).
+    // Left-drag orbits (around the table, and up and down over it), right-drag
+    // (or shift/ctrl + left) or WASD pans across it, wheel zooms. A press that barely moves is still a click (see handlePointerUp).
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = true;
     this.controls.dampingFactor = 0.12;
     this.controls.screenSpacePanning = false; // pan along the ground, not the view plane
+    this.controls.minPolarAngle = CAMERA_MIN_POLAR;
+    this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
     this.controls.zoomToCursor = true;
     // A hand on the camera takes it back: drop the scripted move, and adopt the
-    // framing the player leaves it in as theirs.
+    // framing the player leaves it in as theirs. A press that never moved the
+    // camera is only a click on the board, though: adopting where it found the
+    // camera would make a close-up (or the glide back out of one) the framing
+    // the next close-up moves in from, and fight after fight would ratchet in.
+    // So a click changes nothing, and the move it interrupted carries on.
     this.controls.addEventListener('start', () => {
+      this.press ??= { view: this.currentView(), pos: this.camera.position.clone(), move: this.cam, at: this.now };
       this.cam = null;
       this.planned = null;
       this.opening = null;
     });
-    this.controls.addEventListener('end', () => this.rememberPlayerView());
+    this.controls.addEventListener('end', () => {
+      const press = this.press;
+      this.press = null;
+      if (!press) return this.rememberPlayerView();
+      const slack = press.view.dist * HAND_MOVE_SLACK;
+      // A click's jitter can turn or slide the camera a hair but never zooms it, so any zoom (a wheel notch) counts.
+      const moved =
+        Math.abs(this.currentView().dist - press.view.dist) > press.view.dist * 1e-3 ||
+        this.camera.position.distanceTo(press.pos) > slack ||
+        this.controls.target.distanceTo(press.view.target) > slack;
+      if (moved) return this.rememberPlayerView();
+      if (press.move && !this.cam) this.cam = { ...press.move, start: press.move.start + this.now - press.at };
+    });
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
@@ -1410,7 +1437,12 @@ export class BoardView {
     this.renderer.domElement.style.cursor = vm.interactive ? 'pointer' : 'default';
 
     // The moment the player can act again, give them back the view they set.
-    if (vm.interactive && !this.wasInteractive) this.returnToPlayerView();
+    if (vm.interactive && !this.wasInteractive) {
+      this.returnToPlayerView();
+      // Against the AI or online, say so when play has come back from the other side.
+      if (this.opponentActed && this.localSeats?.length === 1) this.sound('your-turn');
+      this.opponentActed = false;
+    }
     this.wasInteractive = vm.interactive;
     this.panToSelected(vm.selectedUnitId);
     if (vm.selectedUnitId !== this.flashedPick) {
@@ -1418,7 +1450,6 @@ export class BoardView {
       if (vm.selectedUnitId) {
         this.ownPick = vm.selectedUnitId;
         this.flashPick(vm.selectedUnitId);
-        this.sound('select');
       }
     }
   }
@@ -1488,25 +1519,26 @@ export class BoardView {
           const dur = (path.length - 1) * WALK_MS_PER_HEX;
           // A runner bolting off-screen takes the camera with it.
           if (e.type === 'UnitFled') t += this.followRun(obj, path, t, dur);
+          if (e.type === 'UnitFled') this.at(t, () => this.sound('flee'));
           obj.walk = { path, start: this.now + t };
           this.at(t, () => {
             obj.animator.stop(); // an idle flourish mustn't play over the walk
             obj.animator.moveFor(dur);
           });
-          // A footfall each hex (a runner's come quicker on its heels, a Big one's land heavier).
-          for (let k = 0; k < path.length - 1; k++) {
-            this.at(t + (k + 0.5) * WALK_MS_PER_HEX, () => this.sound('step', { rate: obj.size > 1 ? 0.7 : 1 }));
-          }
           t += dur;
           lastHit = settle = t;
         }
       } else if (e.type === 'ActivationChosen') {
         const obj = this.units.get(e.unitId);
         // A new activation starts on a clean screen: the last fight's cards and verdict go.
-        this.at(t, () => this.rolls.retireFight());
+        this.at(t, () => {
+          this.rolls.retireFight();
+          this.sound('select');
+        });
         // The opponent's pick is news to whoever is watching; the player's own already flashed when they made it.
         // A group lights up together, so it is plain who shares the roll.
         const picked = e.group ?? [e.unitId];
+        if (this.localSeats?.includes(e.player) === false) this.opponentActed = true;
         const news = !picked.includes(this.ownPick ?? '');
         for (const id of picked) if (id !== this.ownPick) this.at(t, () => (news ? this.markOpponentPick(id) : this.flashPick(id)));
         this.ownPick = null;
@@ -1526,11 +1558,11 @@ export class BoardView {
         const end = start + activationRollMs(roll.dice.length);
         this.at(start, () => {
           this.rolls.addActivation(roll, this.now, end - start + ROLL_LINGER_MS);
-          this.sound('dice');
+          this.sound('dice-roll');
         });
-        // The roll that hands the turn over lands with a groan.
-        const next = after.find((x) => x.type === 'Turnover' || x.type === 'ActivationChosen' || x.type === 'DiceRolled');
-        if (next?.type === 'Turnover') this.at(resolve, () => this.sound('turnover'));
+        e.dice.forEach((die, k) =>
+          this.at(resolve + k * DIE_SOUND_GAP_MS, () => this.sound(die >= e.quality || (k === 0 && e.inspired) ? 'die-success' : 'die-fail')),
+        );
         if (roll.verdict) {
           const verdict = roll.verdict;
           this.at(resolve, () => this.rolls.addVerdict(verdict, this.now));
@@ -1546,6 +1578,7 @@ export class BoardView {
         lastHit = settle = t;
       } else if (e.type === 'UnitStoodUp') {
         hold(e.unitId, settle);
+        this.at(settle, () => this.sound('stand-up'));
       } else if (
         e.type === 'AttackResolved' ||
         e.type === 'ShotResolved' ||
@@ -1630,6 +1663,8 @@ export class BoardView {
           if (woods[0]) this.woodwiseFx(first);
           if (woods[1]) this.woodwiseFx(second);
           if (melee) for (const id of [first, second]) this.whirlFx(id);
+          if ((e.type === 'AttackResolved' && e.powerPenalty) || (e.type === 'ShotResolved' && e.aimPenalty)) this.sound('power-charge');
+          if (e.type === 'FreeHackResolved') this.sound('free-hack');
         });
         // Two blows that both fail end in a clash; a lone swing that fails is simply blocked (see strike).
         if (e.type === 'AttackResolved' && e.result === 'clash' && !armored && this.answered(e)) {
@@ -1637,12 +1672,17 @@ export class BoardView {
         }
         if (e.type === 'GuardRiposte') {
           this.at(start + cards, () => this.guardFx(e.guardId));
-          if (e.prevented) this.at(s.hit, () => this.parryFx(e.guardId, e.attackerId));
+          if (e.prevented) {
+            this.at(s.hit, () => {
+              this.parryFx(e.guardId, e.attackerId);
+              this.sound('riposte');
+            });
+          }
         }
         const life = Math.max(COMBAT_CARD_LINGER_MS, s.hit - start + COMBAT_CARD_HOLD_MS);
         this.at(start, () => {
           this.rolls.addOpposed(roll, this.now, life);
-          this.sound('dice');
+          this.sound('dice-roll');
         });
         // The conclusion lands along the bottom centre, between the two dice cards.
         // A long gruesome shot is called out by its length.
@@ -1665,15 +1705,16 @@ export class BoardView {
           const rolling = [e.unitId, ...after.filter((x) => x.type === 'NerveCheck').map((x) => x.unitId)];
           nerveAt = base + this.pause(this.frameUnits(rolling, base));
           t = Math.max(t, nerveAt);
-          this.at(nerveAt, () => this.sound('dice'));
         }
         const roll = describeNerve(e, after);
         const start = nerveAt;
-        this.at(start, () => this.rolls.addNerve(roll, this.now, NERVE_ROLL_MS + ROLL_LINGER_MS));
+        this.at(start, () => {
+          this.rolls.addNerve(roll, this.now, NERVE_ROLL_MS + ROLL_LINGER_MS);
+          this.sound('dice-roll');
+        });
         settle = start + NERVE_RESOLVE_MS;
+        this.at(settle, () => this.sound(e.passed ? 'nerve-pass' : 'nerve-fail'));
         t = Math.max(t, start + NERVE_ROLL_MS);
-      } else if (e.type === 'GuardDeclared') {
-        this.at(t, () => this.sound('guard'));
       } else if (e.type === 'WarCry') {
         t = this.warCry(e.unitId, e.inspired, t);
         lastHit = settle = t;
@@ -1681,14 +1722,14 @@ export class BoardView {
         const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
         this.at(at, () => {
           this.rolls.addVerdict({ text: 'The Leader falls!', detail: 'friends who saw it test nerve', on: [], tone: 'kill' }, this.now);
-          this.sound('alarm');
+          this.sound('leader-falls');
         });
         settle = at;
       } else if (e.type === 'WarbandBroken') {
         const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
         this.at(at, () => {
           this.rolls.addVerdict({ text: `P${e.player}'s warband breaks!`, on: [], tone: 'kill' }, this.now);
-          this.sound('alarm');
+          this.sound('warband-broken');
         });
         settle = at;
       } else if (e.type === 'ToughnessSaved') {
@@ -1743,7 +1784,6 @@ export class BoardView {
         this.at(at, () => {
           this.rolls.addVerdict({ text: 'Changes sides!', detail: `now fights for P${e.to}`, on: [e.unitId], tone: 'kill' }, this.now);
           this.defectFx(e.unitId, e.to);
-          this.sound('alarm', { volume: 0.6, rate: 1.2 });
         });
         settle = at;
         t = Math.max(t, at + DEFECT_MS + GLOW_MS / 2);
@@ -1771,6 +1811,8 @@ export class BoardView {
         const at = Math.max(settle, shoved ?? 0) + (toughSaved.has(e.unitId) ? TOUGH_HITCH_MS : 0);
         hold(e.unitId, at);
         if (shoved !== undefined) this.at(shoved, () => this.thumpFx(e.unitId));
+        // One that simply drops where it stands (a Tough save, a flyer brought down) still thuds.
+        const dropsAt = at;
         // Struck down by the latest blow: the action catches on its impact.
         if (pair?.includes(e.unitId)) this.at(lastHit, () => this.hitStop(IMPACT_STOP_MS, [e.unitId]));
         const obj = this.units.get(e.unitId);
@@ -1785,6 +1827,8 @@ export class BoardView {
           this.at(land, () => this.slamFx(obj));
           if (!ranged) this.at(land + 120, () => this.poiseFx(by));
           t = Math.max(t, land + TOSS_SETTLE_MS);
+        } else if (obj && shoved === undefined && !dies) {
+          this.at(dropsAt, () => this.sound('knockdown'));
         }
         if (obj) {
           const fall = this.deathClip(obj, 'fall');
@@ -1821,6 +1865,7 @@ export class BoardView {
         const obj = this.units.get(e.unitId);
         if (obj) obj.routed = true;
         hold(e.unitId, settle + 300);
+        this.at(settle + 300, () => this.sound('routed'));
       } else if (
         e.type === 'FlagPickedUp' ||
         e.type === 'FlagCaptured' ||
@@ -1829,20 +1874,32 @@ export class BoardView {
       ) {
         // An objective decides games; show where it happened (free when already framed).
         t += this.pause(this.frameUnits([e.unitId], t));
-        const cue: Cue = e.type === 'FlagCaptured' ? 'capture' : e.type === 'FlagDropped' ? 'thud' : 'flag';
-        this.at(t, () => this.sound(cue));
+        const sound = FLAG_SOUNDS[e.type];
+        this.at(t, () => this.sound(sound));
+      } else if (e.type === 'Turnover') {
+        // Once the dice that caused it have each been heard.
+        this.at(settle + 3 * DIE_SOUND_GAP_MS, () => this.sound('turnover'));
+      } else if (e.type === 'ActivationEnded') {
+        if (!events.some((x) => x.type === 'Turnover')) this.at(Math.max(t, settle), () => this.sound('end-activation'));
+      } else if (e.type === 'GuardDeclared') {
+        this.at(t, () => this.sound('guard-set'));
+      } else if (e.type === 'MasteryStruck') {
+        this.at(lastHit, () => this.sound('mastery'));
+      } else if (e.type === 'ScoreChanged') {
+        // A zone's point is heard as the zone is scored (see scoreZone).
+        if (e.zone === undefined) this.at(Math.max(t, settle), () => this.sound('score'));
       } else if (e.type === 'RoundEnded') {
         // The marks where units fell last only for the round they fell in.
         this.at(t, () => {
           this.effects.clearMarks();
           this.clearStuckArrows();
-          this.sound('round');
+          if (!events.some((x) => x.type === 'GameOver')) this.sound('round-start');
         });
       } else if (e.type === 'GameOver') {
-        // A win for whoever is watching (or for either side, at a shared screen or as a spectator).
-        const won = !this.localSeats || this.localSeats.length !== 1 || this.localSeats.includes(e.winner);
-        this.at(t + 400, () => this.sound(won ? 'victory' : 'defeat'));
+        // A defeat only for someone playing one side of it: two at one screen, or a watcher, hear the winner's fanfare.
+        const lost = this.localSeats?.length === 1 && !this.localSeats.includes(e.winner);
         this.at(t + 400, () => {
+          this.sound(lost ? 'defeat' : 'victory');
           for (const obj of this.units.values()) {
             if (obj.owner === e.winner && !obj.state.dead) {
               obj.animator.play(obj.anims.victory ?? obj.anims.leading);
@@ -1882,9 +1939,9 @@ export class BoardView {
       };
     };
     this.at(t, () => {
+      if (zone.owner !== null) this.sound('score');
       this.glowZone(zone);
       this.rolls.addZoneScore(zone, this.now, ZONE_SCORE_MS, anchor);
-      this.sound(zone.owner === null ? 'round' : 'score');
     });
     t += ZONE_SCORE_LEAD_MS;
     this.busyUntil = Math.max(this.busyUntil, this.now + t);
@@ -2375,6 +2432,7 @@ export class BoardView {
     const blinks = INSPIRE_BLINKS * INSPIRE_BLINK_MS;
     this.at(at, () => {
       obj.glow = { color: INSPIRED_GLOW, start: this.now, end: this.now + blinks, beats: INSPIRE_BLINKS };
+      this.sound('inspire');
       this.effects.ring(this.feet(obj), INSPIRED_GLOW, HEX_SIZE * 1.2, 0.3, { life: blinks / 1000, opacity: 0.7, additive: true });
     });
     for (let i = 0; i < INSPIRE_BLINKS; i++) {
@@ -2551,7 +2609,7 @@ export class BoardView {
     };
   }
 
-  /** The direction from the pivot to the camera at heading `yaw`, at the fixed viewing angle. */
+  /** The direction from the pivot to the camera at heading `yaw`, at the angle the camera is tipped to. */
   private viewDir(yaw: number): THREE.Vector3 {
     const s = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target));
     return new THREE.Vector3().setFromSpherical(s.set(1, s.phi, yaw));
@@ -2706,14 +2764,9 @@ export class BoardView {
     if (this.now < this.noSkipUntil) return false;
     this.now = Math.max(this.now, this.busyUntil);
     // Steps run in order, and may schedule more (a strike's hit, its reaction).
-    this.quiet = true;
-    try {
-      for (let guard = 0; guard < 64 && this.timeline.length > 0; guard++) {
-        const steps = this.timeline.splice(0, this.timeline.length).sort((a, b) => a.at - b.at);
-        for (const step of steps) step.fn();
-      }
-    } finally {
-      this.quiet = false;
+    for (let guard = 0; guard < 64 && this.timeline.length > 0; guard++) {
+      const steps = this.timeline.splice(0, this.timeline.length).sort((a, b) => a.at - b.at);
+      for (const step of steps) step.fn();
     }
     if (this.cam) {
       this.cam.start = this.now - this.cam.dur;
@@ -2787,29 +2840,9 @@ export class BoardView {
     this.controls.reset();
   }
 
-  /** The fixed viewing angle above the table, in degrees (90 looks straight down). */
-  get elevation(): number {
-    return THREE.MathUtils.radToDeg(Math.PI / 2 - this.controls.minPolarAngle);
-  }
-
-  /**
-   * Fix the viewing angle at `degrees` above the table, swinging the camera (and
-   * the framing "Reset view" returns to) onto it around the same pivot, at the
-   * same heading and distance.
-   */
-  setElevation(degrees: number): void {
-    const pitch = Math.PI / 2 - THREE.MathUtils.degToRad(degrees);
-    this.pitchOverride = pitch;
-    setPolar(this.camera.position, this.controls.target, pitch);
-    setPolar(this.controls.position0, this.controls.target0, pitch);
-    this.lockPitch(pitch);
-    this.controls.update();
-  }
-
-  /** Hold the camera at `pitch`, and lean the cutouts back to face it square on. */
-  private lockPitch(pitch: number): void {
-    this.controls.minPolarAngle = pitch;
-    this.controls.maxPolarAngle = pitch;
+  /** Lean the cutouts back by the camera's angle above the table, to face it square on. */
+  private followPitch(): void {
+    const pitch = new THREE.Spherical().setFromVector3(this.camera.position.clone().sub(this.controls.target)).phi;
     this.spriteLean = Math.PI / 2 - pitch;
   }
 
@@ -3037,14 +3070,20 @@ export class BoardView {
     );
   }
 
+  /** Play a sound effect at the board's own pace: lower and slower in slow motion (a freeze is not a pace). */
+  private sound(name: SfxName): void {
+    const pace = this.timeScale();
+    sfx.play(name, { rate: (pace === 0 ? 1 : Math.max(0.4, pace)) * this.animSpeed });
+  }
+
+  /** A unit's own grunt or cry, in the voice of its kind. */
+  private voice(obj: UnitObj, line: VoiceLine): void {
+    this.sound(`${voiceFamily(obj.spriteName)}-${line}`);
+  }
+
   /** Run `fn` once board time is `delayMs` from now. */
   private at(delayMs: number, fn: () => void): void {
     this.timeline.push({ at: this.now + delayMs, fn });
-  }
-
-  /** Play a sound effect now, unless a skip is flushing the timeline. */
-  private sound(cue: Cue, opts?: PlayOptions): void {
-    if (!this.quiet) sfx.play(cue, opts);
   }
 
   private setHeading(obj: UnitObj, dir: THREE.Vector3): void {
@@ -3106,16 +3145,21 @@ export class BoardView {
     // When a shot leaves the bow (a tracer, on its hit).
     const loosed = range === 'ranged' && clip?.missile ? Math.max(0, hit - flight - (clip.missileMs ?? 150)) : hit;
     if (dreadShot) this.dreadShot(a, d, at + loosed, at + hit);
-    if (range === 'melee') this.at(at + Math.max(0, hit - SWING_LEAD_MS), () => this.sound('swing'));
-    else this.at(at + loosed, () => this.sound('bow'));
-    // A shot that misses still lands somewhere: a dull thunk in the cover or the ground.
-    if (!land && range === 'ranged') this.at(at + hit, () => this.sound('arrow-hit', { volume: 0.4, rate: 0.8 }));
+    if (range === 'melee') {
+      this.at(at + Math.max(0, hit - SWING_SOUND_LEAD_MS), () => this.sound('swing'));
+    } else {
+      this.at(at + loosed, () => {
+        this.sound('bow-release');
+        this.sound('arrow-fly');
+      });
+    }
 
     this.at(at, () => {
       const toTarget = d.group.position.clone().sub(a.group.position).setY(0);
       this.setHeading(a, toTarget.clone());
       this.setHeading(d, toTarget.clone().negate());
       a.animator.play(clip);
+      this.voice(a, 'attack');
       if (windup > 0) this.forebodeFx(a, d, lead, hit);
       if (range === 'melee') {
         const dir = toTarget.normalize().multiplyScalar(LUNGE);
@@ -3147,7 +3191,7 @@ export class BoardView {
     if (land) {
       this.at(at + hit, () => {
         this.flashUnit(targetId, coil > 0 ? 1 : 0.8);
-        this.sound(range === 'ranged' ? 'arrow-hit' : coil > 0 ? 'heavy-hit' : 'hit');
+        if (range === 'melee') this.sound('hit');
         // A gruesome kill's impact is its own (see killFx).
         if (coil > 0 && windup === 0) this.smashFx(a, d, opts.lethal === true);
         else if (range === 'melee') this.impactFx(a, d);
@@ -3155,10 +3199,7 @@ export class BoardView {
     }
     if (coil > 0) this.at(at + hit - DASH_MS, () => this.dashFx(a, d, windup > 0));
     if (!land && range === 'melee' && opts.block !== false) {
-      this.at(at + hit, () => {
-        this.blockFx(a, d);
-        this.sound('clang');
-      });
+      this.at(at + hit, () => this.blockFx(a, d));
       return { hit: at + hit, end: at + dur + BLOCK_BEAT_MS };
     }
     return { hit: at + hit, end: at + dur, loosed: at + loosed };
@@ -3755,6 +3796,11 @@ export class BoardView {
       return;
     }
     const i = Math.max(0, Math.floor(f));
+    // One footfall a hex, for a unit going forward under its own power.
+    if (f >= 0 && !walk.backward && walk.stepped !== i) {
+      walk.stepped = i;
+      this.sound(obj.flying && !obj.grounded ? 'wingbeat' : obj.traits?.mounted ? 'hoof' : 'step');
+    }
     const from = path[i]!;
     const to = path[i + 1]!;
     const k = THREE.MathUtils.clamp(f - i, 0, 1);
@@ -3898,6 +3944,7 @@ export class BoardView {
     if (!m.landed) {
       m.landed = true;
       this.shotFx(m.to, 'hit');
+      this.sound('arrow-pierce');
       const out = dir.clone().setY(0).normalize();
       this.effects.burst({
         at: m.to,
@@ -4648,10 +4695,10 @@ export class BoardView {
    */
   private slamFx(obj: UnitObj): void {
     if (!obj.toss || (obj.fade && this.now >= obj.fade.start)) return; // never left the ground, or already gone
+    this.sound('knockdown');
     const ground = this.feet(obj).add(new THREE.Vector3(obj.facing.position.x, 0, obj.facing.position.z));
     obj.squash = { start: this.now, end: this.now + SLAM_SQUASH_MS, amount: SLAM_SQUASH };
     this.hitStop(SLAM_STOP_MS);
-    this.sound('thud');
     const dust = this.dustColors(ground);
     this.dust(ground, 24, 1.9);
     this.effects.ring(ground, dust[2]!, 0.2, HEX_SIZE * 1.15, { life: 0.45, opacity: 0.75, thick: true });
@@ -4705,6 +4752,7 @@ export class BoardView {
    */
   private blockFx(a: UnitObj, d: UnitObj): void {
     if (d.fade || a.fade) return;
+    this.sound('block');
     this.hitStop(BLOCK_STOP_MS);
     const back = a.group.position.clone().sub(d.group.position).setY(0);
     const at = this.chest(d).lerp(this.chest(a), 0.35);
@@ -4740,8 +4788,8 @@ export class BoardView {
     const a = this.units.get(aId);
     const d = this.units.get(dId);
     if (!a || !d) return;
+    this.sound('clash');
     this.hitStop(IMPACT_STOP_MS, [aId, dId]);
-    this.sound('clang', { rate: 0.85 });
     const at = this.contact(a, d);
     const across = d.group.position.clone().sub(a.group.position).setY(0);
     // 1a: a burst of white-gold sparks and a four-point glint.
@@ -4784,6 +4832,7 @@ export class BoardView {
       this.at(at + (i * ms) / 4, () => this.dust(obj.group.position.clone().setY(this.groundY(obj)), 5, 0.7));
     }
     this.at(at, () => {
+      this.sound('skid');
       // 2b: chevrons pointing the way it is shoved.
       this.effects.icon('chevron', this.chest(obj), 0.42, {
         life: 0.35,
@@ -4800,6 +4849,7 @@ export class BoardView {
     const obj = this.units.get(unitId);
     const friend = this.units.get(supporterId);
     if (!obj || !friend) return;
+    this.sound('brace');
     const a = this.chest(obj);
     const b = this.chest(friend);
     // The teal the "Supported" verdict is written in (a team colour would paint red through P1's units).
@@ -4812,6 +4862,7 @@ export class BoardView {
   /** Reassembling: a ring of pale bone light closes in on the fallen unit and its shards fly back together. */
   private reassembleFx(obj: UnitObj): void {
     if (obj.state.dead) return;
+    this.sound('reassemble');
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
     const chest = this.chest(obj);
     this.effects.ring(ground, BONE, HEX_SIZE * 0.95, 0.25, { life: REASSEMBLE_GATHER_MS / 1000, opacity: 0.9, additive: true });
@@ -4926,6 +4977,7 @@ export class BoardView {
     if (!a || !d) return;
     const dir = d.group.position.clone().sub(a.group.position).setY(0).normalize();
     if (a.lunge) a.lunge.dir.multiplyScalar(RUSH_LUNGE);
+    this.sound('whoosh-trait');
     const feet = this.feet(a);
     const behind = feet.clone().addScaledVector(dir, -HEX_SIZE * 0.7);
     const along = this.screenAngle(behind, feet);
@@ -4987,6 +5039,7 @@ export class BoardView {
     if (!obj?.traits?.whirling || obj.shown.knocked) return;
     const foes = this.beside(obj, false);
     if (foes.length < 2) return;
+    this.sound('whoosh-trait');
     const ground = this.feet(obj);
     this.effects.whirl(ground.clone().setY(ground.y + 0.4 * obj.size + obj.hover), WHIRL_COLOR, HEX_SIZE * 0.95, { life: 0.7, turns: 1.25, opacity: 1 });
     this.effects.ring(ground, WHIRL_COLOR, 0.3, HEX_STEP * 0.95, { life: 0.45, opacity: 0.55, additive: true });
@@ -5000,6 +5053,7 @@ export class BoardView {
   private immovableFx(id: string, byId: string | null): void {
     const obj = this.units.get(id);
     if (!obj) return;
+    this.sound('brace');
     this.hitStop(IMPACT_STOP_MS, [id]);
     const ground = this.feet(obj);
     this.effects.ring(ground, STONE, HEX_SIZE * 1.15, 0.38, { life: 0.4, opacity: 0.9, additive: true });
@@ -5032,6 +5086,7 @@ export class BoardView {
   private trampleFx(by: UnitObj, path: THREE.Vector3[], at: number, pace: number): void {
     const push = path[path.length - 1]!.clone().sub(path[0]!).setY(0);
     this.at(at, () => {
+      this.sound('whoosh-trait');
       this.joltUnit(by, push, 0.14, false, 380);
       this.shakeCamera('rumble', 0.035, 260);
     });
@@ -5048,7 +5103,7 @@ export class BoardView {
   private thumpFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj || obj.state.dead) return;
-    this.sound('thud', { volume: 0.7 });
+    this.sound('knockdown');
     const ground = this.feet(obj);
     this.dust(ground, 12, 1.2);
     this.effects.ring(ground, this.dustColors(ground)[2]!, 0.2, HEX_SIZE * 0.8, { life: 0.4, opacity: 0.6 });
@@ -5062,6 +5117,7 @@ export class BoardView {
   private slipFx(obj: UnitObj): void {
     const foes = this.beside(obj, false);
     if (foes.length === 0) return;
+    this.sound('whoosh-trait');
     // Along the bottom, not over the unit: a verdict there would cover the afterimages.
     this.rolls.addVerdict({ text: 'Slips away', detail: 'Slippery: no free hack', on: [obj.id], tone: 'neutral' }, this.now, 'bottom');
     const was = obj.group.position.clone();
@@ -5107,6 +5163,7 @@ export class BoardView {
   private dumbFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj) return;
+    this.sound('dumb');
     // Beside its head, clear of the dice card that sits over it.
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     const chest = this.chest(obj);
@@ -5122,6 +5179,7 @@ export class BoardView {
   private defectFx(id: string, to: Owner): void {
     const obj = this.units.get(id);
     if (!obj) return;
+    this.sound('defect');
     const was = OWNER_COLORS[to === 0 ? 1 : 0];
     const now = OWNER_COLORS[to];
     const ground = this.feet(obj);
@@ -5168,6 +5226,7 @@ export class BoardView {
   private blinkUnit(obj: UnitObj): void {
     if (obj.state.dead) return; // finished off before it landed; the death has its own
     obj.blink = { start: this.now, end: this.now + BLINKS * BLINK_MS };
+    this.sound('dizzy');
   }
 
   /**
@@ -5178,10 +5237,12 @@ export class BoardView {
    */
   private killFx(obj: UnitObj, gruesome: boolean, shakenIds: string[], killerId: string | null = null, ranged = false): void {
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.035);
+    // One that goes over the edge or into lava is heard going (see lavaSplash); the rest cry out.
+    if (obj.pushedOff) this.sound('pushed-off');
+    else if (!obj.intoLava) this.voice(obj, 'death');
+    if (gruesome) this.sound('gruesome-kill');
+    if (gruesome && shakenIds.length > 0) this.sound('dread-wave');
     this.effects.ring(ground, 0xffffff, 0.2, 1.1, { life: 0.5, opacity: 0.85, additive: true });
-    // Big things die deeper.
-    this.sound('death', { rate: obj.traits?.big ? 0.75 : 1 });
-    if (gruesome) this.sound('gore');
     if (!gruesome) {
       if (killerId) this.hitStop(IMPACT_STOP_MS, [obj.id]);
       // The camera closed in on this one: let the fall play out slowly in its close-up.
@@ -5315,6 +5376,7 @@ export class BoardView {
     for (let b = 0; b < DREAD_BEATS; b++) {
       const strength = (b + 1) / DREAD_BEATS;
       this.at((b * ms) / DREAD_BEATS, () => {
+        this.sound('heartbeat');
         this.effects.ring(feet, DREAD_COLOR, HEX_SIZE * (1.5 + 0.4 * strength), 0.25, {
           life: (ms / DREAD_BEATS / 1000) * 0.9,
           opacity: 0.5 + 0.4 * strength,
@@ -5497,6 +5559,7 @@ export class BoardView {
   private releaseWisp(obj: UnitObj): void {
     const ghost = this.ghost(obj, obj.animator.base, WISP_COLOR);
     if (!ghost) return;
+    this.sound('ghost-rise');
     const { root, mesh, mat, map } = ghost;
     const y0 = root.position.y;
     const { x: sx, y: sy } = obj.sprite.scale;
@@ -5520,6 +5583,7 @@ export class BoardView {
   /** A body hitting lava: a flash ring, embers flung up and a puff of dark smoke. */
   private lavaSplash(at: THREE.Vector3): void {
     this.effects.ring(at.clone().setY(at.y + 0.02), 0xff8a2a, 0.1, HEX_SIZE * 0.9, { life: 0.5, additive: true });
+    this.sound('lava-sink');
     this.effects.burst({
       at: at.clone().setY(at.y + 0.05),
       count: 26,
@@ -5558,9 +5622,9 @@ export class BoardView {
   private armorFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj) return;
+    this.sound('armor-clang');
     this.hitStop(IMPACT_STOP_MS, [id]);
     this.flashUnit(id, 0.35);
-    this.sound('armor');
     const chest = this.chest(obj);
     this.effects.icon('shield', chest, 0.5, { life: 0.45, color: STEEL });
     this.effects.burst({
@@ -5582,9 +5646,9 @@ export class BoardView {
   private toughFx(id: string): void {
     const obj = this.units.get(id);
     if (!obj) return;
+    this.sound('tough-save');
     this.hitStop(IMPACT_STOP_MS, [id]);
     this.flashUnit(id, 0.5);
-    this.sound('grunt');
     const chest = this.chest(obj);
     const ground = obj.group.position.clone().setY(this.groundY(obj) + 0.04);
     this.effects.ring(ground, GOLD, 0.6, 0.35, { life: 0.35, opacity: 0.95, additive: true });
@@ -5612,6 +5676,7 @@ export class BoardView {
 
   /** 9a–9b. Where a shot ends: a spark in its target, a flick of dust past it, or chips off the cover. */
   private shotFx(at: THREE.Vector3, ending: ShotEnding): void {
+    this.sound(ending === 'hit' ? 'arrow-hit' : ending === 'cover' ? 'arrow-cover' : 'arrow-miss');
     if (ending === 'hit') {
       this.effects.burst({
         at,
@@ -5666,7 +5731,6 @@ export class BoardView {
     const a = this.units.get(attackerId);
     if (!g || !a) return;
     this.hitStop(IMPACT_STOP_MS, [attackerId]);
-    this.sound('clang');
     const at = this.contact(g, a);
     this.effects.icon('arc', at, 0.85, {
       life: 0.4,
@@ -5702,7 +5766,6 @@ export class BoardView {
   /** Make a pick the player didn't make plain: flash, a swelling ring and a glow in its side's colour. */
   private markOpponentPick(id: string): void {
     this.flashPick(id);
-    this.sound('select');
     const obj = this.units.get(id);
     if (!obj) return;
     obj.pulse = { start: this.now, end: this.now + OPPONENT_PICK_PULSE_MS };
@@ -5746,6 +5809,7 @@ export class BoardView {
     this.stepKeyPan(Math.min(rawDt, 0.1));
     this.clampCameraTarget();
     this.controls.update();
+    this.followPitch();
 
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
@@ -5780,7 +5844,7 @@ export class BoardView {
     const roll = this.rollAngle();
     this.camera.position.add(shake);
     this.camera.rotateZ(roll);
-    this.backdrop.update(this.camera, lavaTime);
+    this.backdrop.update(this.camera);
     this.renderer.render(this.scene, this.camera);
     this.camera.rotateZ(-roll);
     this.camera.position.sub(shake);
@@ -5962,7 +6026,7 @@ export class BoardView {
   }
 
   /**
-   * Set the opening shot, at the fixed viewing angle: the pivot on the middle of
+   * Set the opening shot, at its own viewing angle: the pivot on the middle of
    * the deployed units and close enough in that they fill the view (see
    * {@link startView}), falling back to the whole table when nothing is deployed
    * (the editor). The player can still pull out past the table — that wider
@@ -5976,13 +6040,12 @@ export class BoardView {
     const span = Math.max(spanX, spanZ);
     this.camera.position.set(0, span * 0.95, spanZ * 0.62 + 3);
     this.controls.target.set(0, 0, 0);
-    if (this.pitchOverride !== null) setPolar(this.camera.position, this.controls.target, this.pitchOverride);
     this.standBehindHome(state);
     const table = this.camera.position.length();
     this.controls.minDistance = 3;
     this.controls.maxDistance = table * 1.8;
     // Swing the same viewing angle onto the units: only the pivot and the
-    // distance move, so the board is never seen from an angle it wasn't built for.
+    // distance move, so every match opens at the same angle.
     const living = state.units.filter((u) => !u.dead);
     const points = living.map((u) => this.unitWorld(u.pos));
     // The cutouts aren't loaded yet, so a flyer's hover and a Big unit's height are taken from its traits.
@@ -5998,9 +6061,7 @@ export class BoardView {
       this.controls.target.copy(start.target);
       this.camera.position.copy(start.target).addScaledVector(dir, start.dist);
     }
-    // Lock the pitch to this angle: the player can turn around the table, but
-    // not tip the view up or down.
-    this.lockPitch(Math.acos(this.camera.position.clone().sub(this.controls.target).normalize().y));
+    this.followPitch();
     this.homeDist = start ? start.dist : table;
     this.playerView = { ...this.currentView(), dist: this.homeDist };
     this.opening = start ? { points, head, ...start } : null;

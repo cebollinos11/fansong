@@ -65,6 +65,8 @@ export interface RoomSnapshot {
   mode: GameMode;
   /** The host's round limit / target score; absent (also in older snapshots) = mode defaults. */
   limits?: GameLimits;
+  /** Extract the golden Pig: the seat the host has escorting; absent = seat 0. */
+  escort?: Owner;
   picks: [ArmyPick, ArmyPick];
   game: { setup: MatchSetup; state: GameState } | null;
 }
@@ -97,7 +99,7 @@ export function customMapError(mapId: string, map: MapDef): string | null {
  * annihilation, (outside kill-the-king) Kings and — in the modes that need no
  * objectives — the default map stay implicit.
  */
-export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks' | 'limits'>, seed: number): MatchSetup {
+export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks' | 'limits' | 'escort'>, seed: number): MatchSetup {
   const [a, b] = room.picks;
   const setup: MatchSetup = {
     presets: [a.preset, b.preset],
@@ -108,6 +110,7 @@ export function lobbySetup(room: Pick<RoomSnapshot, 'mapId' | 'mode' | 'picks' |
   if (room.mapId !== DEFAULT_MAP_ID || MODE_RULES[room.mode].requires) setup.mapId = room.mapId;
   if (room.mode !== 'annihilation') setup.mode = room.mode;
   if (room.mode === 'kill-the-king') setup.kings = [a.king, b.king];
+  if (room.mode === 'golden-pig' && room.escort) setup.escort = room.escort;
   if (room.limits && Object.keys(room.limits).length > 0) setup.limits = room.limits;
   return setup;
 }
@@ -222,6 +225,8 @@ export class RoomEngine {
         this.room.mode = msg.mode;
         if (msg.limits && Object.keys(msg.limits).length > 0) this.room.limits = msg.limits;
         else delete this.room.limits;
+        if (msg.escort) this.room.escort = msg.escort;
+        else delete this.room.escort;
         this.lobbyChanged();
         break;
       case 'ready':
@@ -280,13 +285,14 @@ export class RoomEngine {
 
   /** The lobby as the clients see it. */
   lobby(): Lobby {
-    const { mapId, customMap, mode, limits, picks } = this.room;
+    const { mapId, customMap, mode, limits, escort, picks } = this.room;
     const presence = this.presence();
     return {
       mapId,
       ...(customMap ? { map: customMap } : {}),
       mode,
       ...(limits ? { limits } : {}),
+      ...(escort ? { escort } : {}),
       seats: [
         { ...picks[0], present: presence[0], ready: this.ready[0] },
         { ...picks[1], present: presence[1], ready: this.ready[1] },

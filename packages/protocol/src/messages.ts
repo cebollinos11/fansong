@@ -41,8 +41,8 @@ export const setArmyMessageSchema = z
   .strict();
 
 /**
- * Lobby, host only: pick the map, the game mode and its round limit / target
- * score. `mapId` names a built-in map, or — with `map` — the host's own
+ * Lobby, host only: pick the map, the game mode, its round limit / target
+ * score and — for the golden Pig — which seat escorts it (default the host's). `mapId` names a built-in map, or — with `map` — the host's own
  * editor-made map, which travels whole (its `id` must equal `mapId`).
  */
 export const setMapMessageSchema = z
@@ -52,6 +52,7 @@ export const setMapMessageSchema = z
     map: wireMapSchema.optional(),
     mode: gameModeSchema,
     limits: gameLimitsSchema.optional(),
+    escort: ownerSchema.optional(),
   })
   .strict();
 
@@ -121,6 +122,8 @@ export const lobbySchema = z
     map: wireMapSchema.optional(),
     mode: gameModeSchema,
     limits: gameLimitsSchema.optional(),
+    /** Extract the golden Pig: the seat escorting the Pig; absent = seat 0. */
+    escort: ownerSchema.optional(),
     seats: z.tuple([lobbySeatSchema, lobbySeatSchema]),
     problem: z.string().nullable(),
   })

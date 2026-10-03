@@ -155,7 +155,7 @@ export function validateMap(
 /**
  * The game modes a map can host: every mode whose objectives it provides,
  * provided the map as a whole validates (an invalid map supports nothing).
- * Annihilation and kill-the-king need no objectives, so every valid map hosts them.
+ * Annihilation, kill-the-king and the golden Pig need no objectives, so every valid map hosts them.
  */
 export function supportedModes(map: MapDef, limits: MapLimits = MAP_LIMITS): GameMode[] {
   if (!validateMap(map, undefined, limits).ok) return [];
@@ -167,6 +167,7 @@ function missingObjective(map: MapDef, mode: GameMode): string | undefined {
   switch (mode) {
     case 'annihilation':
     case 'kill-the-king':
+    case 'golden-pig':
       return undefined;
     case 'capture-the-flag':
       return map.objectives.flags ? undefined : 'flag bases';

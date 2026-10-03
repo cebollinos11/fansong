@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DEFAULT_MAP_ID, defaultKing, getMap, PRESET_IDS, warbandCost } from '@fansong/content';
+import { DEFAULT_MAP_ID, defaultKing, defaultPigRounds, getMap, PRESET_IDS, warbandCost } from '@fansong/content';
 import type { GameLimits, Owner } from '@fansong/engine';
 import type { Lobby } from '@fansong/protocol';
 import type { OnlineRoom } from '../game/OnlineRoom.js';
@@ -8,7 +8,7 @@ import { choiceWarband, playableArmies } from '../game/armies.js';
 import { roomLink } from '../net/server.js';
 import { MODE_LABELS } from './editorView.js';
 import { MapThumb } from './Picker.js';
-import { GameModePicker, LimitsPicker, MapPicker, modeFor, Roster, sideLabel, WarbandPicker } from './SetupScreen.js';
+import { EscortPicker, GameModePicker, LimitsPicker, MapPicker, modeFor, Roster, sideLabel, WarbandPicker } from './SetupScreen.js';
 import { limitsForMode, type LimitsByMode } from '../game/limits.js';
 
 interface Props {
@@ -36,6 +36,10 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
   const host = seat === 0;
   const map = lobby.map ?? getMap(lobby.mapId) ?? getMap(DEFAULT_MAP_ID)!;
   const kingMode = lobby.mode === 'kill-the-king';
+  const pigMode = lobby.mode === 'golden-pig';
+  const escort: Owner = lobby.escort ?? 0;
+  const escortLabels: [string, string] = seat === 0 ? ['You', 'Opponent'] : ['Opponent (host)', 'You'];
+  const pigRounds = pigMode ? defaultPigRounds(map, escort) : undefined;
   // Before this player picks anything here, show the preset the server gave them.
   const value = choice ?? (PRESET_IDS.includes(me.preset) ? me.preset : PRESET_IDS[0]!);
 
@@ -96,16 +100,20 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
                 const custom = getMap(id) ? undefined : customMaps.find((m) => m.id === id);
                 const next = getMap(id) ?? custom ?? map;
                 const mode = modeFor(next, lobby.mode);
-                room.setMap(next.id, mode, limitsFor(mode), custom);
+                room.setMap(next.id, mode, limitsFor(mode), custom, escort);
               }}
             />
-            <GameModePicker map={map} value={lobby.mode} onChange={(mode) => room.setMap(map.id, mode, limitsFor(mode))} />
+            <GameModePicker map={map} value={lobby.mode} onChange={(mode) => room.setMap(map.id, mode, limitsFor(mode), undefined, escort)} />
+            {pigMode ? (
+              <EscortPicker value={escort} labels={escortLabels} onChange={(next) => room.setMap(map.id, lobby.mode, lobby.limits, undefined, next)} />
+            ) : null}
             <LimitsPicker
               mode={lobby.mode}
               value={lobby.limits}
+              defaultRounds={pigRounds}
               onChange={(next) => {
                 setLimitsByMode((all) => ({ ...all, [lobby.mode]: next }));
-                room.setMap(map.id, lobby.mode, next);
+                room.setMap(map.id, lobby.mode, next, undefined, escort);
               }}
             />
           </>
@@ -120,7 +128,8 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
               {map.width}×{map.height} · the host picks the map and game mode
             </p>
             {kingMode ? <p className="hint">Pick your King in your roster above.</p> : null}
-            <LimitsPicker mode={lobby.mode} value={lobby.limits} onChange={() => undefined} disabled />
+            {pigMode ? <EscortPicker value={escort} labels={escortLabels} onChange={() => undefined} disabled /> : null}
+            <LimitsPicker mode={lobby.mode} value={lobby.limits} defaultRounds={pigRounds} onChange={() => undefined} disabled />
           </div>
         )}
 

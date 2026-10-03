@@ -3,7 +3,7 @@ import type { GameMode, GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { zoneTallies } from '../src/game/roundScoring.js';
 import { ZONE_COLORS } from '../src/ui/editorView.js';
-import { modeHud, modeMarkers, modeMarkingsKey, modeOverlays, unitBadges, zoneScore } from '../src/ui/modeView.js';
+import { modeHud, modeMarkers, modeMarkingsKey, modeOverlays, PIG_GOAL_COLOR, unitBadges, zoneScore } from '../src/ui/modeView.js';
 
 function match(mode: GameMode | undefined, mapId?: string): GameState {
   const setup: MatchSetup = { presets: ['iron-wardens-medium', 'ashfang-raiders-medium'], seats: ['ai', 'ai'], seed: 5 };
@@ -173,5 +173,42 @@ describe('capture-the-flag', () => {
     expect(modeHud(s)!.lines[1]).toBe('P1 flag: dropped at (4, 3)');
     expect(modeMarkers(s)).toContainEqual({ kind: 'flag', owner: 1, cell: { x: 4, y: 3 } });
     expect(unitBadges(s)).toEqual({});
+  });
+});
+
+describe('extract the golden Pig', () => {
+  const pigMatch = (escort?: 0 | 1): GameState =>
+    createMatchFromPresets({
+      presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
+      seats: ['ai', 'ai'],
+      seed: 5,
+      mapId: 'old-forest',
+      mode: 'golden-pig',
+      ...(escort === undefined ? {} : { escort }),
+    });
+
+  it('shows the goal with its round limit, who escorts, and how the Pig fares', () => {
+    const s = pigMatch(1);
+    const hud = modeHud(s)!;
+    expect(hud.label).toBe('Extract the golden Pig');
+    expect(hud.goal).toBe(`Get the golden Pig into the enemy camp · ends after round ${s.limits!.roundLimit}`);
+    expect(hud.scores).toBeNull();
+    expect(hud.lines).toEqual(['P1 escorts the Pig', 'P0 wins by killing it, or when time runs out']);
+    const pig = s.units.find((u) => u.id === s.mode!.pig!.unitId)!;
+    pig.knockedDown = true;
+    expect(modeHud(s)!.lines[0]).toBe('P1 escorts the Pig (knocked down)');
+  });
+
+  it('tints the goal zone, crowns the living Pig and redraws when it falls', () => {
+    const s = pigMatch();
+    const id = s.mode!.pig!.unitId;
+    expect(modeOverlays(s)).toEqual([expect.objectContaining({ cells: s.mode!.objectives.extraction, color: PIG_GOAL_COLOR })]);
+    expect(modeMarkers(s)).toEqual([]);
+    expect(unitBadges(s)).toEqual({ [id]: 'crown' });
+    const before = modeMarkingsKey(s);
+    s.units.find((u) => u.id === id)!.dead = true;
+    expect(unitBadges(s)).toEqual({});
+    expect(modeMarkingsKey(s)).not.toBe(before);
+    expect(modeHud(s)!.lines[0]).toBe('P0 escorts the Pig (fallen)');
   });
 });

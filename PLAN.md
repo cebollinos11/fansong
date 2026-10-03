@@ -249,6 +249,17 @@ no rules — remove three.js and the game still runs in the CLI.
      round 12 with an annihilation-style tiebreak — and **capture-the-flag**
      (pick up / drop / return / capture, a capture wins). New events:
      `ScoreChanged`, `FlagPickedUp/Dropped/Returned/Captured`, `GameOver.reason`.
+   - **Extract the golden Pig** (`golden-pig`, added later) — the first
+     asymmetric mode: one side escorts a free, Slow, Tough Pig into the enemy
+     deploy zone (it wins by ending an activation there on its feet); the other
+     kills it or runs out a round limit sized to the map (`defaultPigRounds`).
+     It needs no map data — the goal is `map.deployZones` — so every map hosts
+     it. `ModeState.pig`, `ModeObjectives.extraction`, and the `pig` /
+     `extracted` game-over reasons are all optional additions, so the `Replay`
+     version is unchanged. The AI reuses its King plan (the Pig is the escort's
+     "King"). In self-play the escort wins about 41% of games, mostly losing the
+     Pig in melee rather than to the clock; Rocky Pass and Ember Rift are the
+     hardest crossings (about 25%).
    - **AI** — `chooseCommand` pursues each objective (take and hold zones, fetch
      and carry flags, hunt carriers, guard its own King, focus the enemy's) and
      values high ground and cover. A self-play matrix plays every built-in map ×

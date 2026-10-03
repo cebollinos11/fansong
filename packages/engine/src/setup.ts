@@ -65,6 +65,11 @@ export interface UnitSpec {
    * mode). Ignored in every other mode.
    */
   king?: boolean;
+  /**
+   * Extract the golden Pig: this unit is the Pig, and its owner the escort
+   * (exactly one across both warbands in that mode). Ignored in every other mode.
+   */
+  pig?: boolean;
   /** Cosmetic: the unit this one is drawn as (see {@link Unit.look}). */
   look?: string;
   /** Cosmetic: a colour blended into its sprite (see {@link Unit.tint}). */
@@ -150,6 +155,13 @@ function kingId(specs: UnitSpec[], owner: Owner): string {
   return `p${owner}u${idx[0]}`;
 }
 
+/** The one unit flagged `pig` across both warbands, and its owner; throws unless exactly one is. */
+function pigIn(warbands: [UnitSpec[], UnitSpec[]]): { unitId: string; escort: Owner } {
+  const found = warbands.flatMap((specs, owner) => specs.flatMap((s, i) => (s.pig ? [{ unitId: `p${owner}u${i}`, escort: owner as Owner }] : [])));
+  if (found.length !== 1) throw new Error(`golden-pig: exactly one unit must be the Pig (got ${found.length})`);
+  return found[0]!;
+}
+
 /**
  * Copy a sparse terrain map, dropping default entries (elevation 0, no feature)
  * and sorting keys so equal terrain always serialises identically. Returns
@@ -211,6 +223,7 @@ export function createGame(config: GameConfig): GameState {
   // Like terrain, mode state is attached only when there is some.
   const mode = createModeState(config.mode, config.objectives);
   if (mode?.mode === 'kill-the-king') mode.kings = [kingId(config.warbands[0], 0), kingId(config.warbands[1], 1)];
+  if (mode?.mode === 'golden-pig') mode.pig = pigIn(config.warbands);
   if (mode) state.mode = mode;
   const limits = normalizeLimits(config.mode, config.limits);
   if (limits) state.limits = limits;

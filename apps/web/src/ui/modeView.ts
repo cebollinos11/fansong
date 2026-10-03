@@ -1,6 +1,7 @@
 import {
   flagAtBase,
   gameMode,
+  pigOf,
   roundLimitOf,
   scoringZones,
   targetScoreOf,
@@ -23,13 +24,14 @@ export interface ModeHud {
   goal: string;
   /** Player 0's and player 1's score, in the modes played for points; else null. */
   scores: [number, number] | null;
-  /** Status lines: Kings, zone holders, where each flag is. */
+  /** Status lines: Kings, zone holders, where each flag is, how the Pig fares. */
   lines: string[];
 }
 
 const GOALS = {
   'kill-the-king': 'Kill the enemy King',
   'capture-the-flag': 'Carry the enemy flag to your base',
+  'golden-pig': 'Get the golden Pig into the enemy camp',
 } as const;
 
 const holderText = (holder: Owner | undefined): string => (holder === undefined ? '—' : `P${holder}`);
@@ -71,6 +73,15 @@ export function modeHud(state: GameState): ModeHud | null {
     return { label, goal: GOALS[m.mode] + limitText(state), scores: null, lines };
   }
 
+  if (m.mode === 'golden-pig') {
+    const pig = m.pig ? unitById(state, m.pig.unitId) : undefined;
+    if (m.pig && pig) {
+      lines.push(`P${m.pig.escort} escorts the Pig${pig.dead ? ' (fallen)' : pig.knockedDown ? ' (knocked down)' : ''}`);
+      lines.push(`P${m.pig.escort === 0 ? 1 : 0} wins by killing it, or when time runs out`);
+    }
+    return { label, goal: GOALS[m.mode] + limitText(state), scores: null, lines };
+  }
+
   const zones = scoringZones(state);
   if (m.mode === 'king-of-the-hill') {
     if (zones[0]) lines.push(`Hill: ${holderText(zoneController(state, zones[0]))}`);
@@ -105,7 +116,7 @@ export function zoneScore(state: GameState, tally: ZoneTally, names: readonly [s
 /**
  * Objective zones tinted on the board: the hill, or conquest zones A/B/C, each
  * rimmed in its holder's colour while one side has more units standing in it;
- * flag bases as faint small hexes.
+ * flag bases as faint small hexes; the golden Pig's goal in gold.
  */
 export function modeOverlays(state: GameState): HexOverlay[] {
   const m = state.mode;
@@ -124,11 +135,17 @@ export function modeOverlays(state: GameState): HexOverlay[] {
       out.push({ cells: zone.slice(), color: ZONE_COLORS.conquest[i]!, opacity: 0.4, scale: 0.8 }),
     );
   }
+  if (m.objectives.extraction) {
+    out.push({ cells: m.objectives.extraction.slice(), color: PIG_GOAL_COLOR, opacity: 0.35, scale: 0.8 });
+  }
   m.objectives.flags?.forEach((base, p) =>
     out.push({ cells: [base], color: ZONE_COLORS.deploy[p]!, opacity: 0.45, scale: 0.5 }),
   );
   return out;
 }
+
+/** The tint of the golden Pig's goal zone. */
+export const PIG_GOAL_COLOR = 0xffd700;
 
 /** Flags lying on a hex (at base or dropped); a carried flag is a badge on its carrier instead. */
 export function modeMarkers(state: GameState): BoardMarker[] {
@@ -142,7 +159,7 @@ export function modeMarkers(state: GameState): BoardMarker[] {
 }
 
 /**
- * Unit badges: a crown over each living King, a flag over each carrier (the
+ * Unit badges: a crown over each living King and the living golden Pig, a flag over each carrier (the
  * flag's owner colour), and — regardless of game mode — a shield over any
  * living unit currently holding a Guard stance. The ring already tints for
  * selection/attack-target state and can't be trusted to show Guard on its own
@@ -158,6 +175,8 @@ export function unitBadges(state: GameState): Record<string, UnitBadge> {
   m?.kings?.forEach((id) => {
     if (unitById(state, id)?.dead === false) out[id] = 'crown';
   });
+  const pig = pigOf(state);
+  if (pig && unitById(state, pig.unitId)?.dead === false) out[pig.unitId] = 'crown';
   m?.flags?.forEach((flag, p) => {
     if (flag.carrier) out[flag.carrier] = p === 0 ? 'flag-0' : 'flag-1';
   });
@@ -192,5 +211,7 @@ export function modeMarkingsKey(state: GameState): string {
   const flags = m.flags?.map((f) => `${cell(f.at)}:${f.carrier ?? ''}`).join('|') ?? '';
   const kings = m.kings?.map((id) => `${id}:${unitById(state, id)?.dead ? 1 : 0}`).join('|') ?? '';
   const holders = zoneTallies(state).map((z) => z.holder ?? '-').join('');
-  return `${m.mode};${flags};${kings};${holders};${guards};${inspired}`;
+  // Appended only in its own mode, so the other modes' keys are unchanged.
+  const pig = m.pig ? `;pig:${m.pig.unitId}:${unitById(state, m.pig.unitId)?.dead ? 1 : 0}` : '';
+  return `${m.mode};${flags};${kings};${holders};${guards};${inspired}${pig}`;
 }

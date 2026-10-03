@@ -4,6 +4,7 @@ import {
   DEFAULT_BOARD,
   DEFAULT_MAP_ID,
   defaultKing,
+  defaultPigRounds,
   getMap,
   listMaps,
   PRESET_IDS,
@@ -17,7 +18,7 @@ import {
   type MatchSetup,
   type Warband,
 } from '@fansong/content';
-import { GAME_MODES, LIMIT_RANGE, MODE_RULES, ROUND_LIMIT, type GameLimits, type GameMode } from '@fansong/engine';
+import { GAME_MODES, LIMIT_RANGE, MODE_RULES, ROUND_LIMIT, type GameLimits, type GameMode, type Owner } from '@fansong/engine';
 import { normalizeRoomCode, ROOM_CODE_LENGTH } from '@fansong/protocol';
 import type { Launch } from '../game/launch.js';
 import { MODE_LABELS } from './editorView.js';
@@ -51,6 +52,8 @@ export interface GameChoice {
   mode: GameMode;
   /** Index into each preset's units of its King; only used in kill-the-king. */
   kings?: [number, number];
+  /** The seat escorting the Pig; only used in the golden Pig mode. */
+  escort?: Owner;
   /** Custom round limit / target score for the chosen mode. */
   limits?: GameLimits;
 }
@@ -58,7 +61,8 @@ export interface GameChoice {
 /**
  * The local launch for the chosen options. The default map and annihilation are
  * left implicit (no `mapId`/`mode`) so default setups stay byte-identical to
- * pre-map ones; Kings are only carried in kill-the-king.
+ * pre-map ones; Kings are only carried in kill-the-king, and the escort (when
+ * it isn't player 0) in the golden Pig mode.
  *
  * `sides` are preset ids or saved-army choices (`army:<id>`, looked up in
  * `armies`). When either side is a saved army both rosters are written out as
@@ -82,6 +86,7 @@ export function launchFor(
   if (mapId !== DEFAULT_MAP_ID || MODE_RULES[game.mode].requires) setup.mapId = mapId;
   if (game.mode !== 'annihilation') setup.mode = game.mode;
   if (kings) setup.kings = kings;
+  if (game.mode === 'golden-pig' && game.escort) setup.escort = game.escort;
   const limits = limitsForMode(game.mode, game.limits);
   if (limits) setup.limits = limits;
   return { kind: 'local', setup };
@@ -153,10 +158,11 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
     };
     return [king(0, p0), king(1, p1)];
   });
+  const [escort, setEscort] = useState<Owner>(saved.escort ?? initial.escort ?? 0);
   const [limitsByMode, setLimitsByMode] = useState<LimitsByMode>(() => saved.limits ?? {});
   useEffect(() => {
-    saveSetupPrefs(browserStorage(), { mode, sides: [p0, p1], mapId, gameMode: wantedMode, kings, limits: limitsByMode });
-  }, [mode, p0, p1, mapId, wantedMode, kings, limitsByMode]);
+    saveSetupPrefs(browserStorage(), { mode, sides: [p0, p1], mapId, gameMode: wantedMode, kings, escort, limits: limitsByMode });
+  }, [mode, p0, p1, mapId, wantedMode, kings, escort, limitsByMode]);
   // The map played and a mode it supports.
   const playedMap = getMap(mapId) ?? customMaps.find((m) => m.id === mapId) ?? getMap(DEFAULT_MAP_ID)!;
   const gameMode = modeFor(playedMap, wantedMode);
@@ -168,7 +174,7 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
   const pickKing = (owner: 0 | 1, i: number) => setKings((k) => (owner === 0 ? [i, k[1]] : [k[0], i]));
   const localMode: LocalMode = mode === 'online' ? 'hotseat' : mode;
   const limits = limitsByMode[gameMode];
-  const launch = launchFor(localMode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMap.id, { mode: gameMode, kings, limits }, armies);
+  const launch = launchFor(localMode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMap.id, { mode: gameMode, kings, escort, limits }, armies);
   const problem = launchProblem(launch, customMapLookup(browserStorage()));
   const start = () => onStart(launch);
 
@@ -222,9 +228,14 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
 
             <GameModePicker map={playedMap} value={gameMode} onChange={setWantedMode} />
 
+            {gameMode === 'golden-pig' ? (
+              <EscortPicker value={escort} labels={mode === 'vsAI' ? ['You (P0)', 'AI (P1)'] : ['P0', 'P1']} onChange={setEscort} />
+            ) : null}
+
             <LimitsPicker
               mode={gameMode}
               value={limits}
+              defaultRounds={gameMode === 'golden-pig' ? defaultPigRounds(playedMap, escort) : undefined}
               onChange={(next) => setLimitsByMode((all) => ({ ...all, [gameMode]: next }))}
             />
 
@@ -423,16 +434,20 @@ export function LimitsPicker({
   value,
   onChange,
   disabled = false,
+  defaultRounds,
 }: {
   mode: GameMode;
   value: GameLimits | undefined;
   onChange: (limits: GameLimits | undefined) => void;
+  /** The mode's default round limit when it depends on the map (the golden Pig's). */
+  defaultRounds?: number;
   /** Online guests see the host's choice but can't change it. */
   disabled?: boolean;
 }): JSX.Element {
   const rules = MODE_RULES[mode];
   const unlimited = value?.roundLimit === null;
-  const rounds = value?.roundLimit ?? rules.roundLimit;
+  const baseRounds = defaultRounds ?? rules.roundLimit;
+  const rounds = value?.roundLimit ?? baseRounds;
   const target = value?.targetScore ?? rules.targetScore;
   const emit = (next: GameLimits): void => onChange(Object.keys(next).length > 0 ? next : undefined);
   const parse = (text: string): number | undefined => {
@@ -468,7 +483,7 @@ export function LimitsPicker({
           type="checkbox"
           checked={unlimited}
           disabled={disabled}
-          onChange={(e) => emit({ ...value, roundLimit: e.target.checked ? null : (rules.roundLimit ?? ROUND_LIMIT) })}
+          onChange={(e) => emit({ ...value, roundLimit: e.target.checked ? null : (baseRounds ?? ROUND_LIMIT) })}
         />
         No round limit
       </label>
@@ -489,13 +504,46 @@ export function LimitsPicker({
       <p className="hint">
         {unlimited || rounds === undefined
           ? 'No round cap.'
-          : `The game is called after round ${rounds}: most ${target !== undefined ? 'points' : 'units left'} wins.`}
+          : mode === 'golden-pig'
+            ? `The game is called after round ${rounds}: the defender wins if the Pig isn't home by then.`
+            : `The game is called after round ${rounds}: most ${target !== undefined ? 'points' : 'units left'} wins.`}
       </p>
       {value && !disabled ? (
         <button type="button" className="ghost" onClick={() => onChange(undefined)}>
           Reset to defaults
         </button>
       ) : null}
+    </fieldset>
+  );
+}
+
+/** Extract the golden Pig: which seat escorts the Pig (the other defends). */
+export function EscortPicker({
+  value,
+  labels,
+  onChange,
+  disabled = false,
+}: {
+  value: Owner;
+  /** What to call seat 0 and seat 1. */
+  labels: readonly [string, string];
+  onChange: (escort: Owner) => void;
+  /** Online guests see the host's choice but can't change it. */
+  disabled?: boolean;
+}): JSX.Element {
+  return (
+    <fieldset className="mode-picker">
+      <legend>Escort</legend>
+      {([0, 1] as const).map((p) => (
+        <label key={p}>
+          <input type="radio" checked={value === p} disabled={disabled} onChange={() => onChange(p)} />
+          {labels[p]}
+        </label>
+      ))}
+      <p className="hint">
+        The escort gets the golden Pig for free and must walk it into the enemy camp; the other side wins by killing
+        it or running out the clock.
+      </p>
     </fieldset>
   );
 }
