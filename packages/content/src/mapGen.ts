@@ -4,21 +4,37 @@ import type { MapDef, MapHex } from './map.js';
 import { MAP_LIMITS, validateMap } from './mapValidate.js';
 
 /**
- * Random map generator. {@link generateRandomMap} builds a point-symmetric
- * battlefield (each hex mirrors the hex at `(w-1-x, h-1-y)`, the symmetry the
- * built-in maps use, so neither side is favoured) that hosts every game mode:
- * home-edge deploy zones, flag bases on the home edges, a central hill that
- * doubles as the middle conquest zone, and two mirrored flank conquest zones.
+ * Random map generator. {@link generateRandomMap} builds a battlefield that
+ * hosts every game mode: home-edge deploy zones, a flag base 3–5 hexes in from
+ * each home edge, a central hill that doubles as the middle conquest zone, and
+ * two flank conquest zones, one in each half.
+ *
+ * A symmetric map (the default) is point-symmetric: each hex mirrors the hex at
+ * `(w-1-x, h-1-y)`, the symmetry the built-in maps use, so neither side is
+ * favoured. An asymmetric one places each side's terrain and objectives
+ * independently (deploy zones stay equal-sized home-edge columns).
  *
  * Terrain is scattered hills, forest clumps, rock outcrops, small buildings and
  * the odd lava pool, kept off every deploy and objective hex. A layout whose
  * impassable terrain cuts the field apart is rerolled; as a last resort the
  * impassable features are dropped, so the result always passes `validateMap`.
- * The same `(width, height, seed)` always gives the same map.
+ * The same `(width, height, seed, symmetric)` always gives the same map.
  */
 
+export interface RandomMapOptions {
+  /** Mirror the map through its centre (default true). */
+  symmetric?: boolean;
+  /** Map name (default `Random <seed>`); the id is its slug. */
+  name?: string;
+}
+
+/** How far in from its home edge a flag base sits. */
+export const FLAG_EDGE_DISTANCE = { min: 3, max: 5 } as const;
+
+type Random = { next: () => number; int: (lo: number, hi: number) => number };
+
 /** Simple stateful wrapper over the engine's pure mulberry32 RNG. */
-function makeRandom(seed: number): { next: () => number; int: (lo: number, hi: number) => number } {
+function makeRandom(seed: number): Random {
   let state = seedRng(seed);
   const next = (): number => {
     const draw = rngNext(state);
@@ -33,21 +49,27 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 /** Rerolls attempted before falling back to a map without impassable terrain. */
 const MAX_ATTEMPTS = 12;
 
-export function generateRandomMap(width: number, height: number, seed: number, name = `Random ${seed}`): MapDef {
+export function generateRandomMap(
+  width: number,
+  height: number,
+  seed: number,
+  { symmetric = true, name = `Random ${seed}` }: RandomMapOptions = {},
+): MapDef {
   const w = clamp(Math.floor(width), MAP_LIMITS.minWidth, MAP_LIMITS.maxWidth);
   const h = clamp(Math.floor(height), MAP_LIMITS.minHeight, MAP_LIMITS.maxHeight);
-  const layout = objectiveLayout(w, h);
+  const layout = objectiveLayout(w, h, makeRandom(seed ^ 0x5bd1e995), symmetric);
+  const named = { ...layout.map, id: slugify(name), name };
   let attemptSeed = seed;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const map = { ...layout.map, id: slugify(name), name, hexes: randomTerrain(w, h, attemptSeed, layout.reserved) };
+    const map = { ...named, hexes: randomTerrain(w, h, attemptSeed, layout.reserved, symmetric) };
     if (validateMap(map).ok) return map;
     attemptSeed = (Math.imul(attemptSeed, 0x9e3779b1) + attempt + 1) | 0;
   }
   // Every reroll walled something off: keep the hills and forests, drop what blocks.
-  const open = randomTerrain(w, h, seed, layout.reserved).map((hex) =>
+  const open = randomTerrain(w, h, seed, layout.reserved, symmetric).map((hex) =>
     hex.feature === 'forest' ? hex : { elevation: hex.feature === 'lava' ? 0 : hex.elevation },
   );
-  return { ...layout.map, id: slugify(name), name, hexes: open };
+  return { ...named, hexes: open };
 }
 
 interface Layout {
@@ -57,8 +79,8 @@ interface Layout {
   reserved: Set<string>;
 }
 
-/** Deploy zones and the objectives for every mode, all point-symmetric. */
-function objectiveLayout(w: number, h: number): Layout {
+/** Deploy zones and the objectives for every mode; point-symmetric when `symmetric`. */
+function objectiveLayout(w: number, h: number, rnd: Random, symmetric: boolean): Layout {
   const mirror = (v: Vec): Vec => ({ x: w - 1 - v.x, y: h - 1 - v.y });
   const grid = makeHexGrid({ width: w, height: h, blocked: [] });
   const blob = (center: Vec, r: number): Vec[] => [center, ...grid.cellsWithin(center, r)];
@@ -70,26 +92,42 @@ function objectiveLayout(w: number, h: number): Layout {
   const deploy1 = deploy0.map(mirror);
   const deployKeys = new Set([...deploy0, ...deploy1].map(vecKey));
 
-  const flag0: Vec = { x: 0, y: Math.floor((h - 1) / 2) };
-  const flags: [Vec, Vec] = [flag0, mirror(flag0)];
+  // Flag bases 3–5 hexes in from the home edge, kept in their own half on narrow maps.
+  const flagFor = (): Vec => ({
+    x: Math.min(rnd.int(FLAG_EDGE_DISTANCE.min, FLAG_EDGE_DISTANCE.max), Math.floor((w - 2) / 2)),
+    y: h >= 8 ? rnd.int(3, h - 4) : Math.floor((h - 1) / 2),
+  });
+  const flag0 = flagFor();
+  const flags: [Vec, Vec] = [flag0, symmetric ? mirror(flag0) : mirror(flagFor())];
+  const flagKeys = new Set(flags.map(vecKey));
+  const free = (v: Vec) => !deployKeys.has(vecKey(v)) && !flagKeys.has(vecKey(v));
 
-  // The hill: a blob at the centre plus its mirror, clear of the deploy zones.
+  // The hill: a blob at the centre (plus its mirror, when symmetric).
   const small = Math.min(w, h) < 10;
-  const center: Vec = { x: Math.floor((w - 1) / 2), y: Math.floor((h - 1) / 2) };
-  const hill = dedupe([...blob(center, small ? 0 : 1), ...blob(mirror(center), small ? 0 : 1)]).filter(
-    (v) => !deployKeys.has(vecKey(v)),
-  );
+  const hillR = small ? 0 : 1;
+  const mid: Vec = { x: Math.floor((w - 1) / 2), y: Math.floor((h - 1) / 2) };
+  const hillCells = symmetric
+    ? [...blob(mid, hillR), ...blob(mirror(mid), hillR)]
+    : blob(small ? mid : { x: mid.x + rnd.int(-1, 1), y: mid.y + rnd.int(-1, 1) }, hillR);
+  let hill = dedupe(hillCells).filter(free);
+  if (hill.length === 0) hill = [mid];
   const hillKeys = new Set(hill.map(vecKey));
 
-  // Flank zone in the top half; its mirror sits strictly in the bottom half, so they're disjoint.
-  const flankCenter: Vec = { x: center.x, y: Math.max(0, Math.round(h * 0.18)) };
-  let flank = blob(flankCenter, small ? 1 : 2 - (h < 20 ? 1 : 0)).filter(
-    (v) => 2 * v.y < h - 1 && !deployKeys.has(vecKey(v)) && !hillKeys.has(vecKey(v)),
-  );
-  if (flank.length === 0) flank = [{ x: center.x, y: 0 }];
-  const conquest: [Vec[], Vec[], Vec[]] = [flank, hill.slice(), flank.map(mirror)];
+  // Flank zones: one strictly in the top half, one strictly in the bottom, so they're disjoint.
+  const flankR = small ? 1 : h < 20 ? 1 : 2;
+  const flank = (top: boolean): Vec[] => {
+    const y = Math.round(h * 0.18) + (symmetric ? 0 : rnd.int(-1, 1));
+    const x = symmetric ? mid.x : rnd.int(Math.floor(w / 3), Math.ceil((2 * w) / 3) - 1);
+    const c: Vec = top ? { x, y: Math.max(0, y) } : { x, y: Math.min(h - 1, h - 1 - y) };
+    const half = (v: Vec) => (top ? 2 * v.y < h - 1 : 2 * v.y > h - 1);
+    const zone = blob(c, flankR).filter((v) => half(v) && free(v) && !hillKeys.has(vecKey(v)));
+    return zone.length > 0 ? zone : [{ x: mid.x, y: top ? 0 : h - 1 }];
+  };
+  const top = flank(true);
+  const bottom = symmetric ? top.map(mirror) : flank(false);
+  const conquest: [Vec[], Vec[], Vec[]] = [top, hill.slice(), bottom];
 
-  const reserved = new Set([...deployKeys, ...flags.map(vecKey), ...hillKeys, ...[...flank, ...conquest[2]].map(vecKey)]);
+  const reserved = new Set([...deployKeys, ...flagKeys, ...hillKeys, ...[...top, ...bottom].map(vecKey)]);
   return {
     map: {
       id: 'random',
@@ -110,10 +148,10 @@ function dedupe(cells: Vec[]): Vec[] {
 }
 
 /**
- * Row-major random terrain, point-symmetric. Generated over the whole board,
- * then the first half (in row-major order) is copied onto its mirror.
+ * Row-major random terrain, generated over the whole board. When `symmetric`,
+ * the first half (in row-major order) is then copied onto its mirror.
  */
-function randomTerrain(w: number, h: number, seed: number, reserved: Set<string>): MapHex[] {
+function randomTerrain(w: number, h: number, seed: number, reserved: Set<string>, symmetric: boolean): MapHex[] {
   const rnd = makeRandom(seed);
   const grid = makeHexGrid({ width: w, height: h, blocked: [] });
   const elevation = new Array<number>(w * h).fill(0);
@@ -158,8 +196,7 @@ function randomTerrain(w: number, h: number, seed: number, reserved: Set<string>
 
   const hexes: MapHex[] = [];
   for (let i = 0; i < area; i++) {
-    // The second half mirrors the first.
-    const src = Math.min(i, area - 1 - i);
+    const src = symmetric ? Math.min(i, area - 1 - i) : i;
     const f = feature[src];
     const e = f === 'lava' ? 0 : elevation[src]!; // lava lies flat
     hexes.push(f === undefined ? { elevation: e } : { elevation: e, feature: f });

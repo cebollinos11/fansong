@@ -214,6 +214,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
   );
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
+  const [symmetric, setSymmetric] = useState(true);
   const [selected, setSelected] = useState<Vec | null>(null);
   const [toolId, setToolId] = useState<ToolId>('raise');
   const [level, setLevel] = useState(1);
@@ -269,7 +270,8 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
 
   /**
    * Clear the board and generate a random, valid map at the chosen size that
-   * hosts every game mode. One undo step, so Undo brings the old map back.
+   * hosts every game mode, mirrored through its centre when "Symmetric" is
+   * on. One undo step, so Undo brings the old map back.
    */
   const randomMap = (): void => {
     const w = clampMapSize(width, 'width');
@@ -278,7 +280,7 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
     setHeight(h);
     setSelected(null);
     const seed = Math.floor(Math.random() * 1_000_000);
-    setHistory((hist) => commitEdit(hist, generateRandomMap(w, h, seed)));
+    setHistory((hist) => commitEdit(hist, generateRandomMap(w, h, seed, { symmetric })));
   };
 
   /** Replace the edited map (load/import) — a fresh history, so undo can't cross maps. */
@@ -496,6 +498,10 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
               value={height}
               onChange={(e) => setHeight(parseInt(e.target.value, 10))}
             />
+          </label>
+          <label title="Mirror random maps through their centre, so neither side is favoured">
+            <input type="checkbox" checked={symmetric} onChange={(e) => setSymmetric(e.target.checked)} />
+            Symmetric
           </label>
           <button onClick={newMap}>New map</button>
           <button
