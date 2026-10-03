@@ -68,6 +68,17 @@ describe('setupMatch', () => {
     expect(renderRoster(state).match(/♛/g)).toHaveLength(2);
   });
 
+  it('golden-pig works on any map, with --escort picking the Pig\'s side', () => {
+    const flat = setupMatch(parseArgs(['--mode', 'golden-pig']));
+    expect(flat.state.mode?.pig?.escort).toBe(0);
+    expect(flat.label).toContain('golden-pig (P0 escorts)');
+    const { state } = setupMatch(parseArgs(['--mode', 'golden-pig', '--map', 'ember-rift', '--escort', '1']));
+    expect(state.mode?.pig?.escort).toBe(1);
+    expect(renderRoster(state).split('\n')[1]).toContain('★Golden Pig');
+    expect(() => parseArgs(['--escort', '2'])).toThrow(/--escort needs 0 or 1/);
+    expect(() => setupMatch(parseArgs(['--mode', 'conquest', '--escort', '1']))).toThrow(/--escort does not apply/);
+  });
+
   it('rejects unknown presets/maps and modes a map cannot host', () => {
     expect(() => setupMatch(parseArgs(['--map', 'atlantis']))).toThrow(/Unknown map "atlantis"/);
     expect(() => setupMatch(parseArgs(['--p0', 'nobody']))).toThrow(/Unknown preset/);

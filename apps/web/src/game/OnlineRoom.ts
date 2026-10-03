@@ -56,8 +56,8 @@ export class OnlineRoom {
    * target score. Pass `map` to send one of the host's custom maps to the room;
    * once it's there, naming its id alone keeps it.
    */
-  setMap(mapId: string, mode: GameMode, limits?: GameLimits, map?: MapDef): void {
-    this.sendRaw({ t: 'setMap', mapId, ...(map ? { map } : {}), mode, ...(limits ? { limits } : {}) });
+  setMap(mapId: string, mode: GameMode, limits?: GameLimits, map?: MapDef, escort?: Owner): void {
+    this.sendRaw({ t: 'setMap', mapId, ...(map ? { map } : {}), mode, ...(limits ? { limits } : {}), ...(escort ? { escort } : {}) });
   }
 
   setReady(ready: boolean): void {

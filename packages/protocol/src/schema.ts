@@ -213,6 +213,7 @@ export const modeObjectivesSchema = z
     flags: z.tuple([vecSchema, vecSchema]).optional(),
     hill: z.array(vecSchema).optional(),
     conquest: z.tuple([z.array(vecSchema), z.array(vecSchema), z.array(vecSchema)]).optional(),
+    extraction: z.array(vecSchema).optional(),
   })
   .strict();
 
@@ -227,11 +228,12 @@ export const flagStateSchema = z.object({ at: vecSchema, carrier: z.string().nul
 
 export const modeStateSchema = z
   .object({
-    mode: z.enum(['capture-the-flag', 'king-of-the-hill', 'conquest', 'kill-the-king']),
+    mode: z.enum(['capture-the-flag', 'king-of-the-hill', 'conquest', 'kill-the-king', 'golden-pig']),
     objectives: modeObjectivesSchema,
     scores: z.tuple([z.number().int(), z.number().int()]),
     kings: z.tuple([z.string(), z.string()]).optional(),
     flags: z.tuple([flagStateSchema, flagStateSchema]).optional(),
+    pig: z.object({ unitId: z.string(), escort: ownerSchema }).strict().optional(),
   })
   .strict();
 
@@ -453,7 +455,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('GameOver'),
     winner: ownerSchema,
-    reason: z.enum(['annihilation', 'score', 'roundLimit', 'king', 'flag']).optional(),
+    reason: z.enum(['annihilation', 'score', 'roundLimit', 'king', 'flag', 'pig', 'extracted']).optional(),
   }),
 ]);
 
@@ -503,6 +505,7 @@ export const unitSpecSchema = z
     disloyal: z.boolean().optional(),
     badBalance: z.boolean().optional(),
     king: z.boolean().optional(),
+    pig: z.boolean().optional(),
     look: z.string().max(64).optional(),
     tint: tintSchema.optional(),
   })
@@ -629,6 +632,7 @@ export const matchSetupSchema = z
     mapId: z.string().min(1).max(64).optional(),
     mode: gameModeSchema.optional(),
     kings: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
+    escort: ownerSchema.optional(),
     limits: gameLimitsSchema.optional(),
   })
   .strict();

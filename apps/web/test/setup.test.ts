@@ -41,6 +41,15 @@ describe('launchFor game modes', () => {
     });
   });
 
+  it('carries the Pig\'s escort only in its own mode, and only when it is not player 0', () => {
+    const p0 = launchFor('vsAI', presets, 7, 'old-forest', { mode: 'golden-pig', escort: 0 });
+    expect(p0.setup).toEqual({ presets, seats: ['human', 'ai'], seed: 7, mapId: 'old-forest', mode: 'golden-pig' });
+    const p1 = launchFor('vsAI', presets, 7, DEFAULT_MAP_ID, { mode: 'golden-pig', escort: 1 });
+    expect(p1.setup).toMatchObject({ mapId: DEFAULT_MAP_ID, mode: 'golden-pig', escort: 1 });
+    expect(configFromSetup(p1.setup).warbands[1]!.at(-1)).toMatchObject({ pig: true });
+    expect(launchFor('vsAI', presets, 7, DEFAULT_MAP_ID, { mode: 'annihilation', escort: 1 }).setup).not.toHaveProperty('escort');
+  });
+
   it('carries mode and chosen Kings into the local setup and the engine config', () => {
     const launch = launchFor('vsAI', presets, 7, DEFAULT_MAP_ID, { mode: 'kill-the-king', kings: [2, 1] });
     if (launch.kind !== 'local') throw new Error('expected local');

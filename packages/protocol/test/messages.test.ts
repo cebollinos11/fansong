@@ -41,6 +41,7 @@ describe('client messages', () => {
       { t: 'join' },
       { t: 'setArmy', preset: 'custom', warband: { name: 'Few', units: [{ name: 'A', quality: 3, combat: 3, fast: true }] }, king: 0 },
       { t: 'setMap', mapId: 'old-forest', mode: 'capture-the-flag' },
+      { t: 'setMap', mapId: 'old-forest', mode: 'golden-pig', escort: 1 },
       { t: 'ready', ready: true },
       { t: 'rematch' },
       { t: 'command', command: { type: 'Move', unitId: 'p0u0', to: { x: 3, y: 4 } } },

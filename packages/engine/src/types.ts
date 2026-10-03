@@ -619,8 +619,8 @@ export type GameEvent =
   /** `reason` is present only in an objective mode (see {@link ModeState}) or when a round limit ends the game. */
   | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
 
-/** Why a game ended: last side standing, target score, round cap, king slain, or flag captured. */
-export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag';
+/** Why a game ended: last side standing, target score, round cap, king slain, flag captured, golden Pig fallen, or golden Pig extracted. */
+export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag' | 'pig' | 'extracted';
 
 export interface ReduceResult {
   state: GameState;

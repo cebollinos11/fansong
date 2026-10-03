@@ -122,6 +122,8 @@ const GAME_OVER_REASONS: Record<GameOverReason, string> = {
   roundLimit: 'the round limit was reached',
   king: 'the King has fallen',
   flag: 'flag captured',
+  pig: 'the golden Pig has fallen',
+  extracted: 'the golden Pig reached the enemy camp',
 };
 
 /** A line flattened to text (the HUD callout, tooltips, tests). */

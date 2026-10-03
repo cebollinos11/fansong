@@ -1,10 +1,10 @@
-import { GAME_MODES, type GameMode } from '@fansong/engine';
+import { GAME_MODES, type GameMode, type Owner } from '@fansong/engine';
 import type { MapStorage } from './customMaps.js';
 import { parseLimitsByMode, type LimitsByMode } from './limits.js';
 
 /**
  * The setup screen's last choices (play mode, both sides, map, game mode,
- * Kings), kept in `localStorage` so the main menu reopens as it was left. Like
+ * Kings, the Pig's escort), kept in `localStorage` so the main menu reopens as it was left. Like
  * maps and armies, the storage is passed explicitly (`null` = unavailable) and
  * what is read back is untrusted: fields that don't parse are dropped, and the
  * screen checks the rest (a deleted army or map) against what it can offer.
@@ -19,6 +19,8 @@ export interface SetupPrefs {
   mapId?: string;
   gameMode?: GameMode;
   kings?: [number, number];
+  /** Extract the golden Pig: the seat escorting the Pig. */
+  escort?: Owner;
   /** Custom round limit / target score, remembered per game mode. */
   limits?: LimitsByMode;
 }
@@ -41,6 +43,7 @@ export function loadSetupPrefs(storage: MapStorage | null): SetupPrefs {
   if (typeof r.mapId === 'string') prefs.mapId = r.mapId;
   if (GAME_MODES.includes(r.gameMode as GameMode)) prefs.gameMode = r.gameMode as GameMode;
   if (isPair(r.kings, (x) => Number.isInteger(x) && (x as number) >= 0)) prefs.kings = r.kings as [number, number];
+  if (r.escort === 0 || r.escort === 1) prefs.escort = r.escort;
   const limits = parseLimitsByMode(r.limits);
   if (Object.keys(limits).length > 0) prefs.limits = limits;
   return prefs;

@@ -12,7 +12,8 @@ export type GameMode =
   | 'capture-the-flag'
   | 'king-of-the-hill'
   | 'conquest'
-  | 'kill-the-king';
+  | 'kill-the-king'
+  | 'golden-pig';
 
 /** Every mode, in a fixed display order. */
 export const GAME_MODES: ReadonlyArray<GameMode> = [
@@ -21,6 +22,7 @@ export const GAME_MODES: ReadonlyArray<GameMode> = [
   'king-of-the-hill',
   'conquest',
   'capture-the-flag',
+  'golden-pig',
 ];
 
 /** A mode other than annihilation — the ones that carry {@link ModeState}. */
@@ -37,6 +39,8 @@ export interface ModeObjectives {
   hill?: Vec[];
   /** Conquest: three scoring zones, each a set of hexes. */
   conquest?: [Vec[], Vec[], Vec[]];
+  /** Extract the golden Pig: the goal hexes — the defender's deploy zone. */
+  extraction?: Vec[];
 }
 
 /**
@@ -52,6 +56,8 @@ export interface ModeState {
   kings?: [string, string];
   /** Capture-the-flag: where player 0's and player 1's flag is, and who carries it. */
   flags?: [FlagState, FlagState];
+  /** Extract the golden Pig: the Pig's unit id and the player escorting it. */
+  pig?: { unitId: string; escort: Owner };
 }
 
 /**
@@ -97,6 +103,7 @@ export const MODE_RULES: Readonly<Record<GameMode, ModeRules>> = {
   'king-of-the-hill': { targetScore: 5, roundLimit: ROUND_LIMIT, requires: 'hill' },
   conquest: { targetScore: 8, roundLimit: ROUND_LIMIT, requires: 'conquest' },
   'capture-the-flag': { requires: 'flags' },
+  'golden-pig': { requires: 'extraction' },
 };
 
 /** The mode a state is playing (`annihilation` when it carries no mode state). */
@@ -172,6 +179,10 @@ export function createModeState(mode: GameMode | undefined, objectives: ModeObje
       throw new Error(`mode '${mode}' needs three non-empty conquest zones`);
     }
     obj.conquest = [copyVecs(c[0]), copyVecs(c[1]), copyVecs(c[2])];
+  } else if (need === 'extraction') {
+    const goal = objectives?.extraction;
+    if (!goal || goal.length === 0) throw new Error(`mode '${mode}' needs a goal zone`);
+    obj.extraction = copyVecs(goal);
   }
   return { mode, objectives: obj, scores: [0, 0] };
 }
@@ -203,8 +214,13 @@ export function tiebreakWinner(state: GameState): Owner {
   return 1;
 }
 
-/** The winner once the round cap is reached: higher score, else the tiebreak. */
+/**
+ * The winner once the round cap is reached: higher score, else the tiebreak.
+ * Extracting the golden Pig is against the clock, so there the defender wins.
+ */
 export function roundLimitWinner(state: GameState): Owner {
+  const pig = state.mode?.pig;
+  if (pig) return pig.escort === 0 ? 1 : 0;
   const [s0, s1] = state.mode?.scores ?? [0, 0];
   if (s0 !== s1) return s0 > s1 ? 0 : 1;
   return tiebreakWinner(state);
@@ -262,6 +278,35 @@ export function fallenKingOwner(state: GameState): Owner | undefined {
     if (u.dead && (u.id === kings[0] || u.id === kings[1])) return u.owner;
   }
   return undefined;
+}
+
+/** The golden Pig's unit id and its escorting player, or `undefined` outside that mode. */
+export function pigOf(state: GameState): { unitId: string; escort: Owner } | undefined {
+  return state.mode?.pig;
+}
+
+/** Whether `unitId` is the golden Pig (only ever true in its mode). */
+export function isPig(state: GameState, unitId: string): boolean {
+  return state.mode?.pig?.unitId === unitId;
+}
+
+/**
+ * Extract the golden Pig: whether `unitId` is the Pig, alive and on its feet on
+ * a goal hex. Checked as it ends an activation, which is what wins — being
+ * pushed onto the goal, or lying knocked down on it, does not.
+ */
+export function pigExtracted(state: GameState, unitId: string): boolean {
+  const goal = state.mode?.objectives.extraction;
+  if (!goal || !isPig(state, unitId)) return false;
+  const pig = state.units.find((u) => u.id === unitId);
+  if (!pig || pig.dead || pig.knockedDown) return false;
+  return goal.some((h) => h.x === pig.pos.x && h.y === pig.pos.y);
+}
+
+/** Extract the golden Pig: whether the Pig has fallen (killed or routed). */
+export function pigFallen(state: GameState): boolean {
+  const pig = state.mode?.pig;
+  return !!pig && state.units.some((u) => u.dead && u.id === pig.unitId);
 }
 
 /**
