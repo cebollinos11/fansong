@@ -598,6 +598,7 @@ const PAN_MAX_MS = 850;
 const PAN_MS_PER_UNIT = 70; // extra pan time per world unit travelled
 const CAMERA_SETTLE_MS = 150; // beat between the camera arriving and the dice starting
 const CAMERA_STILL = 0.25; // a move shorter than this (world units of travel + zoom) isn't worth making
+const HAND_MOVE_SLACK = 0.05; // a press that shifts the camera by less than this fraction of its distance was a click, not a camera move
 const ZOOM_STEADY = 0.2; // a close-up within this fraction of the current distance keeps that distance and only pans
 const FIT_STEPS = 18; // halvings used to find the nearest distance that holds a set of units
 const SELECT_PAN_STEPS = 12; // halvings used to find the shortest pan that brings a pick into frame
@@ -983,6 +984,8 @@ export class BoardView {
    * again (its heading only when a fight turned the camera well away from it).
    */
   private playerView: View | null = null;
+  /** Where the camera stood, and the scripted move it was making, when the press now held on it began. */
+  private press: { view: View; pos: THREE.Vector3; move: BoardView['cam']; at: number } | null = null;
   /** Whether the player could act at the last update, to spot the moment they can again. */
   private wasInteractive = false;
   /** The selection the camera has already answered, so a pick is panned to once. */
@@ -1103,13 +1106,30 @@ export class BoardView {
     this.controls.maxPolarAngle = CAMERA_MAX_POLAR;
     this.controls.zoomToCursor = true;
     // A hand on the camera takes it back: drop the scripted move, and adopt the
-    // framing the player leaves it in as theirs.
+    // framing the player leaves it in as theirs. A press that never moved the
+    // camera is only a click on the board, though: adopting where it found the
+    // camera would make a close-up (or the glide back out of one) the framing
+    // the next close-up moves in from, and fight after fight would ratchet in.
+    // So a click changes nothing, and the move it interrupted carries on.
     this.controls.addEventListener('start', () => {
+      this.press ??= { view: this.currentView(), pos: this.camera.position.clone(), move: this.cam, at: this.now };
       this.cam = null;
       this.planned = null;
       this.opening = null;
     });
-    this.controls.addEventListener('end', () => this.rememberPlayerView());
+    this.controls.addEventListener('end', () => {
+      const press = this.press;
+      this.press = null;
+      if (!press) return this.rememberPlayerView();
+      const slack = press.view.dist * HAND_MOVE_SLACK;
+      // A click's jitter can turn or slide the camera a hair but never zooms it, so any zoom (a wheel notch) counts.
+      const moved =
+        Math.abs(this.currentView().dist - press.view.dist) > press.view.dist * 1e-3 ||
+        this.camera.position.distanceTo(press.pos) > slack ||
+        this.controls.target.distanceTo(press.view.target) > slack;
+      if (moved) return this.rememberPlayerView();
+      if (press.move && !this.cam) this.cam = { ...press.move, start: press.move.start + this.now - press.at };
+    });
 
     this.renderer.domElement.addEventListener('pointerdown', this.handlePointerDown);
     this.renderer.domElement.addEventListener('pointerup', this.handlePointerUp);
