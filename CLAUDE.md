@@ -55,6 +55,8 @@ Tests live in each package's `test/` directory (`**/test/**/*.test.ts`) and run 
 
 For units Wesnoth gives no `move` clip, `pnpm --filter @fansong/web walks` synthesizes walk cycles from the hand-tuned `RIGS`. Keep new art in Wesnoth's pixel-art style: vendor raw Wesnoth images and compose them at runtime rather than committing baked composites.
 
+**Sound effects** are cues in `apps/web/src/audio/sfx.ts` (variant counts and mix levels), played by `BoardView` on the animation frame they belong to. The files are `apps/web/public/sfx/<cue>-<n>.mp3`; only add CC0 or attribution-licensed sounds, and credit each one in `public/sfx/CREDITS.md`.
+
 **Changing the AI.** Measure the change by win rate against the previous AI, not by eye:
 1. Freeze the old AI in a temporary `packages/ai/src/baseline.ts` (from `git show HEAD:...`; never commit it).
 2. Play new vs baseline with a throwaway `tools/cli/src/bench.ts` via `createMatchFromPresets`, per mode across maps, presets and seeds, with both seat orders on the same seed. Identical bots then score exactly 50%.

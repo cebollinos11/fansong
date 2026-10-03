@@ -9,6 +9,8 @@ import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeVi
 import { traitTags } from './hudView.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 import { canOfferFullscreen, toggleFullscreen, useFullscreen } from './fullscreen.js';
+import { useSoundSettings } from './sound.js';
+import { sfx } from '../audio/sfx.js';
 
 interface Props {
   state: GameState;
@@ -173,6 +175,7 @@ export function BoardCanvas(props: Props): JSX.Element {
   // On a phone the camera tools fold away behind one button.
   const [toolsOpen, setToolsOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState(loadCameraMode);
+  const sound = useSoundSettings();
   const [elevation, setElevation] = useState(loadElevation);
   const [backdrop, setBackdrop] = useState(loadBackdrop);
   // Phones and tablets can hide the browser's bars to give the board the whole screen.
@@ -510,6 +513,27 @@ export function BoardCanvas(props: Props): JSX.Element {
         >
           Backdrop: {BACKDROP_LABELS[backdrop]}
         </button>
+        <button
+          type="button"
+          className={`board-follow${sound.muted ? '' : ' on'}`}
+          title={sound.muted ? 'Turn sound effects on' : 'Turn sound effects off'}
+          onClick={() => sfx.setMuted(!sound.muted)}
+        >
+          {sound.muted ? 'Sound: off' : 'Sound: on'}
+        </button>
+        <label className="board-pitch" title="Sound effects volume">
+          Volume
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={Math.round(sound.volume * 100)}
+            disabled={sound.muted}
+            onChange={(e) => sfx.setVolume(Number(e.target.value) / 100)}
+          />
+          <span>{Math.round(sound.volume * 100)}%</span>
+        </label>
       </div>
     </div>
   );
