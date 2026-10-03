@@ -6,6 +6,7 @@ import {
   canUndo,
   clearFlags,
   commitEdit,
+  replacePresent,
   createHistory,
   eraseTerrain,
   newEditorMap,
@@ -181,5 +182,16 @@ describe('undo / redo history', () => {
       h = commitEdit(h, paintElevation(h.present, [v(0, 0)], { kind: 'set', value: 1 + (i % 2) }));
     }
     expect(h.past).toHaveLength(MAX_UNDO);
+  });
+});
+
+describe('replacePresent', () => {
+  it('swaps the present without adding an undo step', () => {
+    const a = newEditorMap(8, 8, 'A');
+    const b = newEditorMap(9, 9, 'B');
+    const c = newEditorMap(10, 10, 'C');
+    const h = replacePresent(commitEdit(createHistory(a), b), c);
+    expect(h.present).toBe(c);
+    expect(undoEdit(h).present).toBe(a);
   });
 });

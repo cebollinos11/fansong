@@ -13,10 +13,13 @@ import {
   setFlag,
   supportedModes,
   validateMap,
+  CLUMPING_RANGE,
+  FEATURE_SHARE_MAX,
   type ElevationBrush,
   type MapDef,
+  type TerrainSettings,
 } from '@fansong/content';
-import { createGame, vecKey, type GameMode, type GameState, type Vec } from '@fansong/engine';
+import { createGame, MAX_ELEVATION, vecKey, type GameMode, type GameState, type Vec } from '@fansong/engine';
 import type { HexOverlay } from '../three/BoardView.js';
 
 // Pure editor-screen helpers (no DOM), so they can be unit-tested.
@@ -259,3 +262,75 @@ export function historyShortcut(e: {
   if (key === 'y' && !e.shiftKey) return 'redo';
   return null;
 }
+
+// --- Advanced random generation ---------------------------------------------
+
+/** One control of the advanced generator: its value in slider units, or null for Auto (rolled at random). */
+export type GenControlId = 'hills' | 'maxHeight' | 'forest' | 'rock' | 'building' | 'lava' | 'clumping';
+export type GenControls = Record<GenControlId, number | null>;
+
+/** Every control on Auto: the plain "Generate random". */
+export const GEN_AUTO: GenControls = {
+  hills: null,
+  maxHeight: null,
+  forest: null,
+  rock: null,
+  building: null,
+  lava: null,
+  clumping: null,
+};
+
+export interface GenSlider {
+  id: GenControlId;
+  label: string;
+  /** What the control does, for its tooltip. */
+  help: string;
+  min: number;
+  max: number;
+  step: number;
+  /** Where the slider starts when Auto is switched off. */
+  start: number;
+  format: (v: number) => string;
+}
+
+const percent = (v: number): string => `${v}%`;
+const FEATURE_PERCENT_MAX = Math.round(FEATURE_SHARE_MAX * 100);
+
+/** The advanced generator's sliders, in panel order. */
+export const GEN_SLIDERS: readonly GenSlider[] = [
+  { id: 'hills', label: 'Hills', help: 'How hilly the ground is, from flat to rolling hills everywhere.', min: 0, max: 100, step: 5, start: 50, format: percent },
+  { id: 'maxHeight', label: 'Max height', help: 'The tallest a hill may rise.', min: 1, max: MAX_ELEVATION, step: 1, start: MAX_ELEVATION, format: String },
+  { id: 'forest', label: 'Forest', help: 'Share of the open ground (outside deploy zones and objectives) covered by forest.', min: 0, max: FEATURE_PERCENT_MAX, step: 1, start: 10, format: percent },
+  { id: 'rock', label: 'Rock', help: 'Share of the open ground covered by impassable rock.', min: 0, max: FEATURE_PERCENT_MAX, step: 1, start: 4, format: percent },
+  { id: 'building', label: 'Buildings', help: 'Share of the open ground covered by impassable buildings.', min: 0, max: FEATURE_PERCENT_MAX, step: 1, start: 2, format: percent },
+  { id: 'lava', label: 'Lava', help: 'Share of the open ground covered by deadly lava.', min: 0, max: FEATURE_PERCENT_MAX, step: 1, start: 2, format: percent },
+  {
+    id: 'clumping',
+    label: 'Clump size',
+    help: 'How features gather: scattered single hexes, or large patches.',
+    min: Math.round(CLUMPING_RANGE.min * 100),
+    max: Math.round(CLUMPING_RANGE.max * 100),
+    step: 25,
+    start: 100,
+    format: (v) => `${+(v / 100).toFixed(2)}×`,
+  },
+];
+
+/** The generator settings the panel's controls ask for; controls on Auto are left out (rolled). */
+export function terrainSettingsOf(c: GenControls): TerrainSettings {
+  const features: NonNullable<TerrainSettings['features']> = {};
+  for (const f of ['forest', 'rock', 'building', 'lava'] as const) if (c[f] !== null) features[f] = c[f] / 100;
+  return {
+    ...(c.hills !== null ? { hills: c.hills / 100 } : {}),
+    ...(c.maxHeight !== null ? { maxHeight: c.maxHeight } : {}),
+    ...(Object.keys(features).length > 0 ? { features } : {}),
+    ...(c.clumping !== null ? { clumping: c.clumping / 100 } : {}),
+  };
+}
+
+/** A seed typed into the panel, as the generator takes it: a whole number, or null when it isn't one. */
+export function parseSeed(raw: string): number | null {
+  const n = Number(raw.trim());
+  return raw.trim() !== '' && Number.isSafeInteger(n) ? n | 0 : null;
+}
+

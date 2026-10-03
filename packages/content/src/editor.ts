@@ -213,6 +213,14 @@ export function commitEdit(h: EditorHistory, next: MapDef): EditorHistory {
   return { present: next, past: past.slice(Math.max(0, past.length - MAX_UNDO)), future: [] };
 }
 
+/**
+ * Swap in `next` as the present without adding an undo step: a live preview
+ * refining the edit just committed (Undo still goes back to before it).
+ */
+export function replacePresent(h: EditorHistory, next: MapDef): EditorHistory {
+  return sameMap(h.present, next) ? h : { ...h, present: next, future: [] };
+}
+
 export const canUndo = (h: EditorHistory) => h.past.length > 0;
 export const canRedo = (h: EditorHistory) => h.future.length > 0;
 

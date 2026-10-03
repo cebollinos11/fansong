@@ -1,4 +1,13 @@
-import { commitEdit, createHistory, getMap, MAP_LIMITS, mapToBoard, newEditorMap } from '@fansong/content';
+import {
+  commitEdit,
+  createHistory,
+  generateRandomMap,
+  getMap,
+  MAP_LIMITS,
+  mapToBoard,
+  newEditorMap,
+  validateMap,
+} from '@fansong/content';
 import { describe, expect, it } from 'vitest';
 import {
   applyDrag,
@@ -9,6 +18,8 @@ import {
   editorErrorText,
   editorValidation,
   footprintCells,
+  GEN_AUTO,
+  GEN_SLIDERS,
   historyShortcut,
   hexMarkings,
   MAX_FOOTPRINT_SIDE,
@@ -16,6 +27,8 @@ import {
   MAX_SHOWN_ERRORS,
   mapOverlays,
   mapPreviewState,
+  parseSeed,
+  terrainSettingsOf,
   toolDrags,
   ZONE_COLORS,
   zoneCells,
@@ -373,3 +386,34 @@ describe('historyShortcut', () => {
     expect(historyShortcut(key('x', { ctrlKey: true }))).toBeNull();
   });
 });
+
+describe('advanced generation controls', () => {
+  it('leave everything to chance on Auto', () => {
+    expect(terrainSettingsOf(GEN_AUTO)).toEqual({});
+  });
+
+  it('turn slider values into generator settings', () => {
+    const settings = terrainSettingsOf({ ...GEN_AUTO, hills: 40, maxHeight: 2, forest: 25, lava: 0, clumping: 150 });
+    expect(settings).toEqual({ hills: 0.4, maxHeight: 2, features: { forest: 0.25, lava: 0 }, clumping: 1.5 });
+  });
+
+  it('start every slider inside its range, and the generator takes the whole range', () => {
+    for (const g of GEN_SLIDERS) {
+      expect(g.start).toBeGreaterThanOrEqual(g.min);
+      expect(g.start).toBeLessThanOrEqual(g.max);
+      for (const v of [g.min, g.max]) {
+        const map = generateRandomMap(14, 12, 1, { terrain: terrainSettingsOf({ ...GEN_AUTO, [g.id]: v }) });
+        expect(validateMap(map).errors, `${g.id} = ${v}`).toEqual([]);
+      }
+    }
+  });
+
+  it('read a typed seed', () => {
+    expect(parseSeed(' 455800 ')).toBe(455800);
+    expect(parseSeed('-3')).toBe(-3);
+    expect(parseSeed('')).toBeNull();
+    expect(parseSeed('abc')).toBeNull();
+    expect(parseSeed('1.5')).toBeNull();
+  });
+});
+

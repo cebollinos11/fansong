@@ -2754,6 +2754,76 @@ button.secondary {
   margin: 0 4px 0 0;
 }
 
+/* The advanced generator: a seed and a row per terrain control. */
+.editor-advanced {
+  flex-basis: 100%;
+}
+
+.editor-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.editor-advanced[open] summary {
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.editor-advanced .hint {
+  margin: 6px 0;
+  font-size: 12px;
+}
+
+.gen-seed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-new .gen-seed input {
+  width: 96px;
+}
+
+.gen-row {
+  display: grid;
+  grid-template-columns: 74px 1fr 38px auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.gen-row.auto .gen-label,
+.gen-row.auto .gen-value {
+  color: var(--muted);
+}
+
+.editor-new .gen-row input[type='range'] {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.gen-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.gen-auto {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.gen-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
 .editor-files {
   margin: 0;
   display: flex;

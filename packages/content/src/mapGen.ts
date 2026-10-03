@@ -18,7 +18,12 @@ import { MAP_LIMITS, validateMap } from './mapValidate.js';
  * the odd lava pool, kept off every deploy and objective hex. A layout whose
  * impassable terrain cuts the field apart is rerolled; as a last resort the
  * impassable features are dropped, so the result always passes `validateMap`.
- * The same `(width, height, seed, symmetric)` always gives the same map.
+ * The same `(width, height, seed, options)` always gives the same map.
+ *
+ * {@link TerrainSettings} let the editor's advanced mode take over any part of
+ * the terrain roll (how hilly, how high, how much of each feature, how
+ * clumped); whatever is left unset is rolled as before, so a map made without
+ * settings is the same as one made with every setting left on Auto.
  */
 
 export interface RandomMapOptions {
@@ -26,7 +31,34 @@ export interface RandomMapOptions {
   symmetric?: boolean;
   /** Map name (default `Random <seed>`); the id is its slug. */
   name?: string;
+  /** Override parts of the terrain roll; anything unset is rolled at random. */
+  terrain?: TerrainSettings;
 }
+
+/** Each feature's share of the open ground, 0–{@link FEATURE_SHARE_MAX}. */
+export type FeatureShares = Partial<Record<TerrainFeature, number>>;
+
+/**
+ * The advanced generator's controls. Every field is optional: unset means
+ * "roll it", as the plain generator does.
+ */
+export interface TerrainSettings {
+  /** How hilly, 0 (flat) – 1 (a hill every {@link HILL_SPACING} hexes). */
+  hills?: number;
+  /** The tallest a hill may rise, 1–`MAX_ELEVATION`. */
+  maxHeight?: number;
+  /** How much of the open ground (outside deploy zones and objectives) each feature covers. */
+  features?: FeatureShares;
+  /** Clump size, 0.25 (scattered single hexes) – 2.5 (big patches); 1 is the plain generator's. */
+  clumping?: number;
+}
+
+/** The most of the open ground one feature may be set to cover. */
+export const FEATURE_SHARE_MAX = 0.3;
+/** At full hilliness, one hill per this many hexes. */
+export const HILL_SPACING = 25;
+/** The range {@link TerrainSettings.clumping} is clamped to. */
+export const CLUMPING_RANGE = { min: 0.25, max: 2.5 } as const;
 
 /** How far in from its home edge a flag base sits. */
 export const FLAG_EDGE_DISTANCE = { min: 3, max: 5 } as const;
@@ -53,7 +85,7 @@ export function generateRandomMap(
   width: number,
   height: number,
   seed: number,
-  { symmetric = true, name = `Random ${seed}` }: RandomMapOptions = {},
+  { symmetric = true, name = `Random ${seed}`, terrain = {} }: RandomMapOptions = {},
 ): MapDef {
   const w = clamp(Math.floor(width), MAP_LIMITS.minWidth, MAP_LIMITS.maxWidth);
   const h = clamp(Math.floor(height), MAP_LIMITS.minHeight, MAP_LIMITS.maxHeight);
@@ -61,12 +93,12 @@ export function generateRandomMap(
   const named = { ...layout.map, id: slugify(name), name };
   let attemptSeed = seed;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const map = { ...named, hexes: randomTerrain(w, h, attemptSeed, layout.reserved, symmetric) };
+    const map = { ...named, hexes: randomTerrain(w, h, attemptSeed, layout.reserved, symmetric, terrain) };
     if (validateMap(map).ok) return map;
     attemptSeed = (Math.imul(attemptSeed, 0x9e3779b1) + attempt + 1) | 0;
   }
   // Every reroll walled something off: keep the hills and forests, drop what blocks.
-  const open = randomTerrain(w, h, seed, layout.reserved, symmetric).map((hex) =>
+  const open = randomTerrain(w, h, seed, layout.reserved, symmetric, terrain).map((hex) =>
     hex.feature === 'forest' ? hex : { elevation: hex.feature === 'lava' ? 0 : hex.elevation },
   );
   return { ...named, hexes: open };
@@ -151,7 +183,14 @@ function dedupe(cells: Vec[]): Vec[] {
  * Row-major random terrain, generated over the whole board. When `symmetric`,
  * the first half (in row-major order) is then copied onto its mirror.
  */
-function randomTerrain(w: number, h: number, seed: number, reserved: Set<string>, symmetric: boolean): MapHex[] {
+function randomTerrain(
+  w: number,
+  h: number,
+  seed: number,
+  reserved: Set<string>,
+  symmetric: boolean,
+  settings: TerrainSettings,
+): MapHex[] {
   const rnd = makeRandom(seed);
   const grid = makeHexGrid({ width: w, height: h, blocked: [] });
   const elevation = new Array<number>(w * h).fill(0);
@@ -160,10 +199,22 @@ function randomTerrain(w: number, h: number, seed: number, reserved: Set<string>
   const area = w * h;
   const randomCell = (): Vec => ({ x: rnd.int(0, w - 1), y: rnd.int(0, h - 1) });
 
+  // A setting replaces its roll; only rolls still made draw from the RNG, so
+  // with no settings the sequence (and the map) is the plain generator's.
+  const topHeight = settings.maxHeight === undefined ? MAX_ELEVATION : clamp(Math.round(settings.maxHeight), 1, MAX_ELEVATION);
+  const clumping = settings.clumping === undefined ? 1 : clamp(settings.clumping, CLUMPING_RANGE.min, CLUMPING_RANGE.max);
+  const sized = ([lo, hi]: [number, number]): [number, number] => [
+    Math.max(1, Math.round(lo * clumping)),
+    Math.max(1, Math.round(hi * clumping)),
+  ];
+
   // Rolling hills: cones that fall off by one level per hex.
-  const hills = Math.max(1, Math.round(area / rnd.int(35, 70)));
+  const hills =
+    settings.hills === undefined
+      ? Math.max(1, Math.round(area / rnd.int(35, 70)))
+      : Math.round((area * clamp(settings.hills, 0, 1)) / HILL_SPACING);
   for (let i = 0; i < hills; i++) {
-    const peak = rnd.int(1, MAX_ELEVATION);
+    const peak = rnd.int(1, topHeight);
     const c = randomCell();
     elevation[idx(c)] = Math.max(elevation[idx(c)]!, peak);
     for (let r = 1; r < peak; r++)
@@ -183,16 +234,47 @@ function randomTerrain(w: number, h: number, seed: number, reserved: Set<string>
   };
   const scatter = (f: TerrainFeature, share: number, size: [number, number]) => {
     let budget = Math.round(area * share);
+    const [lo, hi] = sized(size);
     while (budget > 0) {
-      const cells = clump(rnd.int(size[0], size[1]));
+      const cells = clump(rnd.int(lo, hi));
       for (const v of cells) if (!reserved.has(vecKey(v))) feature[idx(v)] = f;
       budget -= cells.length;
     }
   };
-  scatter('forest', 0.06 + rnd.next() * 0.1, [3, 8]);
-  scatter('rock', 0.02 + rnd.next() * 0.04, [1, 4]);
-  scatter('building', rnd.next() * 0.04, [1, 3]);
-  if (rnd.next() < 0.3) scatter('lava', 0.01 + rnd.next() * 0.03, [2, 5]);
+  // A share that is set is met exactly: clumps go only on empty open ground
+  // and are counted as they land, until that share of the open ground is
+  // covered. (On a symmetric map only the half that is kept counts; its
+  // mirror is the rest.)
+  const kept = (i: number) => !symmetric || i <= area - 1 - i;
+  const open: number[] = [];
+  for (let i = 0; i < area; i++) if (kept(i) && !reserved.has(vecKey({ x: i % w, y: Math.floor(i / w) }))) open.push(i);
+  const scatterExact = (f: TerrainFeature, share: number, size: [number, number]) => {
+    const target = Math.round(open.length * share);
+    const [lo, hi] = sized(size);
+    let placed = 0;
+    for (let tries = 0; placed < target && tries < target * 30; tries++) {
+      for (const v of clump(rnd.int(lo, hi))) {
+        const i = idx(v);
+        if (placed >= target || !kept(i) || reserved.has(vecKey(v)) || feature[i] !== undefined) continue;
+        feature[i] = f;
+        placed++;
+      }
+    }
+  };
+  /** Scatter `f`: exactly as much as it is set to, or the plain generator's roll when it isn't set. */
+  const place = (f: TerrainFeature, size: [number, number], roll: () => number) => {
+    const set = settings.features?.[f];
+    if (set !== undefined) scatterExact(f, clamp(set, 0, FEATURE_SHARE_MAX), size);
+    else {
+      const share = roll();
+      if (share > 0) scatter(f, share, size);
+    }
+  };
+  place('forest', [3, 8], () => 0.06 + rnd.next() * 0.1);
+  place('rock', [1, 4], () => 0.02 + rnd.next() * 0.04);
+  place('building', [1, 3], () => rnd.next() * 0.04);
+  // Lava only turns up on some maps, unless it is asked for.
+  place('lava', [2, 5], () => (rnd.next() < 0.3 ? 0.01 + rnd.next() * 0.03 : 0));
 
   const hexes: MapHex[] = [];
   for (let i = 0; i < area; i++) {

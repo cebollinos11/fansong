@@ -4,6 +4,7 @@ import {
   canUndo,
   clearFlags,
   commitEdit,
+  replacePresent,
   createHistory,
   generateRandomMap,
   MAP_LIMITS,
@@ -22,6 +23,12 @@ import {
   applyMapName,
   applyTool,
   clampMapSize,
+  GEN_AUTO,
+  GEN_SLIDERS,
+  parseSeed,
+  terrainSettingsOf,
+  type GenControlId,
+  type GenControls,
   CONQUEST_LABELS,
   dragCells,
   editorValidation,
@@ -215,6 +222,14 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
   const [width, setWidth] = useState(DEFAULT_WIDTH);
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   const [symmetric, setSymmetric] = useState(true);
+  // Advanced generation: the seed the last random map was made from (editable,
+  // so a map can be remade and refined), each control's override, and whether
+  // changing one regenerates straight away.
+  const [seedText, setSeedText] = useState('');
+  const [controls, setControls] = useState<GenControls>(GEN_AUTO);
+  const [livePreview, setLivePreview] = useState(true);
+  /** The map the generator last put on the board, so a live preview refines it instead of stacking undo steps. */
+  const lastGenerated = useRef<MapDef | null>(null);
   const [selected, setSelected] = useState<Vec | null>(null);
   const [toolId, setToolId] = useState<ToolId>('raise');
   const [level, setLevel] = useState(1);
@@ -273,15 +288,48 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
    * hosts every game mode, mirrored through its centre when "Symmetric" is
    * on. One undo step, so Undo brings the old map back.
    */
-  const randomMap = (): void => {
+  const randomMap = (): void => generate(Math.floor(Math.random() * 1_000_000));
+
+  /**
+   * Generate from `seed` with the advanced controls. A `refine` (a live
+   * preview, or Regenerate) replaces a map the generator itself just made
+   * rather than adding another undo step on top of it.
+   */
+  const generate = (seed: number, { refine = false, sym = symmetric, gen = controls } = {}): void => {
     const w = clampMapSize(width, 'width');
     const h = clampMapSize(height, 'height');
     setWidth(w);
     setHeight(h);
     setSelected(null);
-    const seed = Math.floor(Math.random() * 1_000_000);
-    setHistory((hist) => commitEdit(hist, generateRandomMap(w, h, seed, { symmetric })));
+    setSeedText(String(seed));
+    const next = generateRandomMap(w, h, seed, { symmetric: sym, terrain: terrainSettingsOf(gen) });
+    // Decided here, not in the updater: React may run an updater twice.
+    const replace = refine && lastGenerated.current !== null && map === lastGenerated.current;
+    lastGenerated.current = next;
+    setHistory((hist) => (replace ? replacePresent(hist, next) : commitEdit(hist, next)));
   };
+
+  /** Remake the map from the seed in the box (a new one if the box is empty or not a number). */
+  const regenerate = (opts: { sym?: boolean; gen?: GenControls } = {}): void =>
+    generate(parseSeed(seedText) ?? Math.floor(Math.random() * 1_000_000), { refine: true, ...opts });
+
+  /** Every control back on Auto: the plain generator again. */
+  const allAuto = (): void => {
+    setControls(GEN_AUTO);
+    if (previewing()) regenerate({ gen: GEN_AUTO });
+  };
+
+  /**
+   * Change one control; with live preview on, the map follows at once — when
+   * the map on the board is the generator's. A map edited by hand since is
+   * left alone until Generate or Regenerate.
+   */
+  const setControl = (id: GenControlId, value: number | null): void => {
+    const gen = { ...controls, [id]: value };
+    setControls(gen);
+    if (previewing()) regenerate({ gen });
+  };
+  const previewing = (): boolean => livePreview && lastGenerated.current === map;
 
   /** Replace the edited map (load/import) — a fresh history, so undo can't cross maps. */
   const openMap = (next: MapDef): void => {
@@ -500,7 +548,14 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
             />
           </label>
           <label title="Mirror random maps through their centre, so neither side is favoured">
-            <input type="checkbox" checked={symmetric} onChange={(e) => setSymmetric(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={symmetric}
+              onChange={(e) => {
+                setSymmetric(e.target.checked);
+                if (previewing()) regenerate({ sym: e.target.checked });
+              }}
+            />
             Symmetric
           </label>
           <button onClick={newMap}>New map</button>
@@ -511,6 +566,70 @@ export function EditorScreen({ onExit }: Props): JSX.Element {
           >
             Generate random
           </button>
+          <details className="editor-advanced">
+            <summary>Advanced generation</summary>
+            <div className="gen-seed">
+              <label title="The same seed, size and settings always make the same map">
+                Seed
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="random"
+                  value={seedText}
+                  onChange={(e) => setSeedText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') regenerate();
+                  }}
+                />
+              </label>
+              <button type="button" title="Make the map again from this seed with the settings below" onClick={() => regenerate()}>
+                Regenerate
+              </button>
+            </div>
+            <p className="hint">Each setting is rolled at random while Auto is ticked. Untick it to choose exactly.</p>
+            {GEN_SLIDERS.map((g) => {
+              const value = controls[g.id];
+              return (
+                <div key={g.id} className={`gen-row${value === null ? ' auto' : ''}`} title={g.help}>
+                  <span className="gen-label">{g.label}</span>
+                  <input
+                    type="range"
+                    aria-label={g.label}
+                    min={g.min}
+                    max={g.max}
+                    step={g.step}
+                    value={value ?? g.start}
+                    disabled={value === null}
+                    onChange={(e) => setControl(g.id, Number(e.target.value))}
+                  />
+                  <span className="gen-value">{value === null ? '—' : g.format(value)}</span>
+                  <label className="gen-auto">
+                    <input
+                      type="checkbox"
+                      checked={value === null}
+                      onChange={(e) => setControl(g.id, e.target.checked ? null : g.start)}
+                    />
+                    Auto
+                  </label>
+                </div>
+              );
+            })}
+            <div className="gen-foot">
+              <label title="Regenerate the map as soon as a setting changes">
+                <input type="checkbox" checked={livePreview} onChange={(e) => setLivePreview(e.target.checked)} />
+                Live preview
+              </label>
+              <button
+                type="button"
+                className="ghost"
+                disabled={GEN_SLIDERS.every((g) => controls[g.id] === null)}
+                title="Put every setting back on Auto"
+                onClick={allAuto}
+              >
+                All Auto
+              </button>
+            </div>
+          </details>
         </fieldset>
 
         <fieldset className="editor-tools">

@@ -1,6 +1,16 @@
 import { GAME_MODES } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { FLAG_EDGE_DISTANCE, generateRandomMap, MAP_LIMITS, mirrorHex, supportedModes, validateMap } from '../src/index.js';
+import { GAME_MODES as MODES, MAX_ELEVATION } from '@fansong/engine';
+import {
+  FEATURE_SHARE_MAX,
+  FLAG_EDGE_DISTANCE,
+  generateRandomMap,
+  MAP_LIMITS,
+  mirrorHex,
+  supportedModes,
+  validateMap,
+  type TerrainSettings,
+} from '../src/index.js';
 
 describe('generateRandomMap', () => {
   const sizes: [number, number][] = [
@@ -79,5 +89,60 @@ describe('generateRandomMap', () => {
     const map = generateRandomMap(20, 20, 1);
     expect(map.hexes.some((hex) => hex.feature !== undefined)).toBe(true);
     expect(map.hexes.some((hex) => hex.elevation > 0)).toBe(true);
+  });
+});
+
+describe('generateRandomMap with terrain settings', () => {
+  const count = (map: ReturnType<typeof generateRandomMap>, f: string) => map.hexes.filter((hex) => hex.feature === f).length;
+
+  it('stays valid for every mode at the extremes', () => {
+    const extremes: TerrainSettings[] = [
+      { hills: 0, features: { forest: 0, rock: 0, building: 0, lava: 0 } },
+      { hills: 1, maxHeight: MAX_ELEVATION, clumping: 2.5 },
+      {
+        features: { forest: FEATURE_SHARE_MAX, rock: FEATURE_SHARE_MAX, building: FEATURE_SHARE_MAX, lava: FEATURE_SHARE_MAX },
+        clumping: 0.25,
+      },
+      { features: { rock: FEATURE_SHARE_MAX, building: FEATURE_SHARE_MAX }, clumping: 2.5 },
+    ];
+    for (const terrain of extremes)
+      for (const [w, h] of [[MAP_LIMITS.minWidth, MAP_LIMITS.minHeight], [14, 12], [30, 20]] as const)
+        for (const symmetric of [true, false])
+          for (let seed = 0; seed < 8; seed++) {
+            const map = generateRandomMap(w, h, seed, { symmetric, terrain });
+            expect(validateMap(map).errors, `${JSON.stringify(terrain)} ${w}x${h} seed ${seed}`).toEqual([]);
+            expect(supportedModes(map)).toEqual([...MODES]);
+          }
+  });
+
+  it('leaves out what is set to none', () => {
+    const map = generateRandomMap(20, 16, 5, { terrain: { hills: 0, features: { forest: 0, rock: 0, building: 0, lava: 0 } } });
+    expect(map.hexes.every((hex) => hex.elevation === 0 && hex.feature === undefined)).toBe(true);
+  });
+
+  it('caps hills at the maximum height', () => {
+    for (let seed = 0; seed < 10; seed++) {
+      const map = generateRandomMap(20, 16, seed, { terrain: { hills: 1, maxHeight: 1 } });
+      expect(Math.max(...map.hexes.map((hex) => hex.elevation))).toBe(1);
+    }
+  });
+
+  it('places more of a feature the higher its share', () => {
+    const forest = (share: number) => count(generateRandomMap(24, 18, 3, { terrain: { features: { forest: share } } }), 'forest');
+    expect(forest(0.25)).toBeGreaterThan(forest(0.05));
+    expect(forest(0.05)).toBeGreaterThan(0);
+  });
+
+  it('can force lava onto a map', () => {
+    for (let seed = 0; seed < 5; seed++) {
+      const map = generateRandomMap(20, 16, seed, { terrain: { features: { lava: 0.05 } } });
+      expect(count(map, 'lava')).toBeGreaterThan(0);
+    }
+  });
+
+  it('only overrides what it sets: the rest still comes from the seed', () => {
+    const plain = generateRandomMap(20, 16, 11);
+    const sameLava = generateRandomMap(20, 16, 11, { terrain: {} });
+    expect(sameLava).toEqual(plain);
   });
 });
