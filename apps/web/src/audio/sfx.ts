@@ -20,6 +20,18 @@ export interface PlayOptions {
   rate?: number;
 }
 
+/**
+ * What the recording booth is trying out against the board: the one cue that
+ * plays through the hush, from `takes` when it has some not yet saved, shifted
+ * by `delayMs` in place of the delay on disk. `played` counts how often it has.
+ */
+export interface Audition {
+  name: string;
+  takes?: AudioBuffer[];
+  delayMs: number;
+  played: number;
+}
+
 interface Prefs {
   volume: number;
   muted: boolean;
@@ -47,6 +59,7 @@ class Sfx {
   private started = false;
   /** While set, nothing plays: the recording booth has the microphone open. */
   hush = false;
+  audition: Audition | null = null;
   private ambient: { name: string; gain: GainNode; source: AudioBufferSourceNode | null } | null = null;
   private wantAmbient: string | null = null;
 
@@ -82,7 +95,7 @@ class Sfx {
     try {
       const res = await fetch(`${import.meta.env.BASE_URL}sfx/manifest.json`, { cache: 'no-store' });
       const json = res.ok ? ((await res.json()) as Partial<SfxManifest>) : {};
-      this.manifest = { version: json.version ?? 0, takes: json.takes ?? {} };
+      this.manifest = { version: json.version ?? 0, takes: json.takes ?? {}, delays: json.delays ?? {} };
     } catch {
       this.manifest = EMPTY_MANIFEST;
     }
@@ -102,23 +115,35 @@ class Sfx {
 
   play(name: SfxName, opts: PlayOptions = {}): void {
     const ctx = this.context();
-    const playing = resolveSfx(name, this.manifest);
-    if (!ctx || !this.master || !playing || this.muted || this.hush || ctx.state !== 'running') return;
+    const audition = this.audition;
+    const fresh = audition?.takes?.length ? audition.takes : null;
+    // Takes the booth has not saved yet count as recorded, so they are found down a chain of stand-ins too.
+    const takes = fresh ? { ...this.manifest.takes, [audition!.name]: fresh.length } : this.manifest.takes;
+    const playing = resolveSfx(name, { ...this.manifest, takes });
+    if (!ctx || !this.master || !playing || ctx.state !== 'running') return;
+    const auditioned = audition !== null && playing === audition.name;
+    if (!auditioned && (this.muted || this.hush)) return;
     const last = this.lastPlay.get(playing);
     const now = performance.now();
     if (last && now - last.at < REPEAT_GUARD_MS) return;
-    const take = pickTake(this.manifest.takes[playing] ?? 0, last?.take);
-    const buffer = this.buffers.get(takeFile(playing, take));
+    const take = pickTake(takes[playing] ?? 0, last?.take);
+    const buffer = auditioned && fresh ? fresh[take - 1] : this.buffers.get(takeFile(playing, take));
     if (!buffer) return; // still loading
     this.lastPlay.set(playing, { take, at: now });
+    const rate = Math.max(0.3, Math.min(2, opts.rate ?? 1));
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.playbackRate.value = Math.max(0.3, Math.min(2, opts.rate ?? 1)) * (1 + (Math.random() * 2 - 1) * PITCH_SPREAD);
+    source.playbackRate.value = rate * (1 + (Math.random() * 2 - 1) * PITCH_SPREAD);
     const gain = ctx.createGain();
     // The loudness is the cue that was asked for's, even when a stand-in plays.
     gain.gain.value = (opts.volume ?? 1) * (sfxCue(name)?.gain ?? 1);
-    source.connect(gain).connect(this.master);
-    source.start();
+    // An audition is heard even with the game's sound switched off.
+    source.connect(gain).connect(auditioned && this.muted ? ctx.destination : this.master);
+    const delayMs = auditioned ? audition.delayMs : (this.manifest.delays?.[playing] ?? 0);
+    // Late by the board's clock (longer in slow motion), or early by skipping into the recording.
+    if (delayMs >= 0) source.start(ctx.currentTime + delayMs / 1000 / rate);
+    else source.start(0, Math.min(buffer.duration, -delayMs / 1000));
+    if (auditioned) audition.played += 1;
   }
 
   /** Loop `name` under everything else (null for silence), fading from whatever was looping. */
@@ -135,7 +160,7 @@ class Sfx {
         old.gain.disconnect();
       }, AMBIENCE_FADE_S * 1000);
     }
-    if (!name || this.ambient || this.recorded(name) === 0) return;
+    if (!name || this.ambient || this.hush || this.recorded(name) === 0) return;
     const gain = ctx.createGain();
     gain.gain.value = 0;
     gain.connect(this.master);

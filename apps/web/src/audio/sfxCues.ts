@@ -154,7 +154,16 @@ export function sfxCue(name: string): SfxCue | undefined {
 export interface SfxManifest {
   version: number;
   takes: Record<string, number>;
+  /**
+   * How many milliseconds after its moment on the board each cue's recording
+   * starts, as tuned in the booth. Negative starts it that far into the
+   * recording instead, since a sound can't start before it is asked for.
+   */
+  delays?: Record<string, number>;
 }
+
+/** The furthest the booth may shift a cue either way, in ms. */
+export const MAX_SFX_DELAY_MS = 500;
 
 export const EMPTY_MANIFEST: SfxManifest = { version: 0, takes: {} };
 

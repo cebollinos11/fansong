@@ -3987,8 +3987,8 @@ button.trait-add[aria-expanded='true'] {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 24px;
+  gap: 6px;
+  padding: 16px;
   text-align: center;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -4001,8 +4001,50 @@ button.trait-add[aria-expanded='true'] {
   font-size: 13px;
 }
 
+.booth-board {
+  position: relative;
+  flex: 1 1 0;
+  align-self: stretch;
+  min-height: 200px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.booth-scene {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.booth-delay {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.booth-delay input {
+  width: min(260px, 40vw);
+}
+
+.booth-delay button {
+  padding: 2px 10px;
+}
+
+.booth-delay output {
+  min-width: 96px;
+  color: var(--text);
+  text-align: left;
+}
+
 .booth-name {
-  font-size: clamp(36px, 7vw, 72px);
+  font-size: clamp(28px, 4vw, 44px);
   font-weight: 700;
   letter-spacing: 0.5px;
 }

@@ -67,7 +67,7 @@ interface Spots {
 }
 
 /** What a demo lays its scene out with. Units are named `p<owner>u<n>` in the order each side's are spawned. */
-interface Scene extends Spots {
+export interface Scene extends Spots {
   spawn(owner: Owner, unit: WarbandUnit, pos: Vec, patch?: Partial<Unit>): void;
   paint(pos: Vec, paint: HexPaint): void;
   /** Put `id` mid-activation with two actions. */
@@ -78,25 +78,25 @@ interface Scene extends Spots {
   state(): GameState;
 }
 
-const ELF: WarbandUnit = { name: 'Elvish Fighter', quality: 3, combat: 3 };
-const BONES: WarbandUnit = { name: 'Skeleton Infantry', quality: 3, combat: 3 };
+export const ELF: WarbandUnit = { name: 'Elvish Fighter', quality: 3, combat: 3 };
+export const BONES: WarbandUnit = { name: 'Skeleton Infantry', quality: 3, combat: 3 };
 const BOW: WarbandUnit = { name: 'Thorn-Bow', quality: 3, combat: 3, shooter: 'normal' };
 
 type Events = readonly GameEvent[];
-const blow = (ev: Events) => ev.find((e) => e.type === 'AttackResolved');
+export const blow = (ev: Events) => ev.find((e) => e.type === 'AttackResolved');
 const shot = (ev: Events) => ev.find((e) => e.type === 'ShotResolved');
 const hack = (ev: Events) => ev.find((e) => e.type === 'FreeHackResolved');
-const has = (ev: Events, type: GameEvent['type']) => ev.some((e) => e.type === type);
+export const has = (ev: Events, type: GameEvent['type']) => ev.some((e) => e.type === type);
 /** The roll's own outcome stands: no save, armor or mastery rewrote it. */
 const plain = (ev: Events) => !has(ev, 'ToughnessSaved') && !has(ev, 'ArmorHeld') && !has(ev, 'MasteryStruck');
-const melee = (result: CombatResult) => (ev: Events) => blow(ev)?.result === result && !blow(ev)?.gruesome && plain(ev);
+export const melee = (result: CombatResult) => (ev: Events) => blow(ev)?.result === result && !blow(ev)?.gruesome && plain(ev);
 const shoots = (result: CombatResult) => (ev: Events) => shot(ev)?.result === result && !shot(ev)?.gruesome && plain(ev);
 
 const ATTACK: Command = { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' };
 const SHOOT: Command = { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' };
 
 /** `attacker` (P0) faces `defender` (P1) and attacks it. */
-function duel(scene: Scene, attacker: WarbandUnit = ELF, defender: WarbandUnit = BONES, patch?: Partial<Unit>): Command {
+export function duel(scene: Scene, attacker: WarbandUnit = ELF, defender: WarbandUnit = BONES, patch?: Partial<Unit>): Command {
   scene.spawn(0, attacker, scene.attacker);
   scene.spawn(1, defender, scene.target, patch);
   scene.act('p0u0');
@@ -120,12 +120,12 @@ function longShot(scene: Scene): Command {
 }
 
 /** The rest of a warband, well away, so one loss doesn't break it. */
-function reserve(scene: Scene, owner: Owner, unit: WarbandUnit): void {
+export function reserve(scene: Scene, owner: Owner, unit: WarbandUnit): void {
   for (const pos of scene.corner) scene.spawn(owner, unit, pos);
 }
 
 /** The acting unit's legal move that takes it furthest from `from`. */
-function runFrom(scene: Scene, from: Vec): Command {
+export function runFrom(scene: Scene, from: Vec): Command {
   const grid = makeHexGrid(scene.state().board);
   const moves = getLegalCommands(scene.state()).filter((c) => c.type === 'Move');
   const best = moves.sort((a, b) => grid.distance(b.to, from) - grid.distance(a.to, from))[0];
@@ -652,6 +652,11 @@ const MAX_TRIES = 20000;
 export function stageDemo(state: GameState, id: string): StagedDemo {
   const demo = EFFECT_DEMOS.find((d) => d.id === id);
   if (!demo) throw new Error(`No effect demo '${id}'.`);
+  return stageScene(state, demo);
+}
+
+/** {@link stageDemo} for any scene, one of the listed demos or not. */
+export function stageScene(state: GameState, demo: Pick<EffectDemo, 'label' | 'stage' | 'shows'>): StagedDemo {
   const { width, height } = state.board;
   if (width < 4 || height < 6) throw new Error('The board is too small for the effect demos (it needs 4 by 6 hexes).');
   const cx = Math.floor(width / 2);
