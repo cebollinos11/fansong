@@ -12,6 +12,9 @@ import {
   flyingTargetBonus,
   flagAtBase,
   isKing,
+  isPig,
+  pigExtracted,
+  pigOf,
   getLegalCommands,
   groupFor,
   kingOf,
@@ -227,9 +230,9 @@ function unitValue(u: Unit): number {
 /** What a King is worth in kill-the-king, in {@link unitValue} terms: the game rides on it. */
 const KING_WORTH = 30;
 
-/** {@link unitValue}, except that a King is worth the game. */
+/** {@link unitValue}, except that a King — or the golden Pig — is worth the game. */
 function worthOf(state: GameState, u: Unit): number {
-  return isKing(state, u.id) ? KING_WORTH : unitValue(u);
+  return isKing(state, u.id) || isPig(state, u.id) ? KING_WORTH : unitValue(u);
 }
 
 /** Score per unit of {@link blowValue}: wide enough to rank targets, far below the gap to a move. */
@@ -530,7 +533,7 @@ function unitNeed(state: GameState, board: Board, zones: ZoneView[], kings: King
   const d = nearestEnemyDistance(board, unit.pos, enemies);
   if (d === 1 || (unit.traits.ranged >= 2 && d <= unit.traits.ranged)) return 1;
   if (zones.length > 0 && sitsInZone(zones, unit)) return IDLE_NEED;
-  if (kings && unit.id === kings.ourKing?.id && d > THREAT_RANGE) return IDLE_NEED;
+  if (kings && !kings.goal && unit.id === kings.ourKing?.id && d > THREAT_RANGE) return IDLE_NEED;
   return 1;
 }
 
@@ -573,7 +576,9 @@ function scoreCommand(
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
       if (kings) {
-        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceWorth(state, board, zones, kings, command);
+        // The Pig rolls everything when one good roll walks it home.
+        const dash = command.diceCount === 3 && unit.id === kings.ourKing?.id && pigCanGetHome(kings, unit) ? 50 : 0;
+        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceWorth(state, board, zones, kings, command) + dash;
       }
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       // Zone modes: a unit already holding a zone has nowhere better to be, so
@@ -606,7 +611,8 @@ function scoreCommand(
       if (kings) {
         // Our King only trades blows to end the game or finish a downed foe;
         // stuck in melee with nowhere safer, it still hits back rather than idle.
-        if (attacker.id === kings.ourKing?.id && target.id !== kings.theirKing?.id && !target.knockedDown) return 50_000;
+        // (The golden Pig has a clock to beat: it fights its way through.)
+        if (!kings.goal && attacker.id === kings.ourKing?.id && target.id !== kings.theirKing?.id && !target.knockedDown) return 50_000;
         score += kingTargetBonus(kings, target);
       }
       return score;
@@ -657,6 +663,8 @@ function scoreCommand(
       return warCryScore(state, unitById(state, command.unitId)!);
 
     case 'EndActivation':
+      // The Pig standing in the goal wins by ending its activation there.
+      if (kings?.goal && state.activeUnitId && pigExtracted(state, state.activeUnitId)) return 3_000_000;
       return 0;
 
     // Group members act in the order the engine lines them up.
@@ -691,10 +699,15 @@ function zoneMoveScore(state: GameState, board: Board, zones: ZoneView[], mover:
 /**
  * Kill-the-king as the AI sees it, from `player`'s side: both Kings (while
  * alive) and the enemies close enough to threaten ours.
+ *
+ * Extracting the golden Pig reuses it: the Pig is the escort's "King" (and the
+ * defender has none), so the escort protects it and the defender hunts it.
  */
 interface KingPlan {
   ourKing: Unit | undefined;
   theirKing: Unit | undefined;
+  /** Golden Pig only: walking distance from every reachable hex to the nearest goal hex. */
+  goal?: Map<string, number>;
   /** Enemies within {@link THREAT_RANGE} of our King. */
   threats: Unit[];
   /** Ids of the threats already in contact with our King. */
@@ -706,9 +719,10 @@ interface KingPlan {
 /** An enemy this close to our King is a threat the rest of the warband turns on. */
 const THREAT_RANGE = 3;
 
-/** The King plan in kill-the-king, `undefined` in every other mode. */
+/** The King plan in kill-the-king and the golden Pig, `undefined` in every other mode. */
 function kingPlan(state: GameState, board: Board, player: Owner): KingPlan | undefined {
-  if (!state.mode?.kings) return undefined;
+  const pig = pigOf(state);
+  if (!state.mode?.kings && !pig) return undefined;
   const enemy: Owner = player === 0 ? 1 : 0;
   const living = (id: string | undefined) => {
     const u = id === undefined ? undefined : unitById(state, id);
@@ -717,12 +731,18 @@ function kingPlan(state: GameState, board: Board, player: Owner): KingPlan | und
   // A King left on its own has no one to hide behind: it hunts like anyone else
   // (otherwise two lone Kings would shy away from each other forever).
   const alone = aliveUnits(state, player).length <= 1;
-  const ourKing = alone ? undefined : living(kingOf(state, player));
-  const theirKing = living(kingOf(state, enemy));
+  let ourKing = alone ? undefined : living(kingOf(state, player));
+  let theirKing = living(kingOf(state, enemy));
+  let goal: Map<string, number> | undefined;
+  if (pig) {
+    ourKing = pig.escort === player ? living(pig.unitId) : undefined;
+    theirKing = pig.escort === player ? undefined : living(pig.unitId);
+    goal = zoneField(state, board, state.mode?.objectives.extraction ?? []);
+  }
   const threats = ourKing ? enemiesOf(state, player).filter((e) => board.distance(e.pos, ourKing.pos) <= THREAT_RANGE) : [];
   const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
   const atKing = new Set(threats.filter((t) => board.distance(t.pos, ourKing!.pos) === 1).map((t) => t.id));
-  return { ourKing, theirKing, threats, atKing, occupied };
+  return goal ? { ourKing, theirKing, threats, atKing, occupied, goal } : { ourKing, theirKing, threats, atKing, occupied };
 }
 
 /** Extra attack/shot score: the enemy King above all (it ends the game), then threats to ours. */
@@ -744,8 +764,41 @@ function kingHuntDistance(board: Board, plan: KingPlan, from: Vec, enemies: Unit
     for (const t of plan.threats) min = Math.min(min, board.distance(from, t.pos) + 2 * (board.distance(t.pos, king.pos) - 1));
     return min;
   }
-  if (plan.theirKing) return board.distance(from, plan.theirKing.pos);
+  if (plan.theirKing) {
+    // Hunting the Pig: as good a hex nearer the goal than it is bars its way too.
+    const barring = plan.goal && walk(plan.goal, from) >= walk(plan.goal, plan.theirKing.pos) ? 0.5 : 0;
+    return board.distance(from, plan.theirKing.pos) + barring;
+  }
+  if (king && plan.goal) {
+    // Escorts with no threat to answer go for the foe nearest the Pig: the next one in its way.
+    let next: Unit | undefined;
+    for (const e of enemies) if (!next || board.distance(e.pos, king.pos) < board.distance(next.pos, king.pos)) next = e;
+    if (next) return board.distance(from, next.pos);
+  }
   return nearestEnemyDistance(board, from, enemies);
+}
+
+/** Whether the golden Pig `pig` could walk into the goal with two Moves: worth rolling for now. */
+function pigCanGetHome(plan: KingPlan, pig: Unit): boolean {
+  return !!plan.goal && walk(plan.goal, pig.pos) <= unitMove(pig) * (pig.knockedDown ? 1 : 2);
+}
+
+/** What each standing foe beside a hex costs the Pig's wish to stop there, in hundredths of a hex of progress. */
+const PIG_CONTACT_COST = 250;
+
+/**
+ * The golden Pig's moves: always toward the goal by walking distance, and
+ * stepping into it beats everything (ending the activation there wins). On the
+ * way it would rather not stop beside a standing foe, and once in contact with
+ * one it fights instead of turning its back — unless that last move gets it home.
+ */
+function pigMoveScore(state: GameState, board: Board, goal: Map<string, number>, pig: Unit, to: Vec): number {
+  const now = walk(goal, pig.pos);
+  const then = walk(goal, to);
+  if (then === 0) return 2_000_000;
+  const standing = (at: Vec) => enemiesOf(state, pig.owner).filter((e) => !e.knockedDown && board.distance(e.pos, at) === 1).length;
+  const base = then >= now ? 100_000 : standing(pig.pos) > 0 ? 900_000 : 1_100_000;
+  return base - then * 100 - standing(to) * PIG_CONTACT_COST;
 }
 
 /** Beyond this many hexes from every enemy, our King counts itself as safe as it gets. */
@@ -784,6 +837,9 @@ function kingActivationScore(state: GameState, board: Board, plan: KingPlan, uni
   const nearest = nearestEnemyDistance(board, unit.pos, enemies);
   const canShoot = unit.traits.ranged >= 2 && nearest >= 2 && nearest <= unit.traits.ranged;
   if (unit.id === plan.ourKing?.id) {
+    // The golden Pig goes first when it can get home, else right after the fighters:
+    // the clock is against it, and a turnover before its move costs it a round.
+    if (plan.goal) return pigCanGetHome(plan, unit) ? 150_000 : nearest === 1 ? 100_000 : 60_000;
     if (canShoot) return 100_000;
     return nearest <= 2 ? 50_000 : 1_000;
   }
@@ -800,6 +856,7 @@ function kingActivationScore(state: GameState, board: Board, plan: KingPlan, uni
  */
 function kingMoveScore(state: GameState, board: Board, plan: KingPlan, mover: Unit, to: Vec): number {
   const enemies = enemiesOf(state, state.active);
+  if (plan.goal && mover.id === plan.ourKing?.id) return pigMoveScore(state, board, plan.goal, mover, to);
   if (mover.id === plan.ourKing?.id) {
     const gain = kingSafety(board, to, enemies) - kingSafety(board, mover.pos, enemies);
     return gain > 0 ? 100_000 + gain : -1;

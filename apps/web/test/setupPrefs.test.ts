@@ -21,6 +21,7 @@ describe('setup prefs', () => {
       mapId: 'old-forest',
       gameMode: 'kill-the-king',
       kings: [2, 0],
+      escort: 1,
     };
     saveSetupPrefs(storage, prefs);
     expect(loadSetupPrefs(storage)).toEqual(prefs);

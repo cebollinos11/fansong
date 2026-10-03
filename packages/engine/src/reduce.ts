@@ -30,6 +30,8 @@ import {
   checkRoundLimit,
   dropFallenCarriers,
   fallenKingOwner,
+  pigExtracted,
+  pigFallen,
   finishGame,
   flagsAfterMove,
   regrabOnStandUp,
@@ -183,6 +185,8 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
     s.benched[s.active] = true;
     events.push({ type: 'Turnover', player: s.active, unitId });
     if (successes === 0) {
+      // Its activation is over before it began: a golden Pig already home is out.
+      if (members.some((m) => extractPig(s, events, m.id))) return;
       s.activeUnitId = null;
       s.actionsRemaining = 0;
       advanceTurn(s, events);
@@ -196,6 +200,8 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   if (asGroup && successes > 0) {
     s.group = { pending: members.slice(1).map((m) => ({ unitId: m.id, actions: successes })), allotted: 0 };
   }
+  // A group that rolled nothing ends with its leader; the rest never get a turn of their own.
+  if (successes === 0 && members.slice(1).some((m) => extractPig(s, events, m.id))) return;
   beginActivation(s, events, unit, successes);
 }
 
@@ -1272,6 +1278,7 @@ function handleEndActivation(s: GameState, events: GameEvent[]): void {
 function endActivation(s: GameState, events: GameEvent[]): void {
   const endedId = s.activeUnitId;
   if (endedId) events.push({ type: 'ActivationEnded', unitId: endedId });
+  if (endedId && extractPig(s, events, endedId)) return;
   delete s.rushed;
   s.activeUnitId = null;
   s.actionsRemaining = 0;
@@ -1341,6 +1348,16 @@ function endRound(s: GameState, events: GameEvent[]): void {
   }
 }
 
+/**
+ * Extract the golden Pig (mutates `s`): the Pig ending an activation on its feet
+ * in the goal zone wins for its escort. Returns whether the game ended.
+ */
+function extractPig(s: GameState, events: GameEvent[], unitId: string): boolean {
+  if (s.phase === 'gameOver' || !s.mode?.pig || !pigExtracted(s, unitId)) return false;
+  finishGame(s, events, s.mode.pig.escort, 'extracted');
+  return true;
+}
+
 function checkGameOver(s: GameState, events: GameEvent[]): boolean {
   if (s.phase === 'gameOver') return true;
   // Capture-the-flag: knocked-down and fallen carriers drop what they carry.
@@ -1349,6 +1366,11 @@ function checkGameOver(s: GameState, events: GameEvent[]): boolean {
   const kingless = fallenKingOwner(s);
   if (kingless !== undefined) {
     finishGame(s, events, other(kingless), 'king');
+    return true;
+  }
+  // Extract the golden Pig: a fallen Pig loses for its escort at once.
+  if (s.mode?.pig && pigFallen(s)) {
+    finishGame(s, events, other(s.mode.pig.escort), 'pig');
     return true;
   }
   const p0 = livingCount(s, 0);

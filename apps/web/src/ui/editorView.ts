@@ -227,6 +227,7 @@ export const MODE_LABELS: Record<GameMode, string> = {
   'king-of-the-hill': 'King of the hill',
   conquest: 'Conquest',
   'capture-the-flag': 'Capture the flag',
+  'golden-pig': 'Extract the golden Pig',
 };
 
 /** Errors the editor lists before collapsing the rest into "…and N more". */

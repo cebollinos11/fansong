@@ -269,6 +269,26 @@ describe('RoomEngine — lobby', () => {
     expect(state.mode?.kings?.[1]).toBe(guestUnits[4]!.id);
   });
 
+  it('lets the host pick who escorts the golden Pig, and shows both players', () => {
+    const room = new RoomEngine(undefined, () => 3);
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    msg(room, a, { t: 'setMap', mapId: 'old-forest', mode: 'golden-pig' });
+    expect(b.lobby()).toMatchObject({ mode: 'golden-pig', problem: null });
+    expect(b.lobby().escort).toBeUndefined();
+    msg(room, a, { t: 'setMap', mapId: 'old-forest', mode: 'golden-pig', escort: 1 });
+    expect(b.lobby().escort).toBe(1);
+    msg(room, a, { t: 'ready', ready: true });
+    msg(room, b, { t: 'ready', ready: true });
+    expect(room.setup).toMatchObject({ mode: 'golden-pig', escort: 1 });
+    const state = room.getState()!;
+    expect(state.mode?.pig?.escort).toBe(1);
+    expect(state.units.find((u) => u.id === state.mode!.pig!.unitId)).toMatchObject({ owner: 1, name: 'Golden Pig' });
+    expect(state.limits?.roundLimit).toBeGreaterThan(0);
+  });
+
   it('carries the host\'s round limit and target score from the lobby into the game', () => {
     const room = new RoomEngine(undefined, () => 3);
     const a = new FakeConn('a');

@@ -325,7 +325,7 @@ describe('applyMapName', () => {
 describe('editorValidation', () => {
   it('reports a fresh map as valid with the objective-free modes', () => {
     const v = editorValidation(newEditorMap(10, 10));
-    expect(v).toEqual({ ok: true, errors: [], modes: ['annihilation', 'kill-the-king'] });
+    expect(v).toEqual({ ok: true, errors: [], modes: ['annihilation', 'kill-the-king', 'golden-pig'] });
   });
 
   it('lists every mode a built-in map supports', () => {
