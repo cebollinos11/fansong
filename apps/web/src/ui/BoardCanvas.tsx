@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { airborne, unitById, vecKey, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay, type ZoneScore } from '../three/BoardView.js';
-import { BACKDROP_LABELS, BACKDROPS, type BackdropKind } from '../three/backdrop.js';
+import { BACKDROP_LABELS, BACKDROPS, DEFAULT_BACKDROP, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
 import { InfoLines } from './StatIcons.js';
@@ -120,13 +120,13 @@ function saveCameraMode(mode: CameraMode): void {
 
 const BACKDROP_KEY = 'fansong.backdrop';
 
-/** The remembered backdrop (none unless changed; storage may be unavailable). */
+/** The remembered backdrop (the table unless changed; storage may be unavailable). */
 function loadBackdrop(): BackdropKind {
   try {
     const saved = localStorage.getItem(BACKDROP_KEY);
-    return BACKDROPS.find((b) => b === saved) ?? 'void';
+    return BACKDROPS.find((b) => b === saved) ?? DEFAULT_BACKDROP;
   } catch {
-    return 'void';
+    return DEFAULT_BACKDROP;
   }
 }
 

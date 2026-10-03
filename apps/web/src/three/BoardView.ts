@@ -22,7 +22,7 @@ import { animationsFor, clipDuration, framesOf, type Clip, type RangedClip, type
 import { UnitAnimator } from './unitAnimator.js';
 import { Effects } from './effects.js';
 import { LavaEmbers, lavaPixel, LavaSurface, type Ember } from './lava.js';
-import { Backdrop, type BackdropKind } from './backdrop.js';
+import { Backdrop, DEFAULT_BACKDROP, type BackdropKind } from './backdrop.js';
 import { cellNoise, featureLayout } from './features.js';
 import {
   activationResolveMs,
@@ -1066,7 +1066,7 @@ export class BoardView {
   private readonly dashedRingGeo = dashedRing();
   private clock = new THREE.Clock();
   /** The sky and ground around the table (see {@link setBackdrop}). */
-  private backdrop = new Backdrop('void', HEX_COL_STEP, HEX_ROW_STEP, TILE_BOTTOM);
+  private backdrop = new Backdrop(DEFAULT_BACKDROP, HEX_COL_STEP, HEX_ROW_STEP, TILE_BOTTOM);
 
   constructor(private readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -5698,7 +5698,7 @@ export class BoardView {
     const roll = this.rollAngle();
     this.camera.position.add(shake);
     this.camera.rotateZ(roll);
-    this.backdrop.update(this.camera, lavaTime);
+    this.backdrop.update(this.camera);
     this.renderer.render(this.scene, this.camera);
     this.camera.rotateZ(-roll);
     this.camera.position.sub(shake);
