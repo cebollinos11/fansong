@@ -48,6 +48,8 @@ Tests live in each package's `test/` directory (`**/test/**/*.test.ts`) and run 
 - The sandbox panel's **Animations** section has one button per melee outcome, shooting outcome and trait; each stages a small scene and plays it (`src/game/effectDemos.ts`). Add a demo there when an outcome or trait gets a new effect.
 - `?animSpeed=0.25` slows animations so screenshots catch them. The console 404 on `/favicon.ico` is expected.
 
+**Sound effects** are the user's own mouth recordings. `apps/web/src/audio/sfxCues.ts` is the one list of cues; `BoardView.sound(name)` plays one beside the visual effect it belongs to, and a cue with no recording is silent (or plays its `fallback`). To add a sound, add a cue there and call `this.sound(...)`; the user records it in the booth at `http://localhost:5173/?dev=1&record`, which saves the takes to `apps/web/public/sfx/` and rewrites `manifest.json` through a dev-server endpoint in `vite.config.ts`. Commit the WAVs and the manifest. The sandbox's **Sounds** section lists every cue with whether it is recorded.
+
 **Unit sprites and terrain art** are imported from a local Wesnoth checkout (`C:\Repos\wesnoth`), not fetched. To add or change a unit's sprite:
 1. Edit `UNIT_SPRITES` in `apps/web/src/three/unitSprites.ts`.
 2. Run `pnpm --filter @fansong/web sprites C:\Repos\wesnoth`. This parses the WML into `src/three/unitAnimations.json` and copies the frames into `public/sprites/`.

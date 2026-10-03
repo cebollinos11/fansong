@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { airborne, unitById, vecKey, type GameEvent, type GameState, type Owner, type Vec } from '@fansong/engine';
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay, type ZoneScore } from '../three/BoardView.js';
 import { BACKDROP_LABELS, BACKDROPS, DEFAULT_BACKDROP, type BackdropKind } from '../three/backdrop.js';
@@ -9,6 +9,7 @@ import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeVi
 import { traitTags } from './hudView.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 import { canOfferFullscreen, toggleFullscreen, useFullscreen } from './fullscreen.js';
+import { sfx } from '../audio/sfx.js';
 
 interface Props {
   state: GameState;
@@ -120,6 +121,14 @@ function saveCameraMode(mode: CameraMode): void {
 
 const BACKDROP_KEY = 'fansong.backdrop';
 
+/** The sound control's two settings, as one value that only changes when either does. */
+let soundNow = { volume: sfx.volume, muted: sfx.muted };
+function soundSetting(): { volume: number; muted: boolean } {
+  if (soundNow.volume !== sfx.volume || soundNow.muted !== sfx.muted) soundNow = { volume: sfx.volume, muted: sfx.muted };
+  return soundNow;
+}
+const subscribeSound = (fn: () => void) => sfx.subscribe(fn);
+
 /** The remembered backdrop (the table unless changed; storage may be unavailable). */
 function loadBackdrop(): BackdropKind {
   try {
@@ -151,6 +160,13 @@ export function BoardCanvas(props: Props): JSX.Element {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [cameraMode, setCameraMode] = useState(loadCameraMode);
   const [backdrop, setBackdrop] = useState(loadBackdrop);
+  const sound = useSyncExternalStore(subscribeSound, soundSetting);
+  // A match plays over its backdrop's own background sound.
+  useEffect(() => {
+    if (!props.playing) return;
+    sfx.playAmbience(`amb-${backdrop}`);
+    return () => sfx.playAmbience(null);
+  }, [props.playing, backdrop]);
   // Phones and tablets can hide the browser's bars to give the board the whole screen.
   const [offerFullscreen] = useState(canOfferFullscreen);
   const fullscreen = useFullscreen();
@@ -465,6 +481,21 @@ export function BoardCanvas(props: Props): JSX.Element {
         >
           Backdrop: {BACKDROP_LABELS[backdrop]}
         </button>
+        <span className={`board-follow board-sound${sound.muted ? '' : ' on'}`}>
+          <button type="button" title={sound.muted ? 'Turn the sound on' : 'Turn the sound off'} onClick={() => sfx.setMuted(!sound.muted)}>
+            Sound: {sound.muted ? 'off' : 'on'}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={sound.muted ? 0 : sound.volume}
+            title="Volume"
+            aria-label="Volume"
+            onChange={(ev) => sfx.setVolume(Number(ev.target.value))}
+          />
+        </span>
       </div>
     </div>
   );

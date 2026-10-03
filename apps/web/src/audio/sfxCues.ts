@@ -1,0 +1,196 @@
+/**
+ * Every sound effect the game can play: the one list behind the recording booth
+ * (`?dev=1&record`), the player ({@link ./sfx.ts}) and the sandbox's checklist.
+ * A cue with nothing recorded is simply silent (or plays its `fallback`), so
+ * the game works with any subset of these on disk.
+ *
+ * Recordings live in `public/sfx/<name>-<take>.wav`, listed by
+ * `public/sfx/manifest.json`; the booth writes both.
+ */
+export interface SfxCue {
+  name: string;
+  /** 1: heard every game. 2: rarer moments and traits. 3: objectives, voices, interface, ambience. */
+  tier: 1 | 2 | 3;
+  group: string;
+  /** When it plays. */
+  when: string;
+  /** What it might sound like. */
+  idea: string;
+  /** How many takes the booth asks for (variations of one played often). */
+  takes: number;
+  /** The cue played in its place until it is recorded. */
+  fallback?: string;
+  /** Loudness against the rest (1 when absent). */
+  gain?: number;
+  /** A long recording played round and round, not a one-shot. */
+  loop?: true;
+}
+
+const BASE = [
+  // --- Tier 1: the core game ---------------------------------------------------
+  { name: 'select', tier: 1, group: 'Activation and dice', when: 'A unit is picked to activate', idea: 'short "hup" or pop', takes: 1 },
+  { name: 'dice-roll', tier: 1, group: 'Activation and dice', when: 'Dice tumble on a roll card', idea: 'rattly "brrrrdl"', takes: 3 },
+  { name: 'die-success', tier: 1, group: 'Activation and dice', when: 'An activation die comes up a success', idea: 'bright "ding"', takes: 1, gain: 0.8 },
+  { name: 'die-fail', tier: 1, group: 'Activation and dice', when: 'An activation die comes up a failure', idea: 'dull "bonk"', takes: 1, gain: 0.8 },
+  { name: 'turnover', tier: 1, group: 'Activation and dice', when: 'Two failures: the turn passes to the other side', idea: 'sad trombone "wah-wahh"', takes: 1 },
+  { name: 'end-activation', tier: 1, group: 'Activation and dice', when: 'A unit finishes acting', idea: 'soft "tk"', takes: 1, gain: 0.6 },
+  { name: 'round-start', tier: 1, group: 'Activation and dice', when: 'A new round begins', idea: 'short fanfare "ta-daa", or a gong', takes: 1 },
+
+  { name: 'step', tier: 1, group: 'Moving', when: 'Each hex of a walk on foot', idea: '"tup"', takes: 3, gain: 0.6 },
+  { name: 'hoof', tier: 1, group: 'Moving', when: 'Each hex a mounted unit rides', idea: '"clop"', takes: 3, gain: 0.6, fallback: 'step' },
+  { name: 'wingbeat', tier: 1, group: 'Moving', when: 'Each hex a flyer crosses', idea: '"fwup"', takes: 3, gain: 0.6 },
+  { name: 'stand-up', tier: 1, group: 'Moving', when: 'A knocked-down unit gets up', idea: 'effortful "hnngh"', takes: 1 },
+
+  { name: 'swing', tier: 1, group: 'Melee', when: 'Every melee swing', idea: '"fwsh"', takes: 3, gain: 0.8 },
+  { name: 'hit', tier: 1, group: 'Melee', when: 'A blow lands', idea: 'meaty "thwack"', takes: 3 },
+  { name: 'block', tier: 1, group: 'Melee', when: 'A blow is blocked', idea: 'metallic "tink"', takes: 3 },
+  { name: 'clash', tier: 1, group: 'Melee', when: 'A tied roll: both blades meet in sparks', idea: '"kshing!"', takes: 1 },
+  { name: 'skid', tier: 1, group: 'Melee', when: 'The loser is pushed back a hex in dust', idea: '"shhrrp"', takes: 1 },
+  { name: 'knockdown', tier: 1, group: 'Melee', when: 'A unit is put on the ground', idea: '"whoa", then a thud', takes: 1 },
+  { name: 'dizzy', tier: 1, group: 'Melee', when: 'Stars spin over a downed unit', idea: 'cuckoo twitter "tweedle-eedle"', takes: 1, gain: 0.7 },
+
+  { name: 'bow-release', tier: 1, group: 'Shooting', when: 'An arrow is loosed', idea: '"twang"', takes: 3 },
+  { name: 'arrow-fly', tier: 1, group: 'Shooting', when: 'The arrow is in the air', idea: '"fweeee"', takes: 1, gain: 0.7 },
+  { name: 'arrow-hit', tier: 1, group: 'Shooting', when: 'The arrow strikes its target', idea: '"thok"', takes: 3 },
+  { name: 'arrow-miss', tier: 1, group: 'Shooting', when: 'The arrow lands in the dirt behind', idea: '"pfft"', takes: 1 },
+
+  { name: 'death', tier: 1, group: 'Death and the end', when: 'A unit is killed', idea: '"bleeargh"', takes: 3 },
+  { name: 'ghost-rise', tier: 1, group: 'Death and the end', when: 'Its ghost floats up afterwards', idea: 'rising "ooOOoo"', takes: 1, gain: 0.7 },
+  { name: 'victory', tier: 1, group: 'Death and the end', when: 'The game ends and you won', idea: 'triumphant fanfare', takes: 1 },
+  { name: 'defeat', tier: 1, group: 'Death and the end', when: 'The game ends and you lost', idea: 'deflating "womp womp"', takes: 1 },
+
+  // --- Tier 2: special moments --------------------------------------------------
+  { name: 'power-charge', tier: 2, group: 'Big combat moments', when: 'A power blow or aimed shot: two actions behind one strike', idea: 'rising "nnnnNNN"', takes: 1 },
+  { name: 'heartbeat', tier: 2, group: 'Big combat moments', when: 'The build-up to a gruesome kill', idea: 'one "lub-dub"', takes: 1 },
+  { name: 'gruesome-kill', tier: 2, group: 'Big combat moments', when: 'A tripled score: the body is hurled away', idea: 'big wet "SPLORCH"', takes: 1 },
+  { name: 'dread-wave', tier: 2, group: 'Big combat moments', when: 'Fear spreads from a gruesome kill', idea: 'low "wooOOOoom"', takes: 1 },
+  { name: 'arrow-cover', tier: 2, group: 'Big combat moments', when: 'An arrow knocks chips off cover', idea: '"tok", then a crackle', takes: 1, fallback: 'arrow-miss' },
+  { name: 'arrow-pierce', tier: 2, group: 'Big combat moments', when: 'A gruesome shot bursts out the back of its victim', idea: 'slow "fwoooosh", then "shlick"', takes: 1 },
+  { name: 'free-hack', tier: 2, group: 'Big combat moments', when: 'A foe swings at a unit leaving contact', idea: 'quick "hah!"', takes: 1 },
+  { name: 'pushed-off', tier: 2, group: 'Big combat moments', when: 'A unit is pushed off the table edge', idea: 'falling "aaaaah" fading away', takes: 1 },
+  { name: 'lava-sink', tier: 2, group: 'Big combat moments', when: 'A unit goes into lava', idea: '"sssssss", then "bloop"', takes: 1 },
+
+  { name: 'nerve-pass', tier: 2, group: 'Morale', when: 'A nerve check is passed', idea: 'steady "hm!"', takes: 1 },
+  { name: 'nerve-fail', tier: 2, group: 'Morale', when: 'A nerve check is failed', idea: 'gulp or whimper', takes: 1 },
+  { name: 'flee', tier: 2, group: 'Morale', when: 'A unit runs for its edge', idea: 'panicked "aaAAaah"', takes: 1 },
+  { name: 'routed', tier: 2, group: 'Morale', when: 'It runs off the map for good', idea: 'scream fading into the distance', takes: 1 },
+  { name: 'warband-broken', tier: 2, group: 'Morale', when: 'A side drops below half and breaks', idea: 'a "krrk" and a groan', takes: 1 },
+
+  { name: 'war-cry', tier: 2, group: 'Traits', when: 'A Leader rallies', idea: 'long "RAAAAH!"', takes: 1 },
+  { name: 'inspire', tier: 2, group: 'Traits', when: 'Each friend the war cry reaches takes heart', idea: 'sparkle "tinggg"', takes: 1, gain: 0.7 },
+  { name: 'leader-falls', tier: 2, group: 'Traits', when: 'A Leader is killed', idea: 'dramatic "NOOOO"', takes: 1 },
+  { name: 'guard-set', tier: 2, group: 'Traits', when: 'A unit goes on guard', idea: '"shink" of blades crossing', takes: 1 },
+  { name: 'riposte', tier: 2, group: 'Traits', when: "A guard's first strike stops the attack", idea: '"ha-HA!"', takes: 1 },
+  { name: 'armor-clang', tier: 2, group: 'Traits', when: 'Armored: the blow glances off', idea: 'dull "dongg"', takes: 1 },
+  { name: 'tough-save', tier: 2, group: 'Traits', when: 'Tough: a gold ward flares and shatters', idea: 'glassy "pkshh"', takes: 1 },
+  { name: 'mastery', tier: 2, group: 'Traits', when: 'Combat Mastery turns a tie into a kill', idea: 'razor "shiiing"', takes: 1 },
+  { name: 'brace', tier: 2, group: 'Traits', when: 'Supported or Immovable: it holds its ground', idea: 'solid "hup", then a thud', takes: 1 },
+  { name: 'reassemble', tier: 2, group: 'Traits', when: "A skeleton's bones pull back together", idea: 'bone rattle "klaklaklak"', takes: 1 },
+  { name: 'dumb', tier: 2, group: 'Traits', when: 'A question mark wobbles over a Dumb unit', idea: '"duhhh?"', takes: 1 },
+  { name: 'defect', tier: 2, group: 'Traits', when: 'A Disloyal unit changes sides', idea: 'sneaky "heh-heh"', takes: 1 },
+  { name: 'whoosh-trait', tier: 2, group: 'Traits', when: 'A Rusher lunges, a Slippery unit ducks away, a Whirling one spins, a Trample drives through', idea: 'bigger, longer "FWOOSH"', takes: 1, fallback: 'swing' },
+
+  // --- Tier 3: objectives, interface, ambience ------------------------------------
+  { name: 'score', tier: 3, group: 'Game modes', when: 'Points are scored', idea: 'coin "ba-ding"', takes: 1 },
+  { name: 'flag-pickup', tier: 3, group: 'Game modes', when: 'The enemy flag is taken', idea: '"yoink!"', takes: 1 },
+  { name: 'flag-drop', tier: 3, group: 'Game modes', when: 'The carrier goes down and the flag falls', idea: 'a flap and a thud', takes: 1 },
+  { name: 'flag-return', tier: 3, group: 'Game modes', when: 'A flag is returned to its base', idea: 'relieved "phew"', takes: 1 },
+  { name: 'flag-capture', tier: 3, group: 'Game modes', when: 'The flag is carried home', idea: 'big fanfare', takes: 1 },
+
+  { name: 'ui-click', tier: 3, group: 'Interface', when: 'Any button is pressed', idea: '"tk"', takes: 1, gain: 0.5 },
+  { name: 'ui-hover', tier: 3, group: 'Interface', when: 'The pointer comes onto a button', idea: 'the faintest "p"', takes: 1, gain: 0.25 },
+  { name: 'your-turn', tier: 3, group: 'Interface', when: 'Play passes to you, against the AI or online', idea: '"ahem", or "bing-bong"', takes: 1, gain: 0.8 },
+
+  { name: 'amb-table', tier: 3, group: 'Ambience', when: 'All game long, on the table backdrop', idea: '20 to 30 seconds of quiet room: a hum, a clock, a far-off cough', takes: 1, gain: 0.35, loop: true },
+  { name: 'amb-meadow', tier: 3, group: 'Ambience', when: 'All game long, on the meadow backdrop', idea: '20 to 30 seconds of wind and birdsong', takes: 1, gain: 0.35, loop: true },
+] as const satisfies readonly SfxCue[];
+
+/** The kinds of creature that get a voice of their own, with who speaks in it. */
+export const VOICE_FAMILIES = {
+  human: 'men and elves',
+  orc: 'orcs and goblins',
+  bones: 'skeletons (rattle and clack)',
+  spirit: 'ghosts and shadows',
+  beast: 'bears, wolves, boars, rats and the yeti (growl)',
+  bird: 'gryphons, falcons, wyverns and bats (screech)',
+  bug: 'spiders and scorpions (chitter and hiss)',
+} as const;
+
+export type VoiceFamily = keyof typeof VOICE_FAMILIES;
+export type VoiceLine = 'attack' | 'death';
+export type SfxName = (typeof BASE)[number]['name'] | `${VoiceFamily}-${VoiceLine}`;
+
+const VOICES: SfxCue[] = (Object.keys(VOICE_FAMILIES) as VoiceFamily[]).flatMap((family) => [
+  {
+    name: `${family}-attack`,
+    tier: 3,
+    group: 'Voices',
+    when: `An attack by one of the ${VOICE_FAMILIES[family]}`,
+    idea: 'a grunt of effort, in that voice',
+    takes: 2,
+    gain: 0.8,
+  },
+  {
+    name: `${family}-death`,
+    tier: 3,
+    group: 'Voices',
+    when: `The death of one of the ${VOICE_FAMILIES[family]}`,
+    idea: 'a dying cry, in that voice',
+    takes: 2,
+    fallback: 'death',
+  },
+]);
+
+/** Every cue, in the order the booth asks for them. */
+export const SFX_CUES: readonly SfxCue[] = [...BASE.filter((c) => c.tier < 3), ...BASE.filter((c) => c.tier === 3), ...VOICES];
+
+const BY_NAME = new Map(SFX_CUES.map((c) => [c.name, c]));
+
+export function sfxCue(name: string): SfxCue | undefined {
+  return BY_NAME.get(name);
+}
+
+/** How many takes of each cue are on disk, and a version that changes whenever any are re-recorded. */
+export interface SfxManifest {
+  version: number;
+  takes: Record<string, number>;
+}
+
+export const EMPTY_MANIFEST: SfxManifest = { version: 0, takes: {} };
+
+/** The file a take is stored in, under `public/sfx/`. Takes count from 1. */
+export function takeFile(name: string, take: number): string {
+  return `${name}-${take}.wav`;
+}
+
+/**
+ * The cue to actually play for `name`: itself when it has a recording, else the
+ * first recorded cue down its chain of fallbacks, else nothing.
+ */
+export function resolveSfx(name: string, manifest: SfxManifest): string | null {
+  const seen = new Set<string>();
+  for (let at: string | undefined = name; at && !seen.has(at); at = BY_NAME.get(at)?.fallback) {
+    if ((manifest.takes[at] ?? 0) > 0) return at;
+    seen.add(at);
+  }
+  return null;
+}
+
+/** Which of `count` takes to play (from 1), never `last` again while there is another. */
+export function pickTake(count: number, last: number | undefined, rand: () => number = Math.random): number {
+  if (count <= 1) return 1;
+  const others = last !== undefined && last >= 1 && last <= count ? count - 1 : count;
+  const pick = 1 + Math.min(others - 1, Math.floor(rand() * others));
+  return others < count && pick >= last! ? pick + 1 : pick;
+}
+
+/** Whose voice a unit drawn with the Wesnoth sprite `sprite` speaks in. */
+export function voiceFamily(sprite: string): VoiceFamily {
+  if (/^undead-skeletal\//.test(sprite)) return 'bones';
+  if (/^undead/.test(sprite)) return 'spirit';
+  if (/^(orcs|goblins|trolls|ogres)\//.test(sprite)) return 'orc';
+  if (/gryphon|falcon|wyvern|^bats\/|drake|bird/.test(sprite)) return 'bird';
+  if (/spider|scorpion/.test(sprite)) return 'bug';
+  if (/^monsters\//.test(sprite)) return 'beast';
+  return 'human';
+}

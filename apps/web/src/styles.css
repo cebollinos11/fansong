@@ -3932,3 +3932,213 @@ button.trait-add[aria-expanded='true'] {
   gap: 5px;
   flex-wrap: wrap;
 }
+
+/* --- The board's sound control: a mute button and a volume slider in one chip. --- */
+.board-sound {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.board-sound button {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.board-sound input {
+  width: 70px;
+  accent-color: var(--accent);
+}
+
+/* --- The recording booth (?dev=1&record): one sound cue at a time, the list beside it. --- */
+.booth {
+  height: 100%;
+  display: grid;
+  grid-template: auto 1fr / 1fr 260px;
+  gap: 0 16px;
+  padding: 16px;
+}
+
+.booth-head {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding-bottom: 12px;
+}
+
+.booth-head h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.booth-progress {
+  flex: 1;
+  color: var(--muted);
+}
+
+.booth-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  min-height: 0;
+}
+
+.booth-tier {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.booth-name {
+  font-size: clamp(36px, 7vw, 72px);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.booth-when {
+  font-size: 20px;
+}
+
+.booth-idea {
+  font-size: 26px;
+  color: var(--accent);
+}
+
+.booth-want,
+.booth-tip,
+.booth-tape {
+  max-width: 560px;
+  color: var(--muted);
+}
+
+.booth-tip {
+  margin: 0;
+  font-size: 12px;
+}
+
+.booth-meter {
+  width: min(420px, 100%);
+  height: 12px;
+  margin-top: 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.booth-meter div {
+  width: 0;
+  height: 100%;
+  background: var(--accent);
+}
+
+.booth-heard {
+  font-size: 18px;
+  color: var(--muted);
+}
+
+.booth-heard.enough {
+  color: var(--accent);
+}
+
+.booth-keys {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 2;
+}
+
+.booth-keys kbd {
+  padding: 2px 6px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+.booth-start {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.booth-file {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.booth-note {
+  min-height: 1.4em;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.booth-list {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.booth-list-title {
+  margin: 10px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.booth-cue {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.booth-cue.done {
+  color: var(--text);
+}
+
+.booth-cue.done span {
+  color: var(--accent);
+}
+
+.booth-cue.current {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+
+.booth-cue em {
+  margin-left: auto;
+  font-style: normal;
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .booth {
+    grid-template: auto auto 1fr / 1fr;
+  }
+}

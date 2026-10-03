@@ -10,6 +10,7 @@ import { LobbyScreen } from './ui/LobbyScreen.js';
 import { createMatchFromPresets, DEFAULT_BOARD, DEFAULT_SETUP, type MatchSetup } from '@fansong/content';
 import { SandboxScreen } from './ui/SandboxScreen.js';
 import { PresetEditorScreen } from './ui/PresetEditorScreen.js';
+import { RecordScreen } from './ui/RecordScreen.js';
 import { loadAutosave } from './game/sandboxStore.js';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
@@ -24,12 +25,14 @@ type View =
   | { kind: 'editor' }
   | { kind: 'armies' }
   | { kind: 'presets' }
+  | { kind: 'record' }
   | { kind: 'match'; id: number; launch: Launch }
   | { kind: 'replay'; id: number; replay: Replay }
   | { kind: 'sandbox'; id: number; initial: GameState; setup: MatchSetup };
 
 export function App(): JSX.Element {
   const [view, setView] = useState<View>(() => {
+    if (devTools() && new URLSearchParams(window.location.search).has('record')) return { kind: 'record' };
     const sandbox = sandboxFromUrl();
     if (sandbox) return sandbox;
     const launch = inviteLaunch();
@@ -71,6 +74,10 @@ export function App(): JSX.Element {
 
   if (view.kind === 'presets') {
     return <PresetEditorScreen onExit={toMenu} />;
+  }
+
+  if (view.kind === 'record') {
+    return <RecordScreen onExit={toMenu} />;
   }
 
   if (view.kind === 'editor') {
@@ -246,7 +253,7 @@ function sandboxStart(setup: MatchSetup): GameState {
   }
 }
 
-/** Dev tools (the sandbox, the preset editor) are on in any build whose URL carries `?dev=1`. */
+/** Dev tools (the sandbox, the preset editor, the `&record` sound booth) are on in any build whose URL carries `?dev=1`. */
 function devTools(): boolean {
   return new URLSearchParams(window.location.search).get('dev') === '1';
 }
