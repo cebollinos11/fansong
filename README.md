@@ -215,8 +215,8 @@ Point the web app at a deployed worker with `VITE_SERVER_URL` (it defaults to th
 local `wrangler dev` address). In the setup screen, pick **Online with a friend**
 and **Create a room**, then send your friend the code (or the `?room=CODE` invite
 link); they enter it under **Join room**. In the room's lobby each player picks
-their own army (preset or army-builder), the host picks a built-in map and game
-mode, and the game starts once both press **Ready**. A player who drops can
+their own army (preset or army-builder), the host picks the map (built-in, or
+one of their own editor maps, which is sent to the room) and game mode, and the game starts once both press **Ready**. A player who drops can
 rejoin with the same code, and after a game **Rematch** returns both to the
 lobby. The `apps/web` client plays
 local *or* online through one `MatchClient` interface — the board, HUD, and

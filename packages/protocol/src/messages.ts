@@ -8,6 +8,7 @@ import {
   matchSetupSchema,
   ownerSchema,
   warbandSchema,
+  wireMapSchema,
 } from './schema.js';
 
 /**
@@ -39,11 +40,16 @@ export const setArmyMessageSchema = z
   })
   .strict();
 
-/** Lobby, host only: pick the built-in map, the game mode and its round limit / target score. */
+/**
+ * Lobby, host only: pick the map, the game mode and its round limit / target
+ * score. `mapId` names a built-in map, or — with `map` — the host's own
+ * editor-made map, which travels whole (its `id` must equal `mapId`).
+ */
 export const setMapMessageSchema = z
   .object({
     t: z.literal('setMap'),
     mapId: z.string().min(1).max(64),
+    map: wireMapSchema.optional(),
     mode: gameModeSchema,
     limits: gameLimitsSchema.optional(),
   })
@@ -106,11 +112,13 @@ export const lobbySeatSchema = z
   })
   .strict();
 
-/** The room between games. `problem` says why these picks can't start a match
- *  (e.g. an army too big for the whole map), or is null. */
+/** The room between games. `map` is the host's custom map when `mapId` names
+ *  one (absent for built-in maps). `problem` says why these picks can't start a
+ *  match (e.g. an army too big for the whole map), or is null. */
 export const lobbySchema = z
   .object({
     mapId: z.string(),
+    map: wireMapSchema.optional(),
     mode: gameModeSchema,
     limits: gameLimitsSchema.optional(),
     seats: z.tuple([lobbySeatSchema, lobbySeatSchema]),
@@ -191,6 +199,7 @@ export const ErrorCode = {
   NotJoined: 'not_joined',
   NotHost: 'not_host',
   UnknownMap: 'unknown_map',
+  InvalidMap: 'invalid_map',
   NotInLobby: 'not_in_lobby',
   NoGame: 'no_game',
   NotYourTurn: 'not_your_turn',

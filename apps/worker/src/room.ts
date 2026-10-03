@@ -1,11 +1,15 @@
 import { isLegalCommand, MODE_RULES, reduce, type Command, type GameLimits, type GameMode, type GameState, type Owner } from '@fansong/engine';
 import {
   createMatchFromPresets,
+  DEFAULT_BOARD,
   DEFAULT_MAP_ID,
   DEFAULT_SETUP,
   defaultKing,
   getMap,
   getPreset,
+  validateMap,
+  type MapDef,
+  type MapLookup,
   type MatchSetup,
   type Warband,
 } from '@fansong/content';
@@ -31,14 +35,14 @@ export interface RoomConnection {
 
 /**
  * Why `setup` cannot start a room, or `null` if it can. It is the exact build
- * the room runs (`createMatchFromPresets` against the built-in maps — the worker
- * never sees a browser's custom maps), so this rejects unknown maps, a mode the
+ * the room runs (`createMatchFromPresets` against the built-in maps plus the
+ * host's custom map, via `lookup`), so this rejects unknown maps, a mode the
  * map has no objectives for, an illegal or oversized army and out-of-range King
  * picks up front, instead of a room that throws when the game starts.
  */
-export function setupError(setup: MatchSetup): string | null {
+export function setupError(setup: MatchSetup, lookup: MapLookup = getMap): string | null {
   try {
-    createMatchFromPresets(setup);
+    createMatchFromPresets(setup, DEFAULT_BOARD, lookup);
     return null;
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
@@ -56,6 +60,8 @@ export interface ArmyPick {
 /** What survives a Durable Object restart: the lobby picks and any running game. */
 export interface RoomSnapshot {
   mapId: string;
+  /** The host's editor-made map, when `mapId` names it; absent for built-in maps. */
+  customMap?: MapDef;
   mode: GameMode;
   /** The host's round limit / target score; absent (also in older snapshots) = mode defaults. */
   limits?: GameLimits;
@@ -71,6 +77,19 @@ export function newRoomSnapshot(): RoomSnapshot {
     return { preset, warband, king: defaultKing(warband.units) };
   };
   return { mapId: DEFAULT_MAP_ID, mode: 'annihilation', picks: [pick(0), pick(1)], game: null };
+}
+
+/** Resolves map ids for a room: the built-in maps, then the host's custom map. */
+export function roomMapLookup(room: Pick<RoomSnapshot, 'customMap'>): MapLookup {
+  return (id) => getMap(id) ?? (room.customMap?.id === id ? room.customMap : undefined);
+}
+
+/** Why a host's custom map can't be played, or `null` if it can. */
+export function customMapError(mapId: string, map: MapDef): string | null {
+  if (map.id !== mapId) return `map id "${map.id}" does not match "${mapId}"`;
+  if (getMap(map.id)) return `custom map "${map.id}" would replace a built-in map`;
+  const check = validateMap(map);
+  return check.ok ? null : `map "${map.name}" is not playable: ${check.errors.join('; ')}`;
 }
 
 /**
@@ -185,7 +204,17 @@ export class RoomEngine {
           this.error(conn, ErrorCode.NotHost, 'only the host picks the map');
           break;
         }
-        if (!getMap(msg.mapId)) {
+        if (msg.map) {
+          const problem = customMapError(msg.mapId, msg.map);
+          if (problem !== null) {
+            this.error(conn, ErrorCode.InvalidMap, problem);
+            break;
+          }
+          this.room.customMap = msg.map;
+        } else if (getMap(msg.mapId)) {
+          delete this.room.customMap;
+        } else if (this.room.customMap?.id !== msg.mapId) {
+          // A custom map must be sent whole; only the one already here can be named alone.
           this.error(conn, ErrorCode.UnknownMap, `unknown map "${msg.mapId}"`);
           break;
         }
@@ -251,17 +280,18 @@ export class RoomEngine {
 
   /** The lobby as the clients see it. */
   lobby(): Lobby {
-    const { mapId, mode, limits, picks } = this.room;
+    const { mapId, customMap, mode, limits, picks } = this.room;
     const presence = this.presence();
     return {
       mapId,
+      ...(customMap ? { map: customMap } : {}),
       mode,
       ...(limits ? { limits } : {}),
       seats: [
         { ...picks[0], present: presence[0], ready: this.ready[0] },
         { ...picks[1], present: presence[1], ready: this.ready[1] },
       ],
-      problem: setupError(lobbySetup(this.room, 0)),
+      problem: setupError(lobbySetup(this.room, 0), roomMapLookup(this.room)),
     };
   }
 
@@ -282,8 +312,9 @@ export class RoomEngine {
     const [p0, p1] = this.presence();
     if (!p0 || !p1 || !this.ready[0] || !this.ready[1]) return false;
     const setup = lobbySetup(this.room, this.newSeed());
-    if (setupError(setup) !== null) return false;
-    this.room.game = { setup, state: createMatchFromPresets(setup) };
+    const lookup = roomMapLookup(this.room);
+    if (setupError(setup, lookup) !== null) return false;
+    this.room.game = { setup, state: createMatchFromPresets(setup, DEFAULT_BOARD, lookup) };
     this.ready[0] = this.ready[1] = false;
     for (const member of this.members.values()) {
       if (member.seat !== null) this.sendTo(member.conn, this.welcome(member.seat));

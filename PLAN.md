@@ -260,8 +260,8 @@ no rules — remove three.js and the game still runs in the CLI.
      paints elevation/features/zones with undo/redo and inline validation, and
      saves to localStorage or `.json`; custom maps appear in the Setup map
      picker (local play). Setup picks map → supported mode → King. The wire
-     protocol and worker carry `mapId`/`gameMode`/`kings` (built-in maps only
-     online), and the CLI gained `--map` / `--mode`.
+     protocol and worker carry `mapId`/`gameMode`/`kings` (and the
+     host's custom map, sent whole and checked with `validateMap`), and the CLI gained `--map` / `--mode`.
 9. **M8 — Source-game melee & shooting rules** (in progress; see
    [RULES_GAP.md](RULES_GAP.md)): the first four gaps against the source game.
    - **Contact** — `walkRules`/`moveReach` (engine `query.ts`) layer a

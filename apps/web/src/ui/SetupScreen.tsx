@@ -375,14 +375,11 @@ export function MapPicker({
   value,
   custom,
   onChange,
-  online = false,
 }: {
   value: string;
   /** Playable custom maps, listed after the built-ins. */
   custom: readonly MapDef[];
   onChange: (id: string) => void;
-  /** Online play: built-in maps only. */
-  online?: boolean;
 }): JSX.Element {
   const map = getMap(value) ?? custom.find((m) => m.id === value) ?? getMap(DEFAULT_MAP_ID)!;
   const modes = supportedModes(map).map((m) => MODE_LABELS[m]);
@@ -411,7 +408,6 @@ export function MapPicker({
       </Picker>
       <p className="warband-meta">
         {map.width}×{map.height} · {modes.join(', ')}
-        {online ? ' · online matches use built-in maps only' : ''}
       </p>
     </div>
   );

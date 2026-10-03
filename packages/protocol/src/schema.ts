@@ -22,7 +22,19 @@ import type {
   Unit,
   UnitSpec,
 } from '@fansong/engine';
-import { ARMY_RULES, MAP_LIMITS, NAME_LIMITS, SHOOTER_KINDS, STAT_BOUNDS, type MatchSetup, type Seat, type Warband } from '@fansong/content';
+import {
+  ARMY_RULES,
+  MAP_LIMITS,
+  mapDefSchema,
+  mapHexSchema,
+  NAME_LIMITS,
+  SHOOTER_KINDS,
+  STAT_BOUNDS,
+  type MapDef,
+  type MatchSetup,
+  type Seat,
+  type Warband,
+} from '@fansong/content';
 
 /**
  * Wire schemas. These are the trust boundary: a Durable Object never `reduce`s a
@@ -526,6 +538,35 @@ export const gameConfigSchema = z
     limits: gameLimitsSchema.optional(),
   })
   .strict();
+
+// --- Custom maps ----------------------------------------------------------
+
+const MAX_MAP_HEXES = MAP_LIMITS.maxWidth * MAP_LIMITS.maxHeight;
+const wireVecSchema = z
+  .object({ x: z.number().int().min(0).max(MAP_LIMITS.maxWidth), y: z.number().int().min(0).max(MAP_LIMITS.maxHeight) })
+  .strict();
+const wireZoneSchema = z.array(wireVecSchema).max(MAX_MAP_HEXES);
+
+/**
+ * An editor-made map as the host sends it to a room. Only the structure and
+ * sizes are checked here (so a hostile frame can't carry an enormous map); the
+ * room runs `validateMap` on it before accepting it.
+ */
+export const wireMapSchema: z.ZodType<MapDef> = mapDefSchema.extend({
+  id: mapDefSchema.shape.id.max(64),
+  name: z.string().trim().min(1).max(200),
+  width: z.number().int().min(MAP_LIMITS.minWidth).max(MAP_LIMITS.maxWidth),
+  height: z.number().int().min(MAP_LIMITS.minHeight).max(MAP_LIMITS.maxHeight),
+  hexes: z.array(mapHexSchema).max(MAX_MAP_HEXES),
+  deployZones: z.tuple([wireZoneSchema, wireZoneSchema]),
+  objectives: z
+    .object({
+      flags: z.tuple([wireVecSchema, wireVecSchema]).optional(),
+      hill: wireZoneSchema.optional(),
+      conquest: z.tuple([wireZoneSchema, wireZoneSchema, wireZoneSchema]).optional(),
+    })
+    .strict(),
+});
 
 // --- Match setup ----------------------------------------------------------
 

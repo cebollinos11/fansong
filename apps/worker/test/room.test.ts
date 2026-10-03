@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
 import { parseServerMessage, type Lobby, type ServerMessage } from '@fansong/protocol';
-import { defaultKing, getPreset, type Warband } from '@fansong/content';
+import { defaultKing, getMap, getPreset, type MapDef, type Warband } from '@fansong/content';
 import { lobbySetup, newRoomSnapshot, RoomEngine, setupError, type RoomConnection } from '../src/room.js';
 
 /** A fake socket that records the (parsed) server frames it was sent. */
@@ -135,7 +135,7 @@ describe('RoomEngine — lobby', () => {
     expect(a.lobby().seats[0].preset).toBe('iron-wardens-medium'); // the host's own pick is untouched
   });
 
-  it('only lets the host pick the map and mode, and only built-in maps', () => {
+  it('only lets the host pick the map and mode, and needs a custom map sent whole', () => {
     const room = new RoomEngine();
     const a = new FakeConn('a');
     const b = new FakeConn('b');
@@ -147,6 +147,57 @@ describe('RoomEngine — lobby', () => {
     expectError(a, 'unknown_map');
     msg(room, a, { t: 'setMap', mapId: 'old-forest', mode: 'capture-the-flag' });
     expect(b.lobby()).toMatchObject({ mapId: 'old-forest', mode: 'capture-the-flag', problem: null });
+  });
+
+  it("plays the host's custom map, terrain and objectives included", () => {
+    const base = getMap('old-forest')!;
+    const mine: MapDef = { ...base, id: 'my-forest', name: 'My Forest', hexes: base.hexes.map((h, i) => (i === 0 ? { elevation: 2 } : h)) };
+    const room = new RoomEngine(undefined, () => 7);
+    const a = new FakeConn('a');
+    const b = new FakeConn('b');
+    join(room, a);
+    join(room, b);
+    msg(room, a, { t: 'setMap', mapId: mine.id, map: mine, mode: 'capture-the-flag' });
+    expect(b.lobby()).toMatchObject({ mapId: 'my-forest', map: { name: 'My Forest' }, mode: 'capture-the-flag', problem: null });
+    // Changing only the mode keeps the custom map the room already holds.
+    msg(room, a, { t: 'setMap', mapId: mine.id, mode: 'annihilation' });
+    expect(b.lobby()).toMatchObject({ mapId: 'my-forest', map: { name: 'My Forest' }, mode: 'annihilation' });
+    msg(room, a, { t: 'ready', ready: true });
+    msg(room, b, { t: 'ready', ready: true });
+    const state = room.getState()!;
+    expect(state.board.width).toBe(mine.width);
+    expect(state.board.terrain?.['0,0']).toMatchObject({ elevation: 2 });
+    expect(b.last()).toMatchObject({ t: 'welcome', setup: { mapId: 'my-forest' } });
+  });
+
+  it('drops the custom map once the host picks a built-in one', () => {
+    const mine: MapDef = { ...getMap('old-forest')!, id: 'my-forest' };
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    join(room, a);
+    msg(room, a, { t: 'setMap', mapId: mine.id, map: mine, mode: 'annihilation' });
+    expect(a.lobby().map?.id).toBe('my-forest');
+    msg(room, a, { t: 'setMap', mapId: 'open-field', mode: 'annihilation' });
+    expect(a.lobby().map).toBeUndefined();
+    msg(room, a, { t: 'setMap', mapId: 'my-forest', mode: 'annihilation' });
+    expectError(a, 'unknown_map');
+  });
+
+  it('rejects a custom map that is unplayable, mislabelled or shadows a built-in', () => {
+    const base = getMap('old-forest')!;
+    const room = new RoomEngine();
+    const a = new FakeConn('a');
+    join(room, a);
+    const broken: MapDef = { ...base, id: 'broken', deployZones: [[], []] };
+    msg(room, a, { t: 'setMap', mapId: 'broken', map: broken, mode: 'annihilation' });
+    expectError(a, 'invalid_map');
+    msg(room, a, { t: 'setMap', mapId: 'other', map: { ...base, id: 'mine' }, mode: 'annihilation' });
+    expectError(a, 'invalid_map');
+    msg(room, a, { t: 'setMap', mapId: 'old-forest', map: base, mode: 'annihilation' });
+    expectError(a, 'invalid_map');
+    msg(room, a, { t: 'setMap', mapId: 'huge', map: { ...base, id: 'huge', width: 500 }, mode: 'annihilation' });
+    expectError(a, 'bad_frame');
+    expect(a.lobby().mapId).toBe('open-field');
   });
 
   it('reports picks that cannot start a match, and does not start on them', () => {

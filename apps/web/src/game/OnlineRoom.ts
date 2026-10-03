@@ -1,5 +1,5 @@
 import type { GameLimits, GameMode, Owner } from '@fansong/engine';
-import type { Warband } from '@fansong/content';
+import type { MapDef, Warband } from '@fansong/content';
 import { encode, ErrorCode, parseServerMessage, type ClientMessage, type Lobby } from '@fansong/protocol';
 import { OnlineMatchClient } from './OnlineMatchClient.js';
 
@@ -51,9 +51,13 @@ export class OnlineRoom {
     this.sendRaw({ t: 'setArmy', preset, warband, king });
   }
 
-  /** Lobby, host only: pick the map, game mode and (optionally) its round limit / target score. */
-  setMap(mapId: string, mode: GameMode, limits?: GameLimits): void {
-    this.sendRaw(limits ? { t: 'setMap', mapId, mode, limits } : { t: 'setMap', mapId, mode });
+  /**
+   * Lobby, host only: pick the map, game mode and (optionally) its round limit /
+   * target score. Pass `map` to send one of the host's custom maps to the room;
+   * once it's there, naming its id alone keeps it.
+   */
+  setMap(mapId: string, mode: GameMode, limits?: GameLimits, map?: MapDef): void {
+    this.sendRaw({ t: 'setMap', mapId, ...(map ? { map } : {}), mode, ...(limits ? { limits } : {}) });
   }
 
   setReady(ready: boolean): void {

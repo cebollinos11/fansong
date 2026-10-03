@@ -3,7 +3,7 @@ import { DEFAULT_MAP_ID, defaultKing, getMap, PRESET_IDS, warbandCost } from '@f
 import type { GameLimits, Owner } from '@fansong/engine';
 import type { Lobby } from '@fansong/protocol';
 import type { OnlineRoom } from '../game/OnlineRoom.js';
-import { browserStorage } from '../game/customMaps.js';
+import { browserStorage, playableCustomMaps } from '../game/customMaps.js';
 import { choiceWarband, playableArmies } from '../game/armies.js';
 import { roomLink } from '../net/server.js';
 import { MODE_LABELS } from './editorView.js';
@@ -30,10 +30,11 @@ interface Props {
  */
 export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Props): JSX.Element {
   const [armies] = useState(() => playableArmies(browserStorage()));
+  const [customMaps] = useState(() => playableCustomMaps(browserStorage()));
   const me = lobby.seats[seat];
   const them = lobby.seats[seat === 0 ? 1 : 0];
   const host = seat === 0;
-  const map = getMap(lobby.mapId) ?? getMap(DEFAULT_MAP_ID)!;
+  const map = lobby.map ?? getMap(lobby.mapId) ?? getMap(DEFAULT_MAP_ID)!;
   const kingMode = lobby.mode === 'kill-the-king';
   // Before this player picks anything here, show the preset the server gave them.
   const value = choice ?? (PRESET_IDS.includes(me.preset) ? me.preset : PRESET_IDS[0]!);
@@ -89,11 +90,13 @@ export function LobbyScreen({ room, seat, lobby, choice, onChoice, onLeave }: Pr
           <>
             <MapPicker
               value={map.id}
-              custom={[]}
-              online
+              custom={lobby.map && !customMaps.some((m) => m.id === lobby.map!.id) ? [...customMaps, lobby.map] : customMaps}
               onChange={(id) => {
-                const mode = modeFor(getMap(id) ?? map, lobby.mode);
-                room.setMap(id, mode, limitsFor(mode));
+                // A custom map is sent whole, so the room (and the guest) can play it.
+                const custom = getMap(id) ? undefined : customMaps.find((m) => m.id === id);
+                const next = getMap(id) ?? custom ?? map;
+                const mode = modeFor(next, lobby.mode);
+                room.setMap(next.id, mode, limitsFor(mode), custom);
               }}
             />
             <GameModePicker map={map} value={lobby.mode} onChange={(mode) => room.setMap(map.id, mode, limitsFor(mode))} />
