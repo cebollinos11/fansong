@@ -12,6 +12,7 @@ import { SandboxScreen } from './ui/SandboxScreen.js';
 import { PresetEditorScreen } from './ui/PresetEditorScreen.js';
 import { RecordScreen } from './ui/RecordScreen.js';
 import { loadAutosave } from './game/sandboxStore.js';
+import { devTools } from './devTools.js';
 import type { Launch } from './game/launch.js';
 import { LocalMatchClient, type MatchClient } from './game/client.js';
 import type { OnlineRoom, RoomView } from './game/OnlineRoom.js';
@@ -251,11 +252,6 @@ function sandboxStart(setup: MatchSetup): GameState {
   } catch {
     return createMatchFromPresets(DEFAULT_SETUP, DEFAULT_BOARD, lookup);
   }
-}
-
-/** Dev tools (the sandbox, the preset editor, the `&record` sound booth) are on in any build whose URL carries `?dev=1`. */
-function devTools(): boolean {
-  return new URLSearchParams(window.location.search).get('dev') === '1';
 }
 
 /** `?dev=1&sandbox` opens the dev sandbox straight away, resuming its autosave. */

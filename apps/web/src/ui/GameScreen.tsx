@@ -14,6 +14,8 @@ import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { oddsLine } from './hexInfo.js';
 import { Hud } from './Hud.js';
+import { SoundCuePanel } from './SoundCuePanel.js';
+import { devTools } from '../devTools.js';
 import { seatLabel, turnPhrase } from './hudView.js';
 import type { LogFocus } from './BattleLogView.js';
 import { appendEvents, emptyLog, type BattleLog } from './log.js';
@@ -557,6 +559,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
           ) : null}
         </div>
       ) : null}
+      {devTools() ? <SoundCuePanel /> : null}
       {children}
     </div>
   );

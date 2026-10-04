@@ -4184,3 +4184,121 @@ button.trait-add[aria-expanded='true'] {
     grid-template: auto auto 1fr / 1fr;
   }
 }
+
+/* --- Dev sound cue panel (?dev=1, over a game) ------------------------- */
+.cue-panel {
+  position: fixed;
+  right: 10px;
+  bottom: 12px;
+  z-index: 25;
+  width: 290px;
+  max-height: min(60%, 560px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(22, 27, 34, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+
+.cue-panel.collapsed {
+  width: auto;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.cue-panel button {
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.cue-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.cue-head strong {
+  flex: 1;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.cue-body {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cue-body input[type='search'],
+.cue-report textarea {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 4px;
+}
+
+.cue-report {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cue-report .sb-label,
+.cue-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 4px;
+}
+
+.cue-group button {
+  padding: 0 5px;
+  font-size: 11px;
+}
+
+.cue-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.cue-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cue-list label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.cue-list input[type='checkbox'] {
+  margin: 0;
+}
+
+.cue-list li.off .cue-name {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.cue-list li button {
+  padding: 0 6px;
+}

@@ -10,6 +10,7 @@ import {
   type SfxName,
   type StockClip,
 } from './sfxCues.js';
+import { cueEnabled, parseOverrides, setCueOverride, type CueOverrides } from './cueToggles.js';
 
 /**
  * The game's sound effects: recordings from `public/sfx/`, played through Web
@@ -20,6 +21,10 @@ import {
  */
 
 const PREFS_KEY = 'fansong.sound';
+/** The dev cue panel's switches (see cueToggles.ts). */
+const CUES_KEY = 'fansong.sound.cues';
+/** How many of the latest cues the dev panel lists. */
+const RECENT_MAX = 12;
 /** The same cue asked for again this soon (a row of nerve checks, a group's footsteps) plays once. */
 const REPEAT_GUARD_MS = 45;
 /** Each play is pitched a hair up or down, so a repeated take doesn't sound stamped out. */
@@ -36,6 +41,8 @@ export interface PlayOptions {
   volume?: number;
   /** Playback speed (and pitch): under 1 for slow motion. */
   rate?: number;
+  /** Play even if the cue is switched off (the dev panel's preview). */
+  force?: boolean;
 }
 
 /**
@@ -77,6 +84,10 @@ class Sfx {
   private stockRequested = false;
   private readonly lastPlay = new Map<string, { take: number; at: number }>();
   private readonly listeners = new Set<() => void>();
+  private overrides: CueOverrides | null = null;
+  /** The latest cues asked for, newest first, for the dev cue panel. */
+  private recentCues: { name: string; at: number }[] = [];
+  private readonly playListeners = new Set<() => void>();
   private prefs: Prefs | null = null;
   private started = false;
   /** While set, nothing plays: the recording booth has the microphone open. */
@@ -95,7 +106,7 @@ class Sfx {
     document.addEventListener(
       'click',
       (ev) => {
-        if (onButton(ev.target)) this.play('ui-click');
+        if (onButton(ev.target) && !quiet(ev.target)) this.play('ui-click');
       },
       true,
     );
@@ -104,7 +115,7 @@ class Sfx {
       'pointerover',
       (ev) => {
         const button = onButton(ev.target);
-        if (button && button !== over && ev.pointerType === 'mouse') this.play('ui-hover');
+        if (button && button !== over && ev.pointerType === 'mouse' && !quiet(ev.target)) this.play('ui-hover');
         over = button;
       },
       true,
@@ -142,6 +153,8 @@ class Sfx {
   }
 
   play(name: SfxName, opts: PlayOptions = {}): void {
+    if (!this.hush && !opts.force) this.noteRecent(name);
+    if (!opts.force && !this.enabled(name) && this.audition?.name !== name) return;
     const ctx = this.context();
     const audition = this.audition;
     const fresh = audition?.takes?.length ? audition.takes : null;
@@ -239,6 +252,52 @@ class Sfx {
     this.savePrefs({ volume: this.volume, muted });
   }
 
+  /** Whether cue `name` plays at all: the shipped defaults, with the dev panel's switches on top. */
+  enabled(name: string): boolean {
+    return cueEnabled(name, (this.overrides ??= loadOverrides()));
+  }
+
+  setEnabled(name: string, on: boolean): void {
+    this.saveOverrides(setCueOverride((this.overrides ??= loadOverrides()), name, on));
+  }
+
+  /** The dev panel's switches that differ from the shipped defaults. */
+  cueOverrides(): CueOverrides {
+    return (this.overrides ??= loadOverrides());
+  }
+
+  /** Forget the dev panel's switches: back to the shipped defaults. */
+  resetCues(): void {
+    this.saveOverrides({});
+  }
+
+  /** The latest cues asked for (played or switched off), newest first. */
+  recent(): readonly { name: string; at: number }[] {
+    return this.recentCues;
+  }
+
+  /** Call `fn` whenever a cue is asked for. Returns the unsubscribe. */
+  subscribePlays(fn: () => void): () => void {
+    this.playListeners.add(fn);
+    return () => this.playListeners.delete(fn);
+  }
+
+  private noteRecent(name: string): void {
+    if (this.playListeners.size === 0) return;
+    this.recentCues = [{ name, at: Date.now() }, ...this.recentCues.filter((r) => r.name !== name)].slice(0, RECENT_MAX);
+    for (const fn of this.playListeners) fn();
+  }
+
+  private saveOverrides(overrides: CueOverrides): void {
+    this.overrides = overrides;
+    try {
+      localStorage.setItem(CUES_KEY, JSON.stringify(overrides));
+    } catch {
+      // Not remembered; the switch still holds for this session.
+    }
+    this.notify();
+  }
+
   /** Call `fn` whenever the volume, the mute or the set of recordings changes. Returns the unsubscribe. */
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -317,6 +376,19 @@ class Sfx {
     this.loading.set(file, request);
     return request;
   }
+}
+
+function loadOverrides(): CueOverrides {
+  try {
+    return parseOverrides(JSON.parse(localStorage.getItem(CUES_KEY) ?? '{}'));
+  } catch {
+    return {};
+  }
+}
+
+/** Whether `target` is inside a dev panel whose own buttons shouldn't click (they'd crowd its list of recent cues). */
+function quiet(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-sfx-quiet]') !== null;
 }
 
 /** The button (or thing that acts as one) `target` is on, if any. */
