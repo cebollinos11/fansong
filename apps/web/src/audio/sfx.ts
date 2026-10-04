@@ -67,6 +67,7 @@ class Sfx {
   private readonly loading = new Map<string, Promise<AudioBuffer | null>>();
   /** Stock clips never change, so unlike the takes they survive a reload. */
   private readonly stock = new Map<string, AudioBuffer>();
+  private readonly stockLoading = new Map<string, Promise<AudioBuffer | null>>();
   private stockRequested = false;
   private readonly lastPlay = new Map<string, { take: number; at: number }>();
   private readonly listeners = new Set<() => void>();
@@ -157,7 +158,11 @@ class Sfx {
       : auditioned && fresh
         ? fresh[take - 1]
         : this.buffers.get(takeFile(playing, take));
-    if (!buffer) return; // still loading
+    if (!buffer) {
+      // Still loading; an ambience loop only starts loading now, to be heard next time.
+      if (stock) void this.loadStockFile(stockFile(stock, take));
+      return;
+    }
     this.lastPlay.set(key, { take, at: now });
     const rate = Math.max(0.3, Math.min(2, opts.rate ?? 1));
     const source = ctx.createBufferSource();
@@ -190,13 +195,16 @@ class Sfx {
         old.gain.disconnect();
       }, AMBIENCE_FADE_S * 1000);
     }
-    if (!name || this.ambient || this.hush || this.recorded(name) === 0) return;
+    const found = name && !this.ambient && !this.hush ? resolvePlayable(name, this.manifest) : null;
+    if (!name || !found) return;
     const gain = ctx.createGain();
     gain.gain.value = 0;
     gain.connect(this.master);
     const ambient: NonNullable<Sfx['ambient']> = { name, gain, source: null };
     this.ambient = ambient;
-    void this.load(name, 1).then((buffer) => {
+    const level = (sfxCue(name)?.gain ?? 1) * (found.stock ? STOCK_CLIPS[found.stock].level : 1);
+    const loading = found.stock ? this.loadStockFile(stockFile(found.stock, 1)) : this.load(found.cue, 1);
+    void loading.then((buffer) => {
       if (!buffer || this.ambient !== ambient) return;
       const source = ctx.createBufferSource();
       source.buffer = buffer;
@@ -204,7 +212,7 @@ class Sfx {
       source.connect(gain);
       source.start();
       ambient.source = source;
-      gain.gain.setTargetAtTime(sfxCue(name)?.gain ?? 1, ctx.currentTime, AMBIENCE_FADE_S / 3);
+      gain.gain.setTargetAtTime(level, ctx.currentTime, AMBIENCE_FADE_S / 3);
     });
   }
 
@@ -255,21 +263,32 @@ class Sfx {
     for (const fn of this.listeners) fn();
   }
 
-  /** Fetch every stock clip once (about half a megabyte). */
+  /** Fetch every stock clip once (about a megabyte), except the ambience loops, fetched when first played. */
   private loadStock(): void {
-    const ctx = this.context();
-    if (!ctx || this.stockRequested) return;
+    if (!this.context() || this.stockRequested) return;
     this.stockRequested = true;
-    for (const [clip, { count }] of Object.entries(STOCK_CLIPS) as [StockClip, { count: number }][]) {
-      for (let take = 1; take <= count; take++) {
-        const file = stockFile(clip, take);
-        void fetch(`${import.meta.env.BASE_URL}sfx/${file}`)
+    for (const [clip, set] of Object.entries(STOCK_CLIPS) as [StockClip, (typeof STOCK_CLIPS)[StockClip]][]) {
+      if ('loop' in set) continue;
+      for (let take = 1; take <= set.count; take++) void this.loadStockFile(stockFile(clip, take));
+    }
+  }
+
+  private loadStockFile(file: string): Promise<AudioBuffer | null> {
+    const known = this.stockLoading.get(file);
+    if (known) return known;
+    const ctx = this.context();
+    const request = !ctx
+      ? Promise.resolve(null)
+      : fetch(`${import.meta.env.BASE_URL}sfx/${file}`)
           .then((res) => (res.ok ? res.arrayBuffer() : Promise.reject(new Error(`${res.status}`))))
           .then((data) => ctx.decodeAudioData(data))
-          .then((buffer) => void this.stock.set(file, buffer))
-          .catch(() => {});
-      }
-    }
+          .then((buffer) => {
+            this.stock.set(file, buffer);
+            return buffer;
+          })
+          .catch(() => null);
+    this.stockLoading.set(file, request);
+    return request;
   }
 
   private load(name: string, take: number): Promise<AudioBuffer | null> {

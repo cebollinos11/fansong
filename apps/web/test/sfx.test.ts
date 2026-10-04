@@ -118,9 +118,13 @@ describe('stock sounds', () => {
     // Down the fallback chain: a recorded stand-in still beats stock.
     expect(resolvePlayable('hoof', manifest({}))).toEqual({ cue: 'step', stock: 'step' });
     expect(resolvePlayable('bones-death', manifest({ death: 1 }))).toEqual({ cue: 'death' });
-    expect(resolvePlayable('bones-death', manifest({}))).toEqual({ cue: 'death', stock: 'death' });
+    expect(resolvePlayable('bones-death', manifest({}))).toEqual({ cue: 'bones-death', stock: 'skeleton-death' });
+    expect(resolvePlayable('human-death', manifest({}))).toEqual({ cue: 'death', stock: 'death' });
     expect(resolvePlayable('whoosh-trait', manifest({}))).toEqual({ cue: 'swing', stock: 'swing' });
-    expect(resolvePlayable('dizzy', manifest({}))).toBeNull();
+  });
+
+  it('leave no cue silent', () => {
+    for (const cue of SFX_CUES) expect(resolvePlayable(cue.name, manifest({})), cue.name).not.toBeNull();
   });
 });
 
