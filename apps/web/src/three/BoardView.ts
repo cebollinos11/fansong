@@ -49,7 +49,7 @@ import {
   tileSideColor,
   tileTopColor,
 } from './terrain.js';
-import { DOWN_POSES, spriteFor } from './unitSprites.js';
+import { DOWN_POSES, RIDING_SPRITES, spriteFor } from './unitSprites.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
 export interface BoardViewModel {
@@ -3799,7 +3799,7 @@ export class BoardView {
     // One footfall a hex, for a unit going forward under its own power.
     if (f >= 0 && !walk.backward && walk.stepped !== i) {
       walk.stepped = i;
-      this.sound(obj.flying && !obj.grounded ? 'wingbeat' : obj.traits?.mounted ? 'hoof' : 'step');
+      this.sound(obj.flying && !obj.grounded ? 'wingbeat' : RIDING_SPRITES.has(obj.spriteName) ? 'hoof' : 'step');
     }
     const from = path[i]!;
     const to = path[i + 1]!;

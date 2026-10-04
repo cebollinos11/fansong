@@ -106,7 +106,7 @@ const SCENES: Record<string, SoundScene> = {
   'round-start': demo('reassembling'),
 
   step: walk('A walk on foot', ELF),
-  hoof: walk('A ride', { name: 'Skeleton Rider', quality: 3, combat: 3, mounted: true }),
+  hoof: walk('A ride', { name: 'Skeleton Rider', quality: 3, combat: 3 }),
   wingbeat: walk('A flight', { name: 'Sky-Talon', quality: 3, combat: 3, flying: true }),
   'stand-up': {
     label: 'A knocked-down unit gets up',

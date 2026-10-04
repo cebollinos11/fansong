@@ -23,8 +23,8 @@ describe('preset warbands', () => {
   it('fields every trait in at least one warband', () => {
     const units = PRESET_IDS.flatMap((id) => PRESETS[id]!.units);
     const traits = [
-      'slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist', 'savage',
-      'leader', 'armored', 'sharpshooter', 'mastery', 'pincer', 'shieldwall', 'rusher', 'slippery', 'whirling',
+      'slow', 'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'opportunist', 'savage',
+      'leader', 'armored', 'sharpshooter', 'mastery', 'shieldwall', 'rusher', 'slippery', 'whirling',
       'immovable', 'woodwise', 'trample', 'dumb', 'disloyal', 'badBalance',
     ] as const satisfies readonly (keyof Profile)[];
     for (const trait of traits) expect(units.some((u) => u[trait]), `no preset unit is ${trait}`).toBe(true);

@@ -31,8 +31,6 @@ export interface Profile {
   flying?: boolean;
   /** Reassembling: a knocked-down unit stands back up for free at the start of each round. */
   reassembling?: boolean;
-  /** Mounted: +1 in melee against foes on foot, while not knocked down. */
-  mounted?: boolean;
   /** Opportunist: +1 in melee or shooting against a knocked-down foe. */
   opportunist?: boolean;
   /** Savage: every kill it deals is a gruesome kill. */
@@ -45,8 +43,6 @@ export interface Profile {
   sharpshooter?: boolean;
   /** Combat Mastery: a melee it ties against a foe without it kills that foe. */
   mastery?: boolean;
-  /** Pincer: +1 striking a foe that has one of its standing friends directly opposite. */
-  pincer?: boolean;
   /** Shieldwall: +1 defending against a melee attack while next to a standing friend. */
   shieldwall?: boolean;
   /** Rusher: +1 on the first attack after a Move that brought it into contact with its target. */
@@ -118,8 +114,8 @@ export const COST_WEIGHTS = {
   perCombat: 5,
   /**
    * Each favorable trait adds this much, before the Quality multiplier: Fast,
-   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Mounted, Opportunist, Savage, Armored, Sharpshooter,
-   * Pincer, Shieldwall, Rusher, Slippery, Woodwise and Trample.
+   * any one Shooter trait, Tough, Guard, Big, Flying, Reassembling, Opportunist, Savage, Armored, Sharpshooter,
+   * Shieldwall, Rusher, Slippery, Woodwise and Trample.
    * Leader lifts the whole warband, Combat Mastery turns every melee tie into a
    * kill, Whirling shrugs off being ganged up on and Immovable shrugs off half of
    * every lost fight, so each of those counts as two favorable traits.
@@ -141,12 +137,10 @@ export function traitCounts(p: Profile): { favorable: number; unfavorable: numbe
     p.big,
     p.flying,
     p.reassembling,
-    p.mounted,
     p.opportunist,
     p.savage,
     p.armored,
     p.sharpshooter,
-    p.pincer,
     p.shieldwall,
     p.rusher,
     p.slippery,

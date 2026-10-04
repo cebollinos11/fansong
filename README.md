@@ -102,9 +102,10 @@ action; the AI, the tests, and any future UI all pick from that list.
   two hexes in melee: a standing friend of the foe on the second hex stops it
   after one, the map edge or lava there kills it, and anything else there
   leaves it knocked down on the first hex.
-- **Positional bonuses (+1 each):** a **Pincer** strikes at +1 when one of its
-  standing friends is on the hex directly opposite the target; a **Shieldwall**
-  unit defends against an attack at +1 while next to a standing friend; a
+- **Pincer:** any unit on its feet strikes at +1 (an attack, a riposte or a
+  free hack) when one of its standing friends is on the hex directly opposite
+  the target. It stacks with outnumbering. It is a rule of the game, not a trait.
+- **Positional bonuses (+1 each):** a **Shieldwall** unit defends against an attack at +1 while next to a standing friend; a
   **Rusher** gets +1 on the first attack after a Move that brought it into
   contact with its target; a **Woodwise** unit standing in a forest hex gets +1
   on every combat roll, melee or shot. All of them lapse while the unit is
@@ -137,7 +138,7 @@ seed replays identically).
 - **Cost model** (`unitCost`) — the Song of Blades and Heroes formula
   `(C * 5 + Special Abilities) * (7 - Q) / 2`, halves rounded up. Each
   favorable trait (Fast, any Shooter, Tough, Guard, Big, Flying, Reassembling,
-  Mounted, Opportunist, Savage, Armored, Sharpshooter, Pincer, Shieldwall,
+  Opportunist, Savage, Armored, Sharpshooter, Shieldwall,
   Rusher, Slippery, Woodwise, Trample) adds
   3 to Special Abilities and each unfavorable one (Slow, Dumb, Disloyal, Bad
   Balance) takes 3 off. Leader, Combat Mastery, Whirling and Immovable each

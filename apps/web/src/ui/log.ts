@@ -221,7 +221,6 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('high ground', e.attackBonus),
             bonus('size', e.attackBig),
             bonus('flying', e.attackFly),
-            bonus('mounted', e.attackMounted),
             bonus('opportunist', e.attackOpportunist),
             bonus('pincer', e.attackPincer),
             bonus('rusher', e.type === 'AttackResolved' ? e.attackRusher : undefined),
@@ -236,7 +235,6 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
           mods: [
             bonus('high ground', e.defenseBonus),
             bonus('size', e.defenseBig),
-            bonus('mounted', e.defenseMounted),
             bonus('opportunist', e.defenseOpportunist),
             bonus('shieldwall', e.type === 'AttackResolved' ? e.defenseShieldwall : undefined),
             bonus('woodwise', e.defenseWoodwise),
@@ -289,7 +287,6 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('high ground', e.guardBonus),
             bonus('size', e.guardBig),
             bonus('flying', e.guardFly),
-            bonus('mounted', e.guardMounted),
             bonus('opportunist', e.guardOpportunist),
             bonus('pincer', e.guardPincer),
             bonus('woodwise', e.guardWoodwise),
@@ -303,7 +300,6 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
           mods: [
             bonus('high ground', e.attackerBonus),
             bonus('size', e.attackerBig),
-            bonus('mounted', e.attackerMounted),
             bonus('opportunist', e.attackerOpportunist),
             bonus('woodwise', e.attackerWoodwise),
             penalty('outnumbered', e.attackerOutnumbered),

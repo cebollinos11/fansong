@@ -87,6 +87,16 @@ export const UNIT_SPRITES: Record<string, string> = {
 };
 
 /**
+ * Sprites drawn on the back of a mount. Cosmetic only — riding is not a rule —
+ * it picks the hoof sound over the footstep when one of them moves.
+ */
+export const RIDING_SPRITES: ReadonlySet<string> = new Set([
+  'goblins/wolf-rider.png',
+  'goblins/knight.png',
+  'undead-skeletal/rider.png',
+]);
+
+/**
  * The frame of a sprite's death clip that shows it knocked down but alive —
  * kneeling or staggered, before the fall. Hand-picked; a sprite without one
  * crouches (squashes) instead.

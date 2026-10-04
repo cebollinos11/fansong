@@ -15,14 +15,14 @@ import type { Warband, WarbandUnit } from './warband.js';
  *    Slow, Big, Tough, Immovable bulwark, covered by long bows and a Slow
  *    Sharpshooter crossbow.
  *  - ashfang-raiders : fast and fragile — wins on first contact (melee only):
- *    Rusher foot, a Big but Dumb brute, Mounted outriders that Trample, and
+ *    Rusher foot, a Big but Dumb brute, Fast outriders that Trample, and
  *    Disloyal Opportunist goblins, behind a Savage Leader.
  *  - bonefield-legion : a Reassembling undead host that wins by attrition — you
  *    must kill them, not just knock them over. Badly balanced foot and bows, Fast
- *    Mounted riders, a Whirling twin-blade and a Flying, Armored ghost, under a
+ *    riders, a Whirling twin-blade and a Flying, Armored ghost, under a
  *    Slow Leader with Combat Mastery.
  *  - wild-menagerie : leaderless beasts — Flying hunters (one Savage), Fast
- *    Pincer wolves, Slippery rats, Woodwise forest ambushers (a Trampling boar
+ *    wolves, Slippery rats, Woodwise forest ambushers (a Trampling boar
  *    and a web-spitting spider) and Big, Tough brutes.
  */
 
@@ -58,16 +58,16 @@ export const PRESET_UNITS: Record<string, PresetUnit> = {
 
   // Ashfang Raiders
   'Raid-Leader': { quality: 3, combat: 4, leader: true, savage: true },
-  Outrider: { quality: 3, combat: 3, fast: true, mounted: true, trample: true },
+  Outrider: { quality: 3, combat: 3, fast: true, trample: true },
   Reaver: { quality: 4, combat: 4, big: true, rusher: true, dumb: true },
   Marauder: { quality: 4, combat: 3, rusher: true },
-  'Wolf-Prowler': { quality: 4, combat: 2, fast: true, mounted: true, opportunist: true, disloyal: true },
+  'Wolf-Prowler': { quality: 4, combat: 2, fast: true, opportunist: true, disloyal: true },
   Whelp: { quality: 4, combat: 2, opportunist: true, disloyal: true },
 
   // Bonefield Legion
   'Death Knight': { quality: 3, combat: 4, slow: true, leader: true, mastery: true, reassembling: true },
   Deathblade: { quality: 4, combat: 3, fast: true, whirling: true, reassembling: true },
-  'Skeleton Rider': { quality: 4, combat: 3, fast: true, mounted: true, reassembling: true },
+  'Skeleton Rider': { quality: 4, combat: 3, fast: true, reassembling: true },
   'Skeleton Archer': { quality: 4, combat: 2, shooter: 'normal', reassembling: true },
   Ghost: { quality: 4, combat: 2, flying: true, armored: true },
   'Skeleton Infantry': { quality: 4, combat: 3, reassembling: true, badBalance: true },
@@ -78,10 +78,10 @@ export const PRESET_UNITS: Record<string, PresetUnit> = {
   'Giant Spider': { quality: 3, combat: 3, shooter: 'short', woodwise: true },
   Bear: { quality: 4, combat: 4, big: true, tough: true },
   Boar: { quality: 4, combat: 4, trample: true, woodwise: true },
-  'Giant Scorpion': { quality: 4, combat: 3, guard: true, pincer: true, armored: true },
+  'Giant Scorpion': { quality: 4, combat: 3, guard: true, armored: true },
   Crocodile: { quality: 4, combat: 5, slow: true, tough: true, dumb: true },
   Falcon: { quality: 4, combat: 2, fast: true, flying: true },
-  Wolf: { quality: 4, combat: 2, fast: true, pincer: true },
+  Wolf: { quality: 4, combat: 2, fast: true },
   'Giant Rat': { quality: 5, combat: 2, fast: true, slippery: true },
 };
 
@@ -143,11 +143,10 @@ export const PRESET_ROSTERS: Record<string, PresetRoster> = {
     name: 'Ashfang Raiders (Large)',
     units: [
       { unit: 'Raid-Leader' },
-      { unit: 'Outrider', count: 2 },
+      { unit: 'Outrider', count: 3 },
       { unit: 'Reaver', count: 2 },
       { unit: 'Marauder', count: 3 },
       { unit: 'Wolf-Prowler', count: 3 },
-      { unit: 'Whelp' },
     ],
   },
   'bonefield-legion-small': {

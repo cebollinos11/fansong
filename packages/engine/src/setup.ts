@@ -24,8 +24,6 @@ export interface UnitSpec {
   flying?: boolean;
   /** Reassembling: a knocked-down unit stands up for free at the start of each round. */
   reassembling?: boolean;
-  /** Mounted: +1 in melee against foes on foot, while not knocked down. */
-  mounted?: boolean;
   /** Opportunist: +1 in melee or shooting against a knocked-down foe. */
   opportunist?: boolean;
   /** Savage: every kill it deals is a gruesome kill. */
@@ -38,8 +36,6 @@ export interface UnitSpec {
   sharpshooter?: boolean;
   /** Combat Mastery: a melee it ties against a foe without it kills that foe. */
   mastery?: boolean;
-  /** Pincer: +1 striking a foe that has one of its standing friends directly opposite. */
-  pincer?: boolean;
   /** Shieldwall: +1 defending against a melee attack while next to a standing friend. */
   shieldwall?: boolean;
   /** Rusher: +1 on the first attack after a Move that brought it into contact with its target. */
@@ -119,14 +115,12 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       big: spec.big ?? false,
       flying: spec.flying ?? false,
       reassembling: spec.reassembling ?? false,
-      mounted: spec.mounted ?? false,
       opportunist: spec.opportunist ?? false,
       savage: spec.savage ?? false,
       leader: spec.leader ?? false,
       armored: spec.armored ?? false,
       sharpshooter: spec.sharpshooter ?? false,
       mastery: spec.mastery ?? false,
-      pincer: spec.pincer ?? false,
       shieldwall: spec.shieldwall ?? false,
       rusher: spec.rusher ?? false,
       slippery: spec.slippery ?? false,

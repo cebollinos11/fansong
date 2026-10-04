@@ -145,14 +145,12 @@ export function parseWarband(raw: unknown): Warband {
     if (u.big === true) unit.big = true;
     if (u.flying === true) unit.flying = true;
     if (u.reassembling === true) unit.reassembling = true;
-    if (u.mounted === true) unit.mounted = true;
     if (u.opportunist === true) unit.opportunist = true;
     if (u.savage === true) unit.savage = true;
     if (u.leader === true) unit.leader = true;
     if (u.armored === true) unit.armored = true;
     if (u.sharpshooter === true) unit.sharpshooter = true;
     if (u.mastery === true) unit.mastery = true;
-    if (u.pincer === true) unit.pincer = true;
     if (u.shieldwall === true) unit.shieldwall = true;
     if (u.rusher === true) unit.rusher = true;
     if (u.slippery === true) unit.slippery = true;

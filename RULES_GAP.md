@@ -104,7 +104,7 @@ These are implemented, so they are not listed again below:
 3. **Target priority** *(revised, optional)*. A model touching several enemies
    must attack a standing one before a fallen one.
 4. **Other combat modifiers** *(verify)*: +1 when mounted against models on
-   foot, −1 when unarmed, and a penalty for fighting from water or difficult
+   foot (FanSong had this as the Mounted trait and dropped it — see §7), −1 when unarmed, and a penalty for fighting from water or difficult
    terrain. The size bonus is done — see **Big** in §7.
 5. ✅ **Done — power blow.** *Implemented:* an attack may be declared as a
    **power blow**, costing 2 actions instead of 1, and the defender rolls at −1.
@@ -223,11 +223,11 @@ combined moves and attacks) is still not done.
 
 ## 7. Special rules (traits)
 
-FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling, Mounted,
-Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Pincer, Shieldwall,
+FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling,
+Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Shieldwall,
 Rusher, Slippery, Whirling, Immovable, Woodwise, Trample, Dumb, Disloyal and Bad
 Balance (see the ✅ entries below), plus Leader (§6). Guard, Reassembling,
-Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Pincer, Shieldwall,
+Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Shieldwall,
 Rusher, Immovable, Woodwise, Trample, Dumb, Disloyal and Bad Balance have no
 direct equivalent in the original. The original core rules have roughly 50 more. Each line below is a
 short paraphrase, and the exact effects should be checked before building one.
@@ -259,12 +259,12 @@ short paraphrase, and the exact effects should be checked before building one.
   FanSong's Combat Mastery, below)*. *Implemented:* a `whirling` trait, priced as
   two favorable traits. While on its feet it takes no outnumbering penalty in
   any melee (`outnumberedPenalty` returns 0); knocked down it is outnumbered
-  like anyone. A Pincer still gets its bonus against it.
-- ✅ **Done — Pincer** *(FanSong's own)*. *Implemented:* a `pincer` trait. +1
-  whenever it strikes — an attack, a riposte or a free hack — at a foe with one
-  of its standing friends on the hex directly opposite (`attackPincer` /
-  `guardPincer` event fields). It stacks with outnumbering and lapses while the
-  Pincer is knocked down.
+  like anyone. A pincer still gets its bonus against it.
+- ✅ **Done — Pincer** *(FanSong's own)*. *Implemented:* a rule every unit
+  has, no longer a trait. +1 whenever a unit strikes — an attack, a riposte or
+  a free hack — at a foe with one of its standing friends on the hex directly
+  opposite (`attackPincer` / `guardPincer` event fields). It stacks with
+  outnumbering and lapses while the striker is knocked down.
 - ✅ **Done — Shieldwall** *(FanSong's own)*. *Implemented:* a `shieldwall`
   trait. +1 defending against a melee attack while next to a standing friend,
   whatever that friend's traits (`defenseShieldwall` on `AttackResolved`). Not
@@ -304,12 +304,10 @@ short paraphrase, and the exact effects should be checked before building one.
   shoot, cannot hide, and more attackers fit around them.
 - **Huge / Gargantuan:** the larger sizes, and the hiding and contact-capacity
   parts of size, are still open.
-- ✅ **Done — Mounted.** *Implemented:* a `mounted` trait. A standing rider
-  scores +1 in every melee against a non-Mounted opponent — attacking,
-  defending, riposting and hacking at a leaver alike — and two riders cancel
-  out (`attackMounted` / `defenseMounted` / `guardMounted` / `attackerMounted`
-  event fields). Like flight, and unlike size, the edge lapses while the rider is
-  knocked down. It does not touch shooting. *Original:* +1 against models on foot.
+- **Mounted — dropped.** FanSong had a `mounted` trait (+1 in melee against
+  a foe on foot) and removed it to keep the trait list short; riders are now
+  just Fast, and a rider sprite only changes the footstep sound. *Original:*
+  +1 against models on foot.
 - ✅ **Done — Opportunist** *(FanSong's own)*. *Implemented:* an `opportunist`
   trait. It scores +1 in every melee against a knocked-down opponent —
   attacking, defending, riposting and hacking at a leaver alike

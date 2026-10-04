@@ -86,14 +86,12 @@ export const TRAIT_HELP = {
   big: 'Head and shoulders above the rest: +1 in melee against smaller foes, but +1 to anyone shooting it',
   flying: 'Soars over terrain and units and draws no free hacks; +1 swooping into melee, but +1 to anyone shooting it airborne',
   reassembling: 'Stands back up for free at the start of each round if knocked down',
-  mounted: 'Rides into battle: +1 in melee against foes on foot, lost while knocked down',
   opportunist: 'Strikes when a foe is down: +1 in melee or shooting against a knocked-down foe',
   savage: 'Kills horribly: every kill it deals is gruesome, so the victim\'s friends must test for fear',
   leader: 'Once a round, one action: a war cry inspires every friend still to activate within 5 hexes and in sight (first activation die a sure 6). Friends who see it fall must test nerve',
   armored: 'Turns blows aside: a combat it loses by exactly 1 point does it no harm, even knocked down',
   sharpshooter: 'A deadly eye: +1 to every shot it takes',
   mastery: 'A master of arms: a melee it ties against a foe without Combat Mastery kills that foe (knocked down, only on a natural 6)',
-  pincer: 'Closes the trap: +1 striking a foe that has one of its standing friends on the hex directly opposite',
   shieldwall: 'Locks shields: +1 defending against a melee attack while next to a standing friend',
   rusher: 'Hits hardest on the charge: +1 on the first attack after a Move that brought it into contact with its target',
   slippery: 'Ducks away: leaving contact draws no free hacks, unless it carries a flag',
@@ -132,14 +130,12 @@ export function traitTags(unit: Pick<Unit, 'traits'>, grounded = false): TraitTa
     tags.push(grounded ? { label: 'Grounded', help: GROUNDED_HELP } : { label: 'Flying', help: TRAIT_HELP.flying });
   }
   if (unit.traits.reassembling) tags.push({ label: 'Reassembling', help: TRAIT_HELP.reassembling });
-  if (unit.traits.mounted) tags.push({ label: 'Mounted', help: TRAIT_HELP.mounted });
   if (unit.traits.opportunist) tags.push({ label: 'Opportunist', help: TRAIT_HELP.opportunist });
   if (unit.traits.savage) tags.push({ label: 'Savage', help: TRAIT_HELP.savage });
   if (unit.traits.leader) tags.push({ label: 'Leader', help: TRAIT_HELP.leader });
   if (unit.traits.armored) tags.push({ label: 'Armored', help: TRAIT_HELP.armored });
   if (unit.traits.sharpshooter) tags.push({ label: 'Sharpshooter', help: TRAIT_HELP.sharpshooter });
   if (unit.traits.mastery) tags.push({ label: 'Combat Mastery', help: TRAIT_HELP.mastery });
-  if (unit.traits.pincer) tags.push({ label: 'Pincer', help: TRAIT_HELP.pincer });
   if (unit.traits.shieldwall) tags.push({ label: 'Shieldwall', help: TRAIT_HELP.shieldwall });
   if (unit.traits.rusher) tags.push({ label: 'Rusher', help: TRAIT_HELP.rusher });
   if (unit.traits.slippery) tags.push({ label: 'Slippery', help: TRAIT_HELP.slippery });

@@ -15,7 +15,7 @@ import {
 } from '../src/index.js';
 
 /**
- * The positional traits (Pincer, Shieldwall, Rusher, Slippery, Whirling,
+ * The pincer every unit gets, the positional traits (Shieldwall, Rusher, Slippery, Whirling,
  * Immovable, Woodwise, Trample) and the drawbacks (Dumb, Disloyal, Bad Balance).
  *
  * Fights are laid out down one column: on a flat-top grid `(x, y)`, `(x, y+1)`
@@ -64,27 +64,28 @@ function attackUntil(build: (seed: number) => GameConfig, result: Attack['result
 const striker: UnitSpec = { name: 'Striker', quality: 3, combat: 3, pos: { x: 3, y: 2 } };
 const foe: UnitSpec = { name: 'Foe', quality: 3, combat: 3, pos: { x: 3, y: 3 } };
 
-describe('Pincer trait', () => {
+describe('Pincer (every unit)', () => {
   const friend: UnitSpec = { name: 'Friend', quality: 3, combat: 3, pos: { x: 3, y: 4 } };
 
   it('scores +1 with a standing friend on the hex directly opposite the target', () => {
-    const { events } = reduce(acting(config([{ ...striker, pincer: true }, friend], [foe])), strike);
+    const { events } = reduce(acting(config([striker, friend], [foe])), strike);
     expect(attackEvent(events).attackPincer).toBe(1);
   });
 
   it('gets nothing from a friend that is not directly opposite, or is knocked down', () => {
     const aside = { ...friend, pos: { x: 4, y: 3 } };
-    const off = reduce(acting(config([{ ...striker, pincer: true }, aside], [foe])), strike);
+    const off = reduce(acting(config([striker, aside], [foe])), strike);
     expect(attackEvent(off.events).attackPincer).toBeUndefined();
 
-    const s = acting(config([{ ...striker, pincer: true }, friend], [foe]));
+    const s = acting(config([striker, friend], [foe]));
     unit(s, 'p0u1').knockedDown = true;
     expect(attackEvent(reduce(s, strike).events).attackPincer).toBeUndefined();
   });
 
-  it('does nothing for a unit without the trait', () => {
-    const { events } = reduce(acting(config([striker, friend], [foe])), strike);
-    expect(attackEvent(events).attackPincer).toBeUndefined();
+  it('lapses while the striker is knocked down', () => {
+    const s = acting(config([striker, friend], [foe]));
+    unit(s, 'p0u0').knockedDown = true;
+    expect(attackEvent(reduce(s, strike).events).attackPincer).toBeUndefined();
   });
 });
 

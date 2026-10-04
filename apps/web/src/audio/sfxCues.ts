@@ -39,7 +39,7 @@ const BASE = [
   { name: 'round-start', tier: 1, group: 'Activation and dice', when: 'A new round begins', idea: 'short fanfare "ta-daa", or a gong', takes: 1 },
 
   { name: 'step', tier: 1, group: 'Moving', when: 'Each hex of a walk on foot', idea: '"tup"', takes: 3, gain: 0.6 },
-  { name: 'hoof', tier: 1, group: 'Moving', when: 'Each hex a mounted unit rides', idea: '"clop"', takes: 3, gain: 0.6, fallback: 'step' },
+  { name: 'hoof', tier: 1, group: 'Moving', when: 'Each hex a rider rides', idea: '"clop"', takes: 3, gain: 0.6, fallback: 'step' },
   { name: 'wingbeat', tier: 1, group: 'Moving', when: 'Each hex a flyer crosses', idea: '"fwup"', takes: 3, gain: 0.6 },
   { name: 'stand-up', tier: 1, group: 'Moving', when: 'A knocked-down unit gets up', idea: 'effortful "hnngh"', takes: 1 },
 

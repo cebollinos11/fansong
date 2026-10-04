@@ -121,9 +121,6 @@ export const BIG_TARGET_BONUS = 1;
 /** How much a flyer's swoop is worth in a melee it presses against a grounded foe. */
 export const FLYING_MELEE_BONUS = 1;
 
-/** How much a standing rider's horse is worth in a melee against a foe on foot. */
-export const MOUNTED_MELEE_BONUS = 1;
-
 /** How much an opportunist gains fighting or shooting a knocked-down foe. */
 export const OPPORTUNIST_BONUS = 1;
 
@@ -192,20 +189,6 @@ export function flyingTargetBonus(state: GameState, target: Unit): number {
 }
 
 /**
- * The Mounted bonus for one side of a melee: {@link MOUNTED_MELEE_BONUS} when it
- * is Mounted and its opponent is not, else 0. Like size it counts on both sides
- * of every melee — blows, ripostes and free hacks — and two riders cancel out;
- * but like flight it is the horse that gives it, so a knocked-down rider loses it.
- */
-export function mountedMeleeBonus(
-  unit: Pick<Unit, 'traits' | 'knockedDown'>,
-  opponent: Pick<Unit, 'traits'>,
-): number {
-  if (unit.knockedDown) return 0;
-  return unit.traits.mounted && !opponent.traits.mounted ? MOUNTED_MELEE_BONUS : 0;
-}
-
-/**
  * The Opportunist bonus: {@link OPPORTUNIST_BONUS} when `unit` is an
  * Opportunist and `opponent` is knocked down, else 0. It counts on either side
  * of every melee — blows, ripostes and free hacks — and on the shooter's side
@@ -220,7 +203,7 @@ export function sharpshooterBonus(shooter: Pick<Unit, 'traits'>): number {
   return shooter.traits.sharpshooter ? SHARPSHOOTER_BONUS : 0;
 }
 
-/** How much a Pincer gains striking a foe caught between it and a friend. */
+/** How much any unit gains striking a foe caught between it and a friend. */
 export const PINCER_BONUS = 1;
 
 /** How much a Shieldwall unit gains defending beside a standing friend. */
@@ -233,8 +216,8 @@ export const RUSHER_BONUS = 1;
 export const WOODWISE_BONUS = 1;
 
 /**
- * The Pincer bonus: {@link PINCER_BONUS} when `unit` is a standing Pincer
- * striking `opponent` and one of its standing friends holds the hex directly
+ * The pincer bonus: {@link PINCER_BONUS} when `unit` is on its feet,
+ * striking `opponent`, and one of its standing friends holds the hex directly
  * opposite — the one a push would send `opponent` into. Only ever the striker's:
  * an attack, a riposte or a free hack.
  */
@@ -244,7 +227,7 @@ export function pincerBonus(
   unit: Unit,
   opponent: Unit,
 ): number {
-  if (!unit.traits.pincer || unit.knockedDown) return 0;
+  if (unit.knockedDown) return 0;
   const behind = board.stepAway(unit.pos, opponent.pos);
   const closes = state.units.some(
     (u) => !u.dead && !u.knockedDown && u.owner === unit.owner && u.id !== unit.id && u.pos.x === behind.x && u.pos.y === behind.y,

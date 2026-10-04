@@ -233,6 +233,18 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     shows: (ev) => has(ev, 'UnitSupported'),
   },
   {
+    id: 'pincer',
+    group: 'Melee',
+    label: 'Pincer',
+    hint: 'An orange bar runs through the foe to the friend opposite, and chevrons close in from both ends.',
+    stage: (s) => {
+      const command = duel(s, ELF);
+      s.spawn(0, ELF, s.far);
+      return command;
+    },
+    shows: (ev) => (blow(ev)?.attackPincer ?? 0) > 0 && melee('defenderKnockedDown')(ev),
+  },
+  {
     id: 'pushedOff',
     group: 'Melee',
     label: 'Pushed off the map',
@@ -430,14 +442,6 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     shows: (ev) => (blow(ev)?.attackBig ?? 0) > 0 && melee('defenderRecoiled')(ev),
   },
   {
-    id: 'mounted',
-    group: 'Traits',
-    label: 'Mounted',
-    hint: '+1 in melee against a foe on foot.',
-    stage: (s) => duel(s, { name: 'Skeleton Rider', quality: 3, combat: 3, mounted: true }, ELF),
-    shows: (ev) => (blow(ev)?.attackMounted ?? 0) > 0 && melee('defenderRecoiled')(ev),
-  },
-  {
     id: 'flying',
     group: 'Traits',
     label: 'Flying',
@@ -512,18 +516,6 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
       return command;
     },
     shows: (ev) => has(ev, 'LeaderFallen') && !blow(ev)?.gruesome && has(ev, 'NerveCheck'),
-  },
-  {
-    id: 'pincer',
-    group: 'Traits',
-    label: 'Pincer',
-    hint: 'An orange bar runs through the foe to the friend opposite, and chevrons close in from both ends.',
-    stage: (s) => {
-      const command = duel(s, { ...ELF, pincer: true });
-      s.spawn(0, ELF, s.far);
-      return command;
-    },
-    shows: (ev) => (blow(ev)?.attackPincer ?? 0) > 0 && melee('defenderKnockedDown')(ev),
   },
   {
     id: 'shieldwall',

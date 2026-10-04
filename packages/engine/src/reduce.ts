@@ -12,7 +12,6 @@ import {
   COVER_PENALTY,
   isGruesome,
   masteryStruck,
-  mountedMeleeBonus,
   opportunistBonus,
   pincerBonus,
   rusherBonus,
@@ -558,8 +557,6 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
     attackBig: guardBig,
     defenseBig: attackerBig,
     attackFly: guardFly,
-    attackMounted: guardMounted,
-    defenseMounted: attackerMounted,
     attackOpportunist: guardOpportunist,
     defenseOpportunist: attackerOpportunist,
     attackPincer: guardPincer,
@@ -610,8 +607,6 @@ function resolveRiposte(s: GameState, events: GameEvent[], guard: Unit, attacker
       guardBig,
       attackerBig,
       guardFly,
-      guardMounted,
-      attackerMounted,
       guardOpportunist,
       attackerOpportunist,
       guardPincer,
@@ -718,11 +713,9 @@ interface MeleeMods {
   defenseBig: number;
   /** The aggressor's flying swoop (a flyer striking a grounded foe). Only ever the aggressor's — flying is pressed, not defended with. */
   attackFly: number;
-  attackMounted: number;
-  defenseMounted: number;
   attackOpportunist: number;
   defenseOpportunist: number;
-  /** The striker's Pincer (a friend directly opposite the foe). Only ever the aggressor's. */
+  /** The striker's pincer (a friend directly opposite the foe). Only ever the aggressor's. */
   attackPincer: number;
   /** A Rusher's charge. Only ever on an attack. */
   attackRusher: number;
@@ -754,7 +747,7 @@ function rollPair(s: GameState): { attackDie: number; defenseDie: number } {
 
 /**
  * Roll one opposed melee exchange (mutates `s.rngState`). Each side scores its
- * Combat plus its die, any high ground and any edge its size, flight, mount or opportunism gives it, less what
+ * Combat plus its die, any high ground and any edge its size, flight, opportunism or a pincer gives it, less what
  * it is outnumbered by; `defensePenalty` (a power blow's) comes off the defender
  * on top. Every melee
  * in the game — an ordinary blow, a guard's riposte, a free hack — is scored
@@ -790,8 +783,6 @@ function meleeScoring(
     attackBig: bigMeleeBonus(aggressor, defender),
     defenseBig: bigMeleeBonus(defender, aggressor),
     attackFly: flyingMeleeBonus(s, aggressor, defender),
-    attackMounted: mountedMeleeBonus(aggressor, defender),
-    defenseMounted: mountedMeleeBonus(defender, aggressor),
     attackOpportunist: opportunistBonus(aggressor, defender),
     defenseOpportunist: opportunistBonus(defender, aggressor),
     attackPincer: pincerBonus(s, board, aggressor, defender),
@@ -806,7 +797,6 @@ function meleeScoring(
       mods.attackBonus +
       mods.attackBig +
       mods.attackFly +
-      mods.attackMounted +
       mods.attackOpportunist +
       mods.attackPincer +
       mods.attackRusher +
@@ -816,7 +806,6 @@ function meleeScoring(
       defender.combat +
       mods.defenseBonus +
       mods.defenseBig +
-      mods.defenseMounted +
       mods.defenseOpportunist +
       mods.defenseShieldwall +
       mods.defenseWoodwise -

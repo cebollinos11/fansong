@@ -20,7 +20,6 @@ import {
   kingOf,
   makeHexGrid,
   masteryEdge,
-  mountedMeleeBonus,
   opportunistBonus,
   pincerBonus,
   sharpshooterBonus,
@@ -189,20 +188,18 @@ function pressedEdge(worthIt: boolean, pressed: boolean): number {
   return pressed === worthIt ? PRESSED_EDGE : -PRESSED_EDGE;
 }
 
-/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, mounts, opportunism, pincers, shieldwalls, woods and outnumbering. */
+/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, opportunism, pincers, shieldwalls, woods and outnumbering. */
 function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
   return (
     attacker.combat +
     bigMeleeBonus(attacker, target) +
     flyingMeleeBonus(state, attacker, target) +
-    mountedMeleeBonus(attacker, target) +
     opportunistBonus(attacker, target) +
     pincerBonus(state, board, attacker, target) +
     woodwiseBonus(state, board, attacker) -
     outnumberedPenalty(state, attacker, board) -
     (target.combat +
       bigMeleeBonus(target, attacker) +
-      mountedMeleeBonus(target, attacker) +
       opportunistBonus(target, attacker) +
       shieldwallBonus(state, board, target) +
       woodwiseBonus(state, board, target) -
@@ -212,9 +209,9 @@ function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit)
 
 /** Traits that make a unit worth more to keep (or to kill), each counted once. */
 const VALUED_TRAITS = [
-  'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'mounted', 'opportunist',
+  'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'opportunist',
   'savage', 'leader', 'armored', 'sharpshooter', 'mastery',
-  'pincer', 'shieldwall', 'rusher', 'slippery', 'whirling', 'immovable', 'woodwise', 'trample',
+  'shieldwall', 'rusher', 'slippery', 'whirling', 'immovable', 'woodwise', 'trample',
 ] as const;
 
 /**
@@ -708,6 +705,8 @@ interface KingPlan {
   theirKing: Unit | undefined;
   /** Golden Pig only: walking distance from every reachable hex to the nearest goal hex. */
   goal?: Map<string, number>;
+  /** Walking distance from every reachable hex to the enemy King, so hunters go round rock rather than into it. */
+  hunt?: Map<string, number>;
   /** Enemies within {@link THREAT_RANGE} of our King. */
   threats: Unit[];
   /** Ids of the threats already in contact with our King. */
@@ -742,7 +741,9 @@ function kingPlan(state: GameState, board: Board, player: Owner): KingPlan | und
   const threats = ourKing ? enemiesOf(state, player).filter((e) => board.distance(e.pos, ourKing.pos) <= THREAT_RANGE) : [];
   const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
   const atKing = new Set(threats.filter((t) => board.distance(t.pos, ourKing!.pos) === 1).map((t) => t.id));
-  return goal ? { ourKing, theirKing, threats, atKing, occupied, goal } : { ourKing, theirKing, threats, atKing, occupied };
+  const hunt = theirKing ? zoneField(state, board, [theirKing.pos]) : undefined;
+  const plan: KingPlan = { ourKing, theirKing, threats, atKing, occupied, hunt };
+  return goal ? { ...plan, goal } : plan;
 }
 
 /** Extra attack/shot score: the enemy King above all (it ends the game), then threats to ours. */
@@ -755,9 +756,10 @@ function kingTargetBonus(plan: KingPlan, target: Unit): number {
 /**
  * How far a non-King unit at `from` is from its quarry: a threat to our King
  * if there is one (protect first — the closer a threat is to the King, the
- * sooner it must be met), else the enemy King, else simply the nearest enemy.
+ * sooner it must be met), else the enemy King — by walking distance, unless
+ * the hunter flies over the rock in between — else simply the nearest enemy.
  */
-function kingHuntDistance(board: Board, plan: KingPlan, from: Vec, enemies: Unit[]): number {
+function kingHuntDistance(board: Board, plan: KingPlan, from: Vec, enemies: Unit[], flies = false): number {
   const king = plan.ourKing;
   if (king && plan.threats.length > 0) {
     let min = Infinity;
@@ -767,7 +769,8 @@ function kingHuntDistance(board: Board, plan: KingPlan, from: Vec, enemies: Unit
   if (plan.theirKing) {
     // Hunting the Pig: as good a hex nearer the goal than it is bars its way too.
     const barring = plan.goal && walk(plan.goal, from) >= walk(plan.goal, plan.theirKing.pos) ? 0.5 : 0;
-    return board.distance(from, plan.theirKing.pos) + barring;
+    const walked = plan.hunt && !flies ? walk(plan.hunt, from) : FAR;
+    return (walked < FAR ? walked : board.distance(from, plan.theirKing.pos)) + barring;
   }
   if (king && plan.goal) {
     // Escorts with no threat to answer go for the foe nearest the Pig: the next one in its way.
@@ -844,7 +847,7 @@ function kingActivationScore(state: GameState, board: Board, plan: KingPlan, uni
     return nearest <= 2 ? 50_000 : 1_000;
   }
   if (nearest === 1 || canShoot) return 100_000;
-  return 10_000 - Math.min(kingHuntDistance(board, plan, unit.pos, enemies), 99) * 100;
+  return 10_000 - Math.min(kingHuntDistance(board, plan, unit.pos, enemies, unit.traits.flying), 99) * 100;
 }
 
 /**
@@ -872,7 +875,7 @@ function kingMoveScore(state: GameState, board: Board, plan: KingPlan, mover: Un
     }
     if (dist < 2) return 40_000;
   }
-  return 100_000 - kingHuntDistance(board, plan, to, enemies) * 100 + height;
+  return 100_000 - kingHuntDistance(board, plan, to, enemies, mover.traits.flying) * 100 + height;
 }
 
 /** Walking distance (steps over passable hexes, never lava) from every reachable hex to the nearest of `targets`. */
