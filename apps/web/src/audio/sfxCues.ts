@@ -260,8 +260,8 @@ export const STOCK_CLIPS = {
   'bird-death': { count: 2, level: 0.5 },
   chitter: { count: 3, level: 0.45 },
   'bug-death': { count: 3, level: 0.5 },
-  meadow: { count: 1, level: 0.8, loop: true },
-  room: { count: 1, level: 0.7, loop: true },
+  // No ambience loops for now (the user turned ambience off; see AMBIENCE_ON in sfx.ts).
+  // A loop set is listed like the rest with `loop: true`, e.g. `meadow: { count: 1, level: 0.8, loop: true }`.
 } as const satisfies Record<string, { count: number; level: number; loop?: true }>;
 
 export type StockClip = keyof typeof STOCK_CLIPS;
@@ -327,8 +327,6 @@ export const STOCK: Partial<Record<SfxName, StockClip>> = {
   defect: 'snicker',
   'ui-hover': 'hover',
   'your-turn': 'chime',
-  'amb-table': 'room',
-  'amb-meadow': 'meadow',
   'human-attack': 'grunt',
   'orc-attack': 'orc',
   'orc-death': 'orc-death',

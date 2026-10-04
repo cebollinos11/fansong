@@ -123,8 +123,11 @@ describe('stock sounds', () => {
     expect(resolvePlayable('whoosh-trait', manifest({}))).toEqual({ cue: 'swing', stock: 'swing' });
   });
 
-  it('leave no cue silent', () => {
-    for (const cue of SFX_CUES) expect(resolvePlayable(cue.name, manifest({})), cue.name).not.toBeNull();
+  it('leave no cue silent but the ambience loops, which are switched off for now', () => {
+    for (const cue of SFX_CUES) {
+      if (cue.loop) expect(resolvePlayable(cue.name, manifest({})), cue.name).toBeNull();
+      else expect(resolvePlayable(cue.name, manifest({})), cue.name).not.toBeNull();
+    }
   });
 });
 

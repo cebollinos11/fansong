@@ -25,6 +25,12 @@ const REPEAT_GUARD_MS = 45;
 /** Each play is pitched a hair up or down, so a repeated take doesn't sound stamped out. */
 const PITCH_SPREAD = 0.05;
 const AMBIENCE_FADE_S = 1.2;
+/**
+ * Ambience (a loop under the whole game, per backdrop) is switched off for now:
+ * the user didn't like it. The player below is kept, so turning this back on
+ * plays a recorded `amb-*` take, or a stock loop added to `STOCK`.
+ */
+const AMBIENCE_ON = false;
 
 export interface PlayOptions {
   volume?: number;
@@ -183,6 +189,7 @@ class Sfx {
 
   /** Loop `name` under everything else (null for silence), fading from whatever was looping. */
   playAmbience(name: SfxName | string | null, restart = false): void {
+    if (!AMBIENCE_ON) name = null;
     this.wantAmbient = name;
     const ctx = this.context();
     if (!ctx || !this.master) return;

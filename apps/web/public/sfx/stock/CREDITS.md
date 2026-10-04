@@ -78,7 +78,6 @@ Team, CC BY-SA 3.0.
 | `arrow-hit-0`…`arrow-hit-4` | techs/megapack/commondata/sounds/arrow_hit1–5 |
 | `screech-1` | tilesets/desert2/sounds/hawk (shortened) |
 | `bird-death-1` | techs/megapack/factions/indian/units/thunderbird/sounds/eagle_die1 |
-| `meadow-0` | tilesets/meadow/sounds/day (cut to 30 seconds, its ends crossfaded into a loop) |
 
 ## uisfx (npm `uisfx` 0.4.0)
 
@@ -145,5 +144,3 @@ CC0 1.0:
   resonances.
 - `tweet-0`: cartoon birds circling a dazed head, as quick warbling chirps.
 - `duh-0`: a dopey hummed "duh?" that lifts at the end like a question.
-- `room-0`: 24 seconds of quiet room (a soft rumble and a faint mains hum)
-  with a clock ticking, looping seamlessly.
