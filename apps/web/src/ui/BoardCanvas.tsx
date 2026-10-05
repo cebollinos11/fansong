@@ -5,8 +5,9 @@ import { BACKDROP_LABELS, BACKDROPS, DEFAULT_BACKDROP, type BackdropKind } from 
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
 import { InfoLines } from './StatIcons.js';
-import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
+import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges, type Objective } from './modeView.js';
 import { traitTags } from './hudView.js';
+import { COLOR_NAMES, type SideNames } from './sides.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 import { canOfferFullscreen, toggleFullscreen, useFullscreen } from './fullscreen.js';
 import { sfx } from '../audio/sfx.js';
@@ -39,6 +40,8 @@ interface Props {
   pickThrough?: boolean;
   /** Seats this screen commands; other sides' moves trace their route first (unset: every move). */
   localSeats?: readonly Owner[];
+  /** What the board's banners and dice cards call each side, as the top bar does (default: their colours). */
+  sideNames?: SideNames;
   /** The most recent batch of engine events, for transient FX. A new empty batch cuts pending FX short. */
   events: GameEvent[];
   /** Called once per new `events` batch with how long (ms) its animations take to play out. */
@@ -78,7 +81,8 @@ interface Props {
    */
   pinnedCell?: Vec | null;
   /** Shown briefly over the board when a new round begins; null the rest of the time. */
-  announcement?: { round: number; owner: Owner; turnLabel: string } | null;
+  /** The round-start banner; the battle's opening one also states the objective. */
+  announcement?: { round: number; owner: Owner; turnLabel: string; objective?: Objective } | null;
   /**
    * The zone being scored as a round ends, arriving with its own `events`
    * batch: the board goes to it and shows who takes its point, in place of
@@ -257,6 +261,13 @@ export function BoardCanvas(props: Props): JSX.Element {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const localSeats = useMemo(() => props.localSeats, [seatsKey]);
 
+  // Read when a banner or dice card is drawn, so it only needs to be current.
+  const namesKey = props.sideNames?.join('\n');
+  useEffect(() => {
+    if (viewRef.current) viewRef.current.sideNames = props.sideNames ?? COLOR_NAMES;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [namesKey]);
+
   // Also handed over fresh each render; only a change of units matters.
   const focusKey = props.focusUnitIds?.join(',') ?? '';
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -393,9 +404,18 @@ export function BoardCanvas(props: Props): JSX.Element {
     <div className="board-wrap" onPointerMove={onPointerAt} onPointerDown={onPointerAt}>
       <div ref={containerRef} className="board-canvas" />
       {props.announcement ? (
-        <div key={props.announcement.round} className={`round-announce p${props.announcement.owner}`}>
+        <div
+          key={props.announcement.round}
+          className={`round-announce p${props.announcement.owner}${props.announcement.objective ? ' opening' : ''}`}
+        >
           <div className="round-announce-round">Round {props.announcement.round}</div>
           <div className="round-announce-turn">{props.announcement.turnLabel}</div>
+          {props.announcement.objective ? (
+            <div className="round-announce-objective">
+              <div className="round-announce-goal">Objective: {props.announcement.objective.goal}</div>
+              <div className="round-announce-detail">{props.announcement.objective.detail}</div>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {props.scoring ? <div className="scoring-banner">End of round {props.state.round} · scoring the zones</div> : null}

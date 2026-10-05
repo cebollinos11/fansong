@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { Vec } from '@fansong/engine';
 import { DIE_PIPS } from '../three/rollOverlay.js';
-import { type BattleLog, type DiceRoll, type LogCategory, type LogGroup, type LogItem, type LogPart } from './log.js';
+import { playerWords, type BattleLog, type DiceRoll, type LogCategory, type LogGroup, type LogItem, type LogPart, type PlayerPart } from './log.js';
+import { COLOR_NAMES, sideName, sideVerb, type SideNames } from './sides.js';
 
 /** What a hovered log line points at on the board. */
 export interface LogFocus {
@@ -12,6 +13,8 @@ export interface LogFocus {
 interface Props {
   log: BattleLog;
   title?: string;
+  /** What to call each side, as the top bar does (default: their colours). */
+  names?: SideNames;
   /** Hovering a line (null when the pointer leaves it). */
   onFocus?: (focus: LogFocus | null) => void;
   /** Clicking a unit's name; names are plain text without it. */
@@ -57,7 +60,7 @@ function shows(item: LogItem, filter: Filter): boolean {
  * first, and each activation's lines in the order they happened. Only the
  * newest activation is open; the rest fold to a one-line summary.
  */
-export function BattleLogView({ log, title = 'Battle log', onFocus, onInspect }: Props): JSX.Element {
+export function BattleLogView({ log, title = 'Battle log', names = COLOR_NAMES, onFocus, onInspect }: Props): JSX.Element {
   const [filter, setFilter] = useState<Filter>(loadFilter);
   // Activations whose open/closed state the reader flipped from the default.
   const [flipped, setFlipped] = useState<ReadonlySet<number>>(new Set());
@@ -100,6 +103,17 @@ export function BattleLogView({ log, title = 'Battle log', onFocus, onInspect }:
       </span>
     );
 
+  // A side's name is coloured like its units; the verb after it is plain text.
+  const player = (p: PlayerPart, key: number): JSX.Element => {
+    const { name: who, verb } = playerWords(p, names, key === 0);
+    return (
+      <span key={key}>
+        <span className={`log-player p${p.player}`}>{who}</span>
+        {verb ? ` ${verb}` : null}
+      </span>
+    );
+  };
+
   const parts = (list: readonly LogPart[]): JSX.Element[] =>
     list.map((p, i) =>
       typeof p === 'string' ? (
@@ -107,9 +121,7 @@ export function BattleLogView({ log, title = 'Battle log', onFocus, onInspect }:
       ) : 'unit' in p ? (
         name(p, i)
       ) : 'player' in p ? (
-        <span key={i} className={`log-player p${p.player}`}>
-          P{p.player}
-        </span>
+        player(p, i)
       ) : (
         <span key={i} className={`log-em${p.cls ? ` ${p.cls}` : ''}`}>
           {p.em}
@@ -229,7 +241,8 @@ export function BattleLogView({ log, title = 'Battle log', onFocus, onInspect }:
                 {r.leader !== undefined ? (
                   <>
                     {' · '}
-                    <span className={`log-player p${r.leader}`}>P{r.leader}</span> leads
+                    <span className={`log-player p${r.leader}`}>{sideName(names, r.leader, true)}</span>{' '}
+                    {sideVerb(names, r.leader, 'leads')}
                   </>
                 ) : null}
               </div>

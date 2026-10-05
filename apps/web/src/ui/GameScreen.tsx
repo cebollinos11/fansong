@@ -17,12 +17,15 @@ import { Hud } from './Hud.js';
 import { SoundCuePanel } from './SoundCuePanel.js';
 import { devTools } from '../devTools.js';
 import { seatLabel, turnPhrase } from './hudView.js';
+import { sideNames } from './sides.js';
 import type { LogFocus } from './BattleLogView.js';
 import { appendEvents, emptyLog, type BattleLog } from './log.js';
-import { zoneScore } from './modeView.js';
+import { battleUnstarted, objective, zoneScore } from './modeView.js';
 
 /** How long the round-start banner stays up over the board (ms; matches the CSS animation). */
 const ROUND_ANNOUNCE_MS = 1800;
+/** How long the battle's opening banner, which also states the objective, stays up (ms; matches the CSS). */
+const OPENING_MS = 3600;
 /** How long a scored zone stays on screen after its point counts, before the next one. */
 const ZONE_SCORE_HOLD_MS = 800;
 
@@ -73,7 +76,12 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // Set from a `RoundEnded` event once it has finished animating, cleared on its
   // own timer. Also gates `myTurn` and holds the presentation queue (see the
   // subscribe effect), so nothing next round is clickable or shown until it clears.
-  const [roundAnnounce, setRoundAnnounce] = useState<{ round: number; owner: Owner } | null>(null);
+  // A battle nobody has moved in yet opens the same way, round 1 with the objective under it.
+  const [roundAnnounce, setRoundAnnounce] = useState<{ round: number; owner: Owner; opening?: boolean } | null>(() => {
+    const first = client.getState();
+    return !sandbox && battleUnstarted(first) ? { round: 1, owner: first.active, opening: true } : null;
+  });
+  const openingRef = useRef(roundAnnounce?.opening === true);
   const queueRef = useRef<PresentationQueue<Transition> | null>(null);
   // How long the transition now showing took to play: 0 when it was instant or skipped.
   const playedMs = useRef(0);
@@ -127,6 +135,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       },
     );
     queueRef.current = queue;
+    // An AI that leads plays its first move once the opening banner has cleared.
+    if (openingRef.current) queue.holdFor(OPENING_MS);
     // A round's zones are scored one at a time before it ends, and Reassembling
     // units stand up after the round's banner, not under it.
     const unsub = client.subscribe((t) =>
@@ -222,7 +232,10 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // The banner clears itself; a new one (its object identity changes) restarts the clock.
   useEffect(() => {
     if (!roundAnnounce) return;
-    const id = setTimeout(() => setRoundAnnounce(null), ROUND_ANNOUNCE_MS);
+    const id = setTimeout(() => {
+      openingRef.current = false;
+      setRoundAnnounce(null);
+    }, roundAnnounce.opening ? OPENING_MS : ROUND_ANNOUNCE_MS);
     return () => clearTimeout(id);
   }, [roundAnnounce]);
 
@@ -466,6 +479,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         round: roundAnnounce.round,
         owner: roundAnnounce.owner,
         turnLabel: turnPhrase(seatLabel(client.setup, client.controlledSeats, roundAnnounce.owner)),
+        ...(roundAnnounce.opening ? { objective: objective(state) } : {}),
       }
     : null;
   const scoring = useMemo(
@@ -496,6 +510,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         interactive={myTurn || sandbox !== undefined}
         pickThrough={sandbox === undefined}
         localSeats={client.controlledSeats}
+        sideNames={sideNames(client.setup, client.controlledSeats)}
         liveTerrain={sandbox !== undefined}
         events={shown.events}
         onEventsPlayed={(ms) => {

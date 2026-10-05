@@ -3,10 +3,11 @@ import { airborne, unitById, unitMove, type GameState, type Owner } from '@fanso
 import type { Interaction } from '../game/interaction.js';
 import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, WAR_CRY_HELP, breaksAtHelp, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
-import type { BattleLog } from './log.js';
-import { modeHud } from './modeView.js';
+import { itemText, type BattleLog } from './log.js';
+import { sideNames } from './sides.js';
+import { modeHud, objective } from './modeView.js';
 import { StatIcons } from './StatIcons.js';
 
 interface Props {
@@ -88,7 +89,10 @@ export function Hud(props: Props): JSX.Element {
   const selected = selectedUnitId ? unitById(state, selectedUnitId) : null;
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
   const banner = statusBanner(status);
-  const mode = modeHud(state);
+  const names = sideNames(setup, controlledSeats);
+  const mode = modeHud(state, names);
+  // Always on show, annihilation included: nobody should have to guess how to win.
+  const goal = objective(state);
   const callout = props.log.callout;
   const acting = humanTurn && state.phase === 'acting';
 
@@ -169,11 +173,15 @@ export function Hud(props: Props): JSX.Element {
         </span>
         {/* A rout is a sudden collapse; say it is coming, not just that it came. */}
         {warband.breaksAt !== null && !gameOver ? (
-          <span className="warn" title={`This warband breaks when ${warband.breaksAt} or fewer are left`}>
+          <span className="warn" title={breaksAtHelp(warband.breaksAt)}>
             breaks at {warband.breaksAt}
           </span>
         ) : null}
-        {warband.broken ? <span className="broken">broken</span> : null}
+        {warband.broken ? (
+          <span className="broken" title={BROKEN_HELP}>
+            broken
+          </span>
+        ) : null}
         {warband.benched && !gameOver ? <span className="benched">benched</span> : null}
       </div>
     );
@@ -187,9 +195,9 @@ export function Hud(props: Props): JSX.Element {
         <div className="play-strip">
           {side(0)}
           <div className="play-mid">
-            <div className="play-round" title={mode ? `${mode.label} · ${mode.goal}` : undefined}>
+            <div className="play-round" title={`${mode ? `${mode.label} · ` : ''}${goal.goal}. ${goal.detail}.`}>
               Round {state.round}
-              {mode ? <span className="play-goal"> · {mode.goal}</span> : null}
+              <span className="play-goal"> · {goal.goal}</span>
             </div>
             <div className={`play-turn ${turn.tone}`} title={turn.hint}>
               {turn.text}
@@ -202,7 +210,7 @@ export function Hud(props: Props): JSX.Element {
         {callout?.tone === 'objective' ? (
           // Keyed by entry id so each new scoring/flag event replays the fade-in/out animation.
           <div key={callout.id} className="callout">
-            {callout.text}
+            {itemText(callout, names)}
           </div>
         ) : null}
       </div>
@@ -225,7 +233,7 @@ export function Hud(props: Props): JSX.Element {
             ⟵ New match
           </button>
         </div>
-        {logOpen ? <BattleLogView log={props.log} onFocus={props.onLogFocus} onInspect={props.onInspect} /> : null}
+        {logOpen ? <BattleLogView log={props.log} names={names} onFocus={props.onLogFocus} onInspect={props.onInspect} /> : null}
       </div>
 
       {shownUnitId || acting ? (
@@ -239,7 +247,7 @@ export function Hud(props: Props): JSX.Element {
             <div className="play-actions">
               {interaction.canWarCry ? (
                 <button
-                  title="Press C — one action: every friend still to activate within 5 hexes and in sight is inspired, its first activation die a sure 6"
+                  title={WAR_CRY_HELP}
                   onClick={props.onWarCry}
                 >
                   War cry <kbd>C</kbd>
@@ -298,7 +306,7 @@ function UnitInspector({
       {u.knockedDown ? <span className="flag down">knocked down</span> : null}
       {u.guarding && !u.dead ? <span className="flag guarding">on guard</span> : null}
       {u.inspired && !u.dead ? (
-        <span className="flag inspired" title="Its first activation die this round is a sure 6; lost on a failed nerve check">
+        <span className="flag inspired" title={INSPIRED_HELP}>
           inspired
         </span>
       ) : null}

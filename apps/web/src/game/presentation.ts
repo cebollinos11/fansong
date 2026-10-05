@@ -64,6 +64,26 @@ export class PresentationQueue<T> {
     this.pendingHoldMs = Math.max(this.pendingHoldMs, ms);
   }
 
+  /**
+   * Hold back presenting anything for `ms` from now — for a banner that is up
+   * before anything has played, such as the battle's opening. While an item is
+   * playing or a hold is already running this falls back to {@link hold}.
+   */
+  holdFor(ms: number): void {
+    if (this.disposed || ms <= 0) return;
+    if (this.current !== null || this.holding) {
+      this.hold(ms);
+      return;
+    }
+    this.holding = true;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.holding = false;
+      this.pump();
+      if (this.idle) this.wake();
+    }, ms);
+  }
+
   dispose(): void {
     this.disposed = true;
     if (this.timer !== null) clearTimeout(this.timer);

@@ -3,7 +3,10 @@ import type { GameMode, GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { zoneTallies } from '../src/game/roundScoring.js';
 import { ZONE_COLORS } from '../src/ui/editorView.js';
-import { modeHud, modeMarkers, modeMarkingsKey, modeOverlays, PIG_GOAL_COLOR, unitBadges, zoneScore } from '../src/ui/modeView.js';
+import { battleUnstarted, modeHud, modeMarkers, objective, modeMarkingsKey, modeOverlays, PIG_GOAL_COLOR, unitBadges, zoneScore } from '../src/ui/modeView.js';
+
+/** What the sides are called against the AI, as the top bar shows them. */
+const VS_AI = ['You', 'AI'] as const;
 
 function match(mode: GameMode | undefined, mapId?: string): GameState {
   const setup: MatchSetup = { presets: ['iron-wardens-medium', 'ashfang-raiders-medium'], seats: ['ai', 'ai'], seed: 5 };
@@ -17,6 +20,26 @@ describe('annihilation', () => {
     expect(modeOverlays(s)).toEqual([]);
     expect(modeMarkers(s)).toEqual([]);
     expect(unitBadges(s)).toEqual({});
+  });
+});
+
+describe('objective', () => {
+  it('states the win condition even in annihilation, which has no mode panel', () => {
+    const s = match(undefined);
+    expect(objective(s)).toEqual({ goal: 'Destroy the enemy warband', detail: 'Win when every enemy is slain or has fled the field' });
+  });
+
+  it("uses the mode's own goal, and says a wipe-out still wins", () => {
+    expect(objective(match('kill-the-king'))).toEqual({ goal: 'Kill the enemy King', detail: 'Wiping out the enemy warband wins too' });
+    expect(objective(match('king-of-the-hill', 'rolling-hills')).goal).toBe('First to 5 points · ends after round 12');
+  });
+
+  it('knows a battle nobody has moved in yet', () => {
+    const s = match(undefined);
+    expect(battleUnstarted(s)).toBe(true);
+    expect(battleUnstarted({ ...s, round: 2 })).toBe(false);
+    expect(battleUnstarted({ ...s, benched: [true, false] })).toBe(false);
+    expect(battleUnstarted({ ...s, units: s.units.map((u, i) => (i === 0 ? { ...u, activatedThisRound: true } : u)) })).toBe(false);
   });
 });
 
@@ -68,11 +91,13 @@ describe('kill-the-king', () => {
   it('names both Kings and crowns them while alive', () => {
     const s = match('kill-the-king');
     const [k0, k1] = s.mode!.kings!;
-    const hud = modeHud(s)!;
+    const hud = modeHud(s, VS_AI)!;
     expect(hud.label).toBe('Kill the king');
     expect(hud.scores).toBeNull();
     expect(hud.lines).toHaveLength(2);
-    expect(hud.lines[0]).toMatch(/^P0 King: /);
+    expect(hud.lines[0]).toMatch(/^Your King: /);
+    expect(hud.lines[1]).toMatch(/^AI's King: /);
+    expect(modeHud(s)!.lines[0]).toMatch(/^Blue's King: /);
     expect(unitBadges(s)).toEqual({ [k0]: 'crown', [k1]: 'crown' });
 
     const before = modeMarkingsKey(s);
@@ -97,7 +122,8 @@ describe('king-of-the-hill', () => {
     const unit = s.units.find((u) => u.owner === 1)!;
     unit.pos = { ...hill[0]! };
     s.mode!.scores = [1, 3];
-    expect(modeHud(s)!.lines).toEqual(['Hill: P1']);
+    expect(modeHud(s, VS_AI)!.lines).toEqual(['Hill: AI']);
+    expect(modeHud(s)!.lines).toEqual(['Hill: Red']);
     expect(modeHud(s)!.scores).toEqual([1, 3]);
     // Held: rimmed in the holder's colour, under the hill's own tint.
     expect(modeOverlays(s)).toEqual([
@@ -151,7 +177,7 @@ describe('capture-the-flag', () => {
   it('tracks flags at base, carried and dropped', () => {
     const s = match('capture-the-flag', 'twin-towers');
     const bases = s.mode!.objectives.flags!;
-    expect(modeHud(s)!.lines).toEqual(['P0 flag: at base', 'P1 flag: at base']);
+    expect(modeHud(s, VS_AI)!.lines).toEqual(['Your flag: at base', "AI's flag: at base"]);
     expect(modeMarkers(s)).toEqual([
       { kind: 'flag', owner: 0, cell: bases[0] },
       { kind: 'flag', owner: 1, cell: bases[1] },
@@ -163,14 +189,14 @@ describe('capture-the-flag', () => {
     // A P0 unit carries P1's flag.
     const carrier = s.units.find((u) => u.owner === 0)!;
     s.mode!.flags![1] = { at: { ...carrier.pos }, carrier: carrier.id };
-    expect(modeHud(s)!.lines[1]).toBe(`P1 flag: carried by ${carrier.name} (P0)`);
+    expect(modeHud(s, VS_AI)!.lines[1]).toBe(`AI's flag: carried by ${carrier.name} (You)`);
     expect(modeMarkers(s)).toEqual([{ kind: 'flag', owner: 0, cell: bases[0] }]);
     expect(unitBadges(s)).toEqual({ [carrier.id]: 'flag-1' });
     expect(modeMarkingsKey(s)).not.toBe(atStart);
 
     // Dropped.
     s.mode!.flags![1] = { at: { x: 4, y: 3 }, carrier: null };
-    expect(modeHud(s)!.lines[1]).toBe('P1 flag: dropped at (4, 3)');
+    expect(modeHud(s)!.lines[1]).toBe("Red's flag: dropped at (4, 3)");
     expect(modeMarkers(s)).toContainEqual({ kind: 'flag', owner: 1, cell: { x: 4, y: 3 } });
     expect(unitBadges(s)).toEqual({});
   });
@@ -193,10 +219,11 @@ describe('extract the golden Pig', () => {
     expect(hud.label).toBe('Extract the golden Pig');
     expect(hud.goal).toBe(`Get the golden Pig into the enemy camp · ends after round ${s.limits!.roundLimit}`);
     expect(hud.scores).toBeNull();
-    expect(hud.lines).toEqual(['P1 escorts the Pig', 'P0 wins by killing it, or when time runs out']);
+    expect(hud.lines).toEqual(['Red escorts the Pig', 'Blue wins by killing it, or when time runs out']);
+    expect(modeHud(s, VS_AI)!.lines).toEqual(['AI escorts the Pig', 'You win by killing it, or when time runs out']);
     const pig = s.units.find((u) => u.id === s.mode!.pig!.unitId)!;
     pig.knockedDown = true;
-    expect(modeHud(s)!.lines[0]).toBe('P1 escorts the Pig (knocked down)');
+    expect(modeHud(s)!.lines[0]).toBe('Red escorts the Pig (knocked down)');
   });
 
   it('tints the goal zone, crowns the living Pig and redraws when it falls', () => {
@@ -209,6 +236,6 @@ describe('extract the golden Pig', () => {
     s.units.find((u) => u.id === id)!.dead = true;
     expect(unitBadges(s)).toEqual({});
     expect(modeMarkingsKey(s)).not.toBe(before);
-    expect(modeHud(s)!.lines[0]).toBe('P0 escorts the Pig (fallen)');
+    expect(modeHud(s, VS_AI)!.lines[0]).toBe('You escort the Pig (fallen)');
   });
 });

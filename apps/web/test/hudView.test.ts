@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { ROUT_FRACTION, type GameState, type Owner, type UnitTraits } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, breaksAtHelp, TRAIT_HELP, WAR_CRY_HELP, armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
 
 const VS_AI: MatchSetup = {
   presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
@@ -87,6 +87,17 @@ describe('turnPhrase', () => {
   });
 });
 
+describe('break help', () => {
+  it('says breaking is a one-time nerve test, not the end of the battle', () => {
+    expect(breaksAtHelp(1)).toMatch(/^Once it is down to 1 unit, /);
+    expect(breaksAtHelp(2)).toMatch(/^Once it is down to 2 units, /);
+    for (const text of [breaksAtHelp(2), BROKEN_HELP]) {
+      expect(text).toContain('nerve check');
+      expect(text).toContain('battle goes on');
+    }
+  });
+});
+
 describe('warbandStatus', () => {
   const fresh = createMatchFromPresets(VS_AI);
   const start = fresh.startCount[0];
@@ -144,6 +155,15 @@ describe('traitTags', () => {
   it('explains what each ability does', () => {
     for (const tag of traitTags(traits({ ranged: 2, tough: true, guard: true, big: true }))) {
       expect(tag.help.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('inspiration wording', () => {
+  it('never promises that a sure 6 protects against a turnover', () => {
+    for (const text of [INSPIRED_HELP, WAR_CRY_HELP, TRAIT_HELP.leader]) {
+      expect(text).toMatch(/sure 6/);
+      expect(text).toMatch(/two failures among .* still turn/);
     }
   });
 });
