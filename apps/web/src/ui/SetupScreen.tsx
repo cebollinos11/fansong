@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   configFromSetup,
   DEFAULT_BOARD,
@@ -9,7 +9,6 @@ import {
   listMaps,
   PRESET_IDS,
   PRESETS,
-  supportedModes,
   validateArmy,
   validateWarband,
   warbandCost,
@@ -27,7 +26,8 @@ import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy
 import { loadSetupPrefs, saveSetupPrefs } from '../game/setupPrefs.js';
 import { limitsForMode, type LimitsByMode } from '../game/limits.js';
 import { StatIcons } from './StatIcons.js';
-import { SetupLayout, setupVariant, VariantSwitch, type SetupModel } from './SetupVariants.js';
+import { FaceOffSetup, type SetupModel } from './FaceOffSetup.js';
+import { modesOf } from './setupView.js';
 import { MapThumb, Picker, profileStats, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
 
 interface Props {
@@ -122,7 +122,7 @@ export function launchProblem(launch: Extract<Launch, { kind: 'local' }>, lookup
 
 /** `wanted` if the map supports it, else annihilation (which every map does). */
 export function modeFor(map: MapDef, wanted: GameMode): GameMode {
-  return supportedModes(map).includes(wanted) ? wanted : 'annihilation';
+  return modesOf(map).includes(wanted) ? wanted : 'annihilation';
 }
 
 const MODE_TITLES: Record<Mode, string> = {
@@ -175,16 +175,16 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
   const pickKing = (owner: 0 | 1, i: number) => setKings((k) => (owner === 0 ? [i, k[1]] : [k[0], i]));
   const localMode: LocalMode = mode === 'online' ? 'hotseat' : mode;
   const limits = limitsByMode[gameMode];
-  const launch = launchFor(localMode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMap.id, { mode: gameMode, kings, escort, limits }, armies);
-  const problem = launchProblem(launch, customMapLookup(browserStorage()));
+  // Checking a launch builds the whole match, so only do it when a choice changes.
+  const [mapLookup] = useState(() => customMapLookup(browserStorage()));
+  const launch = useMemo(
+    () => launchFor(localMode, [p0, p1], Number.isFinite(seed) ? seed : 0, playedMap.id, { mode: gameMode, kings, escort, limits }, armies),
+    [localMode, p0, p1, seed, playedMap, gameMode, kings, escort, limits, armies],
+  );
+  const problem = useMemo(() => launchProblem(launch, mapLookup), [launch, mapLookup]);
   const start = () => onStart(launch);
 
-  const label0 = mode === 'vsAI' ? 'You — Player 0' : 'Player 0';
-  const label1 = mode === 'vsAI' ? 'AI — Player 1' : 'Player 1';
-
-  // Layout trial: three themed takes on this screen (see SetupVariants.tsx).
-  const [variant, setVariant] = useState(setupVariant);
-  if (mode !== 'online' && variant !== 'old') {
+  if (mode !== 'online') {
     const model: SetupModel = {
       mode: localMode,
       title: MODE_TITLES[mode],
@@ -211,7 +211,7 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
       onBack,
       openSandbox: onOpenSandbox && problem === null ? () => onOpenSandbox(launch.setup) : undefined,
     };
-    return <SetupLayout variant={variant} model={model} onVariant={setVariant} />;
+    return <FaceOffSetup model={model} />;
   }
 
   return (
@@ -223,71 +223,7 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
           </button>
           <h1>{MODE_TITLES[mode]}</h1>
         </div>
-        {mode === 'online' ? null : <VariantSwitch value={variant} onChange={setVariant} />}
-        {mode === 'online' ? null : <p className="tagline">Pick two warbands and a map, then fight.</p>}
-
-        {mode === 'online' ? (
-          <OnlinePanel onStart={onStart} />
-        ) : (
-          <div className="warband-cols">
-            <WarbandPicker
-              label={label0}
-              value={p0}
-              armies={armies}
-              onChange={(id) => pickPreset(0, id)}
-              king={gameMode === 'kill-the-king' ? kings[0] : undefined}
-              onKing={(i) => pickKing(0, i)}
-            />
-            <WarbandPicker
-              label={label1}
-              value={p1}
-              armies={armies}
-              onChange={(id) => pickPreset(1, id)}
-              king={gameMode === 'kill-the-king' ? kings[1] : undefined}
-              onKing={(i) => pickKing(1, i)}
-            />
-          </div>
-        )}
-        <div className="setup-links">
-          {onOpenSandbox && launch.kind === 'local' && problem === null ? (
-            <button className="ghost" title="Dev tool: set up and test any situation" onClick={() => onOpenSandbox(launch.setup)}>
-              Sandbox…
-            </button>
-          ) : null}
-        </div>
-
-        {mode === 'online' ? null : (
-          <>
-            <MapPicker value={playedMap.id} custom={customMaps} onChange={setMapId} />
-
-            <GameModePicker map={playedMap} value={gameMode} onChange={setWantedMode} />
-
-            {gameMode === 'golden-pig' ? (
-              <EscortPicker value={escort} labels={mode === 'vsAI' ? ['You (P0)', 'AI (P1)'] : ['P0', 'P1']} onChange={setEscort} />
-            ) : null}
-
-            <LimitsPicker
-              mode={gameMode}
-              value={limits}
-              defaultRounds={gameMode === 'golden-pig' ? defaultPigRounds(playedMap, escort) : undefined}
-              onChange={(next) => setLimitsByMode((all) => ({ ...all, [gameMode]: next }))}
-            />
-
-            <label className="seed-row">
-              Seed
-              <input
-                type="number"
-                value={seed}
-                onChange={(e) => setSeed(parseInt(e.target.value, 10))}
-              />
-            </label>
-
-            {problem ? <p className="error">Can't start: {problem}</p> : null}
-            <button className="primary" onClick={start} disabled={problem !== null}>
-              Start battle
-            </button>
-          </>
-        )}
+        <OnlinePanel onStart={onStart} />
       </div>
     </div>
   );
@@ -427,11 +363,11 @@ export function MapPicker({
   onChange: (id: string) => void;
 }): JSX.Element {
   const map = getMap(value) ?? custom.find((m) => m.id === value) ?? getMap(DEFAULT_MAP_ID)!;
-  const modes = supportedModes(map).map((m) => MODE_LABELS[m]);
+  const modes = modesOf(map).map((m) => MODE_LABELS[m]);
   const item = (m: MapDef): PickerItem => ({
     key: m.id,
     title: m.name,
-    detail: `${m.width}×${m.height} · ${supportedModes(m).map((x) => MODE_LABELS[x]).join(', ')}`,
+    detail: `${m.width}×${m.height} · ${modesOf(m).map((x) => MODE_LABELS[x]).join(', ')}`,
     preview: <MapThumb map={m} />,
   });
   const groups = (): PickerGroup[] =>
@@ -592,7 +528,7 @@ export function GameModePicker({
   value: GameMode;
   onChange: (mode: GameMode) => void;
 }): JSX.Element {
-  const supported = supportedModes(map);
+  const supported = modesOf(map);
   return (
     <fieldset className="mode-picker">
       <legend>Game mode</legend>

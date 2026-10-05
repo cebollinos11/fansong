@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PRESET_IDS, PRESETS } from '@fansong/content';
 import { animationsFor, framesOf, type Clip } from '../three/unitAnimations.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
+import { tintedSpriteUrl } from './Picker.js';
 import type { Mode } from './SetupScreen.js';
 
 interface Props {
@@ -117,26 +118,46 @@ export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }
 
 /**
  * A unit standing on a grass hex. It loops its standing clip if it has one, and
- * plays a melee swing each time `strike` changes to a new non-zero value.
+ * plays a melee swing each time `strike` changes to a new non-zero value. A
+ * `big` unit stands taller, as on the board; a `tint` recolours every frame.
  */
 export function MenuUnit({
   path,
   strike,
   leader = false,
   flip = false,
+  big = false,
+  tint,
 }: {
   path: string;
   strike: number;
   leader?: boolean;
   flip?: boolean;
+  big?: boolean;
+  tint?: string;
 }): JSX.Element {
   const [frame, setFrame] = useState(path);
   const [striking, setStriking] = useState(false);
+  // Tinted copies of the frames, by frame path, once they are ready.
+  const [tinted, setTinted] = useState<{ key: string; urls: Record<string, string> }>({ key: '', urls: {} });
+  const tintKey = `${tint}:${path}`;
 
   // Fetch every frame up front, so a clip's first play doesn't flicker.
   useEffect(() => {
-    for (const p of framesOf(path)) new Image().src = spriteUrl(p);
-  }, [path]);
+    if (!tint) {
+      for (const p of framesOf(path)) new Image().src = spriteUrl(p);
+      return;
+    }
+    let live = true;
+    const frames = framesOf(path);
+    void Promise.all(frames.map((p) => tintedSpriteUrl(spriteUrl(p), tint))).then(
+      (urls) => live && setTinted({ key: tintKey, urls: Object.fromEntries(frames.map((p, i) => [p, urls[i]!])) }),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [path, tint, tintKey]);
 
   useEffect(() => {
     if (reducedMotion()) return;
@@ -165,10 +186,12 @@ export function MenuUnit({
   }, [path, strike]);
 
   const classes = ['menu-sprite', flip ? 'flip' : '', striking ? 'striking' : ''].filter(Boolean).join(' ');
+  // Until the tinted copies are ready, show the plain sprite rather than nothing.
+  const src = (tinted.key === tintKey ? tinted.urls[frame] : undefined) ?? spriteUrl(frame);
   return (
-    <div className={leader ? 'menu-unit leader' : 'menu-unit'}>
+    <div className={['menu-unit', leader ? 'leader' : '', big ? 'big' : ''].filter(Boolean).join(' ')}>
       <img className="menu-hex" src={`${import.meta.env.BASE_URL}sprites/terrain/grass/green.png`} alt="" />
-      <img className={classes} src={spriteUrl(frame)} alt="" />
+      <img className={classes} src={src} alt="" />
     </div>
   );
 }

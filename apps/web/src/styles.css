@@ -207,8 +207,15 @@ body {
   left: 50%;
   top: calc(var(--unit) * 0.49);
   max-width: none;
-  transform: translate(calc(-50% + var(--lean) * var(--face)), -50%) scale(var(--zoom)) scaleX(var(--face));
+  transform: translate(calc(-50% + var(--lean) * var(--face)), -50%) scale(calc(var(--zoom) * var(--size, 1)))
+    scaleX(var(--face));
   transition: transform 140ms ease-out;
+}
+
+/* A Big unit stands taller (the board's BIG_SCALE), raised so its feet stay on the hex. */
+.menu-unit.big .menu-sprite {
+  --size: 1.3;
+  top: calc(var(--unit) * 0.38);
 }
 
 .menu-sprite.flip {
@@ -3801,6 +3808,8 @@ button.trait-add[aria-expanded='true'] {
 .picker-head h3 {
   margin: 0;
   flex: 1;
+  /* A double-click on the trigger lands here: don't let it select the title. */
+  user-select: none;
 }
 
 .picker-head .ghost {
@@ -4444,9 +4453,9 @@ button.trait-add[aria-expanded='true'] {
   color: var(--accent);
 }
 
-/* --- Setup screen layout trial (ui/SetupVariants.tsx) --------------------- */
-/* Three takes on the setup screen in the main menu's look: navy night, gold
-   Cinzel headings, Alegreya Sans, units standing on grass hexes. */
+/* --- Setup screen (ui/FaceOffSetup.tsx) ---------------------------------- */
+/* The main menu's look: navy night, gold Cinzel headings, Alegreya Sans, units
+   standing on grass hexes. */
 .muster {
   --gold: #e8be62;
   --gold-dim: #7d6a3c;
@@ -4454,10 +4463,11 @@ button.trait-add[aria-expanded='true'] {
   --ink-2: #c9c2b2;
   --ink-3: #a7a195;
   --well: rgba(14, 18, 32, 0.6);
-  --zoom: 1.5;
-  --unit: calc(72px * var(--zoom));
   position: relative;
-  min-height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 18px;
+  min-height: 100vh;
   padding: 28px max(40px, env(safe-area-inset-right)) 28px max(40px, env(safe-area-inset-left));
   background: radial-gradient(circle at 50% 40%, #2b3454 0%, #0e1220 62%) fixed;
   color: var(--ink);
@@ -4486,7 +4496,7 @@ button.trait-add[aria-expanded='true'] {
   outline-color: var(--gold);
 }
 
-/* The menu hides all but its leaders when narrow: these scenes choose for themselves. */
+/* The menu hides all but its leaders when narrow: here every unit shows. */
 .muster .menu-unit:not(.leader) {
   display: block;
 }
@@ -4637,40 +4647,6 @@ button.trait-add[aria-expanded='true'] {
   letter-spacing: 1px;
 }
 
-.mode-tiles.with-blurbs {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.muster .mode-tiles.with-blurbs button.mode-tile {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas: 'glyph name' 'glyph blurb';
-  grid-template-columns: 30px 1fr;
-  column-gap: 12px;
-  row-gap: 2px;
-  align-items: center;
-  align-content: center;
-  justify-items: start;
-  padding: 10px 12px;
-}
-
-.mode-tiles.with-blurbs .mode-glyph {
-  grid-area: glyph;
-  justify-self: center;
-  font-size: 26px;
-}
-
-.mode-tiles.with-blurbs .mode-name {
-  grid-area: name;
-}
-
-.mode-blurb {
-  grid-area: blurb;
-  font-size: 13px;
-  color: var(--ink-2);
-  line-height: 1.3;
-}
-
 /* Steppers, the escort switch, game length. */
 .length-controls {
   display: flex;
@@ -4744,10 +4720,7 @@ button.trait-add[aria-expanded='true'] {
 }
 
 .map-card-text strong,
-.fo-name strong,
-.wt-name strong,
-.mb-row strong,
-.wt-summary strong {
+.fo-name strong {
   font: 600 20px 'Cinzel', Georgia, serif;
   letter-spacing: 1px;
 }
@@ -4832,44 +4805,7 @@ button.trait-add[aria-expanded='true'] {
   border-color: var(--gold-dim);
 }
 
-/* The layout switcher. */
-.variant-switch {
-  position: fixed;
-  right: 12px;
-  top: 12px;
-  z-index: 5;
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: rgba(8, 10, 18, 0.85);
-  border: 1px solid #4a4f66;
-  border-radius: 6px;
-  font: 13px 'Alegreya Sans', system-ui, sans-serif;
-}
-
-.variant-switch button {
-  padding: 4px 10px;
-  font-size: 13px;
-  border-radius: 3px;
-  background: transparent;
-  color: #c9c2b2;
-}
-
-.variant-switch button.on {
-  background: #e8be62;
-  border-color: #e8be62;
-  color: #1b1407;
-}
-
-/* --- A · Face-off --- */
-.muster-a {
-  --zoom: 2;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 18px;
-  min-height: 100vh;
-}
-
+/* The two warbands, squared up either side of the VS. */
 .fo-arena {
   align-self: center;
   position: relative;
@@ -4882,7 +4818,7 @@ button.trait-add[aria-expanded='true'] {
 .fo-vs {
   position: absolute;
   left: 50%;
-  top: calc(var(--unit) * 0.55);
+  top: 150px;
   transform: translateX(-50%);
   font: 800 54px 'Cinzel', Georgia, serif;
   color: var(--gold);
@@ -4897,18 +4833,38 @@ button.trait-add[aria-expanded='true'] {
   min-width: 0;
 }
 
+/* A whole warband on a patch of hexes. The fewer the units, the larger they stand. */
 .fo-scene {
+  --zoom: 2;
+  --unit: calc(72px * var(--zoom));
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  margin: 2px 0 4px;
+  /* As tall as the tallest formation, so the names below never jump. */
+  height: 300px;
+  margin: 2px 0 6px;
 }
 
-.fo-scene .menu-unit:not(.leader) {
-  transform: scale(0.82);
-  transform-origin: bottom;
-  margin: 0 -14px;
-  filter: brightness(0.82);
+.fo-scene-medium {
+  --zoom: 1.5;
+}
+
+.fo-scene-small {
+  --zoom: 1;
+}
+
+/* Flat-top hexes tile three quarters of a hex apart, every other file half a hex lower. */
+.fo-formation {
+  position: relative;
+  flex: none;
+  width: calc(var(--unit) * (var(--cols) * 0.75 + 0.25));
+  height: calc(var(--unit) * (var(--rows) * 0.58 + 0.85));
+}
+
+.fo-slot {
+  position: absolute;
+  left: calc(var(--unit) * var(--x) * 0.75);
+  top: calc(var(--unit) * var(--y) * 0.58);
 }
 
 .fo-name-row {
@@ -4979,254 +4935,26 @@ button.trait-add[aria-expanded='true'] {
   align-self: center;
 }
 
-/* --- B · Muster list --- */
-.muster-b {
-  --zoom: 1.6;
-  display: grid;
-  grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
-  grid-template-rows: auto 1fr;
-  grid-template-areas: 'head stage' 'rows stage';
-  gap: 22px 48px;
-  min-height: 100vh;
-  padding-left: max(72px, env(safe-area-inset-left));
+/* --- Short and narrow screens --- */
+@media (max-height: 940px) {
+  .fo-scene {
+    --zoom: 1.5;
+    height: 230px;
+  }
+
+  .fo-scene-medium {
+    --zoom: 1.25;
+  }
+
+  .fo-scene-small {
+    --zoom: 0.75;
+  }
+
+  .fo-vs {
+    top: 110px;
+  }
 }
 
-.mb-head {
-  grid-area: head;
-}
-
-.mb-head .muster-back {
-  margin-bottom: 14px;
-}
-
-.mb-head h1 {
-  font-size: 54px;
-}
-
-.mb-head p {
-  margin: 6px 0 0;
-  color: var(--ink-2);
-  font-size: 18px;
-}
-
-.mb-rows {
-  grid-area: rows;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.muster button.mb-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  min-height: 62px;
-  padding: 6px 18px;
-  border-color: var(--gold-dim);
-  text-align: left;
-}
-
-.muster button.mb-row.open {
-  border-color: var(--gold);
-  background: color-mix(in srgb, var(--gold) 12%, #0e1220);
-}
-
-.mb-row.side-0 {
-  box-shadow: inset 3px 0 0 #4f9dff;
-}
-
-.mb-row.side-1 {
-  box-shadow: inset 3px 0 0 #ff6b5b;
-}
-
-.mb-row-text {
-  display: grid;
-  gap: 1px;
-  min-width: 0;
-}
-
-.mb-row-detail {
-  margin-left: auto;
-  color: var(--ink-3);
-  font-size: 14px;
-  white-space: nowrap;
-}
-
-.mb-drawer {
-  padding: 12px 14px;
-  margin: -4px 0 4px;
-  background: rgba(10, 13, 24, 0.7);
-  border: 1px solid var(--gold-dim);
-  border-top: none;
-  display: grid;
-  gap: 10px;
-}
-
-.mb-drawer .mode-tiles {
-  margin-top: 0;
-}
-
-.mb-kings {
-  grid-template-columns: 1fr;
-}
-
-.mb-rows .muster-start {
-  margin-top: 14px;
-}
-
-.mb-stage {
-  grid-area: stage;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  min-width: 0;
-}
-
-/* The chosen map, laid on the table in front of the warbands. */
-.mb-table {
-  width: min(560px, 90%);
-  perspective: 900px;
-  margin-bottom: calc(var(--unit) * -0.5);
-}
-
-.mb-map {
-  transform: rotateX(52deg);
-  transform-origin: 50% 100%;
-  border: 2px solid var(--gold-dim);
-  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
-  background: #0e1220;
-}
-
-.muster-scene {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 40px;
-}
-
-.muster-team {
-  display: flex;
-  align-items: center;
-}
-
-.mb-caption {
-  margin: 18px 0 0;
-  max-width: 440px;
-  text-align: center;
-  color: var(--ink-2);
-  font-style: italic;
-}
-
-/* --- C · War table --- */
-.muster-c {
-  --zoom: 1;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 18px;
-  min-height: 100vh;
-  padding-bottom: 0;
-}
-
-.wt-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: 18px;
-  align-items: start;
-}
-
-.wt-card {
-  padding: 16px;
-  background: rgba(10, 13, 24, 0.6);
-  border: 1px solid var(--gold-dim);
-  border-radius: 4px;
-}
-
-.wt-roster.side-0 {
-  border-top: 3px solid #4f9dff;
-}
-
-.wt-roster.side-1 {
-  border-top: 3px solid #ff6b5b;
-}
-
-.wt-roster-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.wt-roster-title {
-  display: grid;
-  gap: 2px;
-  flex: 1;
-  min-width: 0;
-}
-
-.muster button.wt-name {
-  width: 100%;
-  padding: 6px 12px;
-  border-color: var(--gold-dim);
-}
-
-.wt-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.wt-field > .muster-label {
-  margin-top: 8px;
-}
-
-.muster button.wt-map {
-  flex-direction: row;
-  align-items: center;
-}
-
-.wt-map .map-thumb {
-  width: 55%;
-  flex: none;
-}
-
-.wt-bar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  margin: 0 calc(-1 * max(40px, env(safe-area-inset-left))) 0;
-  padding: 14px max(40px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(40px, env(safe-area-inset-left));
-  background: rgba(8, 10, 18, 0.92);
-  border-top: 1px solid var(--gold-dim);
-  backdrop-filter: blur(6px);
-}
-
-.wt-summary {
-  flex: 1;
-  min-width: 0;
-}
-
-.wt-vs {
-  margin: 0 10px;
-  color: var(--gold);
-  font: 800 16px 'Cinzel', Georgia, serif;
-}
-
-.wt-go {
-  width: 280px;
-}
-
-.wt-go .muster-start {
-  min-height: 52px;
-  font-size: 19px;
-}
-
-/* --- Narrow screens --- */
 @media (max-width: 1100px) {
   .fo-field {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -5239,39 +4967,32 @@ button.trait-add[aria-expanded='true'] {
   .fo-arena {
     gap: 60px;
   }
-
-  .wt-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-
-  .wt-field {
-    grid-column: 1 / -1;
-    grid-row: 1;
-  }
-
-  .muster-b {
-    grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
-    padding-left: 40px;
-    gap: 22px 28px;
-  }
-
-  .mb-stage .menu-unit:not(.leader) {
-    display: none;
-  }
 }
 
 @media (max-width: 760px) {
   .muster {
-    --zoom: 1.2;
     padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .fo-scene {
+    --zoom: 1.5;
+    height: auto;
+    padding-top: 30px;
+  }
+
+  .fo-scene-medium {
+    --zoom: 1;
+  }
+
+  .fo-scene-small {
+    --zoom: 0.75;
   }
 
   .muster h1 {
     font-size: 30px;
   }
 
-  .mode-tiles,
-  .mode-tiles.with-blurbs {
+  .mode-tiles {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -5292,10 +5013,6 @@ button.trait-add[aria-expanded='true'] {
     order: 2;
   }
 
-  .fo-scene .menu-unit:not(.leader) {
-    display: none;
-  }
-
   .muster button.fo-name {
     min-width: 0;
     flex: 1;
@@ -5308,59 +5025,5 @@ button.trait-add[aria-expanded='true'] {
   .fo-field {
     grid-template-columns: 1fr;
     padding: 12px;
-  }
-
-  .muster-b {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'head' 'stage' 'rows';
-    padding-left: 16px;
-  }
-
-  .mb-head h1 {
-    font-size: 38px;
-  }
-
-  .mb-table {
-    display: none;
-  }
-
-  .mb-caption {
-    margin-top: 6px;
-  }
-
-  .wt-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .wt-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-    margin: 0 -16px;
-    padding: 12px 16px max(12px, env(safe-area-inset-bottom));
-  }
-
-  .wt-go {
-    width: auto;
-    margin-right: 0;
-  }
-
-  .variant-switch {
-    left: 8px;
-    right: 8px;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-
-  .muster {
-    padding-top: 100px;
-  }
-
-  .wt-field {
-    grid-row: auto;
-  }
-
-  .mode-tiles.with-blurbs {
-    grid-template-columns: 1fr;
   }
 }

@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { profileMove, profileRange, unitCost, warbandCost, type MapDef, type Warband, type WarbandUnit } from '@fansong/content';
 import { tintPixels } from '../three/spriteTint.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
 import { unitKinds } from './unitKinds.js';
-import { mapThumb } from './mapThumb.js';
+import { mapThumb, type MapThumbData } from './mapThumb.js';
 import { StatIcons, type UnitStats } from './StatIcons.js';
 
 /** One choice in a {@link Picker}: a card with a picture, a name and a line of detail. */
@@ -27,9 +27,17 @@ export type PickerKind = 'map' | 'warband' | 'unit' | 'sprite';
 const FILTER_FROM = 12;
 
 /**
+ * How long a gallery ignores clicks after it opens (ms). The second click of a
+ * double-click on the trigger lands on whatever the gallery put under the
+ * pointer: without this it would pick that card, or close the gallery again.
+ */
+const SETTLE_MS = 350;
+
+/**
  * A select with pictures: a button showing `children` (the current choice, or a
- * call to action) that opens a gallery of cards. `groups` is only built while
- * the gallery is open, so a closed picker costs nothing.
+ * call to action) that opens a gallery of cards. `groups` is built once each
+ * time the gallery opens, so a closed picker costs nothing and an open one
+ * isn't rebuilt when the screen behind it redraws.
  */
 export function Picker({
   title,
@@ -57,6 +65,8 @@ export function Picker({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState('');
   const dialog = useRef<HTMLDialogElement>(null);
+  const openedAt = useRef(0);
+  const settled = (): boolean => performance.now() - openedAt.current > SETTLE_MS;
 
   useEffect(() => {
     const d = dialog.current;
@@ -67,7 +77,8 @@ export function Picker({
     } else if (!open && d.open) d.close();
   }, [open]);
 
-  const all = open ? groups() : [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the offer is fixed while the gallery is open
+  const all = useMemo(() => (open ? groups() : []), [open]);
   const needle = filter.trim().toLowerCase();
   const shown = all
     .map((g) => ({ ...g, items: g.items.filter((it) => it.title.toLowerCase().includes(needle)) }))
@@ -75,6 +86,7 @@ export function Picker({
   const count = all.reduce((n, g) => n + g.items.length, 0);
 
   const pick = (key: string): void => {
+    if (!settled()) return;
     setOpen(false);
     onPick(key);
   };
@@ -89,6 +101,7 @@ export function Picker({
         disabled={disabled}
         onClick={() => {
           setFilter('');
+          openedAt.current = performance.now();
           setOpen(true);
         }}
       >
@@ -103,7 +116,7 @@ export function Picker({
         aria-label={title}
         onClose={() => setOpen(false)}
         // A click on the dialog itself (not its contents) is a click on the backdrop.
-        onClick={(e) => e.target === e.currentTarget && setOpen(false)}
+        onClick={(e) => e.target === e.currentTarget && settled() && setOpen(false)}
       >
         {open ? (
           <div className="picker-body">
@@ -152,20 +165,52 @@ export function Picker({
   );
 }
 
+/** A thumbnail ready to draw: every hex of one colour as a single path. */
+interface ThumbPaths {
+  viewBox: string;
+  paths: { fill: string; d: string }[];
+  flags: MapThumbData['flags'];
+}
+
+const thumbs = new WeakMap<MapDef, ThumbPaths>();
+
+/** A map's thumbnail, worked out once per map: a big map has well over a thousand hexes. */
+function thumbPaths(map: MapDef): ThumbPaths {
+  let t = thumbs.get(map);
+  if (!t) {
+    const { viewBox, hexes, flags } = mapThumb(map);
+    const byFill = new Map<string, string[]>();
+    for (const h of hexes) {
+      const d = `M${h.points}Z`;
+      const same = byFill.get(h.fill);
+      if (same) same.push(d);
+      else byFill.set(h.fill, [d]);
+    }
+    t = { viewBox, paths: [...byFill].map(([fill, ds]) => ({ fill, d: ds.join('') })), flags };
+    thumbs.set(map, t);
+  }
+  return t;
+}
+
+/** Work out a map's thumbnail ahead of time, so the gallery that shows it opens at once. */
+export function warmMapThumb(map: MapDef): void {
+  thumbPaths(map);
+}
+
 /** A top-down picture of a map: terrain, deploy zones, objectives. */
-export function MapThumb({ map, className = 'map-thumb' }: { map: MapDef; className?: string }): JSX.Element {
-  const t = mapThumb(map);
+export const MapThumb = memo(function MapThumb({ map, className = 'map-thumb' }: { map: MapDef; className?: string }): JSX.Element {
+  const t = thumbPaths(map);
   return (
     <svg className={className} viewBox={t.viewBox} role="img" aria-label={`${map.name} preview`}>
-      {t.hexes.map((h) => (
-        <polygon key={`${h.cell.x},${h.cell.y}`} points={h.points} fill={h.fill} />
+      {t.paths.map((p) => (
+        <path key={p.fill} d={p.d} fill={p.fill} />
       ))}
       {t.flags.map((f, i) => (
         <circle key={i} cx={f.cx} cy={f.cy} r={0.55} fill={f.fill} stroke="#fff" strokeWidth={0.15} />
       ))}
     </svg>
   );
-}
+});
 
 /** A unit's sprite, drawn as its look (or its name) and in its tint. */
 export function UnitSprite({ unit, className = 'unit-sprite' }: { unit: WarbandUnit; className?: string }): JSX.Element {
@@ -201,7 +246,7 @@ export function LookSprite({
 const tintedUrls = new Map<string, Promise<string>>();
 
 /** A data URL of the sprite at `url` with `tint` blended in, cached per (sprite, tint). */
-function tintedSpriteUrl(url: string, tint: string): Promise<string> {
+export function tintedSpriteUrl(url: string, tint: string): Promise<string> {
   const key = `${tint}:${url}`;
   let p = tintedUrls.get(key);
   if (!p) {
@@ -214,7 +259,8 @@ function tintedSpriteUrl(url: string, tint: string): Promise<string> {
       const canvas = document.createElement('canvas');
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext('2d')!;
+      // Read back in software: a GPU canvas stalls the page on every getImageData.
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
       ctx.drawImage(img, 0, 0);
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
       tintPixels(data.data, tint);
