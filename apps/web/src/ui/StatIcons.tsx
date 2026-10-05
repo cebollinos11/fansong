@@ -1,6 +1,7 @@
 import { BASE_MOVE } from '@fansong/engine';
 import type { JSX } from 'react';
-import type { HexTrait } from './hexInfo.js';
+import type { HexScore, HexTrait } from './hexInfo.js';
+import { signed } from './rollView.js';
 
 /** The unit numbers shown as icon badges wherever a unit is described. */
 export type StatKind = 'quality' | 'combat' | 'move' | 'range';
@@ -66,13 +67,33 @@ export function StatIcons({ stats }: { stats: UnitStats }): JSX.Element {
   );
 }
 
-/** Tooltip lines as divs: text as it is, a unit's stats as icons, an ability with what it does. */
-export function InfoLines({ lines }: { lines: readonly (string | UnitStats | HexTrait)[] }): JSX.Element {
+/** One side's score in a coming fight: its name, its modifiers as the roll card's chips, and the total. */
+function ScoreLine({ score }: { score: HexScore }): JSX.Element {
+  return (
+    <div className="info-score">
+      <span className="info-score-who">{score.name}</span>
+      {score.mods.map((m) => (
+        <span key={m.label} className={`info-mod${m.value === 0 ? ' zero' : ''}`}>
+          <b>{signed(m.value)}</b> {m.label}
+        </span>
+      ))}
+      <span className="info-score-total">= {score.total}</span>
+    </div>
+  );
+}
+
+/**
+ * Tooltip lines as divs: text as it is, a unit's stats as icons, an ability
+ * with what it does, a side's score in a fight as modifier chips.
+ */
+export function InfoLines({ lines }: { lines: readonly (string | UnitStats | HexTrait | HexScore)[] }): JSX.Element {
   return (
     <>
       {lines.map((line, i) =>
         typeof line === 'string' ? (
           <div key={line}>{line}</div>
+        ) : 'mods' in line ? (
+          <ScoreLine key={`score-${i}`} score={line} />
         ) : 'trait' in line ? (
           <div key={`trait-${line.trait}`} className="info-trait">
             <strong>{line.trait}</strong> — {line.help}

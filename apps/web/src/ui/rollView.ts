@@ -1,4 +1,4 @@
-import type { GameEvent } from '@fansong/engine';
+import type { CombatScoring, GameEvent } from '@fansong/engine';
 
 /**
  * Presentation of dice rolls: turns engine roll events into what the board's
@@ -125,6 +125,49 @@ function side(
 
 const minus = (n: number | undefined) => (n ? -n : undefined);
 
+type Extras = [label: string, value: number | undefined][];
+type Mods<K extends string> = { readonly [k in K]?: number };
+
+// The modifiers each side of a melee or a shot can carry, named as the cards
+// show them. Fed by a resolved event, or by `combatScoring` before the blow, so
+// the preview and the roll can't disagree about what a modifier is called.
+function meleeAttackExtras(m: Mods<'attackBonus' | 'attackBig' | 'attackFly' | 'attackOpportunist' | 'attackPincer' | 'attackRusher' | 'attackWoodwise' | 'attackOutnumbered'>): Extras {
+  return [['High ground', m.attackBonus], ['Size', m.attackBig], ['Swoop', m.attackFly], ['Opportunist', m.attackOpportunist], ['Pincer', m.attackPincer], ['Rusher', m.attackRusher], ['Woodwise', m.attackWoodwise], ['Outnumbered', minus(m.attackOutnumbered)]];
+}
+
+function meleeDefenseExtras(m: Mods<'defenseBonus' | 'defenseBig' | 'defenseOpportunist' | 'defenseShieldwall' | 'defenseWoodwise' | 'defenseOutnumbered' | 'powerPenalty'>): Extras {
+  return [['High ground', m.defenseBonus], ['Size', m.defenseBig], ['Opportunist', m.defenseOpportunist], ['Shieldwall', m.defenseShieldwall], ['Woodwise', m.defenseWoodwise], ['Outnumbered', minus(m.defenseOutnumbered)], ['Power blow', minus(m.powerPenalty)]];
+}
+
+function shotAttackExtras(m: Mods<'attackBonus' | 'bigTarget' | 'flyingTarget' | 'attackOpportunist' | 'attackSharpshooter' | 'attackWoodwise' | 'rangePenalty' | 'coverPenalty'>): Extras {
+  return [['High ground', m.attackBonus], ['Big target', m.bigTarget], ['Flying target', m.flyingTarget], ['Opportunist', m.attackOpportunist], ['Sharpshooter', m.attackSharpshooter], ['Woodwise', m.attackWoodwise], ['Long range', minus(m.rangePenalty)], ['Cover', minus(m.coverPenalty)]];
+}
+
+function shotDefenseExtras(m: Mods<'defenseBonus' | 'defenseWoodwise' | 'aimPenalty'>): Extras {
+  return [['High ground', m.defenseBonus], ['Woodwise', m.defenseWoodwise], ['Aimed at', minus(m.aimPenalty)]];
+}
+
+/** A score before its die: the unit's Combat, then each modifier that applies, as a roll card lists them. */
+export interface ScorePreview {
+  mods: RollModifier[];
+  /** What the die is added to. */
+  total: number;
+}
+
+/** Both sides' scores before the dice, for an attack or shot still being planned (see `combatScoring`). */
+export function previewScores(scoring: CombatScoring): { attack: ScorePreview; defense: ScorePreview } {
+  const [attack, defense] =
+    scoring.kind === 'shot'
+      ? [shotAttackExtras(scoring.mods), shotDefenseExtras(scoring.mods)]
+      : [meleeAttackExtras(scoring.mods), meleeDefenseExtras(scoring.mods)];
+  return { attack: preview(scoring.attackBase, attack), defense: preview(scoring.defenseBase, defense) };
+}
+
+function preview(total: number, extras: Extras): ScorePreview {
+  const { mods } = side('', '', 0, total, extras, 'tie');
+  return { mods, total };
+}
+
 function outcomes(a: number, b: number): [RollSide['outcome'], RollSide['outcome']] {
   if (a > b) return ['win', 'lose'];
   if (b > a) return ['lose', 'win'];
@@ -147,16 +190,14 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
     b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Size', e.attackerBig], ['Opportunist', e.attackerOpportunist], ['Woodwise', e.attackerWoodwise], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
   } else if (e.type === 'ShotResolved') {
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Flying target', e.flyingTarget], ['Opportunist', e.attackOpportunist], ['Sharpshooter', e.attackSharpshooter], ['Woodwise', e.attackWoodwise], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
-    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Woodwise', e.defenseWoodwise], ['Aimed at', minus(e.aimPenalty)]], ob);
+    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, shotAttackExtras(e), oa);
+    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, shotDefenseExtras(e), ob);
   } else {
     const hack = e.type === 'FreeHackResolved';
     const power = e.type === 'AttackResolved' ? e.powerPenalty : undefined;
-    const rusher = e.type === 'AttackResolved' ? e.attackRusher : undefined;
-    const shieldwall = e.type === 'AttackResolved' ? e.defenseShieldwall : undefined;
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Size', e.attackBig], ['Swoop', e.attackFly], ['Opportunist', e.attackOpportunist], ['Pincer', e.attackPincer], ['Rusher', rusher], ['Woodwise', e.attackWoodwise], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
-    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Size', e.defenseBig], ['Opportunist', e.defenseOpportunist], ['Shieldwall', shieldwall], ['Woodwise', e.defenseWoodwise], ['Outnumbered', minus(e.defenseOutnumbered)], ['Power blow', minus(power)]], ob);
+    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, meleeAttackExtras(e), oa);
+    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, meleeDefenseExtras(e), ob);
   }
 
   // A higher total that did nothing: a shot never hurts the shooter, a unit

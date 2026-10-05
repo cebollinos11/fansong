@@ -1,6 +1,7 @@
-import { airborne, combatOdds, unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
+import { airborne, combatOdds, combatScoring, unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
 import type { PlanPreview } from '../game/planView.js';
 import { INSPIRED_HELP, traitLine, traitTags } from './hudView.js';
+import { modifierHelp, previewScores, signed, type RollModifier } from './rollView.js';
 
 // Pure hex-tooltip text (no DOM), so it can be unit-tested.
 
@@ -24,8 +25,18 @@ export interface HexTrait {
   help: string;
 }
 
-/** A tooltip line: plain text, a unit's stats, or one of its abilities spelled out. */
-export type HexLine = string | HexStats | HexTrait;
+/**
+ * One side's score before the dice in a fight a click would start: who, each
+ * modifier (Combat first) as the roll card will show it, and what the die adds to.
+ */
+export interface HexScore {
+  name: string;
+  mods: RollModifier[];
+  total: number;
+}
+
+/** A tooltip line: plain text, a unit's stats, one of its abilities spelled out, or a side's score in a fight. */
+export type HexLine = string | HexStats | HexTrait | HexScore;
 
 export interface HexInfo {
   title: string;
@@ -81,7 +92,7 @@ export function describeHex(
       if (traits) lines.push(traits);
     }
   }
-  if (plan) lines.push(...planLines(state, plan));
+  if (plan) lines.push(...planLines(state, plan, detailed));
   if (unit) return { title: unit.name, lines };
   if (where === 'editor') return { title: `Hex (${cell.x}, ${cell.y})`, lines };
   // In a match a bare hex is titled by the first thing worth saying about it.
@@ -91,12 +102,15 @@ export function describeHex(
 
 const ACTIONS = (n: number): string => `${n} action${n === 1 ? '' : 's'}`;
 
-/** What this click costs, and what it risks on the way. */
-function planLines(state: GameState, plan: PlanPreview): string[] {
+/**
+ * What this click costs, and what it risks on the way. A fight also shows both
+ * sides' modifiers; `detailed` spells out what each one is.
+ */
+function planLines(state: GameState, plan: PlanPreview, detailed: boolean): HexLine[] {
   const left = state.actionsRemaining - plan.cost;
   const spare = left > 0 ? ` (${ACTIONS(left)} left)` : '';
   const name = plan.targetId ? (unitById(state, plan.targetId)?.name ?? 'the enemy') : '';
-  const lines: string[] = [];
+  const lines: HexLine[] = [];
   if (plan.kind === 'move') lines.push(`Move here — ${ACTIONS(plan.cost)}${spare}`);
   else if (plan.kind === 'attack') {
     lines.push(
@@ -113,7 +127,39 @@ function planLines(state: GameState, plan: PlanPreview): string[] {
   }
   const odds = oddsLine(state, plan);
   if (odds) lines.push(odds);
+  lines.push(...scoreLines(state, plan, detailed));
   if (plan.provokes > 0) lines.push('Breaking away — risks a parting blow');
+  return lines;
+}
+
+/**
+ * Both sides' scores before the dice for the fight a plan starts, modifiers and
+ * all, then (when `detailed`) what each modifier is: the same chips the roll
+ * card will show once the blow lands, so nothing on it comes as a surprise.
+ */
+function scoreLines(state: GameState, plan: PlanPreview, detailed: boolean): HexLine[] {
+  if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return [];
+  const attacker = unitById(state, state.activeUnitId);
+  const target = unitById(state, plan.targetId);
+  if (!attacker || !target) return [];
+  const from = plan.path.at(-1);
+  const { attack, defense } = previewScores(
+    combatScoring(state, attacker.id, target.id, { ranged: plan.kind === 'shoot', ...(from ? { from } : {}) }),
+  );
+  const lines: HexLine[] = [
+    { name: attacker.name, ...attack },
+    { name: target.name, ...defense },
+  ];
+  if (detailed) {
+    const seen = new Set<string>();
+    for (const m of [...attack.mods, ...defense.mods]) {
+      const label = `${signed(m.value)} ${m.label}`;
+      const help = modifierHelp(m.label);
+      if (m.label === 'Combat' || !help || seen.has(label)) continue;
+      seen.add(label);
+      lines.push({ trait: label, help });
+    }
+  }
   return lines;
 }
 

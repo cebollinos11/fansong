@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { combatOdds, createGame, reduce, type GameConfig, type GameEvent, type GameState } from '../src/index.js';
+import { combatOdds, combatScoring, createGame, reduce, type GameConfig, type GameEvent, type GameState } from '../src/index.js';
 
 /** The odds the hover tooltip quotes before an attack or shot is clicked. */
 
@@ -105,5 +105,45 @@ describe('combatOdds', () => {
     const charge = combatOdds(s, 'p0u0', 'p1u0', { from: { x: 1, y: 1 } });
     expect(charge.win).toBeCloseTo(15 / 36);
     expect(s.units[0]!.pos).toEqual({ x: 0, y: 1 });
+  });
+
+  it('previews the scores and modifiers the roll will use', () => {
+    // A friend directly opposite the foe pincers it; two foes outnumber the striker.
+    const c: GameConfig = {
+      seed: 7,
+      board: { width: 5, height: 5 },
+      warbands: [
+        [
+          { name: 'Blade', quality: 3, combat: 3, pos: { x: 2, y: 1 } },
+          { name: 'Friend', quality: 3, combat: 3, pos: { x: 2, y: 3 } },
+        ],
+        [
+          { name: 'Foe', quality: 3, combat: 3, pos: { x: 2, y: 2 } },
+          { name: 'Other', quality: 3, combat: 2, pos: { x: 1, y: 1 } },
+        ],
+      ],
+    };
+    const s = acting(c);
+    const scoring = combatScoring(s, 'p0u0', 'p1u0', { pressed: true });
+    if (scoring.kind !== 'melee') throw new Error('expected a melee');
+    expect(scoring.mods.attackPincer).toBe(1);
+    expect(scoring.mods.attackOutnumbered).toBe(1);
+    expect(scoring.mods.powerPenalty).toBe(1);
+    const attack = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0', power: true }).events.find(
+      (e): e is Extract<GameEvent, { type: 'AttackResolved' }> => e.type === 'AttackResolved',
+    )!;
+    expect(attack.attackScore - attack.attackDie).toBe(scoring.attackBase);
+    expect(attack.defenseScore - attack.defenseDie).toBe(scoring.defenseBase);
+    expect(attack.attackPincer).toBe(scoring.mods.attackPincer);
+    expect(attack.powerPenalty).toBe(scoring.mods.powerPenalty);
+
+    const shot = combatScoring(
+      acting({ ...c, warbands: [[{ name: 'Bow', quality: 3, combat: 3, ranged: 4, pos: { x: 2, y: 0 } }], [c.warbands[1]![0]!]] }),
+      'p0u0',
+      'p1u0',
+      { ranged: true, pressed: true },
+    );
+    expect(shot.kind).toBe('shot');
+    if (shot.kind === 'shot') expect(shot.mods.aimPenalty).toBe(1);
   });
 });

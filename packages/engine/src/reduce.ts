@@ -474,9 +474,29 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
 }
 
 /** A shot's scores before the dice, and the modifiers behind them (see {@link handleShoot}). */
-function shotScoring(s: GameState, board: Board, attacker: Unit, target: Unit, aimPenalty: number) {
+/** The situational modifiers already folded into a shot's scores, as {@link MeleeMods} are for a melee. */
+export interface ShotMods {
+  attackBonus: number;
+  defenseBonus: number;
+  rangePenalty: number;
+  coverPenalty: number;
+  bigTarget: number;
+  flyingTarget: number;
+  attackOpportunist: number;
+  attackSharpshooter: number;
+  attackWoodwise: number;
+  defenseWoodwise: number;
+}
+
+function shotScoring(
+  s: GameState,
+  board: Board,
+  attacker: Unit,
+  target: Unit,
+  aimPenalty: number,
+): { attackBase: number; defenseBase: number; mods: ShotMods } {
   const occ = occupiedKeys(s);
-  const mods = {
+  const mods: ShotMods = {
     attackBonus: highGroundBonus(board, attacker, target),
     defenseBonus: highGroundBonus(board, target, attacker),
     rangePenalty: rangePenalty(attacker.traits.ranged, board.distance(attacker.pos, target.pos)),
@@ -704,7 +724,7 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
  * The situational modifiers already folded into an opposed melee's scores. They
  * ride along so the event can report *why* a score is what it is.
  */
-interface MeleeMods {
+export interface MeleeMods {
   attackBonus: number;
   defenseBonus: number;
   attackOutnumbered: number;
@@ -842,17 +862,33 @@ export interface CombatOddsOptions {
 }
 
 /**
- * The odds of one attack or shot by `attackerId` on `targetId`, over all 36
- * pairs of dice, scored exactly as {@link reduce} scores them. A guarding
- * target's riposte is counted first. Free hacks provoked on the way in are not:
- * they may stop the charge before it is made. Does not mutate `state`.
+ * The scores both sides of one attack or shot will add their dice to, and the
+ * situational modifiers behind them, named as the resolving event names them
+ * (`AttackResolved` / `ShotResolved`), so a preview can show the modifiers
+ * before the blow exactly as the roll will. Does not mutate `state`.
  */
-export function combatOdds(
+export type CombatScoring =
+  | { kind: 'melee'; attackBase: number; defenseBase: number; mods: MeleeMods & { powerPenalty: number } }
+  | { kind: 'shot'; attackBase: number; defenseBase: number; mods: ShotMods & { aimPenalty: number } };
+
+/** How `attackerId`'s attack or shot on `targetId` will be scored (see {@link CombatScoring}). */
+export function combatScoring(
   state: GameState,
   attackerId: string,
   targetId: string,
   options: CombatOddsOptions = {},
-): CombatOdds {
+): CombatScoring {
+  const { s, board, attacker, target, penalty } = attackSetup(state, attackerId, targetId, options);
+  if (options.ranged) {
+    const { attackBase, defenseBase, mods } = shotScoring(s, board, attacker, target, penalty);
+    return { kind: 'shot', attackBase, defenseBase, mods: { ...mods, aimPenalty: penalty } };
+  }
+  const { attackBase, defenseBase, mods } = meleeScoring(s, board, attacker, target, 'attack', penalty);
+  return { kind: 'melee', attackBase, defenseBase, mods: { ...mods, powerPenalty: penalty } };
+}
+
+/** The state an attack is scored in: the attacker moved to where it strikes from, a charge's Rusher bonus armed. */
+function attackSetup(state: GameState, attackerId: string, targetId: string, options: CombatOddsOptions) {
   const from = options.from;
   const s: GameState = from
     ? { ...state, units: state.units.map((u) => (u.id === attackerId ? { ...u, pos: { ...from } } : u)) }
@@ -870,6 +906,22 @@ export function combatOdds(
     else delete s.rushed;
   }
   const penalty = options.pressed ? (options.ranged ? AIMED_SHOT_PENALTY : POWER_BLOW_PENALTY) : 0;
+  return { s, board, attacker, target, penalty };
+}
+
+/**
+ * The odds of one attack or shot by `attackerId` on `targetId`, over all 36
+ * pairs of dice, scored exactly as {@link reduce} scores them. A guarding
+ * target's riposte is counted first. Free hacks provoked on the way in are not:
+ * they may stop the charge before it is made. Does not mutate `state`.
+ */
+export function combatOdds(
+  state: GameState,
+  attackerId: string,
+  targetId: string,
+  options: CombatOddsOptions = {},
+): CombatOdds {
+  const { s, board, attacker, target, penalty } = attackSetup(state, attackerId, targetId, options);
   const { attackBase, defenseBase } = options.ranged
     ? shotScoring(s, board, attacker, target, penalty)
     : meleeScoring(s, board, attacker, target, 'attack', penalty);
