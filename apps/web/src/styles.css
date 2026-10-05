@@ -741,6 +741,30 @@ button.ghost {
   color: var(--p1);
 }
 
+/* The battle's opening: the same banner, held longer, with the objective under it. */
+.round-announce.opening {
+  animation-duration: 3.6s;
+}
+
+.round-announce-objective {
+  margin-top: 10px;
+  padding: 8px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--gold, #e0b84c) 45%, transparent);
+  text-align: center;
+}
+
+.round-announce-goal {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gold, #e0b84c);
+}
+
+.round-announce-detail {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 @keyframes round-announce-fade {
   0% {
     opacity: 0;
@@ -4301,4 +4325,38 @@ button.trait-add[aria-expanded='true'] {
 
 .cue-list li button {
   padding: 0 6px;
+}
+
+/* The hovered choice's odds; until then, what a turnover costs. It keeps its
+   height either way, since the menu rides on its bottom edge. */
+.dice-menu-odds {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 0;
+  min-width: 100%;
+  /* Three lines: the dice, the chance to act, the turnover risk. */
+  min-height: 39px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  line-height: 13px;
+  color: var(--muted);
+  white-space: normal;
+}
+
+.dice-menu-odds.live {
+  color: var(--text);
+}
+
+.dice-menu-odds strong {
+  font-weight: 700;
+}
+
+.dice-menu-odds .risk {
+  color: #ff8a7a;
+}
+
+.dice-menu-odds .safe {
+  color: var(--accent);
 }

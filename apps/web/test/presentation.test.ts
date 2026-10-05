@@ -154,6 +154,42 @@ describe('PresentationQueue', () => {
     });
   });
 
+  describe('holdFor', () => {
+    it('holds back items pushed before anything has played, then presents them', () => {
+      const { q, log } = setup();
+      q.holdFor(1000);
+      expect(q.idle).toBe(false);
+      q.push('a');
+      vi.advanceTimersByTime(999);
+      expect(log).toEqual([]);
+      vi.advanceTimersByTime(1);
+      expect(log).toEqual(['present a']);
+    });
+
+    it('goes idle again when nothing arrived during the hold', async () => {
+      const { q } = setup();
+      q.holdFor(500);
+      let woke = false;
+      void q.whenIdle().then(() => (woke = true));
+      vi.advanceTimersByTime(500);
+      await Promise.resolve();
+      expect(q.idle).toBe(true);
+      expect(woke).toBe(true);
+    });
+
+    it('waits for the item playing to finish first', () => {
+      const { q, log } = setup();
+      q.push('a');
+      q.push('b');
+      q.holdFor(300);
+      q.played(0);
+      vi.advanceTimersByTime(0);
+      expect(log).toEqual(['present a', 'finish a']);
+      vi.advanceTimersByTime(300);
+      expect(log).toEqual(['present a', 'finish a', 'present b']);
+    });
+  });
+
   it('ignores a report with nothing presented, and stops when disposed', () => {
     const { q, log } = setup();
     q.played(100);

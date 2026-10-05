@@ -76,6 +76,32 @@ export function warbandStatus(state: GameState, owner: Owner): WarbandStatus {
   };
 }
 
+/**
+ * What breaking does, for the "breaks at N" warning. It is a one-time wave of
+ * nerve checks, not a loss: new players expect the game to end there.
+ */
+export function breaksAtHelp(threshold: number): string {
+  return `Once it is down to ${threshold} ${threshold === 1 ? 'unit' : 'units'}, this warband breaks: every survivor takes a nerve check (a d6 at or above its Quality) and those that fail flee for their own edge. It happens once, and the battle goes on`;
+}
+
+/** What having broken means, for the "broken" tag. */
+export const BROKEN_HELP =
+  'This warband broke when it fell to a third of its strength: every survivor took a nerve check, and those that failed fled. It only happens once and does not lose the game: the battle goes on';
+
+/** The small print under the "warband breaks!" banner. */
+export const BROKEN_VERDICT_DETAIL = 'survivors test nerve or flee · the battle goes on';
+
+/**
+ * What being inspired does. The sure 6 only guarantees one action: two failures
+ * among the other dice still turn the unit over, which new players don't expect.
+ */
+export const INSPIRED_HELP =
+  'Its first activation die this round is a sure 6, but two failures among its other dice still turn it over. Lost on a failed nerve check';
+
+/** The war cry button's tooltip. */
+export const WAR_CRY_HELP =
+  'Press C — one action: every friend still to activate within 5 hexes and in sight is inspired, its first activation die a sure 6 (two failures among its other dice still turn it over)';
+
 /** What each trait does, for the inspector's tooltips. */
 export const TRAIT_HELP = {
   slow: `Moves ${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,
@@ -88,7 +114,7 @@ export const TRAIT_HELP = {
   reassembling: 'Stands back up for free at the start of each round if knocked down',
   opportunist: 'Strikes when a foe is down: +1 in melee or shooting against a knocked-down foe',
   savage: 'Kills horribly: every kill it deals is gruesome, so the victim\'s friends must test for fear',
-  leader: 'Once a round, one action: a war cry inspires every friend still to activate within 5 hexes and in sight (first activation die a sure 6). Friends who see it fall must test nerve',
+  leader: 'Once a round, one action: a war cry inspires every friend still to activate within 5 hexes and in sight (first activation die a sure 6, though two failures among the rest still turn over). Friends who see it fall must test nerve',
   armored: 'Turns blows aside: a combat it loses by exactly 1 point does it no harm, even knocked down',
   sharpshooter: 'A deadly eye: +1 to every shot it takes',
   mastery: 'A master of arms: a melee it ties against a foe without Combat Mastery kills that foe (knocked down, only on a natural 6)',

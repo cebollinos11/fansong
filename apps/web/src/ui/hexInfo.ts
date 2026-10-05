@@ -1,6 +1,6 @@
 import { airborne, combatOdds, unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
 import type { PlanPreview } from '../game/planView.js';
-import { traitLine, traitTags } from './hudView.js';
+import { INSPIRED_HELP, traitLine, traitTags } from './hudView.js';
 
 // Pure hex-tooltip text (no DOM), so it can be unit-tested.
 
@@ -65,13 +65,16 @@ export function describeHex(
     const marks = [
       unit.knockedDown ? 'Knocked down' : null,
       unit.guarding ? 'On guard' : null,
-      unit.inspired ? 'Inspired' : null,
+      // Held long enough, inspiration is spelled out below with the abilities.
+      unit.inspired && !detailed ? 'Inspired' : null,
     ].filter(Boolean);
     if (marks.length > 0) lines.push(marks.join(' · '));
     lines.push({ quality: unit.quality, combat: unit.combat, move: unitMove(unit) });
     // The abilities decide how the unit must be fought, so the tooltip names them.
     if (detailed) {
       const grounded = unit.traits.flying && !airborne(state, unit);
+      // A sure 6 reads as safety, so say plainly that it can still turn over.
+      if (unit.inspired) lines.push({ trait: 'Inspired', help: INSPIRED_HELP });
       lines.push(...traitTags(unit, grounded).map((t) => ({ trait: t.label, help: t.help })));
     } else {
       const traits = traitLine(unit);

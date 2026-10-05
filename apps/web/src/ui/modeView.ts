@@ -35,6 +35,9 @@ const GOALS = {
   'golden-pig': 'Get the golden Pig into the enemy camp',
 } as const;
 
+/** How annihilation is won — and the fallback that wins every other mode too. */
+export const ANNIHILATION_GOAL = 'Destroy the enemy warband';
+
 const holderText = (names: SideNames, holder: Owner | undefined): string =>
   holder === undefined ? '—' : sideName(names, holder, true);
 
@@ -52,7 +55,7 @@ export function modeHud(state: GameState, names: SideNames = COLOR_NAMES): ModeH
   const m = state.mode;
   if (!m) {
     if (roundLimitOf(state) === undefined) return null;
-    return { label: MODE_LABELS.annihilation, goal: `Destroy the enemy warband${limitText(state)}`, scores: null, lines: [] };
+    return { label: MODE_LABELS.annihilation, goal: `${ANNIHILATION_GOAL}${limitText(state)}`, scores: null, lines: [] };
   }
   const label = MODE_LABELS[m.mode];
   const lines: string[] = [];
@@ -95,6 +98,40 @@ export function modeHud(state: GameState, names: SideNames = COLOR_NAMES): ModeH
   }
   const goal = `First to ${targetScoreOf(state)} points${limitText(state)}`;
   return { label, goal, scores: [m.scores[0], m.scores[1]], lines };
+}
+
+/** The battle's objective in a line and the small print under it, for the opening banner and the HUD. */
+export interface Objective {
+  /** How this game is won, e.g. "Destroy the enemy warband" or "First to 5 points · ends after round 12". */
+  goal: string;
+  /** What else ends it, so nobody is left guessing. */
+  detail: string;
+}
+
+/**
+ * The objective of `state`'s game. A side wiped out — every unit slain or fled
+ * off the field — loses in every mode, so the objective modes say so too.
+ */
+export function objective(state: GameState): Objective {
+  const hud = modeHud(state);
+  if (!state.mode) {
+    return { goal: hud?.goal ?? ANNIHILATION_GOAL, detail: 'Win when every enemy is slain or has fled the field' };
+  }
+  return { goal: hud!.goal, detail: 'Wiping out the enemy warband wins too' };
+}
+
+/**
+ * Whether `state` is a battle nobody has made a move in yet: round 1, with no
+ * unit activated and neither side turned over. It opens with the objective.
+ */
+export function battleUnstarted(state: GameState): boolean {
+  return (
+    state.round === 1 &&
+    state.phase === 'awaitingActivation' &&
+    !state.benched[0] &&
+    !state.benched[1] &&
+    state.units.every((u) => !u.activatedThisRound)
+  );
 }
 
 /** What a scoring zone is called on screen: "The hill", or "Zone A" / "B" / "C". */

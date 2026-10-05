@@ -3,7 +3,7 @@ import { unitMove, type GameState, type Unit } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { describeHex, oddsLine, type HexLine } from '../src/ui/hexInfo.js';
 import type { PlanPreview } from '../src/game/planView.js';
-import { TRAIT_HELP } from '../src/ui/hudView.js';
+import { INSPIRED_HELP, TRAIT_HELP } from '../src/ui/hudView.js';
 
 const SETUP: MatchSetup = {
   presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
@@ -73,6 +73,17 @@ describe('describeHex', () => {
       { trait: 'Guard', help: TRAIT_HELP.guard },
       { trait: 'Big', help: TRAIT_HELP.big },
     ]);
+  });
+
+  it('marks an inspired unit, and held on it, says the sure 6 can still turn over', () => {
+    const u = state.units[0]!;
+    const inspired: GameState = { ...state, units: state.units.map((x) => (x.id === u.id ? { ...x, inspired: true } : x)) };
+    expect(describeHex(inspired, u.pos)?.lines).toContain('Inspired');
+    const detailed = describeHex(inspired, u.pos, null, true)?.lines ?? [];
+    expect(detailed).not.toContain('Inspired');
+    expect(detailed).toContainEqual({ trait: 'Inspired', help: INSPIRED_HELP });
+    expect(INSPIRED_HELP).toMatch(/sure 6/);
+    expect(INSPIRED_HELP).toMatch(/two failures .* still turn it over/);
   });
 
   it('in a match, leaves out coordinates and elevation, and says nothing of a bare hex', () => {
