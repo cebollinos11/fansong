@@ -77,6 +77,21 @@ export function warbandStatus(state: GameState, owner: Owner): WarbandStatus {
 }
 
 /**
+ * What breaking does, for the "breaks at N" warning. It is a one-time wave of
+ * nerve checks, not a loss: new players expect the game to end there.
+ */
+export function breaksAtHelp(threshold: number): string {
+  return `Once it is down to ${threshold} ${threshold === 1 ? 'unit' : 'units'}, this warband breaks: every survivor takes a nerve check (a d6 at or above its Quality) and those that fail flee for their own edge. It happens once, and the battle goes on`;
+}
+
+/** What having broken means, for the "broken" tag. */
+export const BROKEN_HELP =
+  'This warband broke when it fell to a third of its strength: every survivor took a nerve check, and those that failed fled. It only happens once and does not lose the game: the battle goes on';
+
+/** The small print under the "warband breaks!" banner. */
+export const BROKEN_VERDICT_DETAIL = 'survivors test nerve or flee · the battle goes on';
+
+/**
  * What being inspired does. The sure 6 only guarantees one action: two failures
  * among the other dice still turn the unit over, which new players don't expect.
  */
