@@ -3,7 +3,7 @@ import type { GameMode, GameState } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { zoneTallies } from '../src/game/roundScoring.js';
 import { ZONE_COLORS } from '../src/ui/editorView.js';
-import { modeHud, modeMarkers, modeMarkingsKey, modeOverlays, PIG_GOAL_COLOR, unitBadges, zoneScore } from '../src/ui/modeView.js';
+import { battleUnstarted, modeHud, modeMarkers, objective, modeMarkingsKey, modeOverlays, PIG_GOAL_COLOR, unitBadges, zoneScore } from '../src/ui/modeView.js';
 
 function match(mode: GameMode | undefined, mapId?: string): GameState {
   const setup: MatchSetup = { presets: ['iron-wardens-medium', 'ashfang-raiders-medium'], seats: ['ai', 'ai'], seed: 5 };
@@ -17,6 +17,26 @@ describe('annihilation', () => {
     expect(modeOverlays(s)).toEqual([]);
     expect(modeMarkers(s)).toEqual([]);
     expect(unitBadges(s)).toEqual({});
+  });
+});
+
+describe('objective', () => {
+  it('states the win condition even in annihilation, which has no mode panel', () => {
+    const s = match(undefined);
+    expect(objective(s)).toEqual({ goal: 'Destroy the enemy warband', detail: 'Win when every enemy is slain or has fled the field' });
+  });
+
+  it("uses the mode's own goal, and says a wipe-out still wins", () => {
+    expect(objective(match('kill-the-king'))).toEqual({ goal: 'Kill the enemy King', detail: 'Wiping out the enemy warband wins too' });
+    expect(objective(match('king-of-the-hill', 'rolling-hills')).goal).toBe('First to 5 points · ends after round 12');
+  });
+
+  it('knows a battle nobody has moved in yet', () => {
+    const s = match(undefined);
+    expect(battleUnstarted(s)).toBe(true);
+    expect(battleUnstarted({ ...s, round: 2 })).toBe(false);
+    expect(battleUnstarted({ ...s, benched: [true, false] })).toBe(false);
+    expect(battleUnstarted({ ...s, units: s.units.map((u, i) => (i === 0 ? { ...u, activatedThisRound: true } : u)) })).toBe(false);
   });
 });
 

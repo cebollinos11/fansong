@@ -37,6 +37,7 @@ import {
   type ZoneScoreText,
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
+import { BROKEN_VERDICT_DETAIL } from '../ui/hudView.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { BoardChunks } from './chunks.js';
 import {
@@ -1726,7 +1727,7 @@ export class BoardView {
       } else if (e.type === 'WarbandBroken') {
         const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
         this.at(at, () => {
-          this.rolls.addVerdict({ text: `P${e.player}'s warband breaks!`, on: [], tone: 'kill' }, this.now);
+          this.rolls.addVerdict({ text: `P${e.player}'s warband breaks!`, detail: BROKEN_VERDICT_DETAIL, on: [], tone: 'kill' }, this.now);
           this.sound('warband-broken');
         });
         settle = at;

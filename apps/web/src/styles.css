@@ -741,6 +741,30 @@ button.ghost {
   color: var(--p1);
 }
 
+/* The battle's opening: the same banner, held longer, with the objective under it. */
+.round-announce.opening {
+  animation-duration: 3.6s;
+}
+
+.round-announce-objective {
+  margin-top: 10px;
+  padding: 8px 18px;
+  border-top: 1px solid color-mix(in srgb, var(--gold, #e0b84c) 45%, transparent);
+  text-align: center;
+}
+
+.round-announce-goal {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--gold, #e0b84c);
+}
+
+.round-announce-detail {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 @keyframes round-announce-fade {
   0% {
     opacity: 0;

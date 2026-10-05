@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { ROUT_FRACTION, type GameState, type Owner, type UnitTraits } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { INSPIRED_HELP, TRAIT_HELP, WAR_CRY_HELP, armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, breaksAtHelp, TRAIT_HELP, WAR_CRY_HELP, armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
 
 const VS_AI: MatchSetup = {
   presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
@@ -84,6 +84,17 @@ describe('turnPhrase', () => {
     expect(turnPhrase('Opponent')).toBe("Opponent's turn");
     expect(turnPhrase('AI')).toBe("AI's turn");
     expect(turnPhrase('Iron Wardens')).toBe("Iron Wardens's turn");
+  });
+});
+
+describe('break help', () => {
+  it('says breaking is a one-time nerve test, not the end of the battle', () => {
+    expect(breaksAtHelp(1)).toMatch(/^Once it is down to 1 unit, /);
+    expect(breaksAtHelp(2)).toMatch(/^Once it is down to 2 units, /);
+    for (const text of [breaksAtHelp(2), BROKEN_HELP]) {
+      expect(text).toContain('nerve check');
+      expect(text).toContain('battle goes on');
+    }
   });
 });
 

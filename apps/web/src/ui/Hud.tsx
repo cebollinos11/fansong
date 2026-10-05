@@ -3,10 +3,10 @@ import { airborne, unitById, unitMove, type GameState, type Owner } from '@fanso
 import type { Interaction } from '../game/interaction.js';
 import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { INSPIRED_HELP, WAR_CRY_HELP, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, WAR_CRY_HELP, breaksAtHelp, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import type { BattleLog } from './log.js';
-import { modeHud } from './modeView.js';
+import { modeHud, objective } from './modeView.js';
 import { StatIcons } from './StatIcons.js';
 
 interface Props {
@@ -89,6 +89,8 @@ export function Hud(props: Props): JSX.Element {
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
   const banner = statusBanner(status);
   const mode = modeHud(state);
+  // Always on show, annihilation included: nobody should have to guess how to win.
+  const goal = objective(state);
   const callout = props.log.callout;
   const acting = humanTurn && state.phase === 'acting';
 
@@ -169,11 +171,15 @@ export function Hud(props: Props): JSX.Element {
         </span>
         {/* A rout is a sudden collapse; say it is coming, not just that it came. */}
         {warband.breaksAt !== null && !gameOver ? (
-          <span className="warn" title={`This warband breaks when ${warband.breaksAt} or fewer are left`}>
+          <span className="warn" title={breaksAtHelp(warband.breaksAt)}>
             breaks at {warband.breaksAt}
           </span>
         ) : null}
-        {warband.broken ? <span className="broken">broken</span> : null}
+        {warband.broken ? (
+          <span className="broken" title={BROKEN_HELP}>
+            broken
+          </span>
+        ) : null}
         {warband.benched && !gameOver ? <span className="benched">benched</span> : null}
       </div>
     );
@@ -187,9 +193,9 @@ export function Hud(props: Props): JSX.Element {
         <div className="play-strip">
           {side(0)}
           <div className="play-mid">
-            <div className="play-round" title={mode ? `${mode.label} · ${mode.goal}` : undefined}>
+            <div className="play-round" title={`${mode ? `${mode.label} · ` : ''}${goal.goal}. ${goal.detail}.`}>
               Round {state.round}
-              {mode ? <span className="play-goal"> · {mode.goal}</span> : null}
+              <span className="play-goal"> · {goal.goal}</span>
             </div>
             <div className={`play-turn ${turn.tone}`} title={turn.hint}>
               {turn.text}
