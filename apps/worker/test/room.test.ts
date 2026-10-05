@@ -120,8 +120,8 @@ describe('RoomEngine — lobby', () => {
     join(room, a);
     const lobby = a.lobby();
     expect(lobby).toMatchObject({ mapId: 'open-field', mode: 'annihilation', problem: null });
-    expect(lobby.seats[0]).toMatchObject({ preset: 'iron-wardens-medium', ready: false });
-    expect(lobby.seats[1]).toMatchObject({ preset: 'ashfang-raiders-medium', ready: false });
+    expect(lobby.seats[0]).toMatchObject({ preset: 'border-watch-small', ready: false });
+    expect(lobby.seats[1]).toMatchObject({ preset: 'restless-dead-small', ready: false });
   });
 
   it('lets each player bring their own army, broadcast to both', () => {
@@ -132,7 +132,7 @@ describe('RoomEngine — lobby', () => {
     join(room, b);
     msg(room, b, { t: 'setArmy', preset: 'custom', warband: HORDE, king: 3 });
     expect(a.lobby().seats[1]).toMatchObject({ preset: 'custom', warband: HORDE, king: 3 });
-    expect(a.lobby().seats[0].preset).toBe('iron-wardens-medium'); // the host's own pick is untouched
+    expect(a.lobby().seats[0].preset).toBe('border-watch-small'); // the host's own pick is untouched
   });
 
   it('only lets the host pick the map and mode, and needs a custom map sent whole', () => {
@@ -243,8 +243,8 @@ describe('RoomEngine — lobby', () => {
     expect(w1.seat).toBe(1);
     expect(w0.setup).toEqual(w1.setup);
     expect(w0.setup).toEqual({
-      presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
-      warbands: [getPreset('iron-wardens-medium'), getPreset('ashfang-raiders-medium')],
+      presets: ['border-watch-small', 'restless-dead-small'],
+      warbands: [getPreset('border-watch-small'), getPreset('restless-dead-small')],
       seats: ['human', 'human'],
       seed: 7,
     });
@@ -262,7 +262,7 @@ describe('RoomEngine — lobby', () => {
     msg(room, b, { t: 'setArmy', preset: 'custom', warband: HORDE, king: 4 });
     msg(room, a, { t: 'ready', ready: true });
     msg(room, b, { t: 'ready', ready: true });
-    expect(room.setup).toMatchObject({ mode: 'kill-the-king', kings: [defaultKing(getPreset('iron-wardens-medium')!.units), 4] });
+    expect(room.setup).toMatchObject({ mode: 'kill-the-king', kings: [defaultKing(getPreset('border-watch-small')!.units), 4] });
     const state = room.getState()!;
     const guestUnits = state.units.filter((u) => u.owner === 1);
     expect(guestUnits).toHaveLength(9);
@@ -410,7 +410,7 @@ describe('RoomEngine — game', () => {
     for (const c of [host, guest]) {
       expect(c.last().t).toBe('lobby');
       expect(c.lobby().seats.map((s) => s.ready)).toEqual([false, false]);
-      expect(c.lobby().seats[0].preset).toBe('iron-wardens-medium');
+      expect(c.lobby().seats[0].preset).toBe('border-watch-small');
     }
   });
 });

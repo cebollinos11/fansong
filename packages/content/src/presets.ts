@@ -5,11 +5,17 @@ import type { Warband, WarbandUnit } from './warband.js';
  * no trademarked names or published profiles. Each is built to be legal under
  * {@link DEFAULT_RULES}; the preset test asserts that invariant.
  *
- * Eleven warbands, each a different family at one size: small (3 or 4 units,
+ * Thirteen warbands, each a different family at one size: small (3 or 4 units,
  * about 120 points), medium (about 250) or large (about 400). The id ends in the
  * size. Between them they field every trait, which the preset test also asserts.
  *
  * Design intent (so the matchups stay interesting):
+ *  - border-watch-small : the starter human patrol, and the default pick — a
+ *    Leader sergeant, a long bow and an Armored Guard spearman.
+ *  - restless-dead-small : the starter skeletons, the default opponent — a
+ *    Leader captain, a bow and a warrior, all Reassembling. A few points
+ *    cheaper than the Border Watch, because getting back up is worth more than
+ *    its price in a three-unit fight: the AI plays the two to an even split.
  *  - iron-wardens-medium : a shield wall that grinds forward and is hard to
  *    shift — Shieldwall foot and Guard, Armored veterans around an Armored Leader
  *    and a Slow, Big, Tough, Immovable bulwark, covered by a Slow Sharpshooter
@@ -59,6 +65,16 @@ export interface PresetRoster {
  * in its roster, so a unit several warbands share is changed in one place.
  */
 export const PRESET_UNITS: Record<string, PresetUnit> = {
+  // Border Watch
+  'Watch Sergeant': { quality: 3, combat: 4, leader: true, look: 'Sergeant' },
+  'Watch Bowman': { quality: 3, combat: 2, shooter: 'long', look: 'Longbow' },
+  'Watch Spearman': { quality: 3, combat: 3, guard: true, armored: true, look: 'Pikeman' },
+
+  // Restless Dead
+  'Bone Captain': { quality: 3, combat: 4, leader: true, reassembling: true, look: 'Death Knight' },
+  'Bone Archer': { quality: 4, combat: 2, shooter: 'normal', reassembling: true, look: 'Skeleton Archer' },
+  'Bone Warrior': { quality: 4, combat: 3, reassembling: true, look: 'Skeleton Infantry' },
+
   // Iron Wardens
   'Warden-Captain': { quality: 3, combat: 4, leader: true, armored: true },
   Sentinel: { quality: 3, combat: 3, guard: true, armored: true },
@@ -135,6 +151,22 @@ export const PRESET_UNITS: Record<string, PresetUnit> = {
 
 /** Which units each preset warband fields, in menu order. */
 export const PRESET_ROSTERS: Record<string, PresetRoster> = {
+  'border-watch-small': {
+    name: 'Border Watch',
+    units: [
+      { unit: 'Watch Sergeant' },
+      { unit: 'Watch Bowman' },
+      { unit: 'Watch Spearman' },
+    ],
+  },
+  'restless-dead-small': {
+    name: 'Restless Dead',
+    units: [
+      { unit: 'Bone Captain' },
+      { unit: 'Bone Archer' },
+      { unit: 'Bone Warrior' },
+    ],
+  },
   'iron-wardens-medium': {
     name: 'Iron Wardens',
     units: [
