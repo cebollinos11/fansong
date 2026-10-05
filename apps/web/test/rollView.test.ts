@@ -1,6 +1,6 @@
 import type { GameEvent } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { describeActivation, describeCombat, describeNerve, signed } from '../src/ui/rollView.js';
+import { describeActivation, describeCombat, describeNerve, modifierHelp, signed } from '../src/ui/rollView.js';
 
 type Attack = Extract<GameEvent, { type: 'AttackResolved' }>;
 
@@ -369,4 +369,74 @@ describe('nerve roll cards', () => {
 
 it('signs modifiers', () => {
   expect([signed(3), signed(0), signed(-1)]).toEqual(['+3', '+0', '−1']);
+});
+
+describe('modifier help', () => {
+  it('explains every modifier a card can show', () => {
+    const everything = [
+      describeCombat(
+        attack({
+          attackScore: 20,
+          defenseScore: 1,
+          attackBonus: 1,
+          attackBig: 1,
+          attackFly: 1,
+          attackOpportunist: 1,
+          attackPincer: 1,
+          attackRusher: 1,
+          attackWoodwise: 1,
+          attackOutnumbered: 1,
+          powerPenalty: 1,
+          defenseBonus: 1,
+          defenseBig: 1,
+          defenseOpportunist: 1,
+          defenseShieldwall: 1,
+          defenseWoodwise: 1,
+          defenseOutnumbered: 1,
+        }),
+      ),
+      describeCombat({
+        type: 'ShotResolved',
+        attackerId: 'a',
+        targetId: 'd',
+        attackDie: 4,
+        defenseDie: 2,
+        attackScore: 9,
+        defenseScore: 3,
+        result: 'defenderKnockedDown',
+        attackBonus: 1,
+        bigTarget: 1,
+        flyingTarget: 1,
+        attackOpportunist: 1,
+        attackSharpshooter: 1,
+        attackWoodwise: 1,
+        rangePenalty: 1,
+        coverPenalty: 1,
+        defenseBonus: 1,
+        defenseWoodwise: 1,
+        aimPenalty: 1,
+      }),
+      describeCombat({
+        type: 'GuardRiposte',
+        guardId: 'g',
+        attackerId: 'a',
+        guardDie: 5,
+        attackerDie: 2,
+        guardScore: 9,
+        attackerScore: 4,
+        result: 'clash',
+        guardPincer: 1,
+        guardFly: 1,
+        prevented: false,
+      }),
+    ];
+    const labels = new Set(everything.flatMap((r) => [...r.a.mods, ...r.b.mods].map((m) => m.label)));
+    expect(labels.size).toBeGreaterThan(15);
+    for (const label of labels) expect(modifierHelp(label), label).toBeTruthy();
+  });
+
+  it('says what a pincer is, since no unit carries it', () => {
+    expect(modifierHelp('Pincer')).toMatch(/directly opposite/);
+    expect(modifierHelp('Nonsense')).toBeUndefined();
+  });
 });

@@ -934,6 +934,44 @@ button.ghost {
   color: var(--muted);
 }
 
+/* A modifier chip says what it is on hover; the card stays up meanwhile (rollOverlay.ts). */
+.roll-mod[data-help] {
+  position: relative;
+  cursor: help;
+  pointer-events: auto;
+}
+
+.roll-mod[data-help]:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.roll-mod[data-help]:hover::after {
+  content: attr(data-help);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -4px;
+  z-index: 1;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  color: var(--text);
+  background: rgba(22, 27, 34, 0.97);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* The defender's card sits in the right-hand corner: its tooltips open leftward. */
+.roll-card.defender .roll-mod[data-help]:hover::after {
+  right: -4px;
+  left: auto;
+}
+
 .roll-total {
   margin-top: 4px;
   font-size: 22px;
@@ -1074,6 +1112,8 @@ button.ghost {
 }
 
 .strip-mod {
+  cursor: help;
+  pointer-events: auto;
   font-weight: 700;
   color: var(--accent);
 }

@@ -12,6 +12,38 @@ export interface RollModifier {
   value: number;
 }
 
+/**
+ * What each modifier on a roll card is and when it applies, keyed by its label.
+ * The card shows the amount; this says why it is there. Situational rules like
+ * Pincer and Outnumbered belong to no unit, so the card is the only place a
+ * player meets them.
+ */
+const MODIFIER_HELP: Record<string, string> = {
+  Combat: "The unit's own Combat score, before any situational bonus or penalty",
+  'High ground': 'Standing on a higher hex than its foe. Lost while knocked down',
+  Size: 'A Big unit fighting a smaller foe in melee',
+  Swoop: 'A flyer striking a foe on the ground. Lost while knocked down',
+  Opportunist: 'An Opportunist fighting or shooting a knocked-down foe',
+  Pincer:
+    'A standing friend holds the hex directly opposite the foe, catching it between them. Any unit on its feet gets it: a rule of the game, not a trait',
+  Rusher: "A Rusher's first attack after a Move that brought it into contact with this foe",
+  Woodwise: 'A Woodwise unit standing in a forest hex, on every combat roll',
+  Shieldwall: 'A Shieldwall unit defending against an attack while next to a standing friend',
+  Outnumbered: 'One less for each standing enemy in contact beyond the first. A Whirling unit on its feet is never outnumbered',
+  'Big target': 'Shooting at a Big unit: it is easier to hit',
+  'Flying target': 'Shooting at a flyer in the air: it has nowhere to take cover',
+  Sharpshooter: 'A Sharpshooter adds this to every shot it takes',
+  'Long range': "The target is beyond short range, the first half of the shooter's reach",
+  Cover: 'The target is in cover: in a forest, or only partly visible past a blocker',
+  'Aimed at': 'An aimed shot spends two actions to make its target defend worse',
+  'Power blow': 'A power blow spends two actions to make its target defend worse',
+};
+
+/** What a roll card's modifier is and when it applies, for its hover tooltip; undefined for an unknown label. */
+export function modifierHelp(label: string): string | undefined {
+  return MODIFIER_HELP[label];
+}
+
 /** One side of an opposed roll: its die, modifiers and total. */
 export interface RollSide {
   unitId: string;
