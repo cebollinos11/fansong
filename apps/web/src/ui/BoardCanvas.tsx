@@ -4,6 +4,7 @@ import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay, type 
 import { BACKDROP_LABELS, BACKDROPS, DEFAULT_BACKDROP, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { describeHex } from './hexInfo.js';
+import { FightTip } from './FightTip.js';
 import { InfoLines } from './StatIcons.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges, type Objective } from './modeView.js';
 import { traitTags } from './hudView.js';
@@ -442,8 +443,14 @@ export function BoardCanvas(props: Props): JSX.Element {
       ) : null}
       {hexInfo ? (
         <div ref={tipRef} className="hex-tooltip">
-          <strong>{hexInfo.title}</strong>
-          <InfoLines lines={hexInfo.lines} />
+          {hexInfo.fight ? (
+            <FightTip fight={hexInfo.fight} />
+          ) : (
+            <>
+              <strong>{hexInfo.title}</strong>
+              <InfoLines lines={hexInfo.lines} />
+            </>
+          )}
           {pinned && hoverPlan && props.interactive ? <div className="hex-tooltip-confirm">Tap again to confirm</div> : null}
         </div>
       ) : null}

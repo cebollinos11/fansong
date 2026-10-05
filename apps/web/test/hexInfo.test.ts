@@ -3,6 +3,7 @@ import { unitMove, type GameState, type Unit, type Vec } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import { describeHex, fightScores, oddsLine, type HexLine, type HexScore } from '../src/ui/hexInfo.js';
 import { modifierHelp } from '../src/ui/rollView.js';
+import { oddsShares } from '../src/ui/FightTip.js';
 import type { PlanPreview } from '../src/game/planView.js';
 import { INSPIRED_HELP, TRAIT_HELP } from '../src/ui/hudView.js';
 
@@ -216,6 +217,35 @@ describe('describeHex with a plan', () => {
     ]);
     // The attack menu shows these once for both of its options, so no "Power blow" chip.
     expect(JSON.stringify(scores)).not.toContain('Power blow');
+  });
+
+  it('hands the fight over in parts, for a tooltip that leads with the odds', () => {
+    const attacker = state.units.find((u) => u.owner === 0)!;
+    const target = state.units.find((u) => u.owner === 1)!;
+    const live = { ...state, phase: 'acting' as const, activeUnitId: attacker.id };
+    const plan: PlanPreview = { ...base, kind: 'attack', cost: 2, targetId: target.id, provokes: 1 };
+    const fight = describeHex(live, target.pos, plan)!.fight!;
+    expect(fight).toMatchObject({
+      verb: 'Charge',
+      target: target.name,
+      cost: '2 actions (1 action left)',
+      ranged: false,
+      breaksAway: true,
+      detailed: false,
+    });
+    expect(fight.attacker.name).toBe(attacker.name);
+    expect(fight.defender.mods[0]).toEqual({ label: 'Combat', value: target.combat });
+    // The target's own lines stay apart from the fight's, so a tooltip can tuck them away.
+    expect(fight.about).toContainEqual({ quality: target.quality, combat: target.combat, move: unitMove(target) });
+    expect(fight.about.join(' ')).not.toMatch(/Charge|Win/);
+    // The shares are whole percentages of one hundred, the kill carved out of the win.
+    const shares = oddsShares(fight);
+    expect(shares.kill + shares.win + shares.clash + shares.lose).toBe(100);
+    expect(shares.kill + shares.win).toBe(Math.round(fight.odds.win * 100));
+    expect(Object.values(shares).every((n) => n >= 0)).toBe(true);
+    // A walk starts no fight, and neither does a click with no unit activating.
+    expect(describeHex(live, cell, { ...base, kind: 'move', cost: 1 })!.fight).toBeUndefined();
+    expect(describeHex(state, target.pos, plan)!.fight).toBeUndefined();
   });
 
   it('leaves the tooltip alone when there is no plan for the hex', () => {

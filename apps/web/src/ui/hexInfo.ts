@@ -1,4 +1,14 @@
-import { airborne, combatOdds, combatScoring, unitById, unitMove, vecKey, type GameState, type Vec } from '@fansong/engine';
+import {
+  airborne,
+  combatOdds,
+  combatScoring,
+  unitById,
+  unitMove,
+  vecKey,
+  type CombatOdds,
+  type GameState,
+  type Vec,
+} from '@fansong/engine';
 import type { PlanPreview } from '../game/planView.js';
 import { INSPIRED_HELP, traitLine, traitTags } from './hudView.js';
 import { modifierHelp, previewScores, signed, type RollModifier } from './rollView.js';
@@ -38,9 +48,38 @@ export interface HexScore {
 /** A tooltip line: plain text, a unit's stats, one of its abilities spelled out, or a side's score in a fight. */
 export type HexLine = string | HexStats | HexTrait | HexScore;
 
+/**
+ * The fight a click on the hex would start, in parts, for a tooltip that leads
+ * with the odds (see `FightTip.tsx`) rather than listing it line by line.
+ */
+export interface HexFight {
+  /** "Attack", "Charge", "Shoot" or "Move and shoot". */
+  verb: string;
+  target: string;
+  /** "1 action (2 actions left)". */
+  cost: string;
+  /** A shot draws no return fire, so it has no chance to lose. */
+  ranged: boolean;
+  odds: CombatOdds;
+  attacker: HexScore;
+  defender: HexScore;
+  /** A guarding target's riposte, rolled before the blow. */
+  riposte?: { guard: HexScore; attacker: HexScore };
+  /** What each modifier in play is, once each. */
+  help: HexTrait[];
+  /** The route there breaks away from an enemy. */
+  breaksAway: boolean;
+  /** The lines about the target itself: its marks, stats and abilities. */
+  about: HexLine[];
+  /** The pointer has rested here (see {@link describeHex}). */
+  detailed: boolean;
+}
+
 export interface HexInfo {
   title: string;
   lines: HexLine[];
+  /** Set when a click here would start a fight. */
+  fight?: HexFight;
 }
 
 /**
@@ -92,8 +131,9 @@ export function describeHex(
       if (traits) lines.push(traits);
     }
   }
+  const fight = plan ? fightPreview(state, plan, [...lines], detailed) : null;
   if (plan) lines.push(...planLines(state, plan, detailed));
-  if (unit) return { title: unit.name, lines };
+  if (unit) return { title: unit.name, lines, ...(fight ? { fight } : {}) };
   if (where === 'editor') return { title: `Hex (${cell.x}, ${cell.y})`, lines };
   // In a match a bare hex is titled by the first thing worth saying about it.
   const [first, ...rest] = lines;
@@ -102,29 +142,28 @@ export function describeHex(
 
 const ACTIONS = (n: number): string => `${n} action${n === 1 ? '' : 's'}`;
 
+/** "2 actions (1 action left)": what a plan spends, and what that leaves. */
+function planCost(state: GameState, plan: PlanPreview): string {
+  const left = state.actionsRemaining - plan.cost;
+  return `${ACTIONS(plan.cost)}${left > 0 ? ` (${ACTIONS(left)} left)` : ''}`;
+}
+
+/** What a fighting plan is called: a blow or shot that is walked to says so. */
+function planVerb(plan: PlanPreview): string {
+  const walks = plan.waypoints.length > 0;
+  if (plan.kind === 'attack') return walks ? 'Charge' : 'Attack';
+  return walks ? 'Move and shoot' : 'Shoot';
+}
+
 /**
  * What this click costs, and what it risks on the way. A fight also shows both
  * sides' modifiers; `detailed` spells out what each one is.
  */
 function planLines(state: GameState, plan: PlanPreview, detailed: boolean): HexLine[] {
-  const left = state.actionsRemaining - plan.cost;
-  const spare = left > 0 ? ` (${ACTIONS(left)} left)` : '';
   const name = plan.targetId ? (unitById(state, plan.targetId)?.name ?? 'the enemy') : '';
   const lines: HexLine[] = [];
-  if (plan.kind === 'move') lines.push(`Move here — ${ACTIONS(plan.cost)}${spare}`);
-  else if (plan.kind === 'attack') {
-    lines.push(
-      plan.waypoints.length > 0
-        ? `Charge ${name} — ${ACTIONS(plan.cost)}${spare}`
-        : `Attack ${name} — ${ACTIONS(plan.cost)}${spare}`,
-    );
-  } else {
-    lines.push(
-      plan.waypoints.length > 0
-        ? `Move and shoot ${name} — ${ACTIONS(plan.cost)}${spare}`
-        : `Shoot ${name} — ${ACTIONS(plan.cost)}${spare}`,
-    );
-  }
+  if (plan.kind === 'move') lines.push(`Move here — ${planCost(state, plan)}`);
+  else lines.push(`${planVerb(plan)} ${name} — ${planCost(state, plan)}`);
   const odds = oddsLine(state, plan);
   if (odds) lines.push(odds);
   lines.push(...fightScores(state, plan, detailed));
@@ -144,39 +183,72 @@ export function fightScores(
   plan: Pick<PlanPreview, 'kind' | 'targetId' | 'path'>,
   detailed = false,
 ): HexLine[] {
-  if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return [];
+  const sides = fightSides(state, plan);
+  if (!sides) return [];
+  const { attacker, defender, riposte, help } = sides;
+  const blow: HexLine[] = [attacker, defender];
+  const lines: HexLine[] = riposte
+    ? [`On guard: ${defender.name} ripostes first`, riposte.guard, riposte.attacker, 'Then the blow', ...blow]
+    : blow;
+  if (detailed) lines.push(...help);
+  return lines;
+}
+
+/** Both sides' scores for the fight a plan starts, a guard's riposte, and what each modifier in play is. */
+function fightSides(
+  state: GameState,
+  plan: Pick<PlanPreview, 'kind' | 'targetId' | 'path'>,
+): Pick<HexFight, 'attacker' | 'defender' | 'riposte' | 'help'> | null {
+  if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return null;
   const attacker = unitById(state, state.activeUnitId);
   const target = unitById(state, plan.targetId);
-  if (!attacker || !target) return [];
+  if (!attacker || !target) return null;
   const from = plan.path.at(-1);
   const { attack, defense, riposte } = previewScores(
     combatScoring(state, attacker.id, target.id, { ranged: plan.kind === 'shoot', ...(from ? { from } : {}) }),
   );
-  const blow: HexLine[] = [
-    { name: attacker.name, ...attack },
-    { name: target.name, ...defense },
-  ];
-  const lines: HexLine[] = riposte
-    ? [
-        `On guard: ${target.name} ripostes first`,
-        { name: target.name, ...riposte.guard },
-        { name: attacker.name, ...riposte.attacker },
-        'Then the blow',
-        ...blow,
-      ]
-    : blow;
-  if (detailed) {
-    const seen = new Set<string>();
-    const all = [attack, defense, ...(riposte ? [riposte.guard, riposte.attacker] : [])];
-    for (const m of all.flatMap((score) => score.mods)) {
-      const label = `${signed(m.value)} ${m.label}`;
-      const help = modifierHelp(m.label);
-      if (m.label === 'Combat' || !help || seen.has(label)) continue;
-      seen.add(label);
-      lines.push({ trait: label, help });
-    }
+  const help: HexTrait[] = [];
+  const seen = new Set<string>();
+  const all = [attack, defense, ...(riposte ? [riposte.guard, riposte.attacker] : [])];
+  for (const m of all.flatMap((score) => score.mods)) {
+    const label = `${signed(m.value)} ${m.label}`;
+    const text = modifierHelp(m.label);
+    if (m.label === 'Combat' || !text || seen.has(label)) continue;
+    seen.add(label);
+    help.push({ trait: label, help: text });
   }
-  return lines;
+  return {
+    attacker: { name: attacker.name, ...attack },
+    defender: { name: target.name, ...defense },
+    ...(riposte
+      ? {
+          riposte: {
+            guard: { name: target.name, ...riposte.guard },
+            attacker: { name: attacker.name, ...riposte.attacker },
+          },
+        }
+      : {}),
+    help,
+  };
+}
+
+/** The fight a plan starts, in parts (see {@link HexFight}); null for a walk, or with no unit activating. */
+function fightPreview(state: GameState, plan: PlanPreview, about: HexLine[], detailed: boolean): HexFight | null {
+  const sides = fightSides(state, plan);
+  if (!sides || !plan.targetId || !state.activeUnitId) return null;
+  const ranged = plan.kind === 'shoot';
+  const from = plan.path.at(-1);
+  return {
+    verb: planVerb(plan),
+    target: sides.defender.name,
+    cost: planCost(state, plan),
+    ranged,
+    odds: combatOdds(state, state.activeUnitId, plan.targetId, { ranged, ...(from ? { from } : {}) }),
+    ...sides,
+    breaksAway: plan.provokes > 0,
+    about,
+    detailed,
+  };
 }
 
 const pct = (p: number): string => `${Math.round(p * 100)}%`;

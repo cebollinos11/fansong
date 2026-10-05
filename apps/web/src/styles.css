@@ -4042,6 +4042,100 @@ button.trait-add[aria-expanded='true'] {
   font-weight: 700;
 }
 
+/* --- The tooltip over an enemy you can attack (ui/FightTip.tsx) --- */
+.ft {
+  --ft-win: var(--accent);
+  --ft-kill: #b6f5cf;
+  --ft-lose: var(--p1);
+  min-width: 210px;
+}
+.ft-order {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.ft-cost {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ft-warn {
+  color: var(--gold);
+}
+.ft-step {
+  margin-top: 4px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ft-fine {
+  margin-top: 5px;
+  padding-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+
+.ft-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  margin: 6px 0 3px;
+}
+.ft-bar i {
+  flex-basis: 0;
+  min-width: 0;
+  border-radius: 2px;
+}
+.ft-bar .kill {
+  background: var(--ft-kill);
+}
+.ft-bar .win {
+  background: var(--ft-win);
+}
+.ft-bar .clash {
+  background: #4a5564;
+}
+.ft-bar .lose {
+  background: var(--ft-lose);
+}
+.ft-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.ft-legend b {
+  font-size: 16px;
+}
+.ft-legend em {
+  font-style: normal;
+  color: var(--ft-kill);
+}
+.ft-legend .win {
+  color: var(--ft-win);
+}
+.ft-legend .lose {
+  color: var(--ft-lose);
+}
+.ft-legend .clash {
+  color: var(--muted);
+}
+.ft-versus {
+  margin-top: 3px;
+  color: var(--muted);
+}
+.ft-versus b {
+  font-size: 14px;
+  color: var(--text);
+}
+.ft-versus span {
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
 .unit-line {
   display: inline-flex;
   align-items: center;
