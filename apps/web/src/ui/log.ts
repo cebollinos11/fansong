@@ -7,6 +7,7 @@ import {
   type Owner,
   type Vec,
 } from '@fansong/engine';
+import { COLOR_NAMES, sideName, sidePossessive, sideVerb, type SideNames } from './sides.js';
 
 /**
  * The battle log, built from engine events. Presentation only.
@@ -37,9 +38,37 @@ export interface UnitRef {
 
 /**
  * A piece of a log line: plain text, a unit (coloured by owner, links to the
- * board), a player, or an emphasised bit styled by `cls`.
+ * board), a side, or an emphasised bit styled by `cls`.
  */
-export type LogPart = string | { unit: UnitRef } | { player: Owner } | { em: string; cls?: string };
+export type LogPart = string | { unit: UnitRef } | PlayerPart | { em: string; cls?: string };
+
+/**
+ * A side, named only when the line is shown (see {@link playerText}) so the
+ * log reads "You" and "AI" like the top bar. `possessive` names it as an owner
+ * ("your flag"); `verb`, a third-person verb ("wins"), follows the name and is
+ * agreed with it ("you win").
+ */
+export interface PlayerPart {
+  player: Owner;
+  possessive?: true;
+  verb?: string;
+}
+
+/**
+ * A side part's words, given what the sides are called: the side's name (or
+ * possessive), and its verb agreed with it. `capital` when it opens the line.
+ */
+export function playerWords(p: PlayerPart, names: SideNames, capital = false): { name: string; verb?: string } {
+  if (p.possessive) return { name: sidePossessive(names, p.player, capital) };
+  const name = sideName(names, p.player, capital);
+  return p.verb ? { name, verb: sideVerb(names, p.player, p.verb) } : { name };
+}
+
+/** A side part as text (see {@link playerWords}). */
+export function playerText(p: PlayerPart, names: SideNames, capital = false): string {
+  const { name, verb } = playerWords(p, names, capital);
+  return verb ? `${name} ${verb}` : name;
+}
 
 export interface DiceRoll {
   dice: number[];
@@ -92,8 +121,8 @@ export interface LogRound {
 
 export interface BattleLog {
   rounds: LogRound[];
-  /** The newest emphasised line, as plain text — what the HUD's transient callout shows. */
-  callout: { id: number; text: string; tone: LogTone } | null;
+  /** The newest emphasised line — what the HUD's transient callout shows. */
+  callout: { id: number; icon: string; parts: LogPart[]; tone: LogTone } | null;
   nextId: number;
 }
 
@@ -126,15 +155,17 @@ const GAME_OVER_REASONS: Record<GameOverReason, string> = {
   extracted: 'the golden Pig reached the enemy camp',
 };
 
-/** A line flattened to text (the HUD callout, tooltips, tests). */
-export function partsText(parts: readonly LogPart[]): string {
+/** A line flattened to text (the HUD callout, tooltips, tests), naming the sides by `names`. */
+export function partsText(parts: readonly LogPart[], names: SideNames = COLOR_NAMES): string {
   return parts
-    .map((p) => (typeof p === 'string' ? p : 'unit' in p ? p.unit.name : 'player' in p ? `P${p.player}` : p.em))
+    .map((p, i) =>
+      typeof p === 'string' ? p : 'unit' in p ? p.unit.name : 'player' in p ? playerText(p, names, i === 0) : p.em,
+    )
     .join('');
 }
 
-export function itemText(item: LogItem): string {
-  return `${item.icon} ${partsText(item.parts)}`;
+export function itemText(item: Pick<LogItem, 'icon' | 'parts'>, names: SideNames = COLOR_NAMES): string {
+  return `${item.icon} ${partsText(item.parts, names)}`;
 }
 
 // --- Fights ------------------------------------------------------------------
@@ -466,7 +497,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
     const full = { ...item, id: log.nextId++ };
     group().items.push(full);
     if (full.tone === 'objective' || full.tone === 'end') {
-      log.callout = { id: full.id, text: itemText(full), tone: full.tone };
+      log.callout = { id: full.id, icon: full.icon, parts: full.parts, tone: full.tone };
     }
     return full;
   };
@@ -541,7 +572,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
         if (g?.open) g.turnover = true;
         add({
           icon: '✖',
-          parts: ['Turnover — ', { player: e.player }, ' is benched for the round'],
+          parts: ['Turnover — ', { player: e.player, verb: 'is' }, ' benched for the round'],
           brief: ['✖ turnover'],
           tone: 'danger',
           category: 'other',
@@ -616,7 +647,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
       case 'WarbandBroken':
         add({
           icon: '⚠',
-          parts: [{ player: e.player }, "'s warband breaks!"],
+          parts: [{ player: e.player, possessive: true }, ' warband breaks!'],
           brief: ['⚠ broken'],
           tone: 'danger',
           category: 'combat',
@@ -711,8 +742,8 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
         add({
           icon: '★',
           parts: [
-            { player: e.player },
-            ` scores ${e.points}${what ? ` for holding ${what}` : ''} `,
+            { player: e.player, verb: 'scores' },
+            ` ${e.points}${what ? ` for holding ${what}` : ''} `,
             { em: `${e.scores[0]}–${e.scores[1]}`, cls: 'score' },
           ],
           brief: [`★ +${e.points}`],
@@ -725,7 +756,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
       case 'FlagPickedUp':
         add({
           icon: '⚑',
-          parts: [unit(ref(state, e.unitId)), ' seizes ', { player: e.player }, "'s flag"],
+          parts: [unit(ref(state, e.unitId)), ' seizes ', { player: e.player, possessive: true }, ' flag'],
           brief: ['⚑ seized'],
           tone: 'objective',
           category: 'objective',
@@ -735,7 +766,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
       case 'FlagDropped':
         add({
           icon: '⚑',
-          parts: [unit(ref(state, e.unitId)), ' drops ', { player: e.player }, "'s flag"],
+          parts: [unit(ref(state, e.unitId)), ' drops ', { player: e.player, possessive: true }, ' flag'],
           brief: ['⚑ dropped'],
           tone: 'objective',
           category: 'objective',
@@ -745,7 +776,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
       case 'FlagReturned':
         add({
           icon: '⚑',
-          parts: [unit(ref(state, e.unitId)), ' returns ', { player: e.player }, "'s flag to base"],
+          parts: [unit(ref(state, e.unitId)), ' returns ', { player: e.player, possessive: true }, ' flag to base'],
           brief: ['⚑ returned'],
           tone: 'objective',
           category: 'objective',
@@ -755,7 +786,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
       case 'FlagCaptured':
         add({
           icon: '⚑',
-          parts: [unit(ref(state, e.unitId)), ' carries the flag home — ', { player: e.player }, ' captures it!'],
+          parts: [unit(ref(state, e.unitId)), ' carries the flag home — ', { player: e.player, verb: 'captures' }, ' it!'],
           brief: ['⚑ captured'],
           tone: 'objective',
           category: 'objective',
@@ -769,8 +800,7 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
           icon: '🏆',
           parts: [
             'Game over — ',
-            { player: e.winner },
-            ' wins',
+            { player: e.winner, verb: 'wins' },
             ...(e.reason ? [` (${GAME_OVER_REASONS[e.reason]})`] : []),
           ],
           tone: 'end',

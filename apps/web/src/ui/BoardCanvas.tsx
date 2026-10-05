@@ -7,6 +7,7 @@ import { describeHex } from './hexInfo.js';
 import { InfoLines } from './StatIcons.js';
 import { modeMarkers, modeMarkingsKey, modeOverlays, unitBadges } from './modeView.js';
 import { traitTags } from './hudView.js';
+import { COLOR_NAMES, type SideNames } from './sides.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 import { canOfferFullscreen, toggleFullscreen, useFullscreen } from './fullscreen.js';
 import { sfx } from '../audio/sfx.js';
@@ -39,6 +40,8 @@ interface Props {
   pickThrough?: boolean;
   /** Seats this screen commands; other sides' moves trace their route first (unset: every move). */
   localSeats?: readonly Owner[];
+  /** What the board's banners and dice cards call each side, as the top bar does (default: their colours). */
+  sideNames?: SideNames;
   /** The most recent batch of engine events, for transient FX. A new empty batch cuts pending FX short. */
   events: GameEvent[];
   /** Called once per new `events` batch with how long (ms) its animations take to play out. */
@@ -256,6 +259,13 @@ export function BoardCanvas(props: Props): JSX.Element {
   const seatsKey = props.localSeats?.join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const localSeats = useMemo(() => props.localSeats, [seatsKey]);
+
+  // Read when a banner or dice card is drawn, so it only needs to be current.
+  const namesKey = props.sideNames?.join('\n');
+  useEffect(() => {
+    if (viewRef.current) viewRef.current.sideNames = props.sideNames ?? COLOR_NAMES;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [namesKey]);
 
   // Also handed over fresh each render; only a change of units matters.
   const focusKey = props.focusUnitIds?.join(',') ?? '';

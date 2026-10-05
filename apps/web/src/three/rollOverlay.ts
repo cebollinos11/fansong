@@ -1,4 +1,5 @@
 import { signed, type ActivationRoll, type NerveRoll, type OpposedRoll, type RollSide, type RollVerdict } from '../ui/rollView.js';
+import { COLOR_NAMES } from '../ui/sides.js';
 
 /**
  * Dice over the board. A DOM layer on top of the WebGL canvas: each roll is a
@@ -167,6 +168,8 @@ export class RollOverlay {
     container: HTMLElement,
     private readonly owners: (unitId: string) => 0 | 1 | undefined,
     private readonly nameOf: (unitId: string) => string | undefined = () => undefined,
+    /** What to call a side ("You", "AI"), as the top bar does. */
+    private readonly sideOf: (owner: 0 | 1) => string = (owner) => COLOR_NAMES[owner],
   ) {
     this.layer = h('div', 'roll-layer');
     container.appendChild(this.layer);
@@ -567,7 +570,7 @@ export class RollOverlay {
     const el = h('div', 'roll-head');
     el.append(h('span', 'roll-role', role));
     const owner = this.owners(unitId);
-    const who = (named ? this.nameOf(unitId) : undefined) ?? (owner === undefined ? null : `P${owner}`);
+    const who = (named ? this.nameOf(unitId) : undefined) ?? (owner === undefined ? null : this.sideOf(owner));
     if (who !== null) el.append(h('span', `roll-owner${owner === undefined ? '' : ` p${owner}`}`, who));
     return el;
   }

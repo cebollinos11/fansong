@@ -37,6 +37,7 @@ import {
   type ZoneScoreText,
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
+import { COLOR_NAMES, sidePossessive, type SideNames } from '../ui/sides.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { BoardChunks } from './chunks.js';
 import {
@@ -1161,6 +1162,7 @@ export class BoardView {
       this.container,
       (id) => this.units.get(id)?.owner,
       (id) => this.units.get(id)?.name,
+      (owner) => this.sideNames[owner],
     );
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -1176,6 +1178,8 @@ export class BoardView {
    */
   /** The seat whose side of the table an upright (portrait) opening shot stands behind. */
   homeSeat: Owner = 0;
+  /** What the banners and dice cards call each side — the top bar's names. */
+  sideNames: SideNames = COLOR_NAMES;
 
   buildBoard(state: GameState): void {
     const resized = state.board.width !== this.width || state.board.height !== this.height;
@@ -1726,7 +1730,7 @@ export class BoardView {
       } else if (e.type === 'WarbandBroken') {
         const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
         this.at(at, () => {
-          this.rolls.addVerdict({ text: `P${e.player}'s warband breaks!`, on: [], tone: 'kill' }, this.now);
+          this.rolls.addVerdict({ text: `${sidePossessive(this.sideNames, e.player, true)} warband breaks!`, on: [], tone: 'kill' }, this.now);
           this.sound('warband-broken');
         });
         settle = at;
