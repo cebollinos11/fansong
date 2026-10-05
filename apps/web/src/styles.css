@@ -4302,3 +4302,37 @@ button.trait-add[aria-expanded='true'] {
 .cue-list li button {
   padding: 0 6px;
 }
+
+/* The hovered choice's odds; until then, what a turnover costs. It keeps its
+   height either way, since the menu rides on its bottom edge. */
+.dice-menu-odds {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 0;
+  min-width: 100%;
+  /* Three lines: the dice, the chance to act, the turnover risk. */
+  min-height: 39px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  line-height: 13px;
+  color: var(--muted);
+  white-space: normal;
+}
+
+.dice-menu-odds.live {
+  color: var(--text);
+}
+
+.dice-menu-odds strong {
+  font-weight: 700;
+}
+
+.dice-menu-odds .risk {
+  color: #ff8a7a;
+}
+
+.dice-menu-odds .safe {
+  color: var(--accent);
+}

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Owner } from '@fansong/engine';
 import { anchoredCard, type UnitProjector } from './anchorView.js';
-import { diceHint, groupHint } from './diceMenuView.js';
+import { diceHint, groupHint, oddsParts, TURNOVER_COST } from './diceMenuView.js';
 import type { TraitTag } from './hudView.js';
 import { usePressGuard } from './pressGuard.js';
 
@@ -33,6 +33,17 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
   const ref = useRef<HTMLDivElement>(null);
   // The tap that picked the unit must not also pick a dice count.
   const { onPointerDown, guard } = usePressGuard();
+  // The choice under the pointer (or keyboard focus), whose odds the menu quotes.
+  const [hovered, setHovered] = useState<{ dice: number; group: boolean } | null>(null);
+  const odds = hovered
+    ? oddsParts(hovered.dice, quality, hovered.group ? (group?.inspired ?? false) : inspired)
+    : null;
+  const hover = (dice: number, inGroup: boolean) => ({
+    onPointerEnter: () => setHovered({ dice, group: inGroup }),
+    onPointerLeave: () => setHovered(null),
+    onFocus: () => setHovered({ dice, group: inGroup }),
+    onBlur: () => setHovered(null),
+  });
 
   // Ride the unit every frame: the camera is still panning to the pick, and the
   // player may orbit or zoom before deciding.
@@ -95,6 +106,7 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
             title={diceHint(n, inspired)}
             aria-label={`Roll ${n} ${n === 1 ? 'die' : 'dice'}`}
             onClick={guard(() => onPick(n, false))}
+            {...hover(n, false)}
           >
             {/* An inspired unit's first die is the war cry's sure 6, gold as in the roll. */}
             <DieFace pips={n} sure={inspired && i === 0} />
@@ -116,6 +128,7 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
                 title={groupHint(n, group.size, group.inspired)}
                 aria-label={`Roll ${n} ${n === 1 ? 'die' : 'dice'} for the group of ${group.size}`}
                 onClick={guard(() => onPick(n, true))}
+                {...hover(n, true)}
               >
                 <DieFace pips={n} sure={group.inspired && i === 0} />
               </button>
@@ -123,6 +136,18 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
           </div>
         </>
       ) : null}
+      {/* Always there, so the menu (which rides on its bottom edge) never jumps under the pointer. */}
+      <div className={`dice-menu-odds${odds ? ' live' : ''}`} aria-live="polite">
+        {odds ? (
+          <>
+            <strong>{hovered?.group ? `Group, ${odds.dice}` : odds.dice}</strong>
+            <span>{odds.act}</span>
+            <span className={odds.safe ? 'safe' : 'risk'}>{odds.risk}</span>
+          </>
+        ) : (
+          TURNOVER_COST
+        )}
+      </div>
     </div>
   );
 }
