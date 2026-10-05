@@ -17,6 +17,7 @@ import { Hud } from './Hud.js';
 import { SoundCuePanel } from './SoundCuePanel.js';
 import { devTools } from '../devTools.js';
 import { seatLabel, turnPhrase } from './hudView.js';
+import { sideNames } from './sides.js';
 import type { LogFocus } from './BattleLogView.js';
 import { appendEvents, emptyLog, type BattleLog } from './log.js';
 import { battleUnstarted, objective, zoneScore } from './modeView.js';
@@ -509,6 +510,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         interactive={myTurn || sandbox !== undefined}
         pickThrough={sandbox === undefined}
         localSeats={client.controlledSeats}
+        sideNames={sideNames(client.setup, client.controlledSeats)}
         liveTerrain={sandbox !== undefined}
         events={shown.events}
         onEventsPlayed={(ms) => {

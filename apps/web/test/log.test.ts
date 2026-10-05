@@ -9,7 +9,10 @@ function match(mode: GameMode | undefined, mapId?: string): GameState {
 }
 
 const items = (log: BattleLog): LogItem[] => log.rounds.flatMap((r) => r.groups.flatMap((g) => g.items));
-const lines = (log: BattleLog): string[] => items(log).map(itemText);
+/** What the sides are called against the AI, as the top bar shows them. */
+const VS_AI = ['You', 'AI'] as const;
+const lines = (log: BattleLog, names: readonly [string, string] = VS_AI): string[] =>
+  items(log).map((i) => itemText(i, names));
 /** The line one event makes on its own. */
 const lineFor = (s: GameState, e: GameEvent): string => lines(appendEvents(emptyLog(), s, [e])).at(-1)!;
 
@@ -28,30 +31,47 @@ describe('objective lines', () => {
   it('names the hill in king-of-the-hill scoring', () => {
     const hill = match('king-of-the-hill', 'rolling-hills');
     expect(lineFor(hill, { type: 'ScoreChanged', player: 1, points: 1, scores: [2, 3] })).toBe(
-      '★ P1 scores 1 for holding the hill 2–3',
+      '★ AI scores 1 for holding the hill 2–3',
     );
   });
 
   it('letters conquest zones like the HUD', () => {
     const conquest = match('conquest', 'crossroads');
     expect(lineFor(conquest, { type: 'ScoreChanged', player: 0, points: 1, scores: [4, 1], zone: 2 })).toBe(
-      '★ P0 scores 1 for holding zone C 4–1',
+      '★ You score 1 for holding zone C 4–1',
     );
   });
 
   it('tells flag events without coordinates', () => {
     const ctf = match('capture-the-flag', 'twin-towers');
     const u = ctf.units.find((x) => x.owner === 1)!;
-    expect(lineFor(ctf, { type: 'FlagPickedUp', player: 0, unitId: u.id })).toBe(`⚑ ${u.name} seizes P0's flag`);
+    expect(lineFor(ctf, { type: 'FlagPickedUp', player: 0, unitId: u.id })).toBe(`⚑ ${u.name} seizes your flag`);
     expect(lineFor(ctf, { type: 'FlagDropped', player: 0, unitId: u.id, at: { x: 3, y: 4 } })).toBe(
-      `⚑ ${u.name} drops P0's flag`,
+      `⚑ ${u.name} drops your flag`,
     );
-    expect(lineFor(ctf, { type: 'FlagCaptured', player: 1, unitId: u.id })).toMatch(/P1 captures it!$/);
+    expect(lineFor(ctf, { type: 'FlagCaptured', player: 1, unitId: u.id })).toMatch(/ — AI captures it!$/);
   });
 
   it('explains why the game ended only in objective modes', () => {
-    expect(lineFor(s, { type: 'GameOver', winner: 0 })).toBe('🏆 Game over — P0 wins');
-    expect(lineFor(s, { type: 'GameOver', winner: 1, reason: 'king' })).toBe('🏆 Game over — P1 wins (the King has fallen)');
+    expect(lineFor(s, { type: 'GameOver', winner: 0 })).toBe('🏆 Game over — you win');
+    expect(lineFor(s, { type: 'GameOver', winner: 1, reason: 'king' })).toBe('🏆 Game over — AI wins (the King has fallen)');
+  });
+});
+
+describe('side names', () => {
+  it('calls the sides what the top bar does, in grammatical sentences', () => {
+    expect(lineFor(s, { type: 'Turnover', player: 0, unitId: a.id })).toBe('✖ Turnover — you are benched for the round');
+    expect(lineFor(s, { type: 'Turnover', player: 1, unitId: d.id })).toBe('✖ Turnover — AI is benched for the round');
+    expect(lineFor(s, { type: 'WarbandBroken', player: 0 })).toBe('⚠ Your warband breaks!');
+    expect(lineFor(s, { type: 'WarbandBroken', player: 1 })).toBe("⚠ AI's warband breaks!");
+  });
+
+  it('uses the army names in hotseat, and the side colours with no names given', () => {
+    const log = appendEvents(emptyLog(), s, [{ type: 'GameOver', winner: 1 }]);
+    expect(lines(log, ['Iron Wardens', 'Ashfang Raiders'])).toEqual(['🏆 Game over — Ashfang Raiders wins']);
+    expect(items(log).map((i) => itemText(i))).toEqual(['🏆 Game over — Red wins']);
+    const broken = appendEvents(emptyLog(), s, [{ type: 'WarbandBroken', player: 0 }]);
+    expect(lines(broken, ['Iron Wardens', 'Ashfang Raiders'])).toEqual(["⚠ Iron Wardens' warband breaks!"]);
   });
 });
 
@@ -174,7 +194,7 @@ describe('grouping', () => {
     expect(g!.unit?.id).toBe(a.id);
     expect(g!.roll).toMatchObject({ dice: [5, 2], quality: 4, successes: 1 });
     expect(g!.open).toBe(false);
-    expect(g!.items.map(itemText)).toEqual([`➜ ${a.name} moves 4 hexes`]);
+    expect(g!.items.map((i) => itemText(i))).toEqual([`➜ ${a.name} moves 4 hexes`]);
     expect(g!.items[0]!.path).toHaveLength(5);
     expect(partsText(g!.items[0]!.brief!)).toBe('➜ 4 hexes');
   });
@@ -226,7 +246,8 @@ describe('grouping', () => {
       { type: 'ScoreChanged', player: 0, points: 1, scores: [1, 0] },
       { type: 'UnitKilled', unitId: d.id, byId: null },
     ]);
-    expect(log.callout).toMatchObject({ tone: 'objective', text: '★ P0 scores 1 1–0' });
+    expect(log.callout).toMatchObject({ tone: 'objective' });
+    expect(itemText(log.callout!, VS_AI)).toBe('★ You score 1 1–0');
     expect(emptyLog().callout).toBeNull();
   });
 

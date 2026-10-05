@@ -4,6 +4,7 @@ import { BoardCanvas } from './BoardCanvas.js';
 import { downloadReplay } from '../game/replay-io.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import { buildLog } from './log.js';
+import { COLOR_NAMES, sideDoes } from './sides.js';
 
 interface Props {
   replay: Replay;
@@ -74,7 +75,7 @@ export function ReplayScreen({ replay, onExit }: Props): JSX.Element {
 
   const atEnd = index >= total;
   const winnerLine =
-    state.phase === 'gameOver' && state.winner !== null ? `Player ${state.winner} wins` : null;
+    state.phase === 'gameOver' && state.winner !== null ? sideDoes(COLOR_NAMES, state.winner, 'wins', true) : null;
 
   return (
     <div className="game">

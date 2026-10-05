@@ -14,6 +14,7 @@ import {
 import { zoneTallies, type ZoneTally } from '../game/roundScoring.js';
 import type { BoardMarker, HexOverlay, UnitBadge, ZoneScore } from '../three/BoardView.js';
 import { CONQUEST_LABELS, MODE_LABELS, ZONE_COLORS } from './editorView.js';
+import { COLOR_NAMES, sideDoes, sideName, sidePossessive, type SideNames } from './sides.js';
 
 // Pure game-mode presentation (no DOM): the HUD's mode panel and the board's
 // objective overlays, flag markers and unit badges, so it can be unit-tested.
@@ -37,7 +38,8 @@ const GOALS = {
 /** How annihilation is won — and the fallback that wins every other mode too. */
 export const ANNIHILATION_GOAL = 'Destroy the enemy warband';
 
-const holderText = (holder: Owner | undefined): string => (holder === undefined ? '—' : `P${holder}`);
+const holderText = (names: SideNames, holder: Owner | undefined): string =>
+  holder === undefined ? '—' : sideName(names, holder, true);
 
 /** " · ends after round N" when the game has a round limit, else "". */
 const limitText = (state: GameState): string => {
@@ -45,8 +47,11 @@ const limitText = (state: GameState): string => {
   return limit === undefined ? '' : ` · ends after round ${limit}`;
 };
 
-/** The HUD's mode panel, or null in annihilation without a round limit (which shows no panel). */
-export function modeHud(state: GameState): ModeHud | null {
+/**
+ * The HUD's mode panel, or null in annihilation without a round limit (which
+ * shows no panel). `names` are what the top bar calls the sides.
+ */
+export function modeHud(state: GameState, names: SideNames = COLOR_NAMES): ModeHud | null {
   const m = state.mode;
   if (!m) {
     if (roundLimitOf(state) === undefined) return null;
@@ -58,7 +63,7 @@ export function modeHud(state: GameState): ModeHud | null {
   if (m.mode === 'kill-the-king') {
     m.kings?.forEach((id, p) => {
       const king = unitById(state, id);
-      if (king) lines.push(`P${p} King: ${king.name}${king.dead ? ' (fallen)' : king.knockedDown ? ' (knocked down)' : ''}`);
+      if (king) lines.push(`${sidePossessive(names, p as Owner, true)} King: ${king.name}${king.dead ? ' (fallen)' : king.knockedDown ? ' (knocked down)' : ''}`);
     });
     return { label, goal: GOALS[m.mode] + limitText(state), scores: null, lines };
   }
@@ -67,11 +72,11 @@ export function modeHud(state: GameState): ModeHud | null {
     m.flags?.forEach((flag, p) => {
       const carrier = flag.carrier ? unitById(state, flag.carrier) : undefined;
       const where = carrier
-        ? `carried by ${carrier.name} (P${carrier.owner})`
+        ? `carried by ${carrier.name} (${sideName(names, carrier.owner, true)})`
         : flagAtBase(state, p as Owner)
           ? 'at base'
           : `dropped at (${flag.at.x}, ${flag.at.y})`;
-      lines.push(`P${p} flag: ${where}`);
+      lines.push(`${sidePossessive(names, p as Owner, true)} flag: ${where}`);
     });
     return { label, goal: GOALS[m.mode] + limitText(state), scores: null, lines };
   }
@@ -79,17 +84,17 @@ export function modeHud(state: GameState): ModeHud | null {
   if (m.mode === 'golden-pig') {
     const pig = m.pig ? unitById(state, m.pig.unitId) : undefined;
     if (m.pig && pig) {
-      lines.push(`P${m.pig.escort} escorts the Pig${pig.dead ? ' (fallen)' : pig.knockedDown ? ' (knocked down)' : ''}`);
-      lines.push(`P${m.pig.escort === 0 ? 1 : 0} wins by killing it, or when time runs out`);
+      lines.push(`${sideDoes(names, m.pig.escort, 'escorts', true)} the Pig${pig.dead ? ' (fallen)' : pig.knockedDown ? ' (knocked down)' : ''}`);
+      lines.push(`${sideDoes(names, m.pig.escort === 0 ? 1 : 0, 'wins', true)} by killing it, or when time runs out`);
     }
     return { label, goal: GOALS[m.mode] + limitText(state), scores: null, lines };
   }
 
   const zones = scoringZones(state);
   if (m.mode === 'king-of-the-hill') {
-    if (zones[0]) lines.push(`Hill: ${holderText(zoneController(state, zones[0]))}`);
+    if (zones[0]) lines.push(`Hill: ${holderText(names, zoneController(state, zones[0]))}`);
   } else {
-    lines.push(zones.map((z, i) => `${CONQUEST_LABELS[i]}: ${holderText(zoneController(state, z))}`).join(' · '));
+    lines.push(zones.map((z, i) => `${CONQUEST_LABELS[i]}: ${holderText(names, zoneController(state, z))}`).join(' · '));
   }
   const goal = `First to ${targetScoreOf(state)} points${limitText(state)}`;
   return { label, goal, scores: [m.scores[0], m.scores[1]], lines };

@@ -5,7 +5,8 @@ import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
 import { BROKEN_HELP, INSPIRED_HELP, WAR_CRY_HELP, breaksAtHelp, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
-import type { BattleLog } from './log.js';
+import { itemText, type BattleLog } from './log.js';
+import { sideNames } from './sides.js';
 import { modeHud, objective } from './modeView.js';
 import { StatIcons } from './StatIcons.js';
 
@@ -88,7 +89,8 @@ export function Hud(props: Props): JSX.Element {
   const selected = selectedUnitId ? unitById(state, selectedUnitId) : null;
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
   const banner = statusBanner(status);
-  const mode = modeHud(state);
+  const names = sideNames(setup, controlledSeats);
+  const mode = modeHud(state, names);
   // Always on show, annihilation included: nobody should have to guess how to win.
   const goal = objective(state);
   const callout = props.log.callout;
@@ -208,7 +210,7 @@ export function Hud(props: Props): JSX.Element {
         {callout?.tone === 'objective' ? (
           // Keyed by entry id so each new scoring/flag event replays the fade-in/out animation.
           <div key={callout.id} className="callout">
-            {callout.text}
+            {itemText(callout, names)}
           </div>
         ) : null}
       </div>
@@ -231,7 +233,7 @@ export function Hud(props: Props): JSX.Element {
             ⟵ New match
           </button>
         </div>
-        {logOpen ? <BattleLogView log={props.log} onFocus={props.onLogFocus} onInspect={props.onInspect} /> : null}
+        {logOpen ? <BattleLogView log={props.log} names={names} onFocus={props.onLogFocus} onInspect={props.onInspect} /> : null}
       </div>
 
       {shownUnitId || acting ? (
