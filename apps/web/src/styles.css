@@ -958,6 +958,44 @@ button.ghost {
   color: var(--muted);
 }
 
+/* A modifier chip says what it is on hover; the card stays up meanwhile (rollOverlay.ts). */
+.roll-mod[data-help] {
+  position: relative;
+  cursor: help;
+  pointer-events: auto;
+}
+
+.roll-mod[data-help]:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.roll-mod[data-help]:hover::after {
+  content: attr(data-help);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: -4px;
+  z-index: 1;
+  width: max-content;
+  max-width: 260px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: normal;
+  color: var(--text);
+  background: rgba(22, 27, 34, 0.97);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* The defender's card sits in the right-hand corner: its tooltips open leftward. */
+.roll-card.defender .roll-mod[data-help]:hover::after {
+  right: -4px;
+  left: auto;
+}
+
 .roll-total {
   margin-top: 4px;
   font-size: 22px;
@@ -1098,6 +1136,8 @@ button.ghost {
 }
 
 .strip-mod {
+  cursor: help;
+  pointer-events: auto;
   font-weight: 700;
   color: var(--accent);
 }
@@ -2556,6 +2596,12 @@ button.secondary {
   opacity: 0.8;
 }
 
+.attack-menu-scores {
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+
 .attack-menu-hint {
   font-size: 11px;
   line-height: 1.4;
@@ -3948,6 +3994,43 @@ button.trait-add[aria-expanded='true'] {
 }
 .hex-tooltip .info-trait strong {
   color: var(--text);
+}
+
+/* Each side's score in the fight a click would start, as the roll card's chips (hover tooltip and attack menu). */
+.hex-tooltip .info-score,
+.attack-menu-scores .info-score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin-top: 3px;
+}
+.hex-tooltip .info-score-who,
+.attack-menu-scores .info-score-who {
+  margin-right: 2px;
+  font-weight: 600;
+}
+.hex-tooltip .info-mod,
+.attack-menu-scores .info-mod {
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.hex-tooltip .info-mod b,
+.attack-menu-scores .info-mod b {
+  color: var(--accent);
+}
+.hex-tooltip .info-mod.zero b,
+.attack-menu-scores .info-mod.zero b {
+  color: var(--muted);
+}
+.hex-tooltip .info-score-total,
+.attack-menu-scores .info-score-total {
+  margin-left: 2px;
+  font-weight: 700;
 }
 
 .unit-line {

@@ -1,4 +1,4 @@
-import type { GameEvent } from '@fansong/engine';
+import type { CombatScoring, GameEvent } from '@fansong/engine';
 
 /**
  * Presentation of dice rolls: turns engine roll events into what the board's
@@ -10,6 +10,38 @@ import type { GameEvent } from '@fansong/engine';
 export interface RollModifier {
   label: string;
   value: number;
+}
+
+/**
+ * What each modifier on a roll card is and when it applies, keyed by its label.
+ * The card shows the amount; this says why it is there. Situational rules like
+ * Pincer and Outnumbered belong to no unit, so the card is the only place a
+ * player meets them.
+ */
+const MODIFIER_HELP: Record<string, string> = {
+  Combat: "The unit's own Combat score, before any situational bonus or penalty",
+  'High ground': 'Standing on a higher hex than its foe. Lost while knocked down',
+  Size: 'A Big unit fighting a smaller foe in melee',
+  Swoop: 'A flyer striking a foe on the ground. Lost while knocked down',
+  Opportunist: 'An Opportunist fighting or shooting a knocked-down foe',
+  Pincer:
+    'A standing friend holds the hex directly opposite the foe, catching it between them. Any unit on its feet gets it: a rule of the game, not a trait',
+  Rusher: "A Rusher's first attack after a Move that brought it into contact with this foe",
+  Woodwise: 'A Woodwise unit standing in a forest hex, on every combat roll',
+  Shieldwall: 'A Shieldwall unit defending against an attack while next to a standing friend',
+  Outnumbered: 'One less for each standing enemy in contact beyond the first. A Whirling unit on its feet is never outnumbered',
+  'Big target': 'Shooting at a Big unit: it is easier to hit',
+  'Flying target': 'Shooting at a flyer in the air: it has nowhere to take cover',
+  Sharpshooter: 'A Sharpshooter adds this to every shot it takes',
+  'Long range': "The target is beyond short range, the first half of the shooter's reach",
+  Cover: 'The target is in cover: in a forest, or only partly visible past a blocker',
+  'Aimed at': 'An aimed shot spends two actions to make its target defend worse',
+  'Power blow': 'A power blow spends two actions to make its target defend worse',
+};
+
+/** What a roll card's modifier is and when it applies, for its hover tooltip; undefined for an unknown label. */
+export function modifierHelp(label: string): string | undefined {
+  return MODIFIER_HELP[label];
 }
 
 /** One side of an opposed roll: its die, modifiers and total. */
@@ -93,6 +125,70 @@ function side(
 
 const minus = (n: number | undefined) => (n ? -n : undefined);
 
+type Extras = [label: string, value: number | undefined][];
+type Mods<K extends string> = { readonly [k in K]?: number };
+
+// The modifiers each side of a melee or a shot can carry, named as the cards
+// show them. Fed by a resolved event, or by `combatScoring` before the blow, so
+// the preview and the roll can't disagree about what a modifier is called.
+function meleeAttackExtras(m: Mods<'attackBonus' | 'attackBig' | 'attackFly' | 'attackOpportunist' | 'attackPincer' | 'attackRusher' | 'attackWoodwise' | 'attackOutnumbered'>): Extras {
+  return [['High ground', m.attackBonus], ['Size', m.attackBig], ['Swoop', m.attackFly], ['Opportunist', m.attackOpportunist], ['Pincer', m.attackPincer], ['Rusher', m.attackRusher], ['Woodwise', m.attackWoodwise], ['Outnumbered', minus(m.attackOutnumbered)]];
+}
+
+function meleeDefenseExtras(m: Mods<'defenseBonus' | 'defenseBig' | 'defenseOpportunist' | 'defenseShieldwall' | 'defenseWoodwise' | 'defenseOutnumbered' | 'powerPenalty'>): Extras {
+  return [['High ground', m.defenseBonus], ['Size', m.defenseBig], ['Opportunist', m.defenseOpportunist], ['Shieldwall', m.defenseShieldwall], ['Woodwise', m.defenseWoodwise], ['Outnumbered', minus(m.defenseOutnumbered)], ['Power blow', minus(m.powerPenalty)]];
+}
+
+function shotAttackExtras(m: Mods<'attackBonus' | 'bigTarget' | 'flyingTarget' | 'attackOpportunist' | 'attackSharpshooter' | 'attackWoodwise' | 'rangePenalty' | 'coverPenalty'>): Extras {
+  return [['High ground', m.attackBonus], ['Big target', m.bigTarget], ['Flying target', m.flyingTarget], ['Opportunist', m.attackOpportunist], ['Sharpshooter', m.attackSharpshooter], ['Woodwise', m.attackWoodwise], ['Long range', minus(m.rangePenalty)], ['Cover', minus(m.coverPenalty)]];
+}
+
+function shotDefenseExtras(m: Mods<'defenseBonus' | 'defenseWoodwise' | 'aimPenalty'>): Extras {
+  return [['High ground', m.defenseBonus], ['Woodwise', m.defenseWoodwise], ['Aimed at', minus(m.aimPenalty)]];
+}
+
+/** A score before its die: the unit's Combat, then each modifier that applies, as a roll card lists them. */
+export interface ScorePreview {
+  mods: RollModifier[];
+  /** What the die is added to. */
+  total: number;
+}
+
+/**
+ * Both sides' scores before the dice, for an attack or shot still being planned
+ * (see `combatScoring`), and a guarding target's riposte, which comes first.
+ */
+export function previewScores(scoring: CombatScoring): {
+  attack: ScorePreview;
+  defense: ScorePreview;
+  riposte?: { guard: ScorePreview; attacker: ScorePreview };
+} {
+  if (scoring.kind === 'shot') {
+    return {
+      attack: preview(scoring.attackBase, shotAttackExtras(scoring.mods)),
+      defense: preview(scoring.defenseBase, shotDefenseExtras(scoring.mods)),
+    };
+  }
+  const { riposte } = scoring;
+  return {
+    attack: preview(scoring.attackBase, meleeAttackExtras(scoring.mods)),
+    defense: preview(scoring.defenseBase, meleeDefenseExtras(scoring.mods)),
+    ...(riposte
+      ? {
+          riposte: {
+            guard: preview(riposte.attackBase, meleeAttackExtras(riposte.mods)),
+            attacker: preview(riposte.defenseBase, meleeDefenseExtras(riposte.mods)),
+          },
+        }
+      : {}),
+  };
+}
+
+function preview(total: number, extras: Extras): ScorePreview {
+  const { mods } = side('', '', 0, total, extras, 'tie');
+  return { mods, total };
+}
+
 function outcomes(a: number, b: number): [RollSide['outcome'], RollSide['outcome']] {
   if (a > b) return ['win', 'lose'];
   if (b > a) return ['lose', 'win'];
@@ -115,16 +211,14 @@ export function describeCombat(e: Combat, after: readonly GameEvent[] = []): Opp
     b = side(e.attackerId, 'Attack', e.attackerDie, e.attackerScore, [['High ground', e.attackerBonus], ['Size', e.attackerBig], ['Opportunist', e.attackerOpportunist], ['Woodwise', e.attackerWoodwise], ['Outnumbered', minus(e.attackerOutnumbered)]], ob);
   } else if (e.type === 'ShotResolved') {
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Big target', e.bigTarget], ['Flying target', e.flyingTarget], ['Opportunist', e.attackOpportunist], ['Sharpshooter', e.attackSharpshooter], ['Woodwise', e.attackWoodwise], ['Long range', minus(e.rangePenalty)], ['Cover', minus(e.coverPenalty)]], oa);
-    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Woodwise', e.defenseWoodwise], ['Aimed at', minus(e.aimPenalty)]], ob);
+    a = side(e.attackerId, e.aimPenalty ? 'Aimed shot' : 'Shoot', e.attackDie, e.attackScore, shotAttackExtras(e), oa);
+    b = side(e.targetId, 'Defend', e.defenseDie, e.defenseScore, shotDefenseExtras(e), ob);
   } else {
     const hack = e.type === 'FreeHackResolved';
     const power = e.type === 'AttackResolved' ? e.powerPenalty : undefined;
-    const rusher = e.type === 'AttackResolved' ? e.attackRusher : undefined;
-    const shieldwall = e.type === 'AttackResolved' ? e.defenseShieldwall : undefined;
     const [oa, ob] = outcomes(e.attackScore, e.defenseScore);
-    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, [['High ground', e.attackBonus], ['Size', e.attackBig], ['Swoop', e.attackFly], ['Opportunist', e.attackOpportunist], ['Pincer', e.attackPincer], ['Rusher', rusher], ['Woodwise', e.attackWoodwise], ['Outnumbered', minus(e.attackOutnumbered)]], oa);
-    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, [['High ground', e.defenseBonus], ['Size', e.defenseBig], ['Opportunist', e.defenseOpportunist], ['Shieldwall', shieldwall], ['Woodwise', e.defenseWoodwise], ['Outnumbered', minus(e.defenseOutnumbered)], ['Power blow', minus(power)]], ob);
+    a = side(e.attackerId, hack ? 'Free hack' : power ? 'Power blow' : 'Attack', e.attackDie, e.attackScore, meleeAttackExtras(e), oa);
+    b = side(e.targetId, hack ? 'Leaving' : 'Defend', e.defenseDie, e.defenseScore, meleeDefenseExtras(e), ob);
   }
 
   // A higher total that did nothing: a shot never hurts the shooter, a unit

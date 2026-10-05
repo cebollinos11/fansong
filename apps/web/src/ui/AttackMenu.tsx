@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ActionPlan } from '@fansong/engine';
+import type { HexLine } from './hexInfo.js';
 import { usePressGuard } from './pressGuard.js';
+import { InfoLines } from './StatIcons.js';
 
 /** Which weapon the menu is offering — melee blows or ranged shots. */
 export type AttackKind = 'melee' | 'ranged';
@@ -16,6 +18,8 @@ export interface AttackChoice {
   /** Each option's chance to win, as the hover tooltip quotes it (see `oddsLine`). */
   plainOdds?: string | null;
   pressedOdds?: string | null;
+  /** Both sides' modifiers for the fight (see `fightScores`), shown once for both options. */
+  scores?: HexLine[];
   /** Actions the unit holds, so the menu can say what each choice leaves over. */
   actionsRemaining: number;
   /** Where the click landed, in viewport coordinates; the menu opens above it. */
@@ -110,6 +114,11 @@ export function AttackMenu({ choice, onPick, onCancel }: Props): JSX.Element {
       onPointerDown={onMenuPointerDown}
     >
       <div className="attack-menu-title">{choice.targetName}</div>
+      {choice.scores && choice.scores.length > 0 ? (
+        <div className="attack-menu-scores">
+          <InfoLines lines={choice.scores} />
+        </div>
+      ) : null}
       <button type="button" className="primary" onClick={guard(() => onPick(false))}>
         <span className="attack-menu-label">
           {approach ? words.approach : words.plain}

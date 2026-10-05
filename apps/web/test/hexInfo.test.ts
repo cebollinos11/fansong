@@ -1,7 +1,8 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
-import { unitMove, type GameState, type Unit } from '@fansong/engine';
+import { unitMove, type GameState, type Unit, type Vec } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { describeHex, oddsLine, type HexLine } from '../src/ui/hexInfo.js';
+import { describeHex, fightScores, oddsLine, type HexLine, type HexScore } from '../src/ui/hexInfo.js';
+import { modifierHelp } from '../src/ui/rollView.js';
 import type { PlanPreview } from '../src/game/planView.js';
 import { INSPIRED_HELP, TRAIT_HELP } from '../src/ui/hudView.js';
 
@@ -161,6 +162,60 @@ describe('describeHex with a plan', () => {
     const pressed = oddsLine(live, { ...plan, pressed: true });
     expect(plain).toMatch(/^Win \d+%/);
     expect(win(pressed)).toBeGreaterThan(win(plain));
+  });
+
+  it("shows each side's modifiers, and spells them out once the pointer rests", () => {
+    // The striker at (3,2) and a friend at (3,4) catch the target at (3,3) between them.
+    const [a, friend] = state.units.filter((u) => u.owner === 0);
+    const target = state.units.find((u) => u.owner === 1)!;
+    const at: Record<string, Vec> = { [a!.id]: { x: 3, y: 2 }, [friend!.id]: { x: 3, y: 4 }, [target.id]: { x: 3, y: 3 } };
+    const live: GameState = {
+      ...state,
+      board: { ...state.board, terrain: {}, blocked: [] },
+      phase: 'acting',
+      activeUnitId: a!.id,
+      units: state.units.map((u) => ({ ...u, pos: at[u.id] ?? { x: 20 + state.units.indexOf(u), y: 20 } })),
+    };
+    const here = { x: 3, y: 2 };
+    const plan: PlanPreview = { kind: 'attack', cost: 1, path: [here], waypoints: [], provokes: 0, targetId: target.id };
+    const quick = describeHex(live, at[target.id]!, plan)!.lines;
+    const scores = quick.filter((l): l is HexScore => typeof l === 'object' && 'mods' in l);
+    expect(scores.map((l) => l.name)).toEqual([a!.name, target.name]);
+    const [mine, theirs] = scores;
+    expect(mine!.mods[0]).toEqual({ label: 'Combat', value: a!.combat });
+    expect(mine!.mods).toContainEqual({ label: 'Pincer', value: 1 });
+    expect(mine!.total).toBe(mine!.mods.reduce((sum, m) => sum + m.value, 0));
+    expect(theirs!.mods[0]).toEqual({ label: 'Combat', value: target.combat });
+    // The quick glance names the modifiers; resting on the hex says what they are.
+    expect(quick.some((l) => typeof l === 'object' && 'trait' in l && l.trait === '+1 Pincer')).toBe(false);
+    const rested = describeHex(live, at[target.id]!, plan, true)!.lines;
+    expect(rested).toContainEqual({ trait: '+1 Pincer', help: modifierHelp('Pincer') });
+  });
+
+  it("puts a guarding target's riposte first", () => {
+    const attacker = state.units.find((u) => u.owner === 0)!;
+    const target = state.units.find((u) => u.owner === 1)!;
+    const live: GameState = {
+      ...state,
+      phase: 'acting',
+      activeUnitId: attacker.id,
+      units: state.units.map((u) =>
+        u.id === target.id ? { ...u, guarding: true, traits: { ...u.traits, guard: true } } : u,
+      ),
+    };
+    const plan = { kind: 'attack' as const, targetId: target.id, path: [cell] };
+    const scores = fightScores(live, plan);
+    expect(scores[0]).toBe(`On guard: ${target.name} ripostes first`);
+    expect(scores.map((l) => (typeof l === 'object' && 'mods' in l ? l.name : l))).toEqual([
+      `On guard: ${target.name} ripostes first`,
+      target.name,
+      attacker.name,
+      'Then the blow',
+      attacker.name,
+      target.name,
+    ]);
+    // The attack menu shows these once for both of its options, so no "Power blow" chip.
+    expect(JSON.stringify(scores)).not.toContain('Power blow');
   });
 
   it('leaves the tooltip alone when there is no plan for the hex', () => {

@@ -1,4 +1,4 @@
-import { signed, type ActivationRoll, type NerveRoll, type OpposedRoll, type RollSide, type RollVerdict } from '../ui/rollView.js';
+import { modifierHelp, signed, type ActivationRoll, type NerveRoll, type OpposedRoll, type RollSide, type RollVerdict } from '../ui/rollView.js';
 import { COLOR_NAMES } from '../ui/sides.js';
 
 /**
@@ -38,6 +38,7 @@ export const NERVE_ROLL_MS = NERVE_RESOLVE_MS + 500;
 /** How long a card lingers after its result, for callers sizing a card's life. */
 export const ROLL_LINGER_MS = 900;
 const LEAVE_MS = 250; // fade-out at the end of a card's life
+const HOLD_MS = 600; // how long a card lingers after the pointer leaves the chip that held it
 const VERDICT_MS = 1700;
 const STAMP_MS = 2600; // a gruesome kill's headline stays up longer
 /** Where a gruesome kill's headline sits, as a fraction of the view's height: above the fight, clear of the dice. */
@@ -120,6 +121,8 @@ interface Card {
   reveals: Reveal[];
   endAt: number;
   leaving: boolean;
+  /** The pointer is on one of its modifier chips: the card stays up while its tooltip is read. */
+  held?: boolean;
 }
 
 /** What a zone's verdict says as it is scored at a round's end. */
@@ -215,6 +218,7 @@ export class RollOverlay {
       s.mods.forEach((m) => {
         const chip = h('span', `roll-mod${m.value === 0 ? ' zero' : ''}`);
         chip.append(h('b', '', signed(m.value)), document.createTextNode(` ${m.label}`));
+        this.explain(card, chip, m.label);
         line.append(chip);
         this.reveal(card, chip, now);
       });
@@ -350,6 +354,14 @@ export class RollOverlay {
     this.layer.classList.toggle('compact', this.compact());
 
     this.cards = this.cards.filter((c) => {
+      if (c.held && c.endAt < now + LEAVE_MS + HOLD_MS) {
+        // Kept up while the pointer is on it, and back from fading if it had begun to.
+        c.endAt = now + LEAVE_MS + HOLD_MS;
+        if (c.leaving) {
+          c.leaving = false;
+          c.el.classList.remove('leaving');
+        }
+      }
       if (now >= c.endAt) {
         c.el.remove();
         return false;
@@ -513,7 +525,13 @@ export class RollOverlay {
       const mods = s.mods.reduce((sum, m) => sum + m.value, 0);
       if (s.mods.length > 0) {
         const chip = h('span', `strip-mod${mods === 0 ? ' zero' : ''}`, signed(mods));
-        chip.title = s.mods.map((m) => `${signed(m.value)} ${m.label}`).join(', ');
+        chip.title = s.mods
+          .map((m) => {
+            const help = modifierHelp(m.label);
+            return `${signed(m.value)} ${m.label}${help ? ` — ${help}` : ''}`;
+          })
+          .join('\n');
+        this.hold(card, chip);
         line.append(chip);
       }
       line.append(h('span', 'strip-total', `= ${s.total}`));
@@ -613,6 +631,20 @@ export class RollOverlay {
     d.face = face;
     const on = DIE_PIPS[face] ?? [];
     d.pips.forEach((p, i) => p.classList.toggle('on', on.includes(i)));
+  }
+
+  /** Give a modifier chip its hover tooltip: what the modifier is and when it applies. */
+  private explain(card: Card, chip: HTMLElement, label: string): void {
+    const help = modifierHelp(label);
+    if (!help) return;
+    chip.dataset.help = help;
+    this.hold(card, chip);
+  }
+
+  /** While the pointer is on `el`, its card stays up. */
+  private hold(card: Card, el: HTMLElement): void {
+    el.addEventListener('pointerenter', () => (card.held = true));
+    el.addEventListener('pointerleave', () => (card.held = false));
   }
 
   private reveal(card: Card, el: HTMLElement, at: number, cls = 'shown'): void {
