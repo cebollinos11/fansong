@@ -154,9 +154,9 @@ describe('army builder helpers', () => {
     expect(units[0]!.name).toBe('Soldier');
     expect(blankUnit(units).name).toBe('Soldier 2');
     expect(uniqueName('X', [])).toBe('X');
-    const bow = PRESETS['iron-wardens-large']!.units.find((u) => u.name === 'Longbow')!;
-    expect(templateUnit(bow, [bow])).toMatchObject({ name: 'Longbow 2', look: 'Longbow', shooter: 'long' });
-    expect(armyFromPreset('iron-wardens-small').units.map((u) => u.look)).toEqual(['Warden-Captain', 'Ironguard', 'Crossbow']);
+    const bow = PRESETS['iron-wardens-medium']!.units.find((u) => u.name === 'Crossbow')!;
+    expect(templateUnit(bow, [bow])).toMatchObject({ name: 'Crossbow 2', look: 'Crossbow', shooter: 'long' });
+    expect(armyFromPreset('wolf-pack-small').units.map((u) => u.look)).toEqual(['Wolf', 'Wolf', 'Wolf']);
   });
 
   it('tints a unit and drops the key when the tint is switched off', () => {

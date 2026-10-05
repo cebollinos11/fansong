@@ -149,10 +149,12 @@ seed replays identically).
 - **Validation** (`validateWarband`) — checks stat ranges and roster size,
   reporting every problem at once for a builder UI. There is no point limit:
   the total cost is shown next to each warband's name so players can agree on a size.
-- **Presets** — four original warbands (`iron-wardens`, `ashfang-raiders`,
-  `bonefield-legion`, `wild-menagerie`), each in three sizes (`-small`: 3 units, about 120 points;
-  `-medium`: about 250; `-large`: about 400). Between them they field every trait, and each is
-  proven legal by the test suite.
+- **Presets** — eleven original warbands, each a different family at one size, which
+  its id ends in (`-small`: 3 or 4 units, about 120 points; `-medium`: about 250;
+  `-large`: about 400). Medium: `iron-wardens`, `ashfang-raiders`, `goblin-rabble`,
+  `free-company`, `night-haunt`, `greenwood-elves`. Large: `bonefield-legion`,
+  `wild-menagerie`. Small: `gryphon-eyrie`, `wolf-pack`, `hogwallow-farm`. Between
+  them they field every trait, and each is proven legal by the test suite.
 - **Deploy** (`buildMatch`) — lays two warbands out facing off and emits an
   engine `GameConfig`; the CLI and any future UI share it.
 
@@ -241,7 +243,7 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
     attack outright (resolved synchronously — no turn interrupts).
 
   The AI (`chooseCommand`) uses them: shooters seek a standoff and fire, and the
-  `iron-wardens` presets field all three.
+  Iron Wardens field all three.
 
 - **Morale depth** — beyond the activation turnover:
   - **Fear** — when a unit suffers a gruesome kill in combat, standing friends

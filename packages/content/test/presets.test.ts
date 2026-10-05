@@ -34,7 +34,7 @@ describe('preset warbands', () => {
     for (const trait of traits) expect(unitCost({ ...priced, [trait]: true }), trait).not.toBe(unitCost(priced));
   });
 
-  it('comes in three sizes: 3 units near 120 points, and near 250 and 400', () => {
+  it('comes in three sizes: 3 or 4 units near 120 points, and near 250 and 400', () => {
     const bands = { small: [105, 135], medium: [235, 265], large: [380, 420] } as const;
     for (const id of PRESET_IDS) {
       const size = id.slice(id.lastIndexOf('-') + 1) as keyof typeof bands;
@@ -42,7 +42,7 @@ describe('preset warbands', () => {
       const cost = warbandCost(PRESETS[id]!);
       expect(cost, `${id} costs ${cost}`).toBeGreaterThanOrEqual(min);
       expect(cost, `${id} costs ${cost}`).toBeLessThanOrEqual(max);
-      if (size === 'small') expect(PRESETS[id]!.units).toHaveLength(3);
+      if (size === 'small') expect(PRESETS[id]!.units.length).toBeLessThanOrEqual(4);
     }
   });
 
