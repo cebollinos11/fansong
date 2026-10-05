@@ -4443,3 +4443,924 @@ button.trait-add[aria-expanded='true'] {
 .dice-menu-odds .safe {
   color: var(--accent);
 }
+
+/* --- Setup screen layout trial (ui/SetupVariants.tsx) --------------------- */
+/* Three takes on the setup screen in the main menu's look: navy night, gold
+   Cinzel headings, Alegreya Sans, units standing on grass hexes. */
+.muster {
+  --gold: #e8be62;
+  --gold-dim: #7d6a3c;
+  --ink: #f1e9d8;
+  --ink-2: #c9c2b2;
+  --ink-3: #a7a195;
+  --well: rgba(14, 18, 32, 0.6);
+  --zoom: 1.5;
+  --unit: calc(72px * var(--zoom));
+  position: relative;
+  min-height: 100%;
+  padding: 28px max(40px, env(safe-area-inset-right)) 28px max(40px, env(safe-area-inset-left));
+  background: radial-gradient(circle at 50% 40%, #2b3454 0%, #0e1220 62%) fixed;
+  color: var(--ink);
+  font: 16px/1.45 'Alegreya Sans', system-ui, sans-serif;
+}
+
+.muster h1 {
+  margin: 0;
+  font: 800 40px/1.05 'Cinzel', Georgia, serif;
+  letter-spacing: 3px;
+  color: var(--gold);
+}
+
+.muster button {
+  border-radius: 3px;
+  color: var(--ink);
+  background: var(--well);
+  border-color: #4a4f66;
+}
+
+.muster button:hover:not(:disabled) {
+  border-color: var(--gold);
+}
+
+.muster :focus-visible {
+  outline-color: var(--gold);
+}
+
+/* The menu hides all but its leaders when narrow: these scenes choose for themselves. */
+.muster .menu-unit:not(.leader) {
+  display: block;
+}
+
+.muster-label {
+  display: block;
+  font: 600 12px 'Cinzel', Georgia, serif;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: #b9a26a;
+}
+
+.side-label-0 {
+  color: #8cbcff;
+}
+
+.side-label-1 {
+  color: #ff9a8e;
+}
+
+.muster-meta {
+  color: var(--ink-3);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.muster-blurb {
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+.muster-top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.muster button.muster-back {
+  padding: 8px 14px;
+  background: transparent;
+  font-size: 15px;
+}
+
+.muster button.muster-start {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  background: var(--gold);
+  border: 1px solid var(--gold);
+  color: #1b1407;
+  font: 800 22px 'Cinzel', Georgia, serif;
+  letter-spacing: 3px;
+}
+
+.muster button.muster-start:hover:not(:disabled) {
+  background: #f3d083;
+}
+
+.muster-error {
+  margin: 0 0 8px;
+  color: #ff9a8e;
+}
+
+.muster button.muster-link {
+  padding: 2px 6px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--gold);
+  text-decoration: underline;
+}
+
+.muster-advanced {
+  margin-top: 10px;
+  color: var(--ink-3);
+  font-size: 14px;
+}
+
+.muster-advanced summary {
+  cursor: pointer;
+}
+
+.muster-advanced label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 12px 0 0;
+}
+
+.muster input[type='number'] {
+  width: 90px;
+  padding: 4px 8px;
+  background: var(--well);
+  color: var(--ink);
+  border: 1px solid #4a4f66;
+  border-radius: 3px;
+  font: inherit;
+}
+
+.muster-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+
+.muster-check input {
+  accent-color: var(--gold);
+}
+
+/* Mode tiles. */
+.mode-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.muster button.mode-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 12px;
+  border-color: var(--gold-dim);
+  text-align: left;
+}
+
+.muster button.mode-tile.on {
+  background: color-mix(in srgb, var(--gold) 22%, #0e1220);
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold);
+}
+
+.muster button.mode-tile:disabled {
+  opacity: 0.35;
+  border-color: #3a3f52;
+}
+
+.mode-glyph {
+  color: var(--gold);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.mode-name {
+  font: 600 14px 'Cinzel', Georgia, serif;
+  letter-spacing: 1px;
+}
+
+.mode-tiles.with-blurbs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.muster .mode-tiles.with-blurbs button.mode-tile {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'glyph name' 'glyph blurb';
+  grid-template-columns: 30px 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+  align-items: center;
+  align-content: center;
+  justify-items: start;
+  padding: 10px 12px;
+}
+
+.mode-tiles.with-blurbs .mode-glyph {
+  grid-area: glyph;
+  justify-self: center;
+  font-size: 26px;
+}
+
+.mode-tiles.with-blurbs .mode-name {
+  grid-area: name;
+}
+
+.mode-blurb {
+  grid-area: blurb;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.3;
+}
+
+/* Steppers, the escort switch, game length. */
+.length-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stepper-label {
+  color: var(--ink-2);
+  margin-right: 4px;
+}
+
+.muster .stepper button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.stepper-value {
+  min-width: 2.2ch;
+  text-align: center;
+  font: 600 18px 'Cinzel', Georgia, serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.segmented {
+  display: inline-flex;
+}
+
+.muster .segmented button {
+  padding: 6px 14px;
+  border-radius: 0;
+}
+
+.muster .segmented button + button {
+  margin-left: -1px;
+}
+
+.muster .segmented button.on {
+  background: color-mix(in srgb, var(--gold) 22%, #0e1220);
+  border-color: var(--gold);
+  position: relative;
+}
+
+/* A map as a card: thumbnail, then its name. */
+.muster .map-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px;
+  border-color: var(--gold-dim);
+}
+
+.map-card .map-thumb {
+  border-radius: 2px;
+}
+
+.map-card-text {
+  display: grid;
+  gap: 2px;
+}
+
+.map-card-text strong,
+.fo-name strong,
+.wt-name strong,
+.mb-row strong,
+.wt-summary strong {
+  font: 600 20px 'Cinzel', Georgia, serif;
+  letter-spacing: 1px;
+}
+
+.muster .picker-caret {
+  color: var(--gold);
+}
+
+/* Roster lines. */
+.unit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.unit-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto 28px auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(185, 162, 106, 0.18);
+}
+
+.unit-row-sprite .unit-sprite {
+  width: 44px;
+  height: 44px;
+}
+
+.unit-row-main {
+  display: grid;
+  min-width: 0;
+}
+
+.unit-row-name {
+  font-weight: 700;
+}
+
+.unit-row.king .unit-row-name {
+  color: var(--gold);
+}
+
+.unit-row-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.trait-tag {
+  padding: 0 6px;
+  border: 1px solid rgba(185, 162, 106, 0.35);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: help;
+}
+
+.unit-row-cost {
+  white-space: nowrap;
+  color: var(--ink-3);
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.unit-row-cost::after {
+  content: ' pts';
+}
+
+.muster button.crown {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  color: #5c5a66;
+  font-size: 18px;
+}
+
+.muster button.crown.on {
+  color: var(--gold);
+  border-color: var(--gold-dim);
+}
+
+/* The layout switcher. */
+.variant-switch {
+  position: fixed;
+  right: 12px;
+  top: 12px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(8, 10, 18, 0.85);
+  border: 1px solid #4a4f66;
+  border-radius: 6px;
+  font: 13px 'Alegreya Sans', system-ui, sans-serif;
+}
+
+.variant-switch button {
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 3px;
+  background: transparent;
+  color: #c9c2b2;
+}
+
+.variant-switch button.on {
+  background: #e8be62;
+  border-color: #e8be62;
+  color: #1b1407;
+}
+
+/* --- A · Face-off --- */
+.muster-a {
+  --zoom: 2;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 18px;
+  min-height: 100vh;
+}
+
+.fo-arena {
+  align-self: center;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 120px;
+  align-items: start;
+}
+
+.fo-vs {
+  position: absolute;
+  left: 50%;
+  top: calc(var(--unit) * 0.55);
+  transform: translateX(-50%);
+  font: 800 54px 'Cinzel', Georgia, serif;
+  color: var(--gold);
+  text-shadow: 0 2px 18px rgba(232, 190, 98, 0.35);
+}
+
+.fo-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 0;
+}
+
+.fo-scene {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 2px 0 4px;
+}
+
+.fo-scene .menu-unit:not(.leader) {
+  transform: scale(0.82);
+  transform-origin: bottom;
+  margin: 0 -14px;
+  filter: brightness(0.82);
+}
+
+.fo-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.muster button.fo-arrow {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: transparent;
+  border-color: var(--gold-dim);
+  color: var(--gold);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.muster button.fo-name {
+  min-width: 260px;
+  justify-content: center;
+  padding: 8px 16px;
+  border-color: var(--gold-dim);
+}
+
+.fo-name strong {
+  font-size: 24px;
+}
+
+.fo-side .muster-meta {
+  margin: 4px 0 6px;
+}
+
+.fo-roster {
+  width: min(460px, 100%);
+  text-align: left;
+}
+
+.fo-roster summary {
+  cursor: pointer;
+  text-align: center;
+  color: var(--ink-2);
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.fo-field {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) 260px;
+  gap: 24px;
+  align-items: start;
+  padding: 18px;
+  background: rgba(10, 13, 24, 0.55);
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
+}
+
+.fo-rules-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.fo-go {
+  align-self: center;
+}
+
+/* --- B · Muster list --- */
+.muster-b {
+  --zoom: 1.6;
+  display: grid;
+  grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: 'head stage' 'rows stage';
+  gap: 22px 48px;
+  min-height: 100vh;
+  padding-left: max(72px, env(safe-area-inset-left));
+}
+
+.mb-head {
+  grid-area: head;
+}
+
+.mb-head .muster-back {
+  margin-bottom: 14px;
+}
+
+.mb-head h1 {
+  font-size: 54px;
+}
+
+.mb-head p {
+  margin: 6px 0 0;
+  color: var(--ink-2);
+  font-size: 18px;
+}
+
+.mb-rows {
+  grid-area: rows;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.muster button.mb-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 62px;
+  padding: 6px 18px;
+  border-color: var(--gold-dim);
+  text-align: left;
+}
+
+.muster button.mb-row.open {
+  border-color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 12%, #0e1220);
+}
+
+.mb-row.side-0 {
+  box-shadow: inset 3px 0 0 #4f9dff;
+}
+
+.mb-row.side-1 {
+  box-shadow: inset 3px 0 0 #ff6b5b;
+}
+
+.mb-row-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.mb-row-detail {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.mb-drawer {
+  padding: 12px 14px;
+  margin: -4px 0 4px;
+  background: rgba(10, 13, 24, 0.7);
+  border: 1px solid var(--gold-dim);
+  border-top: none;
+  display: grid;
+  gap: 10px;
+}
+
+.mb-drawer .mode-tiles {
+  margin-top: 0;
+}
+
+.mb-kings {
+  grid-template-columns: 1fr;
+}
+
+.mb-rows .muster-start {
+  margin-top: 14px;
+}
+
+.mb-stage {
+  grid-area: stage;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-width: 0;
+}
+
+/* The chosen map, laid on the table in front of the warbands. */
+.mb-table {
+  width: min(560px, 90%);
+  perspective: 900px;
+  margin-bottom: calc(var(--unit) * -0.5);
+}
+
+.mb-map {
+  transform: rotateX(52deg);
+  transform-origin: 50% 100%;
+  border: 2px solid var(--gold-dim);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
+  background: #0e1220;
+}
+
+.muster-scene {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+}
+
+.muster-team {
+  display: flex;
+  align-items: center;
+}
+
+.mb-caption {
+  margin: 18px 0 0;
+  max-width: 440px;
+  text-align: center;
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+/* --- C · War table --- */
+.muster-c {
+  --zoom: 1;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 18px;
+  min-height: 100vh;
+  padding-bottom: 0;
+}
+
+.wt-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.wt-card {
+  padding: 16px;
+  background: rgba(10, 13, 24, 0.6);
+  border: 1px solid var(--gold-dim);
+  border-radius: 4px;
+}
+
+.wt-roster.side-0 {
+  border-top: 3px solid #4f9dff;
+}
+
+.wt-roster.side-1 {
+  border-top: 3px solid #ff6b5b;
+}
+
+.wt-roster-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.wt-roster-title {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.muster button.wt-name {
+  width: 100%;
+  padding: 6px 12px;
+  border-color: var(--gold-dim);
+}
+
+.wt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wt-field > .muster-label {
+  margin-top: 8px;
+}
+
+.muster button.wt-map {
+  flex-direction: row;
+  align-items: center;
+}
+
+.wt-map .map-thumb {
+  width: 55%;
+  flex: none;
+}
+
+.wt-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 0 calc(-1 * max(40px, env(safe-area-inset-left))) 0;
+  padding: 14px max(40px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(40px, env(safe-area-inset-left));
+  background: rgba(8, 10, 18, 0.92);
+  border-top: 1px solid var(--gold-dim);
+  backdrop-filter: blur(6px);
+}
+
+.wt-summary {
+  flex: 1;
+  min-width: 0;
+}
+
+.wt-vs {
+  margin: 0 10px;
+  color: var(--gold);
+  font: 800 16px 'Cinzel', Georgia, serif;
+}
+
+.wt-go {
+  width: 280px;
+}
+
+.wt-go .muster-start {
+  min-height: 52px;
+  font-size: 19px;
+}
+
+/* --- Narrow screens --- */
+@media (max-width: 1100px) {
+  .fo-field {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+
+  .fo-go {
+    grid-column: 1 / -1;
+  }
+
+  .fo-arena {
+    gap: 60px;
+  }
+
+  .wt-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .wt-field {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .muster-b {
+    grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+    padding-left: 40px;
+    gap: 22px 28px;
+  }
+
+  .mb-stage .menu-unit:not(.leader) {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .muster {
+    --zoom: 1.2;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .muster h1 {
+    font-size: 30px;
+  }
+
+  .mode-tiles,
+  .mode-tiles.with-blurbs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .fo-arena {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .fo-vs {
+    position: static;
+    transform: none;
+    order: 1;
+    text-align: center;
+    font-size: 36px;
+  }
+
+  .fo-side.side-1 {
+    order: 2;
+  }
+
+  .fo-scene .menu-unit:not(.leader) {
+    display: none;
+  }
+
+  .muster button.fo-name {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .fo-name-row {
+    width: 100%;
+  }
+
+  .fo-field {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .muster-b {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'head' 'stage' 'rows';
+    padding-left: 16px;
+  }
+
+  .mb-head h1 {
+    font-size: 38px;
+  }
+
+  .mb-table {
+    display: none;
+  }
+
+  .mb-caption {
+    margin-top: 6px;
+  }
+
+  .wt-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wt-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .wt-go {
+    width: auto;
+    margin-right: 0;
+  }
+
+  .variant-switch {
+    left: 8px;
+    right: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .muster {
+    padding-top: 100px;
+  }
+
+  .wt-field {
+    grid-row: auto;
+  }
+
+  .mode-tiles.with-blurbs {
+    grid-template-columns: 1fr;
+  }
+}

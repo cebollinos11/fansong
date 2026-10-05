@@ -27,6 +27,7 @@ import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy
 import { loadSetupPrefs, saveSetupPrefs } from '../game/setupPrefs.js';
 import { limitsForMode, type LimitsByMode } from '../game/limits.js';
 import { StatIcons } from './StatIcons.js';
+import { SetupLayout, setupVariant, VariantSwitch, type SetupModel } from './SetupVariants.js';
 import { MapThumb, Picker, profileStats, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
 
 interface Props {
@@ -181,6 +182,38 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
   const label0 = mode === 'vsAI' ? 'You — Player 0' : 'Player 0';
   const label1 = mode === 'vsAI' ? 'AI — Player 1' : 'Player 1';
 
+  // Layout trial: three themed takes on this screen (see SetupVariants.tsx).
+  const [variant, setVariant] = useState(setupVariant);
+  if (mode !== 'online' && variant !== 'old') {
+    const model: SetupModel = {
+      mode: localMode,
+      title: MODE_TITLES[mode],
+      sides: [p0, p1],
+      warbands: [choiceWarband(p0, armies) ?? PRESETS[FALLBACK_PRESET]!, choiceWarband(p1, armies) ?? PRESETS[FALLBACK_PRESET]!],
+      armies,
+      pickSide: pickPreset,
+      kings,
+      pickKing,
+      map: playedMap,
+      customMaps,
+      pickMap: setMapId,
+      gameMode,
+      pickMode: setWantedMode,
+      escort,
+      setEscort,
+      limits,
+      setLimits: (next) => setLimitsByMode((all) => ({ ...all, [gameMode]: next })),
+      defaultRounds: gameMode === 'golden-pig' ? defaultPigRounds(playedMap, escort) : undefined,
+      seed,
+      setSeed,
+      problem,
+      start,
+      onBack,
+      openSandbox: onOpenSandbox && problem === null ? () => onOpenSandbox(launch.setup) : undefined,
+    };
+    return <SetupLayout variant={variant} model={model} onVariant={setVariant} />;
+  }
+
   return (
     <div className="setup">
       <div className="setup-card">
@@ -190,6 +223,7 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
           </button>
           <h1>{MODE_TITLES[mode]}</h1>
         </div>
+        {mode === 'online' ? null : <VariantSwitch value={variant} onChange={setVariant} />}
         {mode === 'online' ? null : <p className="tagline">Pick two warbands and a map, then fight.</p>}
 
         {mode === 'online' ? (

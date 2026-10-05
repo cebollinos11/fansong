@@ -119,7 +119,7 @@ export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }
  * A unit standing on a grass hex. It loops its standing clip if it has one, and
  * plays a melee swing each time `strike` changes to a new non-zero value.
  */
-function MenuUnit({
+export function MenuUnit({
   path,
   strike,
   leader = false,
