@@ -31,7 +31,7 @@ export interface SfxCue {
 const BASE = [
   // --- Tier 1: the core game ---------------------------------------------------
   { name: 'select', tier: 1, group: 'Activation and dice', when: 'A unit is picked to activate', idea: 'short "hup" or pop', takes: 1 },
-  { name: 'dice-roll', tier: 1, group: 'Activation and dice', when: 'Dice tumble on a roll card', idea: 'rattly "brrrrdl"', takes: 3 },
+  { name: 'dice-roll', tier: 1, group: 'Activation and dice', when: 'Dice tumble on an activation roll', idea: 'rattly "brrrrdl"', takes: 3 },
   { name: 'die-success', tier: 1, group: 'Activation and dice', when: 'An activation die comes up a success', idea: 'bright "ding"', takes: 1, gain: 0.8 },
   { name: 'die-fail', tier: 1, group: 'Activation and dice', when: 'An activation die comes up a failure', idea: 'dull "bonk"', takes: 1, gain: 0.8 },
   { name: 'turnover', tier: 1, group: 'Activation and dice', when: 'Two failures: the turn passes to the other side', idea: 'sad trombone "wah-wahh"', takes: 1 },

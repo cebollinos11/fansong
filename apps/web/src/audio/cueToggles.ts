@@ -8,7 +8,7 @@ import { SFX_CUES, type SfxName } from './sfxCues.js';
  */
 
 /** Cues the game ships switched off. */
-export const DISABLED_SFX: readonly SfxName[] = [];
+export const DISABLED_SFX: readonly SfxName[] = ['end-activation', 'die-success', 'die-fail'];
 
 /** The panel's switches that differ from the shipped defaults: cue name -> on. */
 export type CueOverrides = Record<string, boolean>;

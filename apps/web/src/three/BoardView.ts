@@ -1682,7 +1682,6 @@ export class BoardView {
         const life = Math.max(COMBAT_CARD_LINGER_MS, s.hit - start + COMBAT_CARD_HOLD_MS);
         this.at(start, () => {
           this.rolls.addOpposed(roll, this.now, life);
-          this.sound('dice-roll');
         });
         // The conclusion lands along the bottom centre, between the two dice cards.
         // A long gruesome shot is called out by its length.
@@ -1710,7 +1709,6 @@ export class BoardView {
         const start = nerveAt;
         this.at(start, () => {
           this.rolls.addNerve(roll, this.now, NERVE_ROLL_MS + ROLL_LINGER_MS);
-          this.sound('dice-roll');
         });
         settle = start + NERVE_RESOLVE_MS;
         this.at(settle, () => this.sound(e.passed ? 'nerve-pass' : 'nerve-fail'));
