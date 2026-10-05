@@ -3,7 +3,7 @@ import { airborne, unitById, unitMove, type GameState, type Owner } from '@fanso
 import type { Interaction } from '../game/interaction.js';
 import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
+import { INSPIRED_HELP, WAR_CRY_HELP, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import type { BattleLog } from './log.js';
 import { modeHud } from './modeView.js';
@@ -239,7 +239,7 @@ export function Hud(props: Props): JSX.Element {
             <div className="play-actions">
               {interaction.canWarCry ? (
                 <button
-                  title="Press C — one action: every friend still to activate within 5 hexes and in sight is inspired, its first activation die a sure 6"
+                  title={WAR_CRY_HELP}
                   onClick={props.onWarCry}
                 >
                   War cry <kbd>C</kbd>
@@ -298,7 +298,7 @@ function UnitInspector({
       {u.knockedDown ? <span className="flag down">knocked down</span> : null}
       {u.guarding && !u.dead ? <span className="flag guarding">on guard</span> : null}
       {u.inspired && !u.dead ? (
-        <span className="flag inspired" title="Its first activation die this round is a sure 6; lost on a failed nerve check">
+        <span className="flag inspired" title={INSPIRED_HELP}>
           inspired
         </span>
       ) : null}

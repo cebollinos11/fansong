@@ -71,6 +71,7 @@ action; the AI, the tests, and any future UI all pick from that list.
   **war cry**. Every friend that isn't a Leader, has yet to activate, and stands
   within **5 hexes** in line of sight is **inspired** for the round (rock,
   buildings and forest block the cry; other units don't): the first die of its activation roll is a sure 6.
+  That guarantees one action, not safety: two failures among its other dice still turn over.
   A failed nerve check costs a unit its inspiration. When a Leader is killed,
   every standing friend the cry would have reached (within 5 hexes, in line of
   sight) tests its nerve.
