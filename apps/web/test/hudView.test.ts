@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { ROUT_FRACTION, type GameState, type Owner, type UnitTraits } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
+import { INSPIRED_HELP, TRAIT_HELP, WAR_CRY_HELP, armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
 
 const VS_AI: MatchSetup = {
   presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
@@ -144,6 +144,15 @@ describe('traitTags', () => {
   it('explains what each ability does', () => {
     for (const tag of traitTags(traits({ ranged: 2, tough: true, guard: true, big: true }))) {
       expect(tag.help.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('inspiration wording', () => {
+  it('never promises that a sure 6 protects against a turnover', () => {
+    for (const text of [INSPIRED_HELP, WAR_CRY_HELP, TRAIT_HELP.leader]) {
+      expect(text).toMatch(/sure 6/);
+      expect(text).toMatch(/two failures among .* still turn/);
     }
   });
 });
