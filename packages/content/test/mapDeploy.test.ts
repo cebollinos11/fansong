@@ -64,7 +64,7 @@ describe('DEFAULT_MAP', () => {
   });
 
   it('buildMatch defaults to DEFAULT_BOARD when neither board nor map is given', () => {
-    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['bonefield-legion-medium']!, { seed: 3 });
+    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['night-haunt-medium']!, { seed: 3 });
     expect(config.board).toEqual({ width: 12, height: 10 });
   });
 });
@@ -143,7 +143,7 @@ describe('buildMatch with a map', () => {
     const map = flatMap(12, 12, 'ridge', 'Ridge');
     map.hexes[5 * 12 + 5] = { elevation: 0, feature: 'rock' };
     map.hexes[6 * 12 + 6] = { elevation: 2 };
-    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['bonefield-legion-medium']!, { seed: 9, map });
+    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['night-haunt-medium']!, { seed: 9, map });
     expect(config.board).toEqual({
       width: 12,
       height: 12,
@@ -157,7 +157,7 @@ describe('buildMatch with a map', () => {
   });
 
   it('ignores `board` when a map is given', () => {
-    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['bonefield-legion-medium']!, {
+    const config = buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['night-haunt-medium']!, {
       seed: 9,
       board: { width: 20, height: 20 },
       map: flatMap(10, 8),
@@ -169,7 +169,7 @@ describe('buildMatch with a map', () => {
     const map = flatMap(12, 12);
     map.hexes[0] = { elevation: 0, feature: 'rock' }; // (0,0) is in player 0's deploy zone
     expect(() =>
-      buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['bonefield-legion-medium']!, { seed: 1, map }),
+      buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['night-haunt-medium']!, { seed: 1, map }),
     ).toThrow(/invalid/);
   });
 });

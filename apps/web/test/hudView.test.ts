@@ -32,8 +32,8 @@ describe('seatLabel', () => {
 
   it('falls back to the army names in hotseat, where both seats are yours', () => {
     // "You" on both sides tells the player nothing about which is which.
-    expect(seatLabel(HOTSEAT, [0, 1], 0)).toBe('Iron Wardens (Medium)');
-    expect(seatLabel(HOTSEAT, [0, 1], 1)).toBe('Ashfang Raiders (Medium)');
+    expect(seatLabel(HOTSEAT, [0, 1], 0)).toBe('Iron Wardens');
+    expect(seatLabel(HOTSEAT, [0, 1], 1)).toBe('Ashfang Raiders');
   });
 
   it('prefers an explicit roster name over the preset label', () => {

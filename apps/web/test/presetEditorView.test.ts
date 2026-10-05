@@ -44,7 +44,7 @@ const warband = (draft: PresetDraft, id: string) => expandEntry(draft, draft.pre
 const shareWolf = (draft: PresetDraft, ...bands: string[]): PresetDraft =>
   bands.reduce((d, id) => addLine(d, at(d, id), 'Wolf'), draft);
 /** The shipped warbands that field the Wolf. */
-const MENAGERIE = ['wild-menagerie-small', 'wild-menagerie-medium', 'wild-menagerie-large'];
+const MENAGERIE = ['wild-menagerie-large'];
 
 describe('preset editor model', () => {
   it('starts from an unchanged copy of the shipped units, warbands and matchup', () => {
@@ -60,21 +60,21 @@ describe('preset editor model', () => {
   });
 
   it('edits a shared unit once for every warband that fields it', () => {
-    let draft = shareWolf(draftFromPresets(), 'iron-wardens-small', 'ashfang-raiders-small');
-    expect(usedBy(draft, 'Wolf').map((e) => e.id)).toEqual(['iron-wardens-small', 'ashfang-raiders-small', ...MENAGERIE]);
+    let draft = shareWolf(draftFromPresets(), 'iron-wardens-medium', 'ashfang-raiders-medium');
+    expect(usedBy(draft, 'Wolf').map((e) => e.id)).toEqual(['iron-wardens-medium', 'ashfang-raiders-medium', ...MENAGERIE]);
     draft = setUnit(draft, 'Wolf', { ...unitByRef(draft, 'Wolf')!.unit, combat: 5 });
-    for (const id of ['iron-wardens-small', 'ashfang-raiders-small', ...MENAGERIE])
+    for (const id of ['iron-wardens-medium', 'ashfang-raiders-medium', ...MENAGERIE])
       expect(warband(draft, id).units.find((u) => u.name === 'Wolf')?.combat).toBe(5);
     expect(draftChanges(draft)).toEqual([
       'edited unit "Wolf"',
-      'edited warband "Iron Wardens (Small)" (iron-wardens-small)',
-      'edited warband "Ashfang Raiders (Small)" (ashfang-raiders-small)',
+      'edited warband "Iron Wardens" (iron-wardens-medium)',
+      'edited warband "Ashfang Raiders" (ashfang-raiders-medium)',
     ]);
   });
 
   it('forks a line into the warband’s own copy', () => {
-    let draft = shareWolf(draftFromPresets(), 'iron-wardens-small');
-    const i = at(draft, 'iron-wardens-small');
+    let draft = shareWolf(draftFromPresets(), 'iron-wardens-medium');
+    const i = at(draft, 'iron-wardens-medium');
     draft = forkLine(draft, i, draft.presets[i]!.lines.length - 1);
     const ref = draft.presets[i]!.lines.at(-1)!.unit;
     expect(ref).not.toBe('Wolf');
@@ -86,10 +86,10 @@ describe('preset editor model', () => {
 
   it('counts a line into numbered copies, and adding a fielded unit raises its count', () => {
     let draft = draftFromPresets();
-    const i = at(draft, 'iron-wardens-small');
+    const i = at(draft, 'iron-wardens-medium');
     draft = addLine(addLine(draft, i, 'Wolf'), i, 'Wolf');
     expect(draft.presets[i]!.lines.at(-1)).toEqual({ unit: 'Wolf', count: 2 });
-    expect(warband(draft, 'iron-wardens-small').units.map((u) => u.name).slice(-2)).toEqual(['Wolf', 'Wolf 2']);
+    expect(warband(draft, 'iron-wardens-medium').units.map((u) => u.name).slice(-2)).toEqual(['Wolf', 'Wolf 2']);
     draft = updateEntry(draft, i, (e) => ({ ...e, lines: [...e.lines, { unit: 'Wolf', count: 1 }] }));
     expect(entryErrors(draft, i)).toContain('Wolf is listed twice — raise its count instead');
   });
@@ -99,7 +99,7 @@ describe('preset editor model', () => {
     expect(usedBy(draft, 'Crocodile')).toEqual([]);
     expect(warband(draft, 'wild-menagerie-large').units.map((u) => u.name)).not.toContain('Crocodile');
     expect(deletedUnits(draft)).toEqual(['Crocodile']);
-    expect(draftChanges(draft)).toEqual(['deleted unit "Crocodile"', 'edited warband "Wild Menagerie (Large)" (wild-menagerie-large)']);
+    expect(draftChanges(draft)).toEqual(['deleted unit "Crocodile"', 'edited warband "Wild Menagerie" (wild-menagerie-large)']);
     draft = restoreUnit(draft, 'Crocodile');
     expect(deletedUnits(draft)).toEqual([]);
   });
@@ -147,8 +147,8 @@ describe('preset editor model', () => {
 
   it('checks ids for shape and clashes', () => {
     const draft = draftFromPresets();
-    const i = at(draft, 'wild-menagerie-small');
-    expect(idErrors(setPresetId(draft, i, 'iron-wardens-small'), i)).toEqual(['another preset already has the id "iron-wardens-small"']);
+    const i = at(draft, 'wild-menagerie-large');
+    expect(idErrors(setPresetId(draft, i, 'iron-wardens-medium'), i)).toEqual(['another preset already has the id "iron-wardens-medium"']);
     expect(idErrors(setPresetId(draft, i, 'Sky Talons'), i)).toHaveLength(1);
     expect(idErrors(setPresetId(draft, i, 'sky--talons'), i)).toHaveLength(1);
     expect(idErrors(setPresetId(draft, i, ''), i)).toEqual(['the preset needs an id']);
@@ -167,15 +167,15 @@ describe('preset editor model', () => {
 
   it('describes adds, deletes, reorders and a new matchup', () => {
     let draft = draftFromPresets();
-    draft = { ...draft, presets: draft.presets.filter((e) => e.id !== 'wild-menagerie-small') };
+    draft = { ...draft, presets: draft.presets.filter((e) => e.id !== 'wild-menagerie-large') };
     draft = newPreset({ ...draft, presets: moveUnit(draft.presets, 1, -1) });
-    draft = { ...draft, matchup: ['bonefield-legion-medium', 'new-preset'] };
+    draft = { ...draft, matchup: ['bonefield-legion-large', 'new-preset'] };
     expect(draftChanges(draft)).toEqual([
       'added unit "Soldier"',
       'added warband "New Preset" (new-preset)',
-      'deleted warband "Wild Menagerie (Small)" (wild-menagerie-small)',
+      'deleted warband "Wild Menagerie" (wild-menagerie-large)',
       'reordered the warbands',
-      'default matchup bonefield-legion-medium vs new-preset',
+      'default matchup bonefield-legion-large vs new-preset',
     ]);
     expect(warband(draft, 'new-preset').units.map((u) => u.name)).toEqual(['Soldier', 'Soldier 2', 'Soldier 3']);
     expect(draftBroken(draft)).toBe(false);
@@ -191,10 +191,10 @@ describe('preset editor model', () => {
   });
 
   it('round-trips the export file', () => {
-    let draft = shareWolf(setPresetId(draftFromPresets(), 2, 'free-lances'), 'iron-wardens-small');
+    let draft = shareWolf(setPresetId(draftFromPresets(), 2, 'free-lances'), 'iron-wardens-medium');
     draft = forkLine(draft, 0, draft.presets[0]!.lines.length - 1);
     const [withNew] = newUnit(draft);
-    draft = { ...copyUnit(withNew, 'Bear')[0], matchup: ['bonefield-legion-medium', 'free-lances'] };
+    draft = { ...copyUnit(withNew, 'Bear')[0], matchup: ['bonefield-legion-large', 'free-lances'] };
     const text = presetsToJson(draft);
     expect(JSON.parse(text).changes).toEqual(draftChanges(draft));
     expect(parsePresetsText(text)).toEqual(draft);
@@ -203,39 +203,39 @@ describe('preset editor model', () => {
   });
 
   it('carries a version 2 draft over to shared units', () => {
-    const horde = PRESETS['wild-menagerie-medium']!;
+    const horde = PRESETS['wild-menagerie-large']!;
     const edited = { ...horde, units: horde.units.map((u) => (u.name === 'Bear' ? { ...u, name: 'Cave Bear', look: 'Bear', combat: 5 } : u)) };
     const v2 = JSON.stringify({
       format: 'fansong-presets',
       version: 2,
-      matchup: ['iron-wardens-small', 'wild-menagerie-medium'],
+      matchup: ['iron-wardens-medium', 'wild-menagerie-large'],
       presets: [
-        { id: 'iron-wardens-small', source: 'iron-wardens-small', ...PRESETS['iron-wardens-small'] },
-        { id: 'horde', source: 'wild-menagerie-medium', ...edited },
-        { id: 'new-1', name: 'Pack', units: [PRESETS['wild-menagerie-small']!.units[2], { name: 'Pup', quality: 5, combat: 1 }, { name: 'Pup 2', quality: 5, combat: 1 }] },
+        { id: 'iron-wardens-medium', source: 'iron-wardens-medium', ...PRESETS['iron-wardens-medium'] },
+        { id: 'horde', source: 'wild-menagerie-large', ...edited },
+        { id: 'new-1', name: 'Pack', units: [PRESETS['wild-menagerie-large']!.units.find((u) => u.name === 'Wolf')!, { name: 'Pup', quality: 5, combat: 1 }, { name: 'Pup 2', quality: 5, combat: 1 }] },
       ],
     });
     const draft = parsePresetsText(v2);
-    expect(draft.presets.map((e) => e.id)).toEqual(['iron-wardens-small', 'horde', 'new-1']);
+    expect(draft.presets.map((e) => e.id)).toEqual(['iron-wardens-medium', 'horde', 'new-1']);
     expect(warband(draft, 'horde')).toEqual(edited);
     expect(unitByRef(draft, 'Bear')!.unit).toMatchObject({ name: 'Cave Bear', combat: 5 });
     expect(warband(draft, 'new-1').units.map((u) => u.name)).toEqual(['Wolf', 'Pup', 'Pup 2']);
     expect(draft.presets[2]!.lines[0]!.unit).toBe('Wolf');
-    expect(draft.matchup).toEqual(['iron-wardens-small', 'wild-menagerie-medium']);
+    expect(draft.matchup).toEqual(['iron-wardens-medium', 'wild-menagerie-large']);
   });
 
   it('still reads a version 1 file', () => {
-    const v1 = JSON.stringify({ format: 'fansong-presets', version: 1, presets: { 'iron-wardens-small': PRESETS['iron-wardens-small'] } });
+    const v1 = JSON.stringify({ format: 'fansong-presets', version: 1, presets: { 'iron-wardens-medium': PRESETS['iron-wardens-medium'] } });
     const draft = parsePresetsText(v1);
-    expect(draft.presets.map((e) => [e.id, e.source])).toEqual([['iron-wardens-small', 'iron-wardens-small']]);
-    expect(warband(draft, 'iron-wardens-small')).toEqual(PRESETS['iron-wardens-small']);
+    expect(draft.presets.map((e) => [e.id, e.source])).toEqual([['iron-wardens-medium', 'iron-wardens-medium']]);
+    expect(warband(draft, 'iron-wardens-medium')).toEqual(PRESETS['iron-wardens-medium']);
   });
 
   it('autosaves and restores the draft', () => {
     const items = new Map<string, string>();
     const storage = { getItem: (k: string) => items.get(k) ?? null, setItem: (k: string, v: string) => void items.set(k, v) };
     expect(loadPresetDraft(storage)).toBeNull();
-    const draft = shareWolf(setPresetId(draftFromPresets(), 1, 'ashfang'), 'iron-wardens-small');
+    const draft = shareWolf(setPresetId(draftFromPresets(), 1, 'ashfang'), 'iron-wardens-medium');
     savePresetDraft(storage, draft);
     expect(loadPresetDraft(storage)).toEqual(draft);
   });

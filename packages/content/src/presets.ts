@@ -5,25 +5,38 @@ import type { Warband, WarbandUnit } from './warband.js';
  * no trademarked names or published profiles. Each is built to be legal under
  * {@link DEFAULT_RULES}; the preset test asserts that invariant.
  *
- * Four warbands, each in three sizes: small (3 units, about 120 points), medium
- * (about 250) and large (about 400). Between them they field every trait, which
- * the preset test also asserts.
+ * Eleven warbands, each a different family at one size: small (3 or 4 units,
+ * about 120 points), medium (about 250) or large (about 400). The id ends in the
+ * size. Between them they field every trait, which the preset test also asserts.
  *
  * Design intent (so the matchups stay interesting):
- *  - iron-wardens : a shield wall that grinds forward and is hard to shift —
- *    Shieldwall foot and Guard, Armored veterans around an Armored Leader and a
- *    Slow, Big, Tough, Immovable bulwark, covered by long bows and a Slow
- *    Sharpshooter crossbow.
- *  - ashfang-raiders : fast and fragile — wins on first contact (melee only):
- *    Rusher foot, a Big but Dumb brute, Fast outriders that Trample, and
- *    Disloyal Opportunist goblins, behind a Savage Leader.
- *  - bonefield-legion : a Reassembling undead host that wins by attrition — you
- *    must kill them, not just knock them over. Badly balanced foot and bows, Fast
- *    riders, a Whirling twin-blade and a Flying, Armored ghost, under a
- *    Slow Leader with Combat Mastery.
- *  - wild-menagerie : leaderless beasts — Flying hunters (one Savage), Fast
- *    wolves, Slippery rats, Woodwise forest ambushers (a Trampling boar
- *    and a web-spitting spider) and Big, Tough brutes.
+ *  - iron-wardens-medium : a shield wall that grinds forward and is hard to
+ *    shift — Shieldwall foot and Guard, Armored veterans around an Armored Leader
+ *    and a Slow, Big, Tough, Immovable bulwark, covered by a Slow Sharpshooter
+ *    crossbow.
+ *  - ashfang-raiders-medium : orcs who win on first contact (melee only) —
+ *    Rusher foot and Big but Dumb brutes behind a Savage Leader.
+ *  - goblin-rabble-medium : a fast, cheap swarm that won't stay loyal — Fast
+ *    riders that Trample and Disloyal Opportunist wolf riders and spearmen,
+ *    under a Fast Leader.
+ *  - free-company-medium : sellswords and hired locals — a Leader sergeant,
+ *    Rusher swordsmen who may change sides, Guard pikes, Slippery slingers, a
+ *    Woodwise woodsman and raw recruits.
+ *  - night-haunt-medium : spirits that strike from nowhere — a Flying Leader,
+ *    Slippery Opportunist shadows, Flying Armored ghosts and Fast bats.
+ *  - greenwood-elves-medium : skilled and at home in the forest — every elf is
+ *    Woodwise; long bows (one a Sharpshooter), blades and a Fast scout.
+ *  - bonefield-legion-large : a Reassembling undead host that wins by attrition —
+ *    you must kill them, not just knock them over. Badly balanced foot and bows,
+ *    Fast riders and Whirling twin-blades, under a Slow Leader with Combat Mastery.
+ *  - wild-menagerie-large : leaderless beasts — Flying hunters (one Savage), Fast
+ *    wolves, Slippery rats, Woodwise forest ambushers (a Trampling boar and a
+ *    web-spitting spider) and Big, Tough brutes.
+ *  - gryphon-eyrie-small : a Flying, Armored gryphon rider leading two falcons.
+ *  - wolf-pack-small : a Fast alpha and two Opportunist wolves that circle the
+ *    fallen.
+ *  - hogwallow-farm-small : a farmer and three pigs — a Trampling, Woodwise old
+ *    boar and two Fast, Slippery piglets.
  */
 
 /** A preset unit's profile. Its name is its key in {@link PRESET_UNITS}. */
@@ -53,24 +66,59 @@ export const PRESET_UNITS: Record<string, PresetUnit> = {
   Ironguard: { quality: 4, combat: 3, guard: true, shieldwall: true },
   Halberdier: { quality: 4, combat: 3, shieldwall: true },
   Crossbow: { quality: 4, combat: 3, shooter: 'long', sharpshooter: true, slow: true },
-  Longbow: { quality: 3, combat: 2, shooter: 'long' },
   Levy: { quality: 4, combat: 2, shieldwall: true },
 
   // Ashfang Raiders
   'Raid-Leader': { quality: 3, combat: 4, leader: true, savage: true },
-  Outrider: { quality: 3, combat: 3, fast: true, trample: true },
   Reaver: { quality: 4, combat: 4, big: true, rusher: true, dumb: true },
   Marauder: { quality: 4, combat: 3, rusher: true },
+
+  // Goblin Rabble
+  'Goblin Boss': { quality: 3, combat: 3, leader: true, fast: true, look: 'Outrider', tint: '#c9a227' },
+  Outrider: { quality: 3, combat: 3, fast: true, trample: true },
   'Wolf-Prowler': { quality: 4, combat: 2, fast: true, opportunist: true, disloyal: true },
   Whelp: { quality: 4, combat: 2, opportunist: true, disloyal: true },
+
+  // Free Company
+  Sergeant: { quality: 3, combat: 4, leader: true },
+  Swordsman: { quality: 4, combat: 3, rusher: true, disloyal: true },
+  Pikeman: { quality: 4, combat: 3, guard: true },
+  Slinger: { quality: 4, combat: 2, shooter: 'short', slippery: true },
+  Woodsman: { quality: 4, combat: 2, shooter: 'normal', woodwise: true, look: 'Halberd-Recruit' },
+  Recruit: { quality: 5, combat: 2 },
 
   // Bonefield Legion
   'Death Knight': { quality: 3, combat: 4, slow: true, leader: true, mastery: true, reassembling: true },
   Deathblade: { quality: 4, combat: 3, fast: true, whirling: true, reassembling: true },
   'Skeleton Rider': { quality: 4, combat: 3, fast: true, reassembling: true },
   'Skeleton Archer': { quality: 4, combat: 2, shooter: 'normal', reassembling: true },
-  Ghost: { quality: 4, combat: 2, flying: true, armored: true },
   'Skeleton Infantry': { quality: 4, combat: 3, reassembling: true, badBalance: true },
+
+  // Night Haunt
+  Nightgaunt: { quality: 3, combat: 4, leader: true, flying: true },
+  Shadow: { quality: 3, combat: 3, slippery: true, opportunist: true },
+  Ghost: { quality: 4, combat: 2, flying: true, armored: true },
+  'Vampire Bat': { quality: 4, combat: 1, fast: true, flying: true },
+
+  // Greenwood Elves
+  'Elvish Captain': { quality: 3, combat: 3, leader: true, woodwise: true, look: 'Elvish Fighter', tint: '#d9b44a' },
+  'Elvish Fighter': { quality: 3, combat: 3, woodwise: true },
+  'Elvish Archer': { quality: 3, combat: 2, shooter: 'long', woodwise: true, look: 'Elvish Fighter', tint: '#5e8f3a' },
+  'Elvish Marksman': { quality: 3, combat: 2, shooter: 'long', sharpshooter: true, woodwise: true, look: 'Elvish Fighter', tint: '#3f6f8f' },
+  'Elvish Scout': { quality: 3, combat: 2, fast: true, woodwise: true, look: 'Elvish Fighter', tint: '#8a6a3e' },
+
+  // Gryphon Eyrie
+  'Gryphon Rider': { quality: 3, combat: 4, leader: true, flying: true, armored: true },
+
+  // Wolf Pack
+  'Pack Alpha': { quality: 3, combat: 4, leader: true, fast: true, look: 'Wolf', tint: '#3a3a44' },
+  'Grey Wolf': { quality: 4, combat: 3, fast: true, opportunist: true, look: 'Wolf' },
+
+  // Hogwallow Farm
+  Farmer: { quality: 3, combat: 3, leader: true, look: 'Levy' },
+  Tusker: { quality: 4, combat: 4, trample: true, woodwise: true, look: 'Boar' },
+  Truffle: { quality: 4, combat: 2, fast: true, slippery: true, look: 'Piglet' },
+  Hamlet: { quality: 4, combat: 2, fast: true, slippery: true, look: 'Piglet' },
 
   // Wild Menagerie
   Yeti: { quality: 3, combat: 5, big: true },
@@ -87,16 +135,8 @@ export const PRESET_UNITS: Record<string, PresetUnit> = {
 
 /** Which units each preset warband fields, in menu order. */
 export const PRESET_ROSTERS: Record<string, PresetRoster> = {
-  'iron-wardens-small': {
-    name: 'Iron Wardens (Small)',
-    units: [
-      { unit: 'Warden-Captain' },
-      { unit: 'Ironguard' },
-      { unit: 'Crossbow' },
-    ],
-  },
   'iron-wardens-medium': {
-    name: 'Iron Wardens (Medium)',
+    name: 'Iron Wardens',
     units: [
       { unit: 'Warden-Captain' },
       { unit: 'Sentinel' },
@@ -107,98 +147,65 @@ export const PRESET_ROSTERS: Record<string, PresetRoster> = {
       { unit: 'Levy' },
     ],
   },
-  'iron-wardens-large': {
-    name: 'Iron Wardens (Large)',
-    units: [
-      { unit: 'Warden-Captain' },
-      { unit: 'Sentinel', count: 2 },
-      { unit: 'Bulwark' },
-      { unit: 'Ironguard', count: 2 },
-      { unit: 'Halberdier', count: 2 },
-      { unit: 'Crossbow' },
-      { unit: 'Longbow', count: 2 },
-      { unit: 'Levy' },
-    ],
-  },
-  'ashfang-raiders-small': {
-    name: 'Ashfang Raiders (Small)',
-    units: [
-      { unit: 'Raid-Leader' },
-      { unit: 'Outrider' },
-      { unit: 'Whelp' },
-    ],
-  },
   'ashfang-raiders-medium': {
-    name: 'Ashfang Raiders (Medium)',
+    name: 'Ashfang Raiders',
     units: [
       { unit: 'Raid-Leader' },
-      { unit: 'Outrider' },
-      { unit: 'Reaver' },
-      { unit: 'Marauder', count: 2 },
-      { unit: 'Wolf-Prowler' },
-      { unit: 'Whelp', count: 2 },
-    ],
-  },
-  'ashfang-raiders-large': {
-    name: 'Ashfang Raiders (Large)',
-    units: [
-      { unit: 'Raid-Leader' },
-      { unit: 'Outrider', count: 3 },
       { unit: 'Reaver', count: 2 },
-      { unit: 'Marauder', count: 3 },
+      { unit: 'Marauder', count: 4 },
+    ],
+  },
+  'goblin-rabble-medium': {
+    name: 'Goblin Rabble',
+    units: [
+      { unit: 'Goblin Boss' },
+      { unit: 'Outrider', count: 2 },
       { unit: 'Wolf-Prowler', count: 3 },
+      { unit: 'Whelp', count: 4 },
     ],
   },
-  'bonefield-legion-small': {
-    name: 'Bonefield Legion (Small)',
+  'free-company-medium': {
+    name: 'Free Company',
     units: [
-      { unit: 'Death Knight' },
-      { unit: 'Skeleton Rider' },
-      { unit: 'Skeleton Infantry' },
+      { unit: 'Sergeant' },
+      { unit: 'Swordsman', count: 2 },
+      { unit: 'Pikeman', count: 2 },
+      { unit: 'Slinger', count: 2 },
+      { unit: 'Woodsman' },
+      { unit: 'Recruit', count: 2 },
     ],
   },
-  'bonefield-legion-medium': {
-    name: 'Bonefield Legion (Medium)',
+  'night-haunt-medium': {
+    name: 'Night Haunt',
     units: [
-      { unit: 'Death Knight' },
-      { unit: 'Deathblade' },
-      { unit: 'Skeleton Rider' },
-      { unit: 'Skeleton Infantry', count: 3 },
-      { unit: 'Skeleton Archer', count: 2 },
+      { unit: 'Nightgaunt' },
+      { unit: 'Shadow', count: 2 },
+      { unit: 'Ghost', count: 2 },
+      { unit: 'Vampire Bat', count: 3 },
+    ],
+  },
+  'greenwood-elves-medium': {
+    name: 'Greenwood Elves',
+    units: [
+      { unit: 'Elvish Captain' },
+      { unit: 'Elvish Fighter', count: 2 },
+      { unit: 'Elvish Archer', count: 2 },
+      { unit: 'Elvish Marksman' },
+      { unit: 'Elvish Scout' },
     ],
   },
   'bonefield-legion-large': {
-    name: 'Bonefield Legion (Large)',
+    name: 'Bonefield Legion',
     units: [
       { unit: 'Death Knight' },
       { unit: 'Deathblade', count: 2 },
       { unit: 'Skeleton Rider', count: 3 },
-      { unit: 'Ghost' },
-      { unit: 'Skeleton Infantry', count: 3 },
+      { unit: 'Skeleton Infantry', count: 4 },
       { unit: 'Skeleton Archer', count: 2 },
     ],
   },
-  'wild-menagerie-small': {
-    name: 'Wild Menagerie (Small)',
-    units: [
-      { unit: 'Wild Wyvern' },
-      { unit: 'Giant Spider' },
-      { unit: 'Wolf' },
-    ],
-  },
-  'wild-menagerie-medium': {
-    name: 'Wild Menagerie (Medium)',
-    units: [
-      { unit: 'Wild Wyvern' },
-      { unit: 'Bear' },
-      { unit: 'Boar' },
-      { unit: 'Giant Spider' },
-      { unit: 'Wolf', count: 2 },
-      { unit: 'Giant Rat', count: 2 },
-    ],
-  },
   'wild-menagerie-large': {
-    name: 'Wild Menagerie (Large)',
+    name: 'Wild Menagerie',
     units: [
       { unit: 'Wild Wyvern' },
       { unit: 'Yeti' },
@@ -210,6 +217,29 @@ export const PRESET_ROSTERS: Record<string, PresetRoster> = {
       { unit: 'Falcon' },
       { unit: 'Wolf', count: 2 },
       { unit: 'Giant Rat', count: 2 },
+    ],
+  },
+  'gryphon-eyrie-small': {
+    name: 'Gryphon Eyrie',
+    units: [
+      { unit: 'Gryphon Rider' },
+      { unit: 'Falcon', count: 2 },
+    ],
+  },
+  'wolf-pack-small': {
+    name: 'Wolf Pack',
+    units: [
+      { unit: 'Pack Alpha' },
+      { unit: 'Grey Wolf', count: 2 },
+    ],
+  },
+  'hogwallow-farm-small': {
+    name: 'Hogwallow Farm',
+    units: [
+      { unit: 'Farmer' },
+      { unit: 'Tusker' },
+      { unit: 'Truffle' },
+      { unit: 'Hamlet' },
     ],
   },
 };

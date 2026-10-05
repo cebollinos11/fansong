@@ -367,7 +367,7 @@ short paraphrase, and the exact effects should be checked before building one.
   die rolled (a `UnitStoodUp` event with `reassembled: true`, emitted just after
   `RoundEnded`). It saves nothing against a killing blow — a lethal result still
   kills — it only refuses to lie there once merely knocked over. Fits undead that
-  keep pulling their bones back together; the bonefield-legion presets field
+  keep pulling their bones back together; the Bonefield Legion preset fields
   skeletons that carry it.
 - **Demon:** similar in kind to Undead.
 

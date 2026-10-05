@@ -23,11 +23,10 @@ export const UNIT_SPRITES: Record<string, string> = {
   Outrider: 'goblins/knight.png',
   Whelp: 'goblins/spearman.png',
 
-  // The groups from here to Grave Knights are named after retired presets. Their
-  // sprites are still looks in the army builder, and the current presets reuse
-  // some (Longbow, Crossbow, the skeletons).
-
-  // Free Company — sellswords and hired locals.
+  // Free Company — sellswords and hired locals (its woodsman is drawn as the
+  // Halberd-Recruit). The Hollow Watch, Thorn Patrol and Sky Talons groups below
+  // are named after retired presets; their sprites are still looks in the army
+  // builder, and the current presets reuse the Crossbow.
   Sergeant: 'human-loyalists/sergeant.png',
   Swordsman: 'human-loyalists/swordsman.png',
   Pikeman: 'human-loyalists/pikeman.png',
@@ -75,8 +74,8 @@ export const UNIT_SPRITES: Record<string, string> = {
   'Giant Rat': 'monsters/giant-rat.png',
   Crocodile: 'monsters/croc/crocodile.png',
 
-  // Walkers — sprites with a real multi-frame Wesnoth walk cycle, offered as
-  // looks in the army builder (of these, only the Ghost is in a preset).
+  // Walkers — sprites with a real multi-frame Wesnoth walk cycle. The Night
+  // Haunt, Greenwood Elves, Gryphon Eyrie and Hogwallow Farm presets use them.
   'Elvish Fighter': 'elves-wood/fighter/fighter.png',
   Ghost: 'undead-spirit/ghost-base.png',
   Shadow: 'undead-spirit/shadow-s-2.png',
