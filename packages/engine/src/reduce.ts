@@ -868,7 +868,17 @@ export interface CombatOddsOptions {
  * before the blow exactly as the roll will. Does not mutate `state`.
  */
 export type CombatScoring =
-  | { kind: 'melee'; attackBase: number; defenseBase: number; mods: MeleeMods & { powerPenalty: number } }
+  | {
+      kind: 'melee';
+      attackBase: number;
+      defenseBase: number;
+      mods: MeleeMods & { powerPenalty: number };
+      /**
+       * A guarding target's riposte, rolled before the blow: the guard is the
+       * aggressor (`attack*`), the attacker defends (`defense*`).
+       */
+      riposte?: { attackBase: number; defenseBase: number; mods: MeleeMods };
+    }
   | { kind: 'shot'; attackBase: number; defenseBase: number; mods: ShotMods & { aimPenalty: number } };
 
 /** How `attackerId`'s attack or shot on `targetId` will be scored (see {@link CombatScoring}). */
@@ -884,7 +894,9 @@ export function combatScoring(
     return { kind: 'shot', attackBase, defenseBase, mods: { ...mods, aimPenalty: penalty } };
   }
   const { attackBase, defenseBase, mods } = meleeScoring(s, board, attacker, target, 'attack', penalty);
-  return { kind: 'melee', attackBase, defenseBase, mods: { ...mods, powerPenalty: penalty } };
+  const scoring: CombatScoring = { kind: 'melee', attackBase, defenseBase, mods: { ...mods, powerPenalty: penalty } };
+  if (target.guarding && target.traits.guard) scoring.riposte = meleeScoring(s, board, target, attacker, 'riposte');
+  return scoring;
 }
 
 /** The state an attack is scored in: the attacker moved to where it strikes from, a charge's Rusher bonus armed. */

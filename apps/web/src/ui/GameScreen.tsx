@@ -12,7 +12,7 @@ import { splitRoundStart } from '../game/roundStart.js';
 import { seamHoldMs } from '../game/seams.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
-import { oddsLine } from './hexInfo.js';
+import { fightScores, oddsLine } from './hexInfo.js';
 import { Hud } from './Hud.js';
 import { SoundCuePanel } from './SoundCuePanel.js';
 import { devTools } from '../devTools.js';
@@ -298,6 +298,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         pressed,
         plainOdds: oddsLine(state, plan),
         pressedOdds: oddsLine(state, pressed),
+        scores: fightScores(state, plan),
         actionsRemaining: state.actionsRemaining,
         at: { ...pointer.current },
       });

@@ -154,13 +154,34 @@ export interface ScorePreview {
   total: number;
 }
 
-/** Both sides' scores before the dice, for an attack or shot still being planned (see `combatScoring`). */
-export function previewScores(scoring: CombatScoring): { attack: ScorePreview; defense: ScorePreview } {
-  const [attack, defense] =
-    scoring.kind === 'shot'
-      ? [shotAttackExtras(scoring.mods), shotDefenseExtras(scoring.mods)]
-      : [meleeAttackExtras(scoring.mods), meleeDefenseExtras(scoring.mods)];
-  return { attack: preview(scoring.attackBase, attack), defense: preview(scoring.defenseBase, defense) };
+/**
+ * Both sides' scores before the dice, for an attack or shot still being planned
+ * (see `combatScoring`), and a guarding target's riposte, which comes first.
+ */
+export function previewScores(scoring: CombatScoring): {
+  attack: ScorePreview;
+  defense: ScorePreview;
+  riposte?: { guard: ScorePreview; attacker: ScorePreview };
+} {
+  if (scoring.kind === 'shot') {
+    return {
+      attack: preview(scoring.attackBase, shotAttackExtras(scoring.mods)),
+      defense: preview(scoring.defenseBase, shotDefenseExtras(scoring.mods)),
+    };
+  }
+  const { riposte } = scoring;
+  return {
+    attack: preview(scoring.attackBase, meleeAttackExtras(scoring.mods)),
+    defense: preview(scoring.defenseBase, meleeDefenseExtras(scoring.mods)),
+    ...(riposte
+      ? {
+          riposte: {
+            guard: preview(riposte.attackBase, meleeAttackExtras(riposte.mods)),
+            attacker: preview(riposte.defenseBase, meleeDefenseExtras(riposte.mods)),
+          },
+        }
+      : {}),
+  };
 }
 
 function preview(total: number, extras: Extras): ScorePreview {

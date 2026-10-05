@@ -127,32 +127,48 @@ function planLines(state: GameState, plan: PlanPreview, detailed: boolean): HexL
   }
   const odds = oddsLine(state, plan);
   if (odds) lines.push(odds);
-  lines.push(...scoreLines(state, plan, detailed));
+  lines.push(...fightScores(state, plan, detailed));
   if (plan.provokes > 0) lines.push('Breaking away — risks a parting blow');
   return lines;
 }
 
 /**
  * Both sides' scores before the dice for the fight a plan starts, modifiers and
- * all, then (when `detailed`) what each modifier is: the same chips the roll
- * card will show once the blow lands, so nothing on it comes as a surprise.
+ * all (a guarding target's riposte first), then (when `detailed`) what each
+ * modifier is: the same chips the roll cards will show once the blow lands, so
+ * nothing on them comes as a surprise. A pressed plan is scored as the plain
+ * one: the pressed blow's own −1 is the menu's to explain.
  */
-function scoreLines(state: GameState, plan: PlanPreview, detailed: boolean): HexLine[] {
+export function fightScores(
+  state: GameState,
+  plan: Pick<PlanPreview, 'kind' | 'targetId' | 'path'>,
+  detailed = false,
+): HexLine[] {
   if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return [];
   const attacker = unitById(state, state.activeUnitId);
   const target = unitById(state, plan.targetId);
   if (!attacker || !target) return [];
   const from = plan.path.at(-1);
-  const { attack, defense } = previewScores(
+  const { attack, defense, riposte } = previewScores(
     combatScoring(state, attacker.id, target.id, { ranged: plan.kind === 'shoot', ...(from ? { from } : {}) }),
   );
-  const lines: HexLine[] = [
+  const blow: HexLine[] = [
     { name: attacker.name, ...attack },
     { name: target.name, ...defense },
   ];
+  const lines: HexLine[] = riposte
+    ? [
+        `On guard: ${target.name} ripostes first`,
+        { name: target.name, ...riposte.guard },
+        { name: attacker.name, ...riposte.attacker },
+        'Then the blow',
+        ...blow,
+      ]
+    : blow;
   if (detailed) {
     const seen = new Set<string>();
-    for (const m of [...attack.mods, ...defense.mods]) {
+    const all = [attack, defense, ...(riposte ? [riposte.guard, riposte.attacker] : [])];
+    for (const m of all.flatMap((score) => score.mods)) {
       const label = `${signed(m.value)} ${m.label}`;
       const help = modifierHelp(m.label);
       if (m.label === 'Combat' || !help || seen.has(label)) continue;

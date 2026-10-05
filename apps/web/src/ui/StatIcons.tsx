@@ -1,7 +1,7 @@
 import { BASE_MOVE } from '@fansong/engine';
 import type { JSX } from 'react';
 import type { HexScore, HexTrait } from './hexInfo.js';
-import { signed } from './rollView.js';
+import { modifierHelp, signed } from './rollView.js';
 
 /** The unit numbers shown as icon badges wherever a unit is described. */
 export type StatKind = 'quality' | 'combat' | 'move' | 'range';
@@ -73,7 +73,7 @@ function ScoreLine({ score }: { score: HexScore }): JSX.Element {
     <div className="info-score">
       <span className="info-score-who">{score.name}</span>
       {score.mods.map((m) => (
-        <span key={m.label} className={`info-mod${m.value === 0 ? ' zero' : ''}`}>
+        <span key={m.label} className={`info-mod${m.value === 0 ? ' zero' : ''}`} title={modifierHelp(m.label)}>
           <b>{signed(m.value)}</b> {m.label}
         </span>
       ))}

@@ -146,4 +146,18 @@ describe('combatOdds', () => {
     expect(shot.kind).toBe('shot');
     if (shot.kind === 'shot') expect(shot.mods.aimPenalty).toBe(1);
   });
+
+  it("previews a guarding target's riposte as the reducer rolls it", () => {
+    const s = acting(melee({ guard: true }));
+    s.units.find((u) => u.id === 'p1u0')!.guarding = true;
+    const scoring = combatScoring(s, 'p0u0', 'p1u0');
+    if (scoring.kind !== 'melee' || !scoring.riposte) throw new Error('expected a riposte');
+    const riposte = reduce(s, { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' }).events.find(
+      (e): e is Extract<GameEvent, { type: 'GuardRiposte' }> => e.type === 'GuardRiposte',
+    )!;
+    expect(riposte.guardScore - riposte.guardDie).toBe(scoring.riposte.attackBase);
+    expect(riposte.attackerScore - riposte.attackerDie).toBe(scoring.riposte.defenseBase);
+    // No guard up, no riposte.
+    expect((combatScoring(acting(melee({ guard: true })), 'p0u0', 'p1u0') as { riposte?: unknown }).riposte).toBeUndefined();
+  });
 });
