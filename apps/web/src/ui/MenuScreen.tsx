@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react';
 import { PRESET_IDS, PRESETS } from '@fansong/content';
 import { animationsFor, framesOf, type Clip } from '../three/unitAnimations.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
+import { InstallPrompt } from './InstallPrompt.js';
 import { tintedSpriteUrl } from './Picker.js';
 import type { Mode } from './SetupScreen.js';
+import { UpdateCheck } from './UpdateCheck.js';
 
 interface Props {
   /** Open the setup for a way to play. */
@@ -109,9 +111,12 @@ export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }
             ) : null}
           </div>
         </div>
+        <UpdateCheck />
       </nav>
 
       <p className="menu-foot">A fan project. Game design inspired by the wargame <em>Song of Blades and Heroes</em>. Unit art from Battle for Wesnoth (GPL).</p>
+
+      <InstallPrompt />
     </div>
   );
 }

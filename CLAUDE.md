@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FanSong is a fan, rules-compatible *Song of Blades and Heroes*–style skirmish wargame with a "you go, I go" activation twist. [README.md](README.md) describes the rules as implemented; [PLAN.md](PLAN.md) holds the design and milestones (M0–M7 done, M8 in progress); [RULES_GAP.md](RULES_GAP.md) tracks the original rules not yet implemented.
 
+When reporting to me, be extremely concise. Sacrifice grammar for the sake of concision.
+
 ## Commands
 
 pnpm monorepo (`packages/*`, `tools/*`, `apps/*`), Node >= 20. There is no linter; `pnpm typecheck` is the static check.
@@ -47,6 +49,8 @@ Tests live in each package's `test/` directory (`**/test/**/*.test.ts`) and run 
 - The board is a single canvas picked by raycast, so units have no DOM handle. To set up a scenario, use the dev sandbox instead of clicking: open `http://localhost:5173/?dev=1&sandbox` and script it through `window.fansong` (`fansong.edit(s => fansong.ops.spawnUnit(s, 0, profile, {x,y}))`, `ops.activateUnit`, `ops.clearUnits`, `fansong.client.send(cmd)`, `fansong.state()`, `fansong.demo('supported')` to play an Animations demo).
 - The sandbox panel's **Animations** section has one button per melee outcome, shooting outcome and trait; each stages a small scene and plays it (`src/game/effectDemos.ts`). Add a demo there when an outcome or trait gets a new effect.
 - `?animSpeed=0.25` slows animations so screenshots catch them. The console 404 on `/favicon.ico` is expected.
+
+**The built site is an installable, offline app.** `vite build` writes a service worker (`offlineWorker` in `vite.config.ts`, from `src/pwa/sw.js`) that stores every built file on the device and serves the page from that copy, so a deployed change shows up one visit late, or at once through the menu's update check (`src/ui/appUpdate.ts`, shown in the installed app). The dev server registers no worker. To try it, run `pnpm --filter @fansong/web build` then `preview`.
 
 **Sound effects** are the user's own mouth recordings. `apps/web/src/audio/sfxCues.ts` is the one list of cues; `BoardView.sound(name)` plays one beside the visual effect it belongs to, and a cue with no recording plays its `fallback`, else a stock clip, else nothing. Stock clips are free library sounds in `apps/web/public/sfx/stock/` (`STOCK` and `STOCK_CLIPS` in `sfxCues.ts`); a recording anywhere down a cue's fallback chain always wins over them. Only add CC0 or attribution-licensed stock clips, and credit each in `public/sfx/stock/CREDITS.md`. To add a sound, add a cue there and call `this.sound(...)`; the user records it in the booth at `http://localhost:5173/?dev=1&record`, which saves the takes to `apps/web/public/sfx/` and rewrites `manifest.json` through a dev-server endpoint in `vite.config.ts`. The booth plays each take inside a staged scene of the game (`src/game/soundScenes.ts`, built on the effect demos) and its timing control saves a per-cue delay into the manifest's `delays`, which `sfx.play` applies; give a new cue a scene there if a command can trigger it. Commit the WAVs and the manifest. The sandbox's **Sounds** section lists every cue as recorded (✓), playing a stock clip (♪) or silent (✗). With `?dev=1`, every game also shows a **♪ Cues** panel (`src/ui/SoundCuePanel.tsx`) to switch cues on and off while playing; its Export gives a `fansong-sound-cues.json` whose `disabled` list goes into `DISABLED_SFX` in `src/audio/cueToggles.ts`, the cues the game ships switched off.
 
