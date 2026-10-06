@@ -1,0 +1,455 @@
+/**
+ * The Wesnoth WML reader behind the sprite importer (import-wesnoth.ts) and the
+ * sprite survey (survey-wesnoth.ts): finds every [unit_type] in a local Wesnoth
+ * checkout and turns its animation WML into FanSong clips.
+ *
+ * This is a small WML reader, not a WML engine: it understands the tags,
+ * attributes, image-path expansion (`x-[1~3].png:[100*3]`), the frame-sequence
+ * macros it can expand from Wesnoth's own definitions, and the handful of other
+ * animation macros these units use.
+ */
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { Clip, SpriteAnimations } from '../src/three/unitAnimations.js';
+
+export const WEB = join(dirname(fileURLToPath(import.meta.url)), '..');
+export const WESNOTH = resolve(process.argv[2] ?? process.env.WESNOTH_DIR ?? join(WEB, '..', '..', '..', 'wesnoth'));
+export const CORE = join(WESNOTH, 'data', 'core');
+export const IMAGES = join(CORE, 'images');
+
+/** Sprites that are a pose of another unit type, whose animations they borrow. */
+export const POSE_OF: Record<string, string> = {
+  'human-loyalists/lieutenant-crossbow.png': 'human-loyalists/lieutenant.png',
+};
+/** Clips whose WML names frames that Wesnoth doesn't ship; dropped instead of failing the import. */
+export const SKIP_CLIPS: Record<string, (keyof SpriteAnimations)[]> = {
+  'undead-spirit/nightgaunt.png': ['death'], // nightgaunt-die-[1~5].png don't exist
+};
+const FRONT = new Set(['s', 'se', 'sw']);
+/** A breath of fire is a halo stretched along its path in Wesnoth; here it flies as a fireball. */
+const FIRE_BREATH = 'projectiles/fireball-n.png';
+/** Missile macros that don't name an image directly. */
+const MISSILE_MACROS: Record<string, string> = {
+  MISSILE_FRAME_STONE_HIT: 'projectiles/stone.png',
+  MISSILE_FRAME_STONE_MISS: 'projectiles/stone.png',
+  MISSILE_FRAME_HATCHET: 'projectiles/hatchet-1.png',
+  MISSILE_FRAME_WAIL: 'projectiles/wailprojectile-n-3.png',
+  MISSILE_FRAME_ICE: 'projectiles/whitemissile-n.png',
+  MISSILE_FRAME_FAERIE_FIRE: 'projectiles/icemissile-n-4.png',
+  MISSILE_FRAME_CHILL_WAVE: 'projectiles/icemissile-n-4.png',
+  MISSILE_FRAME_CHILL_TEMPEST: 'projectiles/icemissile-n-4.png',
+  MISSILE_FRAME_SHADOW_WAVE: 'projectiles/darkmissile-n.png',
+  MISSILE_FRAME_FIREBALL_XY: 'projectiles/fireball-n.png',
+  MISSILE_FRAME_FIRE_BREATH: FIRE_BREATH,
+};
+const DEFAULT_MISSILE_LEAD_MS = 150; // Wesnoth's usual missile_start_time=-150
+/**
+ * Frame-sequence macros (animation-utils2.cfg) that are expanded from their
+ * Wesnoth definition, e.g. `{MOVING_ANIM_DIRECTIONAL_12_FRAME "units/…/skeleton"}`
+ * is a whole [movement_anim]. Other macros stay opaque calls on their node.
+ */
+const EXPANDED_MACROS = /^(ATTACK_ANIM_|MOVING_ANIM_|STANDING_ANIM_DIRECTIONAL|DEATH_ANIM_|MAGIC_ARMRAISE_|DRAKE_(FIRE|MOVEMENT)_ANIM)/;
+
+// --- WML ------------------------------------------------------------------
+
+export interface Node {
+  tag: string;
+  attrs: Record<string, string>;
+  kids: Node[];
+  macros: string[];
+}
+
+let macroDefs: Map<string, { params: string[]; body: string }> | undefined;
+
+/** The EXPANDED_MACROS definitions in Wesnoth's core macros, read on first use. */
+function macros(): Map<string, { params: string[]; body: string }> {
+  if (macroDefs) return macroDefs;
+  macroDefs = new Map();
+  const dir = join(CORE, 'macros');
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.cfg'))) {
+    const text = readFileSync(join(dir, file), 'utf8');
+    for (const m of text.matchAll(/^#define\s+(\w+)([^\n]*)\n([\s\S]*?)^#enddef/gm)) {
+      // Skip anything needing a real preprocessor (defaulted args, conditionals).
+      if (!EXPANDED_MACROS.test(m[1]!) || /^\s*#(arg|if)/m.test(m[3]!)) continue;
+      macroDefs.set(m[1]!, { params: m[2]!.trim().split(/\s+/).filter(Boolean), body: m[3]! });
+    }
+  }
+  return macroDefs;
+}
+
+/** Split a macro call's arguments: "quoted", (grouped), {nested}, or bare words. */
+function macroArgs(s: string): string[] {
+  const args: string[] = [];
+  let i = 0;
+  while (i < s.length) {
+    if (/\s/.test(s[i]!)) {
+      i++;
+      continue;
+    }
+    const open = s[i]!;
+    const close = open === '"' ? '"' : open === '(' ? ')' : open === '{' ? '}' : '';
+    if (!close) {
+      const end = s.slice(i).search(/\s/);
+      args.push(end < 0 ? s.slice(i) : s.slice(i, i + end));
+      i = end < 0 ? s.length : i + end;
+      continue;
+    }
+    let depth = 0;
+    let j = i;
+    for (; j < s.length; j++) {
+      if (s[j] === close && (open === '"' ? j > i : --depth === 0)) break;
+      if (s[j] === open && open !== '"') depth++;
+    }
+    // Quotes and grouping parens are the preprocessor's; nested calls stay whole.
+    args.push(open === '{' ? s.slice(i, j + 1) : s.slice(i + 1, j));
+    i = j + 1;
+  }
+  return args;
+}
+
+/** A call to one of EXPANDED_MACROS, as WML lines; undefined for any other macro. */
+function expandMacro(call: string): string[] | undefined {
+  const m = /^\{(\w+)\s*([\s\S]*)\}$/.exec(call);
+  const def = m && macros().get(m[1]!);
+  if (!def) return undefined;
+  const args = macroArgs(m[2]!);
+  if (args.length !== def.params.length) return undefined;
+  const value = new Map(def.params.map((p, i) => [p, args[i]!]));
+  return def.body.replace(/\{(\w+)\}/g, (whole, p: string) => value.get(p) ?? whole).split(/\r?\n/);
+}
+
+export function parseWml(text: string): Node {
+  const root: Node = { tag: 'root', attrs: {}, kids: [], macros: [] };
+  const stack = [root];
+  let pending = ''; // a macro call spanning several lines, until its braces balance
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    let s = lines[i]!.trim();
+    if (!s || s.startsWith('#')) continue;
+    const top = stack[stack.length - 1]!;
+    if (pending || s.startsWith('{')) {
+      pending = pending ? `${pending} ${s}` : s;
+      if ((pending.match(/\{/g) ?? []).length > (pending.match(/\}/g) ?? []).length) continue;
+      s = pending;
+      pending = '';
+    }
+    // A tag may carry a trailing comment (`[frame] # …`).
+    const tag = /^\[(\/?)(\+?[a-z_]+)\](?:\s*#.*)?$/.exec(s);
+    if (tag) {
+      if (tag[1]) {
+        if (stack.length > 1) stack.pop();
+      } else {
+        const n: Node = { tag: tag[2]!, attrs: {}, kids: [], macros: [] };
+        top.kids.push(n);
+        stack.push(n);
+      }
+    } else if (s.startsWith('{')) {
+      const body = expandMacro(s);
+      if (body) lines.splice(i + 1, 0, ...body);
+      else top.macros.push(s);
+    } else {
+      const kv = /^([a-z_0-9,]+)\s*=\s*(.*)$/.exec(s);
+      if (kv) top.attrs[kv[1]!] = kv[2]!.replace(/\s+#.*$/, '').replace(/^_\s*/, '').replace(/^"|"$/g, '');
+    }
+  }
+  return root;
+}
+
+function expandList(spec: string): string[] {
+  return spec.split(',').flatMap((part) => {
+    const range = /^(\d+)~(\d+)$/.exec(part);
+    if (range) {
+      const [a, b] = [Number(range[1]), Number(range[2])];
+      const step = b >= a ? 1 : -1;
+      return Array.from({ length: Math.abs(b - a) + 1 }, (_, i) => String(a + i * step));
+    }
+    const rep = /^(.+)\*(\d+)$/.exec(part);
+    return rep ? Array<string>(Number(rep[2])).fill(rep[1]!) : [part];
+  });
+}
+
+/** One image spec: `units/x-[1~3].png:[100,200,100]` -> [[x-1.png,100], …] (paths relative to images/). */
+function expandOne(spec: string): [string, number][] {
+  const m = /^(.*?\.png)[^:]*(?::(.*))?$/.exec(spec.replace(/"/g, '').trim());
+  if (!m) return [];
+  const path = m[1]!;
+  const dur = m[2];
+  const br = /\[([^\]]+)\]/.exec(path);
+  const paths = br ? expandList(br[1]!).map((v) => path.replace(br[0], v)) : [path];
+  let durs = dur?.startsWith('[') ? expandList(dur.slice(1, -1)) : [dur ?? '100'];
+  if (durs.length === 1) durs = Array<string>(paths.length).fill(durs[0]!);
+  return paths.map((p, i) => [p, Number(durs[i] ?? durs[durs.length - 1])]);
+}
+
+/** An `image=` value: one spec, or several separated by commas (`a.png:1,b-[1~3].png:100`). */
+function expandImage(value: string): [string, number][] {
+  const specs: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i <= value.length; i++) {
+    const c = value[i];
+    if (c === '[' || c === '(') depth++;
+    else if (c === ']' || c === ')') depth--;
+    else if (c === undefined || (c === ',' && depth === 0)) {
+      specs.push(value.slice(from, i));
+      from = i + 1;
+    }
+  }
+  // A blank hex (`misc/blank-hex.png`) hides the unit; only its own art is a frame.
+  return specs.flatMap(expandOne).filter(([p]) => p.startsWith('units/'));
+}
+
+const facesFront = (n: Node): boolean => {
+  const d = n.attrs.direction;
+  return d === undefined || d.split(',').some((x) => FRONT.has(x.trim()));
+};
+
+/** An image-bearing frame tag: the plain `[frame]` or a unit's custom `[foo_frame]`. */
+const isImageFrame = (tag: string): boolean =>
+  tag === 'frame' || (tag.endsWith('_frame') && tag !== 'missile_frame');
+
+/**
+ * Wesnoth composites several frame containers in one animation at once — a body
+ * plus a ground shadow, or a body plus a dust cloud — but we can keep only one
+ * as the clip's frame sequence. Pick the unit's own art:
+ *   1. whatever is flagged `primary=yes` (the falcon's `[bird_frame]`, the
+ *      wyvern's `[wyvern_frame]`) — else its shadow would become the animation;
+ *   2. with none flagged, the plain `[frame]` over a custom effect layer (the
+ *      boar's body charge is a plain `[frame]`, its `[dust_frame]` is spray);
+ *   3. failing both, whatever image frames remain.
+ */
+function keepPredicate(kids: Node[]): (k: Node) => boolean {
+  const imageFrames = kids.filter((k) => isImageFrame(k.tag) && k.attrs.image);
+  const hasPrimaryYes = imageFrames.some((k) => k.attrs.primary === 'yes');
+  const hasPlain = imageFrames.some((k) => k.tag === 'frame');
+  return (k: Node): boolean => (hasPrimaryYes ? k.attrs.primary === 'yes' : hasPlain ? k.tag === 'frame' : true);
+}
+
+/** Body frames of an animation: front-facing branches only, the first of any hit/miss pair. */
+function collectFrames(node: Node): { frames: [string, number][]; missiles: string[] } {
+  const frames: [string, number][] = [];
+  const missiles: string[] = [];
+  const keep = keepPredicate(node.kids);
+  let ifTaken = false;
+  for (const k of node.kids) {
+    if (k.tag === 'if' || k.tag === 'else') {
+      if (!facesFront(k)) {
+        if (k.tag === 'if') ifTaken = false;
+        continue;
+      }
+      if (k.tag === 'else' && ifTaken) continue;
+      const sub = collectFrames(k);
+      frames.push(...sub.frames);
+      missiles.push(...sub.missiles);
+      if (k.tag === 'if') ifTaken = true;
+    } else if (isImageFrame(k.tag) && k.attrs.image) {
+      // Keep the unit's own art; skip co-timed layers (shadow, dust, halo).
+      if (!keep(k)) continue;
+      frames.push(...expandImage(k.attrs.image));
+    } else if (k.tag === 'missile_frame' && k.attrs.image) {
+      missiles.push(k.attrs.image.replace(/[:~].*$/, ''));
+    } else if (k.tag === 'missile_frame' && k.attrs.halo?.includes('projectiles/fire-breath')) {
+      missiles.push(FIRE_BREATH);
+    }
+  }
+  for (const mac of node.macros) {
+    const name = /^\{(\w+)/.exec(mac)?.[1];
+    const missile = name && (MISSILE_MACROS[name] ?? MISSILE_MACROS[name.replace(/_(N|S)(_DIAGONAL)?$/, '')]);
+    if (missile) missiles.push(missile);
+  }
+  return { frames, missiles };
+}
+
+// --- unit_type -> clips ----------------------------------------------------
+
+interface RawAnim {
+  kind: string;
+  range?: string;
+  direction?: string;
+  wounded: boolean;
+  startTime: number;
+  missileStart?: number;
+  frames: [string, number][];
+  missiles: string[];
+}
+
+function rawAnims(ut: Node): RawAnim[] {
+  const ranges = new Map<string, Set<string>>();
+  for (const k of ut.kids) {
+    if (k.tag !== 'attack' || !k.attrs.name || !k.attrs.range) continue;
+    if (!ranges.has(k.attrs.name)) ranges.set(k.attrs.name, new Set());
+    ranges.get(k.attrs.name)!.add(k.attrs.range);
+  }
+
+  const out: RawAnim[] = [];
+  for (const k of ut.kids) {
+    if (!(k.tag.endsWith('_anim') || k.tag === 'death' || k.tag === 'defend') || !facesFront(k)) continue;
+    const { frames, missiles } = collectFrames(k);
+    // Swimming variants (`crocodile-float-attack`, `wolf-water`) are Wesnoth's water-terrain
+    // art; there is no water to swim in here, so keep the dry-land default.
+    if (frames.some(([p]) => /-(float|water)\b/.test(p))) continue;
+    const anim: RawAnim = {
+      kind: k.tag,
+      direction: k.attrs.direction,
+      wounded: k.macros.some((m) => m.includes('WOUNDED_UNIT')),
+      startTime: Number(k.attrs.start_time ?? 0),
+      missileStart: k.attrs.missile_start_time ? Number(k.attrs.missile_start_time) : undefined,
+      frames,
+      missiles,
+    };
+    if (k.tag === 'attack_anim') {
+      const fa = k.kids.find((c) => c.tag === 'filter_attack');
+      let range = fa?.attrs.range;
+      if (!range && fa?.attrs.name) {
+        const rs = new Set(fa.attrs.name.split(',').flatMap((n) => [...(ranges.get(n.trim()) ?? [])]));
+        range = rs.size === 1 ? [...rs][0] : undefined;
+      }
+      anim.range = range;
+    }
+    out.push(anim);
+  }
+
+  for (const mac of ut.macros) {
+    const m = /^\{(DEFENSE_ANIM\w*|LEADING_ANIM)\s+(.*)\}$/.exec(mac);
+    if (!m) continue;
+    // A FILTERED variant's filter may pin a direction; keep only front-facing ones.
+    const dir = /direction=([a-z,]+)/.exec(m[2]!)?.[1];
+    if (dir && !dir.split(',').some((d) => FRONT.has(d))) continue;
+    const args = [...m[2]!.matchAll(/"([^"]+)"|(\S+)/g)].map((a) => a[1] ?? a[2]!);
+    const imgs = args.filter((a) => a.endsWith('.png'));
+    if (imgs.length < 2) continue;
+    // Both macros take (REACTION, BASE, …): play base -> reaction -> base.
+    const [reaction, base] = [imgs[0]!, imgs[1]!];
+    if (m[1] === 'LEADING_ANIM') {
+      out.push({ kind: 'leading_anim', wounded: false, startTime: 0, frames: [[base, 150], [reaction, 450], [base, 150]], missiles: [] });
+    } else {
+      out.push({
+        kind: 'defend',
+        range: m[1] === 'DEFENSE_ANIM_RANGE' ? args[args.length - 1] : undefined,
+        wounded: false,
+        startTime: -126, // the macro's reaction frame straddles the hit
+        frames: [[base, 1], [reaction, 250], [base, 1]],
+        missiles: [],
+      });
+    }
+  }
+  return out.filter((a) => a.frames.length > 0);
+}
+
+const toClip = (a: RawAnim): Clip => {
+  const frames = a.frames.map(([p, ms]) => [p.replace(/^units\//, ''), ms] as [string, number]);
+  const total = frames.reduce((s, [, ms]) => s + ms, 0);
+  const clip: Clip = { frames };
+  if (a.kind === 'attack_anim' || a.kind === 'defend') clip.hitMs = Math.min(total, Math.max(0, -a.startTime));
+  return clip;
+};
+
+/** Prefer se/sw over s-only variants when both exist. */
+function preferDiagonal(list: RawAnim[]): RawAnim[] {
+  const diag = list.filter((a) => a.direction === undefined || a.direction.split(',').some((d) => d === 'se' || d === 'sw'));
+  return diag.length > 0 ? diag : list;
+}
+
+export function buildAnimations(ut: Node, isPose: boolean): SpriteAnimations {
+  const all = rawAnims(ut);
+  const of = (kind: string, range?: string) =>
+    preferDiagonal(all.filter((a) => a.kind === kind && (range === undefined || a.range === range || a.range === undefined)));
+  const anims: SpriteAnimations = {};
+
+  const standing = all.find((a) => a.kind === 'standing_anim' && !a.wounded && a.frames.length > 1);
+  if (standing) anims.standing = toClip(standing);
+  const idle = of('idle_anim')[0];
+  if (idle) anims.idle = toClip(idle);
+  const move = of('movement_anim')[0];
+  if (move) anims.move = toClip(move);
+
+  const melee = of('attack_anim', 'melee').filter((a) => a.range === 'melee');
+  if (melee.length) anims.melee = melee.map(toClip);
+  const ranged = of('attack_anim', 'ranged').filter((a) => a.range === 'ranged');
+  if (ranged.length) {
+    anims.ranged = ranged.map((a) => ({
+      ...toClip(a),
+      missile: a.missiles[0],
+      missileMs: a.missileStart !== undefined ? -a.missileStart : DEFAULT_MISSILE_LEAD_MS,
+    }));
+  }
+
+  const defMelee = of('defend', 'melee')[0];
+  if (defMelee) anims.defendMelee = toClip(defMelee);
+  const defRanged = of('defend', 'ranged')[0];
+  if (defRanged) anims.defendRanged = toClip(defRanged);
+
+  const death = of('death')[0];
+  if (death) anims.death = toClip(death);
+  // A borrowed pose's rally gesture shows the other unit's weapon; skip it.
+  const leading = of('leading_anim')[0];
+  if (leading && !isPose) anims.leading = toClip(leading);
+  const victory = of('victory_anim')[0];
+  if (victory) anims.victory = toClip(victory);
+  return anims;
+}
+
+// --- unit types -------------------------------------------------------------
+
+function* cfgFiles(dir: string): Generator<string> {
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) yield* cfgFiles(p);
+    else if (p.endsWith('.cfg')) yield p;
+  }
+}
+
+/**
+ * Substitute a file's own argument-less one-line macros — the `#define PATH_TEMP`
+ * path prefixes many unit files open with — so `{PATH_TEMP}soldier.png` reads as a path.
+ */
+function expandLocalMacros(text: string): string {
+  const defs = new Map<string, string>();
+  const lines = text.split(/\r?\n/);
+  const out: string[] = [];
+  const expand = (line: string): string => line.replace(/\{(\w+)\}/g, (whole, name: string) => defs.get(name) ?? whole);
+  for (let i = 0; i < lines.length; i++) {
+    const def = /^#define\s+(\w+)\s*$/.exec(lines[i]!);
+    if (def && /^.*#enddef\s*$/.test(lines[i + 1] ?? '')) {
+      defs.set(def[1]!, expand(lines[i + 1]!.replace(/#enddef\s*$/, '')).trim());
+      i++;
+    } else if (def && /^#enddef/.test(lines[i + 2] ?? '')) {
+      defs.set(def[1]!, expand(lines[i + 1]!).trim());
+      i += 2;
+    } else {
+      const undef = /^#undef\s+(\w+)/.exec(lines[i]!);
+      if (undef) defs.delete(undef[1]!);
+      else out.push(expand(lines[i]!));
+    }
+  }
+  return out.join('\n');
+}
+
+export interface UnitType {
+  node: Node;
+  file: string;
+}
+
+/** Every [unit_type] in the checkout's core units, in file order. */
+export function allUnitTypes(): UnitType[] {
+  if (!existsSync(IMAGES)) {
+    console.error(`No Wesnoth checkout at ${WESNOTH} (pass its path, or set WESNOTH_DIR).`);
+    process.exit(1);
+  }
+  const all: UnitType[] = [];
+  for (const file of cfgFiles(join(CORE, 'units'))) {
+    for (const k of parseWml(expandLocalMacros(readFileSync(file, 'utf8'))).kids) {
+      if (k.tag === 'unit_type') all.push({ node: k, file });
+    }
+  }
+  return all;
+}
+
+/** A unit type's base image without any image functions (`x.png~BLIT(…)` -> `x.png`). */
+export const baseImage = (u: UnitType): string | undefined => u.node.attrs.image?.replace(/(\.png).*$/, '$1');
+
+/** Every [unit_type] with a base image, keyed by that image (`units/…png`); of several sharing one, the last. */
+export function loadUnitTypes(): Map<string, UnitType> {
+  return new Map(allUnitTypes().filter((u) => u.node.attrs.image).map((u) => [baseImage(u)!, u]));
+}

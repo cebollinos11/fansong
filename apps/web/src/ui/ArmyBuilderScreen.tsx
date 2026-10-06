@@ -32,6 +32,7 @@ import {
   blankUnit,
   EDITABLE_STATS,
   type EditableStat,
+  LOOK_GROUPS,
   LOOKS,
   moveUnit,
   newArmy,
@@ -335,7 +336,7 @@ export function UnitRow({
           kind="sprite"
           ariaLabel="Looks like"
           className="picker-look"
-          groups={() => [{ items: LOOKS.map((l) => ({ key: l, title: l, preview: <LookSprite look={l} /> })) }]}
+          groups={() => LOOK_GROUPS.map((g) => ({ label: g.label, items: g.looks.map((l) => ({ key: l, title: l, preview: <LookSprite look={l} /> })) }))}
           value={unit.look}
           onPick={(look) => onChange({ ...unit, look })}
         >

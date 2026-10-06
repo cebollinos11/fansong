@@ -35,6 +35,28 @@ export const STAT_LABELS: Record<EditableStat, { title: string }> = {
 /** Every look a unit can take: the sprites of the preset units, by preset unit name. */
 export const LOOKS: readonly string[] = Object.keys(UNIT_SPRITES);
 
+/** The folk a look belongs to, by the Wesnoth folder its sprite comes from; anything else is a beast. */
+const LOOK_FOLK: readonly [RegExp, string][] = [
+  [/^human-/, 'Humans'],
+  [/^elves-/, 'Elves'],
+  [/^dwarves\//, 'Dwarves'],
+  [/^(orcs|goblins)\//, 'Orcs and goblins'],
+  [/^(trolls|ogres)\//, 'Trolls and ogres'],
+  [/^undead/, 'Undead'],
+  [/^drakes\//, 'Drakes'],
+  [/^saurians\//, 'Saurians'],
+  [/^(merfolk|nagas)\//, 'Merfolk and nagas'],
+  [/^dunefolk\//, 'Dunefolk'],
+];
+
+/** {@link LOOKS} sorted into folk, for the look picker. */
+export const LOOK_GROUPS: readonly { label: string; looks: readonly string[] }[] = [...LOOK_FOLK.map(([, label]) => label), 'Beasts and monsters']
+  .map((label) => ({
+    label,
+    looks: LOOKS.filter((l) => (LOOK_FOLK.find(([folder]) => folder.test(UNIT_SPRITES[l]!))?.[1] ?? 'Beasts and monsters') === label),
+  }))
+  .filter((g) => g.looks.length > 0);
+
 /** `value` clamped into `stat`'s legal range and rounded to a whole number. */
 export function clampStat(stat: EditableStat, value: number): number {
   const [min, max] = STAT_BOUNDS[stat];

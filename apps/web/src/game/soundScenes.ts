@@ -59,6 +59,14 @@ const SPEAKERS: Record<VoiceFamily, WarbandUnit> = {
   beast: { name: 'Giant Rat', quality: 3, combat: 3 },
   bird: { name: 'Vampire Bat', quality: 3, combat: 3 },
   bug: { name: 'Giant Spider', quality: 3, combat: 3 },
+  dwarf: { name: 'Dwarvish Fighter', quality: 3, combat: 3 },
+  troll: { name: 'Troll', quality: 3, combat: 3 },
+  drake: { name: 'Drake Fighter', quality: 3, combat: 3 },
+  lizard: { name: 'Saurian Skirmisher', quality: 3, combat: 3 },
+  wose: { name: 'Wose Shaman', quality: 3, combat: 3 },
+  horse: { name: 'Bay Horse', quality: 3, combat: 3 },
+  sea: { name: 'Water Serpent', quality: 3, combat: 3 },
+  elemental: { name: 'Fire Guardian', quality: 3, combat: 3 },
 };
 
 const VOICES = Object.fromEntries(

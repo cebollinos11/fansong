@@ -109,16 +109,36 @@ const BASE = [
 
 /** The kinds of creature that get a voice of their own, with who speaks in it. */
 export const VOICE_FAMILIES = {
-  human: 'men and elves',
+  human: 'men, elves and merfolk',
   orc: 'orcs and goblins',
-  bones: 'skeletons (rattle and clack)',
-  spirit: 'ghosts and shadows',
-  beast: 'bears, wolves, boars, rats and the yeti (growl)',
+  bones: 'skeletons and liches (rattle and clack)',
+  spirit: 'ghosts, shadows and ghouls',
+  beast: 'bears, wolves, boars, cats, rats and the yeti (growl)',
   bird: 'gryphons, falcons, wyverns and bats (screech)',
-  bug: 'spiders and scorpions (chitter and hiss)',
+  bug: 'spiders, scorpions, scarabs and ants (chitter and hiss)',
+  dwarf: 'dwarves (gruff "hah!")',
+  troll: 'trolls and ogres (deep bellow)',
+  drake: 'drakes (roar)',
+  lizard: 'saurians and nagas (hiss)',
+  wose: 'woses (creak and groan)',
+  horse: 'horses (whinny)',
+  sea: 'krakens, cuttlefish, serpents and other sea monsters (gurgle)',
+  elemental: 'fire guardians, jinn and mudcrawlers (whoosh and bubble)',
 } as const;
 
 export type VoiceFamily = keyof typeof VOICE_FAMILIES;
+
+/** The family whose voice a family borrows until its own lines are recorded. */
+const VOICE_FALLBACKS: Partial<Record<VoiceFamily, VoiceFamily>> = {
+  dwarf: 'human',
+  troll: 'orc',
+  drake: 'beast',
+  lizard: 'bug',
+  wose: 'beast',
+  horse: 'beast',
+  sea: 'beast',
+  elemental: 'spirit',
+};
 export type VoiceLine = 'attack' | 'death';
 export type SfxName = (typeof BASE)[number]['name'] | `${VoiceFamily}-${VoiceLine}`;
 
@@ -131,6 +151,7 @@ const VOICES: SfxCue[] = (Object.keys(VOICE_FAMILIES) as VoiceFamily[]).flatMap(
     idea: 'a grunt of effort, in that voice',
     takes: 2,
     gain: 0.8,
+    ...(VOICE_FALLBACKS[family] && { fallback: `${VOICE_FALLBACKS[family]}-attack` }),
   },
   {
     name: `${family}-death`,
@@ -139,7 +160,7 @@ const VOICES: SfxCue[] = (Object.keys(VOICE_FAMILIES) as VoiceFamily[]).flatMap(
     when: `The death of one of the ${VOICE_FAMILIES[family]}`,
     idea: 'a dying cry, in that voice',
     takes: 2,
-    fallback: 'death',
+    fallback: VOICE_FALLBACKS[family] ? `${VOICE_FALLBACKS[family]}-death` : 'death',
   },
 ]);
 
@@ -377,11 +398,20 @@ export function pickTake(count: number, last: number | undefined, rand: () => nu
 
 /** Whose voice a unit drawn with the Wesnoth sprite `sprite` speaks in. */
 export function voiceFamily(sprite: string): VoiceFamily {
-  if (/^undead-skeletal\//.test(sprite)) return 'bones';
+  if (/^undead-skeletal\/|lich/.test(sprite)) return 'bones';
+  if (/^undead-necromancers\//.test(sprite)) return 'human';
   if (/^undead/.test(sprite)) return 'spirit';
-  if (/^(orcs|goblins|trolls|ogres)\//.test(sprite)) return 'orc';
-  if (/gryphon|falcon|wyvern|^bats\/|drake|bird/.test(sprite)) return 'bird';
-  if (/spider|scorpion/.test(sprite)) return 'bug';
+  if (/^(orcs|goblins)\//.test(sprite)) return 'orc';
+  if (/^(trolls|ogres)\//.test(sprite)) return 'troll';
+  if (/gryphon|falcon|wyvern|^bats\/|bird/.test(sprite)) return 'bird';
+  if (/^dwarves\//.test(sprite)) return 'dwarf';
+  if (/^drakes\//.test(sprite)) return 'drake';
+  if (/^(saurians|nagas)\//.test(sprite)) return 'lizard';
+  if (/^woses\//.test(sprite)) return 'wose';
+  if (/spider|scorpion|scarab|\/ant\//.test(sprite)) return 'bug';
+  if (/^monsters\/horse\//.test(sprite)) return 'horse';
+  if (/caribe|cuttlefish|kraken|seahorse|tentacle|serpent/.test(sprite)) return 'sea';
+  if (/fireghost|jinn|mudcrawler/.test(sprite)) return 'elemental';
   if (/^monsters\//.test(sprite)) return 'beast';
   return 'human';
 }

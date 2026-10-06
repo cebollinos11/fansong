@@ -86,6 +86,24 @@ describe('voiceFamily', () => {
     expect(by('Giant Spider')).toBe('bug');
     expect(by('Giant Rat')).toBe('beast');
     expect(by('Yeti')).toBe('beast');
+    expect(by('Redtail Cat')).toBe('beast');
+    expect(by('Lich')).toBe('bones');
+    expect(by('Dark Adept')).toBe('human');
+    expect(by('Ghoul')).toBe('spirit');
+    expect(by('Merman Fighter')).toBe('human');
+    expect(by('Dwarvish Fighter')).toBe('dwarf');
+    expect(by('Troll')).toBe('troll');
+    expect(by('Ogre')).toBe('troll');
+    expect(by('Drake Fighter')).toBe('drake');
+    expect(by('Saurian Skirmisher')).toBe('lizard');
+    expect(by('Naga Fighter')).toBe('lizard');
+    expect(by('Wose Shaman')).toBe('wose');
+    expect(by('Bay Horse')).toBe('horse');
+    expect(by('Giant Ant Queen')).toBe('bug');
+    expect(by('Kraken')).toBe('sea');
+    expect(by('Water Serpent')).toBe('sea');
+    expect(by('Jinn')).toBe('elemental');
+    expect(by('Giant Mudcrawler')).toBe('elemental');
   });
 });
 

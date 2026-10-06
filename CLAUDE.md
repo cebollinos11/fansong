@@ -55,6 +55,8 @@ Tests live in each package's `test/` directory (`**/test/**/*.test.ts`) and run 
 2. Run `pnpm --filter @fansong/web sprites C:\Repos\wesnoth`. This parses the WML into `src/three/unitAnimations.json` and copies the frames into `public/sprites/`.
 3. Commit the JSON and the PNGs, so the game builds without Wesnoth.
 
+[sprite-report.md](sprite-report.md) lists every Wesnoth unit with the clips the importer gets for it and whether it is in the game. It is generated: after changing `UNIT_SPRITES` or the WML reader (`apps/web/scripts/wesnoth-wml.ts`), re-run `pnpm --filter @fansong/web survey C:Reposwesnoth`. A new sprite speaks in the voice `voiceFamily` (`src/audio/sfxCues.ts`) picks from its path, and clops like a rider if it is in `RIDING_SPRITES`.
+
 For units Wesnoth gives no `move` clip, `pnpm --filter @fansong/web walks` synthesizes walk cycles from the hand-tuned `RIGS`. Keep new art in Wesnoth's pixel-art style: vendor raw Wesnoth images and compose them at runtime rather than committing baked composites.
 
 **Changing the AI.** Measure the change by win rate against the previous AI, not by eye:
