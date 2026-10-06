@@ -5,8 +5,10 @@
 // A build is one version of the app: all its files are downloaded before it
 // takes over, and the page is then served from that copy alone, never the
 // network. A new build downloads in the background (only the files that
-// changed) and waits; it takes over when the app is next opened, or at once
-// when the page sends 'skipWaiting' (the menu's update check, src/ui/appUpdate.ts).
+// changed) and then takes over at once, even from pages still open on the old
+// one: were it to wait for them to close, a build that cannot load its page
+// could never be replaced while one stayed open. An open page keeps running the
+// code it has and gets the new build when it reloads (src/ui/appUpdate.ts).
 
 const CACHE = 'fansong-files';
 const FONT_CACHE = 'fansong-fonts';
@@ -63,13 +65,9 @@ function unredirected(response) {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers });
 }
 
-self.addEventListener('install', (event) => event.waitUntil(download()));
+self.addEventListener('install', (event) => event.waitUntil(download().then(() => self.skipWaiting())));
 
 self.addEventListener('activate', (event) => event.waitUntil(prune().then(() => self.clients.claim())));
-
-self.addEventListener('message', (event) => {
-  if (event.data === 'skipWaiting') void self.skipWaiting();
-});
 
 self.addEventListener('fetch', (event) => {
   const request = event.request;
