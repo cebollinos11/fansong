@@ -2833,6 +2833,19 @@ button.secondary {
   border-color: #b79bff;
 }
 
+/* A spell turn too weak to reach any enemy: still in its place, but not on offer. */
+.dice-pick.spell.out,
+.dice-pick.spell.out:hover {
+  border-color: var(--line);
+  transform: none;
+  cursor: not-allowed;
+}
+
+.dice-pick.spell.out .die-face {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
 /* The war cry's sure 6, gold as in the roll. */
 .die-face.sure rect {
   fill: #ffae3c;

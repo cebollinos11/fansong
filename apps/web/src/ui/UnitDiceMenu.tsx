@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Owner } from '@fansong/engine';
 import { anchoredCard, type UnitProjector } from './anchorView.js';
-import { breakFreeHint, breakFreeParts, diceHint, groupHint, oddsParts, spellHint, spellParts, TURNOVER_COST } from './diceMenuView.js';
+import { breakFreeHint, breakFreeParts, diceHint, groupHint, oddsParts, spellHint, spellOutOfReach, spellParts, TURNOVER_COST } from './diceMenuView.js';
 import { SPELL_TURN_HELP, TRANSFIXED_HELP, type TraitTag } from './hudView.js';
 import { usePressGuard } from './pressGuard.js';
 
@@ -46,6 +46,9 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
       : transfixed
         ? breakFreeParts(hovered.dice, quality, inspired)
         : oddsParts(hovered.dice, quality, hovered.group ? (group?.inspired ?? false) : inspired);
+  // The spell row shows every count the unit may roll, not only those with a target in reach.
+  const spellRow = [...new Set([...choices, ...spellChoices])].sort((a, b) => a - b);
+  const outOfReach = hovered?.spell === true && !spellChoices.includes(hovered.dice);
   const hover = (dice: number, inGroup: boolean, spell = false) => ({
     onPointerEnter: () => setHovered({ dice, group: inGroup, spell }),
     onPointerLeave: () => setHovered(null),
@@ -155,19 +158,26 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
             Spell turn: Transfix
           </div>
           <div className="dice-menu-row">
-            {spellChoices.map((n) => (
-              <button
-                key={n}
-                type="button"
-                className="dice-pick spell"
-                title={spellHint(n)}
-                aria-label={`Take a spell turn on ${n} ${n === 1 ? 'die' : 'dice'}`}
-                onClick={guard(() => onPick(n, false, true))}
-                {...hover(n, false, true)}
-              >
-                <DieFace pips={n} sure={inspired && n === spellChoices[0]} />
-              </button>
-            ))}
+            {/* Every count the unit could roll: one too weak to reach anyone stays in its place, greyed out. */}
+            {spellRow.map((n) => {
+              const reaches = spellChoices.includes(n);
+              const dice = `${n} ${n === 1 ? 'die' : 'dice'}`;
+              return (
+                <button
+                  key={n}
+                  type="button"
+                  className={`dice-pick spell${reaches ? '' : ' out'}`}
+                  title={reaches ? spellHint(n) : `Spell turn, ${dice} — ${spellOutOfReach(n)}.`}
+                  aria-label={reaches ? `Take a spell turn on ${dice}` : `A spell turn on ${dice}: ${spellOutOfReach(n)}`}
+                  // Not `disabled`, which would swallow the hover that says why.
+                  aria-disabled={!reaches}
+                  onClick={reaches ? guard(() => onPick(n, false, true)) : undefined}
+                  {...hover(n, false, true)}
+                >
+                  <DieFace pips={n} sure={inspired && n === spellChoices[0]} />
+                </button>
+              );
+            })}
           </div>
         </>
       ) : null}
@@ -176,8 +186,14 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
         {odds ? (
           <>
             <strong>{hovered?.group ? `Group, ${odds.dice}` : hovered?.spell ? `Spell, ${odds.dice}` : odds.dice}</strong>
-            <span>{odds.act}</span>
-            <span className={odds.safe ? 'safe' : 'risk'}>{odds.risk}</span>
+            {outOfReach ? (
+              <span className="risk">{spellOutOfReach(hovered.dice)}</span>
+            ) : (
+              <>
+                <span>{odds.act}</span>
+                <span className={odds.safe ? 'safe' : 'risk'}>{odds.risk}</span>
+              </>
+            )}
           </>
         ) : (
           TURNOVER_COST

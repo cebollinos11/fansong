@@ -36,6 +36,12 @@ export function spellHint(n: number): string {
   return `Spell turn, ${n === 1 ? 'one die' : `${n} dice`} — every success is a point of power: a spell of up to power ${n}, reaching ${reach} hexes, and no other action. ${risk}`;
 }
 
+/** Why a spell turn on this many dice is not on offer: even at full power it reaches no one. */
+export function spellOutOfReach(n: number): string {
+  const reach = SPELL_RANGES[n - 1] ?? SPELL_RANGES.at(-1)!;
+  return `no enemy within ${reach} hexes`;
+}
+
 /** What rolling this many dice to break free takes, and what it risks. */
 export function breakFreeHint(n: number): string {
   return n <= BREAK_FREE_COST
