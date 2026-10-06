@@ -53,6 +53,16 @@ async function font(request) {
   return hit;
 }
 
+/**
+ * A host may answer `index.html` by redirecting to `/` (Cloudflare Pages does),
+ * and a browser refuses to open a page from a response that was redirected.
+ * A copy of the same body carries no such mark.
+ */
+function unredirected(response) {
+  if (!response.redirected) return response;
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers: response.headers });
+}
+
 self.addEventListener('install', (event) => event.waitUntil(download()));
 
 self.addEventListener('activate', (event) => event.waitUntil(prune().then(() => self.clients.claim())));
@@ -74,6 +84,6 @@ self.addEventListener('fetch', (event) => {
     caches
       .open(CACHE)
       .then((cache) => cache.match(keyOf(path)))
-      .then((hit) => hit ?? fetch(request)),
+      .then((hit) => (hit ? unredirected(hit) : fetch(request))),
   );
 });
