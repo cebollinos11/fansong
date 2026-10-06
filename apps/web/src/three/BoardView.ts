@@ -507,6 +507,8 @@ const WEB_SCALE = 1.8; // the web over a held unit, against the 72px image's own
 const SPELL_LOOSE_MS = 220; // the caster, its spell already in hand, draws back to throw it
 const FIZZLE_COLORS = [0x5a5766, 0x7d798a, 0xa39fb0]; // the pale smoke a failed spell leaves
 const CHANNEL_FAINT = 0.4; // the charge a caster shows as it starts its spell roll, before a die has landed
+const MOTE_PX = 9; // the pixel-art mote's side, in its own pixels (see PIXEL_ART in effects.ts)
+const SPARK = SPRITE_PX * 2; // a spell's sparks are hard squares two sprite pixels across, or three: never soft blobs
 const ORB_COUNT = 7; // motes circling a caster at full power: one, and two more for each point of it
 const FIZZLE_MS = 400; // a spell that comes to nothing gets this long to gutter out
 const WEB_POP_MS = 180; // a thrown web lands too big, and draws in to size
@@ -3051,11 +3053,9 @@ export class BoardView {
     for (let i = 0; i < ORB_COUNT; i++) {
       const orb = new THREE.Sprite(
         new THREE.SpriteMaterial({
-          map: this.effects.texture('soft'),
-          color: SPELL_COLORS[i % SPELL_COLORS.length],
+          map: this.effects.texture('mote'),
           transparent: true,
           depthWrite: false,
-          blending: THREE.AdditiveBlending,
         }),
       );
       orb.renderOrder = 2;
@@ -5363,7 +5363,7 @@ export class BoardView {
     if (!obj.orbs.visible) return 0;
     const dt = dtMs / 1000;
     obj.orbTurn += dt * (2.2 + 0.9 * aura);
-    const mid = 0.6 * obj.size;
+    const mid = 0.75 * obj.size;
     const reach = (0.42 + 0.1 * aura) * obj.size;
     obj.orbs.children.forEach((child, i) => {
       const orb = child as THREE.Sprite;
@@ -5377,8 +5377,10 @@ export class BoardView {
         mid + ((i % 3) - 1) * 0.22 * obj.size + Math.sin(a) * reach * 0.25,
         Math.sin(a) * reach * 0.5 + 0.02,
       );
-      orb.scale.setScalar((0.3 + 0.09 * aura) * (0.8 + 0.2 * Math.sin(this.now / 130 + i)) * on);
-      orb.material.opacity = on;
+      // Pixel art, like the unit it circles: it flickers between two drawings, never blurs or swells.
+      orb.material.map = this.effects.texture(Math.floor(this.now / 170 + i * 0.6) % 3 === 0 ? 'glint' : 'mote');
+      orb.scale.setScalar(MOTE_PX * SPRITE_PX * (aura > 2.5 ? 2 : aura > 1.5 ? 1.5 : 1));
+      orb.material.opacity = on < 0.5 ? 0 : 1;
     });
     const feet = this.feet(obj);
     obj.moteDebt += dt * (8 + 14 * aura);
@@ -5392,17 +5394,16 @@ export class BoardView {
         up: 0.6 + 0.3 * aura,
         drag: 0.5,
         life: [0.6, 1.1],
-        size: [0.06, 0.09 + 0.03 * aura],
+        size: [SPARK, aura > 1.5 ? SPARK * 1.5 : SPARK],
         jitter: (0.3 + 0.1 * aura) * obj.size,
+        shape: 'square',
         blend: 'add',
       });
     }
     if (aura > 0.3 && this.now >= obj.auraBeat) {
       obj.auraBeat = this.now + 760 - 120 * aura;
-      const wide = HEX_SIZE * (0.5 + 0.17 * aura);
-      this.effects.ring(feet, SPELL_COLOR, wide, 0.1, { life: 0.6, opacity: 0.45 + 0.15 * aura, thick: aura > 2.5, additive: true });
-      // A column of light stands round it, taller with every point of power.
-      this.effects.wall(feet, SPELL_COLOR, wide * 0.75, wide * 0.55, (0.45 + 0.4 * aura) * obj.size, { life: 0.9, opacity: 0.22 + 0.1 * aura });
+      // A ring of sparks spreads along the ground from under it, wider with every point of power.
+      this.sparkRing(feet, Math.round(8 + 4 * aura), 0.5 + 0.2 * aura, 0.5);
       this.effects.burst({
         at: feet,
         count: Math.round(1 + 2 * aura),
@@ -5419,6 +5420,11 @@ export class BoardView {
       });
     }
     return aura;
+  }
+
+  /** A ring of `count` square sparks spreading flat along the ground from `at`, at `speed`, for `life` seconds. */
+  private sparkRing(at: THREE.Vector3, count: number, speed: number, life: number): void {
+    this.effects.burst({ at, count, colors: SPELL_COLORS, speed: [speed, speed], flat: true, drag: 1.5, life: [life, life], size: [SPARK, SPARK], shape: 'square', blend: 'add' });
   }
 
   /**
@@ -5443,7 +5449,6 @@ export class BoardView {
       obj.channel = { level: CHANNEL_FAINT };
       const feet = this.feet(obj);
       // The ground gives up its dust as the power is drawn in.
-      this.effects.ring(feet, SPELL_COLOR, HEX_SIZE * 0.95, 0.15, { life: 0.55, opacity: 0.8, additive: true });
       this.effects.burst({
         at: feet,
         count: 10,
@@ -5466,8 +5471,7 @@ export class BoardView {
         const level = (obj.channel.level = Math.floor(obj.channel.level) + 1);
         const feet = this.feet(obj);
         this.flashUnit(obj.id, 0.12 + 0.06 * level);
-        this.effects.ring(feet, SPELL_COLOR, 0.15, HEX_SIZE * (0.6 + 0.2 * level), { life: 0.45, opacity: 0.85, thick: level >= 3, additive: true });
-        this.effects.wall(feet, SPELL_COLOR, 0.2, HEX_SIZE * (0.5 + 0.15 * level), (0.7 + 0.45 * level) * obj.size, { life: 0.5, opacity: 0.6 });
+        this.sparkRing(feet, 10 + 4 * level, 0.9 + 0.35 * level, 0.45);
         this.effects.burst({
           at: feet,
           count: 6 + 6 * level,
@@ -5477,8 +5481,9 @@ export class BoardView {
           up: 1 + 0.4 * level,
           drag: 1.2,
           life: [0.4, 0.8],
-          size: [0.07, 0.1 + 0.03 * level],
+          size: [SPARK, level >= 2 ? SPARK * 1.5 : SPARK],
           jitter: 0.25 * obj.size,
+          shape: 'square',
           blend: 'add',
         });
       });
@@ -5503,7 +5508,6 @@ export class BoardView {
     const chest = this.chest(obj);
     obj.aura = 0;
     obj.squash = { start: this.now, end: this.now + FIZZLE_MS, amount: 0.14 };
-    this.effects.ring(this.feet(obj), SPELL_COLOR, HEX_SIZE * (0.5 + 0.15 * held), 0.05, { life: 0.25, opacity: 0.7, additive: true });
     this.effects.burst({
       at: chest,
       count: 12,
@@ -5512,10 +5516,11 @@ export class BoardView {
       up: 0.55,
       drag: 1.5,
       life: [0.5, 0.95],
-      size: [0.1, 0.18],
-      grow: 2.6,
-      opacity: 0.55,
+      size: [SPARK * 2, SPARK * 3],
+      grow: 1.5,
+      opacity: 0.7,
       jitter: 0.12,
+      shape: 'square',
     });
     // The last of it drops as dead sparks.
     this.effects.burst({
@@ -5558,7 +5563,6 @@ export class BoardView {
       const clip = caster.anims.ranged?.[0] ?? caster.anims.leading ?? caster.anims.melee?.[0];
       if (clip) caster.animator.play(clip);
       caster.glow = { color: SPELL_COLOR, start: this.now, end: this.now + SPELL_LOOSE_MS + 250 };
-      this.effects.ring(this.feet(caster), SPELL_COLOR, HEX_SIZE * 0.7, 0.12, { life: SPELL_LOOSE_MS / 1000, opacity: 0.9, additive: true });
     });
     this.at(loose, () => {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: projectileTexture(WEB_IMAGE), transparent: true, depthWrite: false }));
@@ -5594,7 +5598,8 @@ export class BoardView {
         cone: 0.55,
         drag: 2.5,
         life: [0.2, 0.45],
-        size: [0.03, 0.06],
+        size: [SPARK, SPARK * 1.5],
+        shape: 'square',
         blend: 'add',
       });
     });
@@ -5608,7 +5613,7 @@ export class BoardView {
       this.sound('web-strain');
       target.webFx = { kind: 'snare', start: this.now };
       target.webSet = null;
-      this.effects.ring(this.feet(target), SPELL_COLOR, 0.15, HEX_SIZE * 0.8, { life: 0.4, opacity: 0.8, additive: true });
+      this.sparkRing(this.feet(target), 12, 1.1, 0.4);
     });
     e.dice.forEach((die, k) =>
       this.at(resolve + k * DIE_SOUND_GAP_MS, () => {
@@ -5655,7 +5660,7 @@ export class BoardView {
     this.flashUnit(obj.id, 0.45);
     obj.animator.stop();
     obj.glow = { color: SPELL_COLOR, start: this.now, end: this.now + GLOW_MS };
-    this.effects.ring(this.feet(obj), SPELL_COLOR, HEX_SIZE * 0.9, 0.2, { life: 0.3, opacity: 0.9, additive: true });
+    this.sparkRing(this.feet(obj), 14, 1.3, 0.35);
     this.effects.burst({
       at: this.chest(obj),
       count: 22,
@@ -5664,7 +5669,8 @@ export class BoardView {
       up: 0.3,
       drag: 2.5,
       life: [0.35, 0.7],
-      size: [0.04, 0.08],
+      size: [SPARK, SPARK * 1.5],
+      shape: 'square',
       blend: 'add',
     });
   }
@@ -5692,7 +5698,6 @@ export class BoardView {
       this.flashUnit(obj.id, 0.35);
       obj.squash = { start: this.now, end: this.now + 260, amount: -0.1 }; // it stands up out of it
       const chest = this.chest(obj);
-      this.effects.pop('burst', chest, 0.3, 1.1 * obj.size, { life: 0.25, color: colors[colors.length - 1] });
       this.effects.burst({
         at: chest,
         count: 24,
@@ -5771,7 +5776,7 @@ export class BoardView {
       obj.webKick = { start: this.now, amount: -0.2 };
       obj.squash = { start: this.now, end: this.now + 320, amount: 0.12 }; // it sags, spent
       obj.glow = { color: SPELL_COLOR, start: this.now, end: this.now + 600 };
-      this.effects.ring(this.feet(obj), SPELL_COLOR, HEX_SIZE * 0.8, 0.2, { life: 0.3, opacity: 0.8, additive: true });
+      this.sparkRing(this.feet(obj), 10, 0.9, 0.3);
     });
     return done;
   }
@@ -5805,8 +5810,9 @@ export class BoardView {
       up: 0.5,
       drag: 0.8,
       life: [0.5, 0.9],
-      size: [0.03, 0.06],
+      size: [SPARK, SPARK * 1.5],
       jitter: 0.3 * obj.size,
+      shape: 'square',
       blend: 'add',
     });
   }

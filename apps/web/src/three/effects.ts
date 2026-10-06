@@ -67,7 +67,9 @@ export type FxTexture =
   | 'wall'
   | 'query'
   | 'burst'
-  | 'hoop';
+  | 'hoop'
+  | 'mote'
+  | 'glint';
 
 interface Fx {
   obj: THREE.Object3D;
@@ -649,16 +651,20 @@ export class Effects {
     let t = this.textures.get(kind);
     if (t) return t;
     const canvas = document.createElement('canvas');
+    const pixels = kind === 'mote' || kind === 'glint' ? PIXEL_ART[kind] : null;
     if (kind === 'scorch') {
       canvas.width = canvas.height = SCORCH_PX;
       drawScorch(canvas.getContext('2d')!);
+    } else if (pixels) {
+      canvas.width = canvas.height = pixels.length;
+      drawPixels(canvas.getContext('2d')!, pixels);
     } else {
       canvas.width = canvas.height = 128;
       drawTexture(canvas.getContext('2d')!, kind);
     }
     t = new THREE.CanvasTexture(canvas);
     t.colorSpace = THREE.SRGBColorSpace;
-    if (kind === 'scorch') t.magFilter = THREE.NearestFilter; // crisp pixels, like the ground it is burned into
+    if (kind === 'scorch' || pixels) t.magFilter = THREE.NearestFilter; // crisp pixels, like the art they are laid over
     this.textures.set(kind, t);
     return t;
   }
@@ -752,6 +758,50 @@ function drawScorch(g: CanvasRenderingContext2D): void {
     if (alphaAt(x, y) > 0.8) put(x, y, 4, 0.9);
   }
   g.putImageData(img, 0, 0);
+}
+
+/** The colours a spell's pixel art is drawn in, by the digit that stands for each: brightest first. */
+const SPELL_SHADES: Record<string, string> = { 1: '#ffffff', 2: '#d9c8ff', 3: '#b79bff', 4: '#6f55c4' };
+
+/**
+ * Pixel art drawn a pixel to a character, in {@link SPELL_SHADES} ('.' is
+ * clear): a mote of spell-light, and the smaller glint it flickers to. Each is
+ * shown with its pixels the size of a unit sprite's, or a whole multiple.
+ */
+const PIXEL_ART = {
+  mote: [
+    '....4....',
+    '....3....',
+    '...424...',
+    '..42124..',
+    '432111234',
+    '..42124..',
+    '...424...',
+    '....3....',
+    '....4....',
+  ],
+  glint: [
+    '.........',
+    '.........',
+    '....4....',
+    '...434...',
+    '..43134..',
+    '...434...',
+    '....4....',
+    '.........',
+    '.........',
+  ],
+} as const;
+
+function drawPixels(g: CanvasRenderingContext2D, rows: readonly string[]): void {
+  rows.forEach((row, y) =>
+    [...row].forEach((c, x) => {
+      const shade = SPELL_SHADES[c];
+      if (!shade) return;
+      g.fillStyle = shade;
+      g.fillRect(x, y, 1, 1);
+    }),
+  );
 }
 
 /** A small seeded generator (mulberry32), so a drawn texture comes out the same every time. */
