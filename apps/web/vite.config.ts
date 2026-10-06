@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import react from '@vitejs/plugin-react';
@@ -94,10 +95,48 @@ function sfxRecorder(): Plugin {
   };
 }
 
+/**
+ * Build only: writes `sw.js`, the service worker that keeps the whole game on
+ * the device so the installed app opens offline. It is `src/pwa/sw.js` under a
+ * list of every built file with a hash of its contents, so any change to the
+ * build is a new worker, which fetches just the files whose hash is new.
+ */
+function offlineWorker(): Plugin {
+  let root = '';
+  let outDir = '';
+  return {
+    name: 'fansong-offline-worker',
+    apply: 'build',
+    configResolved(config) {
+      root = config.root;
+      outDir = path.resolve(config.root, config.build.outDir);
+    },
+    closeBundle() {
+      const files: Record<string, string> = {};
+      const walk = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) walk(full);
+          else files[path.relative(outDir, full).split(path.sep).join('/')] = createHash('sha1').update(readFileSync(full)).digest('hex').slice(0, 12);
+        }
+      };
+      walk(outDir);
+      delete files['sw.js'];
+      const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)));
+      const worker = readFileSync(path.resolve(root, 'src/pwa/sw.js'), 'utf8');
+      writeFileSync(path.join(outDir, 'sw.js'), `const FILES = ${JSON.stringify(sorted)};
+
+${worker}`);
+    },
+  };
+}
+
 // The web app is a thin client of the workspace engine packages, which are
 // consumed straight from their TypeScript sources (see each package's "main").
 // Vite/esbuild transpiles them, so no build step is needed for the packages.
 export default defineConfig({
-  plugins: [react(), sfxRecorder()],
+  plugins: [react(), sfxRecorder(), offlineWorker()],
+  // When this copy of the app was built, shown beside the menu's update check.
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   server: { port: 5173 },
 });

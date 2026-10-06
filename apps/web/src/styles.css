@@ -226,6 +226,86 @@ body {
   --lean: 14px;
 }
 
+/* Which build this is, and the check for a newer one (ui/UpdateCheck.tsx). */
+.menu-version {
+  margin: -8px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: #a7a195;
+}
+
+.menu .menu-version button {
+  margin-left: auto;
+  padding: 6px 10px;
+  background: transparent;
+  border-color: #4a4f66;
+  font-size: 13px;
+}
+
+/* The offer to install the game as an app (ui/InstallPrompt.tsx), floating over the menu's foot. */
+.install {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 10;
+  width: min(460px, calc(100% - 24px));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #161b2e;
+  border: 1px solid #7d6a3c;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+
+.install img {
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+
+.install-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.install-text strong {
+  font: 600 16px 'Cinzel', Georgia, serif;
+  letter-spacing: 1px;
+  color: var(--gold);
+}
+
+.install-text span {
+  font-size: 14px;
+  color: #c9c2b2;
+}
+
+.install button {
+  flex: none;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 15px;
+}
+
+.menu button.install-yes {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: #1b1407;
+  font-weight: 700;
+}
+
+.install-no {
+  background: transparent;
+}
+
 /* No room for two full warbands beside the menu: the leaders face off alone. */
 @media (max-width: 1100px), (max-height: 560px) {
   .menu-unit:not(.leader) {

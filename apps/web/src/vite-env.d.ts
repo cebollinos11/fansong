@@ -9,3 +9,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+/** When this build was made (ISO time), set by `define` in vite.config.ts; absent under Vitest. */
+declare const __BUILD_TIME__: string | undefined;

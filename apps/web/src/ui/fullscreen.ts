@@ -18,9 +18,11 @@ function fullscreenElement(): Element | null {
  * Whether to offer the fullscreen button: only on a touch-first device (a phone
  * or tablet, where the browser's bars eat the board) whose browser can do it
  * (an iPhone's Safari cannot take a page fullscreen, so it gets no button).
+ * The installed app already fills the screen, so it gets none either.
  */
 export function canOfferFullscreen(): boolean {
   if (typeof document === 'undefined' || typeof window === 'undefined') return false;
+  if (window.matchMedia('(display-mode: fullscreen)').matches) return false;
   const supported = document.fullscreenEnabled || (document as WebkitDocument).webkitFullscreenEnabled === true;
   return supported && window.matchMedia('(pointer: coarse)').matches;
 }
