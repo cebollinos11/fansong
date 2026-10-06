@@ -472,6 +472,7 @@ const REASSEMBLE_HOLD_MS = 500; // standing, before the camera goes back to the 
 const REASSEMBLE_MIN_SPAN = 8; // world units kept in view: looser than a fight, the ground around them matters
 const ZONE_SPAN_MARGIN = 1.8; // how much of the view a zone being scored takes up
 const ZONE_MIN_SPAN = 8; // world units kept in view around it, so who stands in and near it shows
+const ROUND_END_LEAD_MS = 1200; // the board rests this long after a round's last activation, before the new round's banner
 const ZONE_SCORE_LEAD_MS = 250; // a zone's verdict is up this long before its point counts
 const ZONE_SCORE_MS = 1700; // how long its verdict and glow last: fading only as the next zone's turn begins
 const ZONE_UNHELD_COLOR = 0xcfd8e3; // the glow of a zone nobody takes
@@ -1976,6 +1977,10 @@ export class BoardView {
         // A zone's point is heard as the zone is scored (see scoreZone).
         if (e.zone === undefined) this.at(Math.max(t, settle), () => this.sound('score'));
       } else if (e.type === 'RoundEnded') {
+        // The round's last activation is read before the new round is announced
+        // (nothing to read when the batch showed nothing, or the game is over).
+        const last = Math.max(t, settle);
+        if (last > 0 && !events.some((x) => x.type === 'GameOver')) t = last + ROUND_END_LEAD_MS;
         // The marks where units fell last only for the round they fell in.
         this.at(t, () => {
           this.effects.clearMarks();

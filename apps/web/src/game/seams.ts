@@ -1,7 +1,7 @@
 import type { GameEvent, Owner } from '@fansong/engine';
 
 /** Beat after an activation ends before the next unit steps up, or the player gets the board back. */
-export const ACTIVATION_SEAM_MS = 600;
+export const ACTIVATION_SEAM_MS = 1200;
 /** Extra time a blow's verdict stays alone on screen before the same unit carries on. */
 export const VERDICT_SEAM_MS = 400;
 
