@@ -1387,6 +1387,15 @@ button.ghost {
   --pip: #fff;
 }
 
+/* A nerve check's die is black with white pips, whoever rolls it, to set it apart from every other roll. */
+.roll-card.nerve .die {
+  --die: #0b0c0f;
+  --pip: #fff;
+  /* An edge, so the die reads against the dark card. */
+  outline: 1px solid rgba(255, 255, 255, 0.4);
+  outline-offset: -1px;
+}
+
 .die .pip {
   place-self: center;
   width: 6px;
