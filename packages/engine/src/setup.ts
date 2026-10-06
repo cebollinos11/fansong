@@ -24,7 +24,7 @@ export interface UnitSpec {
   flying?: boolean;
   /** Reassembling: a knocked-down unit stands up for free at the start of each round. */
   reassembling?: boolean;
-  /** Opportunist: +1 in melee or shooting against a knocked-down foe. */
+  /** Opportunist: +1 in melee or shooting against a knocked-down or transfixed foe. */
   opportunist?: boolean;
   /** Savage: every kill it deals is a gruesome kill. */
   savage?: boolean;

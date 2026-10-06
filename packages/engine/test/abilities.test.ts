@@ -80,6 +80,28 @@ describe('ranged attack (Shoot)', () => {
     expect(has(legal, (c) => c.type === 'Shoot')).toBe(false);
   });
 
+  it('can shoot past a knocked-down or transfixed foe in contact: only a standing one locks it', () => {
+    const config: GameConfig = {
+      seed: 1,
+      board: { width: 9, height: 3 },
+      warbands: [
+        [{ name: 'Bow', quality: 3, combat: 2, ranged: 4, pos: { x: 0, y: 1 } }],
+        [
+          { name: 'Near', quality: 3, combat: 3, pos: { x: 0, y: 0 } },
+          { name: 'Far', quality: 3, combat: 3, pos: { x: 4, y: 1 } },
+        ],
+      ],
+    };
+    const shot: Command = { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u1' };
+    for (const down of [{ knockedDown: true }, { transfixedBy: 'p0u0' }]) {
+      const s = acting(config, 'p0u0');
+      expect(has(getLegalCommands(s), (c) => c.type === 'Shoot')).toBe(false);
+      Object.assign(s.units.find((u) => u.id === 'p1u0')!, down);
+      expect(has(getLegalCommands(s), (c) => c.type === 'Shoot' && c.targetId === 'p1u1')).toBe(true);
+      expect(() => reduce(s, shot)).not.toThrow();
+    }
+  });
+
   it('cannot shoot through blocking terrain', () => {
     const config = structuredClone(base);
     config.board.blocked = ['2,1']; // between shooter (0,1) and foe (3,1)

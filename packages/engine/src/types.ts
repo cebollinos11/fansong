@@ -18,7 +18,7 @@ export interface UnitTraits {
   /**
    * Maximum range of a ranged (Shoot) attack, in cells. `0` = melee only. A
    * ranged unit can shoot a non-adjacent enemy within range and line of sight,
-   * and takes no return damage — but cannot shoot while itself in melee.
+   * and takes no return damage — but cannot shoot with a standing enemy in contact.
    */
   ranged: number;
   /**

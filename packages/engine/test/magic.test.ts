@@ -279,12 +279,29 @@ describe('Transfixed', () => {
     expect(ofType(events, 'FreeHackResolved')).toHaveLength(0);
   });
 
-  it('is lost for good when it fails a nerve check', () => {
-    const friend: UnitSpec = { name: 'Friend', quality: 3, combat: 3, pos: { x: 3, y: 4 } };
-    const s = createGame(config([striker, farMage], [{ ...victim, quality: 7 }, friend]));
+  it('gives an Opportunist its bonus', () => {
+    const { events } = reduce(acting(held(1, {}, { opportunist: true })), strike);
+    expect(ofType(events, 'AttackResolved')[0]!.attackOpportunist).toBe(1);
+  });
+
+  const friend: UnitSpec = { name: 'Friend', quality: 3, combat: 3, pos: { x: 3, y: 4 } };
+
+  it('is no witness: a gruesome kill beside it tests no nerve of its own', () => {
+    const s = createGame(config([striker, farMage], [{ ...victim, quality: 7 }, friend, { ...friend, pos: { x: 5, y: 9 } }, { ...friend, pos: { x: 6, y: 9 } }]));
     unit(s, 'p1u0').transfixedBy = 'p0u1';
     const events: GameEvent[] = [];
     resolveCombatMorale(s, events, unit(s, 'p1u1'), makeHexGrid(s.board), true);
+    expect(ofType(events, 'NerveCheck').map((e) => e.unitId)).not.toContain('p1u0');
+    expect(unit(s, 'p1u0').dead).toBe(false);
+  });
+
+  it('is lost for good when it fails the nerve check of a rout', () => {
+    const s = createGame(config([striker, farMage], [{ ...victim, quality: 7 }, friend, { ...friend, pos: { x: 3, y: 5 } }]));
+    unit(s, 'p1u0').transfixedBy = 'p0u1';
+    unit(s, 'p1u1').dead = true;
+    unit(s, 'p1u2').dead = true;
+    const events: GameEvent[] = [];
+    resolveCombatMorale(s, events, unit(s, 'p1u2'), makeHexGrid(s.board), false);
     expect(ofType(events, 'UnitRouted')).toEqual([{ type: 'UnitRouted', unitId: 'p1u0' }]);
     expect(ofType(events, 'UnitFled')).toHaveLength(0);
     expect(unit(s, 'p1u0').dead).toBe(true);

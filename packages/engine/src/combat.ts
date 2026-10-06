@@ -123,7 +123,7 @@ export const BIG_TARGET_BONUS = 1;
 /** How much a flyer's swoop is worth in a melee it presses against a grounded foe. */
 export const FLYING_MELEE_BONUS = 1;
 
-/** How much an opportunist gains fighting or shooting a knocked-down foe. */
+/** How much an opportunist gains fighting or shooting a knocked-down or transfixed foe. */
 export const OPPORTUNIST_BONUS = 1;
 
 /** How much a sharpshooter gains on every shot. */
@@ -192,12 +192,12 @@ export function flyingTargetBonus(state: GameState, target: Unit): number {
 
 /**
  * The Opportunist bonus: {@link OPPORTUNIST_BONUS} when `unit` is an
- * Opportunist and `opponent` is knocked down, else 0. It counts on either side
+ * Opportunist and `opponent` is knocked down or transfixed, else 0. It counts on either side
  * of every melee — blows, ripostes and free hacks — and on the shooter's side
  * of a shot.
  */
-export function opportunistBonus(unit: Pick<Unit, 'traits'>, opponent: Pick<Unit, 'knockedDown'>): number {
-  return unit.traits.opportunist && opponent.knockedDown ? OPPORTUNIST_BONUS : 0;
+export function opportunistBonus(unit: Pick<Unit, 'traits'>, opponent: Pick<Unit, 'knockedDown' | 'transfixedBy'>): number {
+  return unit.traits.opportunist && isDown(opponent) ? OPPORTUNIST_BONUS : 0;
 }
 
 /** The Sharpshooter bonus: {@link SHARPSHOOTER_BONUS} on every shot a Sharpshooter takes, else 0. */

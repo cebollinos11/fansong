@@ -38,11 +38,13 @@ export function isOccupied(state: GameState, v: Vec, ignoreId?: string): boolean
   return state.units.some((u) => !u.dead && u.id !== ignoreId && u.pos.x === v.x && u.pos.y === v.y);
 }
 
-/** Is `unit` adjacent to a living enemy (i.e. locked in melee)? Adjacency is a
- * board question (distance 1), so it never assumes a grid geometry. */
+/** Is `unit` adjacent to a standing enemy (i.e. locked in melee)? A foe knocked
+ * down or transfixed (see {@link isDown}) pins no one: beside only such foes a
+ * unit may still shoot or cast. Adjacency is a board question (distance 1), so
+ * it never assumes a grid geometry. */
 export function inMelee(state: GameState, unit: Unit, board: Board): boolean {
   return state.units.some(
-    (u) => !u.dead && u.owner !== unit.owner && board.distance(u.pos, unit.pos) === 1,
+    (u) => !u.dead && !isDown(u) && u.owner !== unit.owner && board.distance(u.pos, unit.pos) === 1,
   );
 }
 
@@ -250,6 +252,6 @@ export function spellTargets(state: GameState, caster: Unit, board: Board, power
  */
 export function canCast(state: GameState, unit: Unit, board: Board, dice: number): boolean {
   if (!unit.traits.magicUser || unit.dead || isDown(unit)) return false;
-  if (adjacentEnemies(state, unit, board).some((e) => !isDown(e))) return false;
+  if (inMelee(state, unit, board)) return false;
   return spellTargets(state, unit, board, dice).length > 0;
 }

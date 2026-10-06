@@ -139,7 +139,7 @@ export const TRAIT_INFO: Record<TraitKey, { label: string; desc: string }> = {
     desc: 'soars over terrain and units, draws no free hacks, +1 swooping into melee, but +1 to anyone shooting it airborne',
   },
   reassembling: { label: 'Reassembling', desc: 'stands back up for free at the start of each round if knocked down' },
-  opportunist: { label: 'Opportunist', desc: '+1 in melee or shooting against a knocked-down foe' },
+  opportunist: { label: 'Opportunist', desc: '+1 in melee or shooting against a knocked-down or transfixed foe' },
   savage: { label: 'Savage', desc: "every kill it deals is gruesome, so the victim's friends must test for fear" },
   leader: {
     label: 'Leader',

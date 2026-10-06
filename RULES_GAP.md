@@ -32,7 +32,8 @@ These are implemented, so they are not listed again below:
   falls.
 - Beating a fallen model kills it, standing up costs one action, and a fallen
   carrier drops its objective.
-- Shooting cannot be done while the shooter is in melee, needs line of sight,
+- Shooting cannot be done while the shooter is in melee (a fallen or
+  transfixed foe in contact does not count), needs line of sight,
   and the shooter takes no damage back.
 - Tough, so the first killing blow becomes a fall.
 - A **power blow** or **aimed shot**: spend both actions of a two-action

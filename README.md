@@ -133,11 +133,12 @@ action; the AI, the tests, and any future UI all pick from that list.
   single failure leaves it **transfixed**. A spell that reaches no one is wasted.
 - **Transfixed** units cannot move or act, and count as knocked down for every
   rule that asks whether a unit is standing: they outnumber no one, close no
-  pincer, brace no friend, take no free hacks, hold no zone and drop a flag
-  they carry. They are struck and shot at **+2**, **any roll they lose kills
-  them** (Armored still shrugs off a loss by 1, and Tough still turns the first
-  death into a knockdown), and they never hurt their attacker. One that fails a
-  nerve check is removed from the game. Activating a transfixed unit is a roll
+  pincer, brace no friend, take no free hacks, hold no zone, drop a flag
+  they carry, give an Opportunist its bonus, and test no nerve at a gruesome
+  kill or a Leader's fall. They are struck and shot at **+2**, **any roll they
+  lose kills them** (Armored still shrugs off a loss by 1, and Tough still
+  turns the first death into a knockdown), and they never hurt their attacker.
+  One that fails the nerve check of a rout is removed from the game. Activating a transfixed unit is a roll
   to **break free** on 2 or 3 dice: two successes free it, on its feet, and a
   third is an action to spend. It is freed at once if its caster is killed,
   flees the field, changes sides or is transfixed itself.
@@ -252,7 +253,7 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
 - **Special abilities** — three original traits, each behind the command /
   legal-move seams and priced in `packages/content`:
   - **Shooter** (`Shoot`) — fire on a non-adjacent enemy within range and line of
-    sight, with no return damage; you can't shoot while locked in melee. The
+    sight, with no return damage; you can't shoot with a standing enemy in contact. The
     trait sets the range: Shooter (short range) 3 hexes, Shooter 5, Shooter
     (long range) 7.
   - **Tough** — the first would-be kill is downgraded to a knockdown.

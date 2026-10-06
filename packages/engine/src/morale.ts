@@ -1,7 +1,7 @@
 import { vecKey, type Board, type Vec, type WalkRules } from './board.js';
 import { carryFlags, finishGame, isKing, isPig, regrabOnStandUp, returnCarriedFlag } from './mode.js';
 import { rollD6 } from './rng.js';
-import { airborne, aliveUnits, inEarshot, isOccupied, livingCount, WAR_CRY_RANGE } from './query.js';
+import { airborne, aliveUnits, inEarshot, isDown, isOccupied, livingCount, WAR_CRY_RANGE } from './query.js';
 import type { GameEvent, GameState, Owner, Unit } from './types.js';
 
 /**
@@ -21,7 +21,7 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  * A **Disloyal** unit that rolls a natural 1 on any of these checks does not
  * flee: it changes sides where it stands (see {@link defect}).
  *
- * A **transfixed** unit that fails any of these checks cannot run: it is lost
+ * A **transfixed** unit is no standing witness, so only a rout tests it. Failing, it cannot run: it is lost
  * where it stands, out of the game.
  *
  * A unit that fails any nerve check loses its inspiration (see `Unit.inspired`).
@@ -122,7 +122,7 @@ function fearCheck(s: GameState, events: GameEvent[], victim: Unit, board: Board
  * {@link MORALE_RADIUS} hexes, with terrain but not other units blocking sight.
  */
 function witnesses(s: GameState, unit: Unit, owner: Owner, board: Board): Unit[] {
-  return aliveUnits(s, owner).filter((u) => u.id !== unit.id && !u.knockedDown && inEarshot(board, unit.pos, u.pos));
+  return aliveUnits(s, owner).filter((u) => u.id !== unit.id && !isDown(u) && inEarshot(board, unit.pos, u.pos));
 }
 
 /**
