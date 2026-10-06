@@ -61,6 +61,18 @@ describe('PlanRunner', () => {
     expect(controller.getState().actionsRemaining).toBe(1);
   });
 
+  it('casts the spell of a spell turn', async () => {
+    const mage: UnitSpec = { name: 'Mage', quality: 3, combat: 2, magicUser: true, pos: { x: 2, y: 3 } };
+    const near: UnitSpec = { name: 'Near', quality: 3, combat: 3, pos: { x: 4, y: 3 } };
+    const state = acting(config(1, [mage], [near]), 1);
+    state.spell = { power: 1 };
+    const { sent, runner } = harness(state);
+    const steps: Command[] = [{ type: 'Cast', casterId: 'p0u0', targetId: 'p1u0' }];
+
+    await expect(runner.run(steps)).resolves.toEqual({ done: true, sent: 1 });
+    expect(sent).toEqual(steps);
+  });
+
   it('reports done when the last action ends the activation', async () => {
     const { controller, runner } = harness(acting(config(2, [mover], [far]), 2));
     const steps = [move({ x: 5, y: 3 }), move({ x: 8, y: 3 })];

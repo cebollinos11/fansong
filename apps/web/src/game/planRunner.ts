@@ -127,6 +127,8 @@ function actorOf(step: Command): string | null {
     case 'Attack':
     case 'Shoot':
       return step.attackerId;
+    case 'Cast':
+      return step.casterId;
     default:
       return null;
   }
