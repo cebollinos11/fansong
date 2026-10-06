@@ -1,6 +1,9 @@
 // The service worker that lets the game load with no connection. The build
 // (`offlineWorker` in vite.config.ts) puts `const FILES = { path: hash, ... }`,
-// every file of that build, above this code and writes the result to `sw.js`.
+// every file of that build but the unit art, above this code and writes the
+// result to `sw.js`. The unit art is `const LAZY = { path: hash, ... }`: there
+// is far too much of it to fetch up front, so a sprite is kept the first time
+// it is shown, and the page names the ones to fetch ahead (`keep`, below).
 //
 // A build is one version of the app: all its files are downloaded before it
 // takes over, and the page is then served from that copy alone, never the
@@ -17,12 +20,13 @@ const DOWNLOADS_AT_ONCE = 8;
 
 const scope = self.registration.scope;
 /** Where a file of this build is kept: its hash is in the key, so a changed file is a new entry. */
-const keyOf = (path) => new URL(`${path}?v=${FILES[path]}`, scope).href;
+const keyOf = (path) => new URL(`${path}?v=${FILES[path] ?? LAZY[path]}`, scope).href;
 
-async function download() {
+/** Fetch and keep those of `paths` not kept yet, a few at a time. */
+async function fetchAll(paths) {
   const cache = await caches.open(CACHE);
   const have = new Set((await cache.keys()).map((request) => request.url));
-  const missing = Object.keys(FILES).filter((path) => !have.has(keyOf(path)));
+  const missing = paths.filter((path) => !have.has(keyOf(path)));
   let next = 0;
   const fetchNext = async () => {
     while (next < missing.length) {
@@ -35,10 +39,28 @@ async function download() {
   await Promise.all(Array.from({ length: DOWNLOADS_AT_ONCE }, fetchNext));
 }
 
+const download = () => fetchAll(Object.keys(FILES));
+
+/**
+ * Unit art the page expects to need (the preset warbands, the player's own
+ * armies), fetched ahead so those play offline. Whatever fails is fetched when shown.
+ */
+const keep = (paths) => fetchAll(paths.filter((path) => Object.hasOwn(LAZY, path))).catch(() => {});
+
+/** A file of the unit art: the kept copy, or the network's, kept from then on. */
+async function lazy(path) {
+  const cache = await caches.open(CACHE);
+  const hit = await cache.match(keyOf(path));
+  if (hit) return hit;
+  const response = await fetch(new URL(path, scope), { cache: 'no-cache' });
+  if (response.ok) void cache.put(keyOf(path), response.clone());
+  return response;
+}
+
 /** Drop the files only an older build used. */
 async function prune() {
   const cache = await caches.open(CACHE);
-  const wanted = new Set(Object.keys(FILES).map(keyOf));
+  const wanted = new Set([...Object.keys(FILES), ...Object.keys(LAZY)].map(keyOf));
   await Promise.all((await cache.keys()).filter((request) => !wanted.has(request.url)).map((request) => cache.delete(request)));
 }
 
@@ -77,6 +99,7 @@ self.addEventListener('fetch', (event) => {
   if (!url.href.startsWith(scope)) return;
   // Queries (`?room=CODE`, `?dev=1`, a sound's `?v=`) never change which file it is.
   const path = decodeURIComponent(url.pathname.slice(new URL(scope).pathname.length)) || 'index.html';
+  if (Object.hasOwn(LAZY, path)) return event.respondWith(lazy(path));
   if (!(path in FILES)) return;
   event.respondWith(
     caches
@@ -84,4 +107,8 @@ self.addEventListener('fetch', (event) => {
       .then((cache) => cache.match(keyOf(path)))
       .then((hit) => (hit ? unredirected(hit) : fetch(request))),
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'keep' && Array.isArray(event.data.paths)) event.waitUntil(keep(event.data.paths));
 });

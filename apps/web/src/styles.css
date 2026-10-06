@@ -3810,6 +3810,34 @@ button.trait-add[aria-expanded='true'] {
   display: block;
 }
 
+/* A sprite that has not arrived yet (they are fetched as they are first shown):
+   a turning arc in its place. An <img> takes no pseudo-element, so the arc is
+   its background, and turns by itself. */
+img.sprite-waiting {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 4a8 8 0 1 0 8 8' fill='none' stroke='%23f4f1e6' stroke-opacity='.75' stroke-width='2.5' stroke-linecap='round'%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 12 12' to='360 12 12' dur='0.8s' repeatCount='indefinite'/%3E%3C/path%3E%3C/svg%3E")
+    center / 40% no-repeat;
+}
+
+.menu-unit.sprite-waiting::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  width: calc(var(--unit) * 0.26);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border: 3px solid rgb(244 241 230 / 0.2);
+  border-top-color: rgb(244 241 230 / 0.85);
+  border-radius: 50%;
+  animation: sprite-waiting 0.8s linear infinite;
+}
+
+@keyframes sprite-waiting {
+  to {
+    rotate: 360deg;
+  }
+}
+
 .warband-strip {
   display: flex;
   flex-wrap: wrap;

@@ -143,6 +143,8 @@ export function MenuUnit({
 }): JSX.Element {
   const [frame, setFrame] = useState(path);
   const [striking, setStriking] = useState(false);
+  // Sprites are fetched as they are first shown: a spinner stands on the hex until this one has drawn.
+  const [drawn, setDrawn] = useState<string | null>(null);
   // Tinted copies of the frames, by frame path, once they are ready.
   const [tinted, setTinted] = useState<{ key: string; urls: Record<string, string> }>({ key: '', urls: {} });
   const tintKey = `${tint}:${path}`;
@@ -194,9 +196,9 @@ export function MenuUnit({
   // Until the tinted copies are ready, show the plain sprite rather than nothing.
   const src = (tinted.key === tintKey ? tinted.urls[frame] : undefined) ?? spriteUrl(frame);
   return (
-    <div className={['menu-unit', leader ? 'leader' : '', big ? 'big' : ''].filter(Boolean).join(' ')}>
+    <div className={['menu-unit', leader ? 'leader' : '', big ? 'big' : '', drawn === path ? '' : 'sprite-waiting'].filter(Boolean).join(' ')}>
       <img className="menu-hex" src={`${import.meta.env.BASE_URL}sprites/terrain/grass/green.png`} alt="" />
-      <img className={classes} src={src} alt="" />
+      <img className={classes} src={src} alt="" onLoad={() => setDrawn(path)} />
     </div>
   );
 }

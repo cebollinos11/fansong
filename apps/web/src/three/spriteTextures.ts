@@ -100,6 +100,8 @@ function loadImage(path: string): Promise<HTMLImageElement> {
       img.onerror = () => reject(new Error(`failed to load sprite ${path}`));
       img.src = spriteUrl(path);
     });
+    // Sprites are fetched as they are needed, so a failure may be a dropped connection: let the next ask try again.
+    p.catch(() => images.delete(path));
     images.set(path, p);
   }
   return p;
@@ -119,6 +121,7 @@ export function loadSpriteAtlas(sprite: string, frames: string[], owner: 0 | 1, 
       if (loaded.length === 0 || loaded[0]![0] !== frames[0]) throw new Error(`failed to load sprite ${sprite}`);
       return buildAtlas(loaded, MAPPINGS[owner], tint ? parseTint(tint) : null);
     });
+    p.catch(() => atlases.delete(key));
     atlases.set(key, p);
   }
   return p;

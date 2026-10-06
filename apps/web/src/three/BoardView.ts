@@ -389,6 +389,11 @@ const DOWN_WIDEN = 1.08; // width scale of a crouching cutout
 const DOWN_LEAN = 0.12; // radians a crouching cutout sags sideways
 const STAR_COUNT = 3;
 const STAR_SIZE = 0.2; // world size of a star sprite
+const SPINNER_AFTER_MS = 250; // a unit whose art takes longer than this to arrive shows a spinner meanwhile
+const SPINNER_SIZE = 0.36; // world size of that spinner
+const SPINNER_HEIGHT = 0.42; // its centre, above the top of the unit's base
+const SPINNER_TURN = 5.5; // radians a second
+const SPRITE_RETRY_MS = 4000; // art that failed to arrive (no connection) is asked for again this often
 const STAR_CLEARANCE = 0.08; // orbit centre above the top of the head
 const STAR_ORBIT = 0.26; // orbit radius (world units)
 const STAR_SPIN = 2.6; // radians per second
@@ -791,6 +796,8 @@ interface UnitObj {
   downPose: string | null;
   animator: UnitAnimator;
   atlas: SpriteAtlas | null;
+  /** Turns over its base while its art is still on the way. */
+  spinner: THREE.Sprite | null;
   shownImage: string | null;
   /** World-space direction the unit last moved or struck in. */
   heading: THREE.Vector3;
@@ -1056,6 +1063,7 @@ export class BoardView {
   private markingsKey: string | undefined;
   private readonly badgeTextures = new Map<string, THREE.Texture>();
   private starMaterial: THREE.SpriteMaterial | null = null;
+  private spinnerMaterial: THREE.SpriteMaterial | null = null;
   /** Board tile and feature chunks, raycast for cell picking (`userData.cells` maps each triangle to its cell). */
   private readonly tiles: THREE.Mesh[] = [];
   private board: BoardData | null = null;
@@ -2877,6 +2885,8 @@ export class BoardView {
     for (const t of this.badgeTextures.values()) t.dispose();
     this.starMaterial?.map?.dispose();
     this.starMaterial?.dispose();
+    this.spinnerMaterial?.map?.dispose();
+    this.spinnerMaterial?.dispose();
     this.rolls.dispose();
     this.vignette.remove();
     this.effects.dispose();
@@ -2980,6 +2990,7 @@ export class BoardView {
       downPose: downPose && anims.death?.frames.some(([f]) => f === downPose) ? downPose : null,
       animator: new UnitAnimator(spriteName, anims),
       atlas: null,
+      spinner: null,
       shownImage: null,
       // Everyone starts facing the enemy: P0 deploys on the left, P1 on the right.
       heading: new THREE.Vector3(owner === 0 ? 1 : -1, 0, 0),
@@ -3015,13 +3026,7 @@ export class BoardView {
       cue: null,
     };
 
-    loadSpriteAtlas(spriteName, framesOf(spriteName), owner, tint).then(
-      (atlas) => {
-        // Not if it has turned its coat meanwhile: that side's atlas is on its way.
-        if (!this.disposed && obj.owner === owner) this.wearAtlas(obj, atlas);
-      },
-      (err) => console.error(err),
-    );
+    this.dress(obj);
 
     facing.add(stars); // follows the lunge, and the lean back
     group.add(ring, base, facing, badge);
@@ -3030,11 +3035,69 @@ export class BoardView {
     return obj;
   }
 
+  /**
+   * Fetch the art of a unit's side and dress it in it. Art is fetched the first
+   * time it is needed, so a unit with none yet turns a spinner over its base,
+   * and asks again for as long as it stands there if the art can't be had.
+   */
+  private dress(obj: UnitObj): void {
+    const owner = obj.owner;
+    // Not if it has turned its coat or left the board meanwhile.
+    const current = (): boolean => !this.disposed && obj.owner === owner && (this.units.get(obj.id) ?? obj) === obj;
+    if (!obj.atlas) {
+      setTimeout(() => {
+        if (!current() || obj.atlas || obj.spinner) return;
+        obj.spinner = new THREE.Sprite(this.waitMaterial());
+        obj.spinner.scale.setScalar(SPINNER_SIZE);
+        obj.spinner.position.y = TILE_TOP + BASE_HEIGHT + SPINNER_HEIGHT;
+        obj.spinner.raycast = () => {};
+        obj.group.add(obj.spinner);
+      }, SPINNER_AFTER_MS);
+    }
+    loadSpriteAtlas(obj.spriteName, framesOf(obj.spriteName), owner, obj.tint).then(
+      (atlas) => {
+        if (current()) this.wearAtlas(obj, atlas);
+      },
+      () => {
+        setTimeout(() => {
+          if (current() && this.units.get(obj.id) === obj) this.dress(obj);
+        }, SPRITE_RETRY_MS);
+      },
+    );
+  }
+
+  /** The spinner's turning arc: one material, so every waiting unit turns as one. */
+  private waitMaterial(): THREE.SpriteMaterial {
+    if (this.spinnerMaterial) return this.spinnerMaterial;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 64;
+    const g = canvas.getContext('2d')!;
+    g.lineCap = 'round';
+    for (const [width, color] of [
+      [13, '#1b1f27'],
+      [7, '#f4f1e6'],
+    ] as const) {
+      g.beginPath();
+      g.arc(32, 32, 22, 0, Math.PI * 1.4);
+      g.lineWidth = width;
+      g.strokeStyle = color;
+      g.stroke();
+    }
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    this.spinnerMaterial = new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false });
+    return this.spinnerMaterial;
+  }
+
   /** Dress a unit's cutout in `atlas`: its first, or its new side's once it has turned its coat. */
   private wearAtlas(obj: UnitObj, atlas: SpriteAtlas): void {
     const { sprite, outline } = obj;
     const first = obj.atlas === null;
     obj.atlas = atlas;
+    if (obj.spinner) {
+      obj.group.remove(obj.spinner);
+      obj.spinner = null;
+    }
     const map = atlas.texture.clone(); // shares the uploaded image; its own UV window
     map.repeat.set(atlas.repeatU, atlas.repeatV);
     map.needsUpdate = true;
@@ -3065,12 +3128,7 @@ export class BoardView {
     obj.turning = false;
     if (owner === null || owner === obj.owner) return;
     obj.owner = owner;
-    loadSpriteAtlas(obj.spriteName, framesOf(obj.spriteName), owner, obj.tint).then(
-      (atlas) => {
-        if (!this.disposed && obj.owner === owner && this.units.get(obj.id) === obj) this.wearAtlas(obj, atlas);
-      },
-      (err) => console.error(err),
-    );
+    this.dress(obj);
   }
 
   /** Play a sound effect at the board's own pace: lower and slower in slow motion (a freeze is not a pace). */
@@ -5816,6 +5874,7 @@ export class BoardView {
 
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);
+    if (this.spinnerMaterial) this.spinnerMaterial.rotation -= Math.min(rawDt, 0.1) * SPINNER_TURN;
     this.grade();
     this.animateMissiles();
     this.animateRoutes();

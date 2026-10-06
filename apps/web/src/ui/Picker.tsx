@@ -230,6 +230,8 @@ export function LookSprite({
   const plain = spriteUrl(spriteFor(look));
   const [tinted, setTinted] = useState<{ key: string; url: string } | null>(null);
   const key = `${tint}:${plain}`;
+  // Sprites are fetched as they are first shown: a spinner stands in until this one has drawn.
+  const [drawn, setDrawn] = useState<string | null>(null);
   useEffect(() => {
     if (!tint) return;
     let live = true;
@@ -240,7 +242,7 @@ export function LookSprite({
   }, [plain, tint, key]);
   // Until the tinted copy is ready, show the plain sprite rather than nothing.
   const src = tint && tinted?.key === key ? tinted.url : plain;
-  return <img className={className} src={src} alt="" loading="lazy" />;
+  return <img className={drawn === plain ? className : `${className} sprite-waiting`} src={src} alt="" loading="lazy" onLoad={() => setDrawn(plain)} />;
 }
 
 const tintedUrls = new Map<string, Promise<string>>();
