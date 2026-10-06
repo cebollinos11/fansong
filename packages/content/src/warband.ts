@@ -161,6 +161,7 @@ export function parseWarband(raw: unknown): Warband {
     if (u.dumb === true) unit.dumb = true;
     if (u.disloyal === true) unit.disloyal = true;
     if (u.badBalance === true) unit.badBalance = true;
+    if (u.magicUser === true) unit.magicUser = true;
     if (typeof u.look === 'string') unit.look = u.look;
     if (isTint(u.tint)) unit.tint = u.tint.toLowerCase();
     return unit;

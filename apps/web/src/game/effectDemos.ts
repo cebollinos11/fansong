@@ -80,6 +80,7 @@ export interface Scene extends Spots {
 
 export const ELF: WarbandUnit = { name: 'Elvish Fighter', quality: 3, combat: 3 };
 export const BONES: WarbandUnit = { name: 'Skeleton Infantry', quality: 3, combat: 3 };
+const MAGE: WarbandUnit = { name: 'Elvish Sorceress', quality: 3, combat: 2, magicUser: true };
 const BOW: WarbandUnit = { name: 'Thorn-Bow', quality: 3, combat: 3, shooter: 'normal' };
 
 type Events = readonly GameEvent[];
@@ -91,6 +92,21 @@ export const has = (ev: Events, type: GameEvent['type']) => ev.some((e) => e.typ
 const plain = (ev: Events) => !has(ev, 'ToughnessSaved') && !has(ev, 'ArmorHeld') && !has(ev, 'MasteryStruck');
 export const melee = (result: CombatResult) => (ev: Events) => blow(ev)?.result === result && !blow(ev)?.gruesome && plain(ev);
 const shoots = (result: CombatResult) => (ev: Events) => shot(ev)?.result === result && !shot(ev)?.gruesome && plain(ev);
+
+const CAST: Command = { type: 'Cast', casterId: 'p0u0', targetId: 'p1u0' };
+const spell = (ev: Events) => ev.find((e) => e.type === 'SpellCast');
+
+/** A Magic User (P0), its spell of power 2 in hand, casts it at `target` (P1) three hexes off. */
+function casting(scene: Scene, target: WarbandUnit = BONES): Command {
+  scene.spawn(0, MAGE, scene.behind);
+  scene.spawn(1, target, scene.far);
+  scene.act('p0u0');
+  scene.edit((s) => {
+    s.spell = { power: 2 };
+    s.actionsRemaining = 1;
+  });
+  return CAST;
+}
 
 const ATTACK: Command = { type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' };
 const SHOOT: Command = { type: 'Shoot', attackerId: 'p0u0', targetId: 'p1u0' };
@@ -605,6 +621,60 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     shows: (ev) => has(ev, 'UnitRecoiled') && has(ev, 'UnitKnockedDown'),
   },
   {
+    id: 'transfix',
+    group: 'Traits',
+    label: 'Magic User: transfixed',
+    hint: 'The caster gathers the spell and looses a web; its target fails a die of its roll to resist, and the web closes over it.',
+    stage: (s) => casting(s),
+    shows: (ev) => spell(ev)?.transfixed === true,
+  },
+  {
+    id: 'spellResisted',
+    group: 'Traits',
+    label: 'Magic User: resisted',
+    hint: 'The target passes every die of its roll, and the spell breaks on it in sparks.',
+    stage: (s) => casting(s, { ...BONES, quality: 2 }),
+    shows: (ev) => spell(ev)?.transfixed === false,
+  },
+  {
+    id: 'breakFree',
+    group: 'Traits',
+    label: 'Transfixed: breaks free',
+    hint: 'A held unit rolls to break free: two successes, and it tears out of the web with one action left.',
+    stage: (s) => {
+      s.spawn(0, ELF, s.attacker, { transfixedBy: 'p1u0' });
+      s.spawn(1, { ...MAGE, name: 'Dark Adept' }, s.beyond);
+      s.fresh(0);
+      return { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 3 };
+    },
+    shows: (ev) => has(ev, 'TransfixBroken') && !has(ev, 'Turnover'),
+  },
+  {
+    id: 'transfixedKill',
+    group: 'Traits',
+    label: 'Transfixed: struck down',
+    hint: 'A held unit is struck at +2, and any blow that beats it kills.',
+    stage: (s) => {
+      const command = duel(s, ELF, BONES, { transfixedBy: 'p0u1' });
+      s.spawn(0, MAGE, s.behind);
+      return command;
+    },
+    shows: (ev) => blow(ev)?.attackTransfixed === 2 && blow(ev)?.result === 'defenderKilled' && has(ev, 'UnitKilled') && !blow(ev)?.gruesome,
+  },
+  {
+    id: 'casterFalls',
+    group: 'Traits',
+    label: 'Transfixed: the caster falls',
+    hint: 'The Magic User is killed, and the unit it held is free at once.',
+    stage: (s) => {
+      const command = duel(s, { ...ELF, combat: 5 }, { ...MAGE, name: 'Dark Adept', combat: 1 });
+      s.spawn(0, ELF, s.behind, { transfixedBy: 'p1u0' });
+      reserve(s, 1, BONES);
+      return command;
+    },
+    shows: (ev) => has(ev, 'UnitKilled') && has(ev, 'TransfixBroken') && !blow(ev)?.gruesome,
+  },
+  {
     id: 'dumb',
     group: 'Traits',
     label: 'Dumb',
@@ -680,6 +750,7 @@ export function stageScene(state: GameState, demo: Pick<EffectDemo, 'label' | 's
   s.benched = [false, false];
   delete s.rushed;
   delete s.group;
+  delete s.spell;
 
   const scene: Scene = {
     ...spots,

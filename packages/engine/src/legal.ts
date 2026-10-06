@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
 import { PRESSED_COST } from './combat.js';
-import { canWarCry, enemiesOf, groupFor, inMelee, isOccupied, maxActivationDice, moveReach, occupiedKeys, unitAvailable, unitById, unitMove } from './query.js';
+import { BREAK_FREE_COST, canCast, canWarCry, enemiesOf, groupFor, inMelee, isOccupied, maxActivationDice, moveReach, occupiedKeys, spellTargets, unitAvailable, unitById, unitMove } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -21,14 +21,21 @@ export function getLegalCommands(state: GameState): Command[] {
     for (const u of state.units) {
       if (u.owner !== state.active || !unitAvailable(u)) continue;
       // A Dumb unit is offered fewer dice (and so is its group: they are all alike).
-      const choices = DICE_CHOICES.filter((n) => n <= maxActivationDice(u));
+      // A transfixed unit rolls to break free, which one die can never do.
+      const least = u.transfixedBy === undefined ? 1 : BREAK_FREE_COST;
+      const choices = DICE_CHOICES.filter((n) => n >= least && n <= maxActivationDice(u));
       for (const diceCount of choices) {
         commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount });
       }
       // With friends like it close by, the unit may activate them all on one roll.
-      if (groupFor(state, u, board).length === 0) continue;
+      if (groupFor(state, u, board).length > 0) {
+        for (const diceCount of choices) {
+          commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount, group: true });
+        }
+      }
+      // A Magic User may make it a spell turn, on any dice that could reach a target.
       for (const diceCount of choices) {
-        commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount, group: true });
+        if (canCast(state, u, board, diceCount)) commands.push({ type: 'ChooseActivation', unitId: u.id, diceCount, spell: true });
       }
     }
     return commands;
@@ -48,6 +55,14 @@ export function getLegalCommands(state: GameState): Command[] {
   }
 
   const board = makeHexGrid(state.board);
+
+  // A spell turn is the spell and nothing else: pick its target, or let it go.
+  if (state.spell) {
+    for (const target of spellTargets(state, unit, board, state.spell.power)) {
+      commands.push({ type: 'Cast', casterId: unit.id, targetId: target.id });
+    }
+    return commands;
+  }
 
   // A unit with two actions in hand may spend both on one pressed blow or shot:
   // a power blow / aimed shot, which its target defends at a penalty.

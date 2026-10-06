@@ -64,6 +64,11 @@ describe('unitCost', () => {
   });
 
 
+  it('prices Magic User as two favorable traits', () => {
+    // (3*5 + 6) * (7-3) / 2 = 42
+    expect(unitCost({ ...baseline, magicUser: true })).toBe(42);
+  });
+
   it('prices Whirling and Immovable as two favorable traits each', () => {
     // (3*5 + 6) * (7-3) / 2 = 42
     expect(unitCost({ ...baseline, whirling: true })).toBe(42);

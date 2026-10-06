@@ -1,3 +1,5 @@
+import { BREAK_FREE_COST, SPELL_RANGES } from '@fansong/engine';
+
 /**
  * What the dice commitment menu says about each choice. Pure, so the wording
  * (and the inspired guarantee it promises) is tested without a DOM.
@@ -25,6 +27,47 @@ export function diceHint(n: number, inspired: boolean): string {
   return n === 1
     ? 'One die — at most one action, but a single die can never turn over.'
     : `${n} dice — up to ${n} actions, but two failures bench you for the rest of the round.`;
+}
+
+/** What a spell turn on this many dice can reach, and what it risks. */
+export function spellHint(n: number): string {
+  const reach = SPELL_RANGES[n - 1] ?? SPELL_RANGES.at(-1)!;
+  const risk = n === 1 ? 'A single die can never turn over.' : 'Two failures still bench you.';
+  return `Spell turn, ${n === 1 ? 'one die' : `${n} dice`} — every success is a point of power: a spell of up to power ${n}, reaching ${reach} hexes, and no other action. ${risk}`;
+}
+
+/** What rolling this many dice to break free takes, and what it risks. */
+export function breakFreeHint(n: number): string {
+  return n <= BREAK_FREE_COST
+    ? `${n} dice — both must succeed to break free, and both failing benches you.`
+    : `${n} dice — ${BREAK_FREE_COST} successes break free and a third is an action to spend, but two failures bench you.`;
+}
+
+/** The chance of at least `k` successes on `n` dice against `quality`, the first a sure one when `inspired`. */
+function atLeast(k: number, n: number, quality: number, inspired: boolean): number {
+  const p = Math.min(1, Math.max(0, (7 - quality) / 6));
+  const sure = inspired && n > 0 ? 1 : 0;
+  const rolled = n - sure;
+  let total = 0;
+  for (let hits = Math.max(0, k - sure); hits <= rolled; hits++) {
+    let ways = 1;
+    for (let i = 1; i <= hits; i++) ways = (ways * (rolled - hits + i)) / i;
+    total += ways * p ** hits * (1 - p) ** (rolled - hits);
+  }
+  return Math.min(1, total);
+}
+
+/** {@link oddsParts} for a spell turn: the chance of any power at all, then of the full reach. */
+export function spellParts(n: number, quality: number, inspired: boolean): ReturnType<typeof oddsParts> {
+  const base = oddsParts(n, quality, inspired);
+  const full = atLeast(n, n, quality, inspired);
+  const act = n === 1 ? `${pct(full)} to cast` : `${pct(atLeast(1, n, quality, inspired))} to cast · ${pct(full)} power ${n}`;
+  return { ...base, act };
+}
+
+/** {@link oddsParts} for a transfixed unit's roll: the chance it breaks free. */
+export function breakFreeParts(n: number, quality: number, inspired: boolean): ReturnType<typeof oddsParts> {
+  return { ...oddsParts(n, quality, inspired), act: `${pct(atLeast(BREAK_FREE_COST, n, quality, inspired))} to break free` };
 }
 
 /** The chances one activation roll gives: to earn at least one action, and to turn over. */

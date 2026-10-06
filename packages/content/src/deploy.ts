@@ -138,6 +138,7 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
     dumb: unit.dumb,
     disloyal: unit.disloyal,
     badBalance: unit.badBalance,
+    magicUser: unit.magicUser,
   };
   if (unit.look !== undefined) spec.look = unit.look;
   if (unit.tint !== undefined) spec.tint = unit.tint;

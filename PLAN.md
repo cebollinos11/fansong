@@ -295,6 +295,12 @@ no rules — remove three.js and the game still runs in the CLI.
      Big models cancel out, and unlike high ground it survives a knockdown), and
      +1 to anyone shooting it. Priced in `packages/content` and weighed by the
      AI when it picks targets and presses attacks.
+   - **Magic User & Transfix** — a `magicUser` trait whose activation can be
+     a spell turn (`ChooseActivation.spell`, then `Cast`): successes are the
+     spell's power (reach 3/5/7), the target resists on that many Quality dice,
+     and a transfixed unit (`Unit.transfixedBy`) is helpless until it rolls two
+     successes to break free or its caster loses its hold. The AI casts where a
+     friend can follow up, hangs its casters back, and rolls held units free.
    - The AI avoids disengaging (a flat cost per standing adjacent foe), prefers
      short, clear shots and a short-range standoff, and ganging up. The golden
      replay was regenerated. Preset balance shifted (small warbands suffer

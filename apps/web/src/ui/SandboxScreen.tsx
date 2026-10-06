@@ -575,6 +575,14 @@ function UnitSection({
             {label}
           </label>
         ))}
+        <label title="Held by a Transfix spell, in the name of an enemy (a Magic User if there is one)">
+          <input
+            type="checkbox"
+            checked={unit.transfixedBy !== undefined}
+            onChange={(e) => onPatch({ transfixed: e.target.checked })}
+          />
+          transfixed
+        </label>
       </div>
       <div className="sb-row">
         <span className="sb-label">Act now with</span>
@@ -756,7 +764,7 @@ function describeCommand(state: GameState, c: Command): string {
   const name = (id: string) => unitById(state, id)?.name ?? id;
   switch (c.type) {
     case 'ChooseActivation':
-      return `Activate ${name(c.unitId)}${c.group ? "'s group" : ''} with ${c.diceCount}d`;
+      return `${c.spell ? 'Spell turn' : 'Activate'} ${name(c.unitId)}${c.group ? "'s group" : ''} with ${c.diceCount}d`;
     case 'Move':
       return `Move ${name(c.unitId)} → ${c.to.x},${c.to.y}`;
     case 'Attack':
@@ -767,6 +775,8 @@ function describeCommand(state: GameState, c: Command): string {
       return `Guard: ${name(c.unitId)}`;
     case 'WarCry':
       return `War cry: ${name(c.unitId)}`;
+    case 'Cast':
+      return `Cast Transfix: ${name(c.casterId)} → ${name(c.targetId)}`;
     case 'EndActivation':
       return 'End activation';
     case 'SwitchGroupMember':

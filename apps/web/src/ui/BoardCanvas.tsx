@@ -73,9 +73,11 @@ interface Props {
    * floats over that unit so it can be answered where the click was made.
    */
   diceChoices?: readonly number[];
+  /** Dice counts the selected unit, a Magic User, may commit to a spell turn instead. */
+  spellChoices?: readonly number[];
   /** Set when the selected unit may activate as a group: its size, and whether every member is inspired. */
   diceGroup?: { size: number; inspired: boolean };
-  onChooseDice?: (dice: number, group: boolean) => void;
+  onChooseDice?: (dice: number, group: boolean, spell?: boolean) => void;
   /**
    * A hex held under the finger: on a touch screen, where nothing hovers, it
    * gets the tooltip and route preview the pointer's hex would.
@@ -436,9 +438,11 @@ export function BoardCanvas(props: Props): JSX.Element {
           inspired={diceMenuUnit.inspired}
           traits={traitTags(diceMenuUnit, diceMenuUnit.traits.flying && !airborne(props.state, diceMenuUnit))}
           choices={props.diceChoices ?? []}
+          spellChoices={props.spellChoices ?? []}
+          transfixed={diceMenuUnit.transfixedBy !== undefined}
           group={props.diceGroup}
           project={project}
-          onPick={(n, group) => props.onChooseDice?.(n, group)}
+          onPick={(n, group, spell) => props.onChooseDice?.(n, group, spell)}
         />
       ) : null}
       {hexInfo ? (

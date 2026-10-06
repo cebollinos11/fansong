@@ -21,6 +21,9 @@ import type { GameEvent, GameState, Owner, Unit } from './types.js';
  * A **Disloyal** unit that rolls a natural 1 on any of these checks does not
  * flee: it changes sides where it stands (see {@link defect}).
  *
+ * A **transfixed** unit that fails any of these checks cannot run: it is lost
+ * where it stands, out of the game.
+ *
  * A unit that fails any nerve check loses its inspiration (see `Unit.inspired`).
  * A unit that **flees** runs for its own edge of the map (see {@link homeColumn}),
  * taking free hacks from every foe it turns its back on. One already standing on
@@ -155,6 +158,7 @@ function fleeFailures(s: GameState, events: GameEvent[], tested: Unit[], board: 
     if (s.phase === 'gameOver') return;
     if (unit.dead || vecKey(unit.pos) !== at || unit.owner !== owner) continue;
     if (unit.traits.disloyal && die === 1) defect(s, events, unit, board, hacks);
+    else if (unit.transfixedBy !== undefined) leaveField(s, events, unit);
     else flee(s, events, unit, board, hacks);
   }
 }
@@ -175,6 +179,9 @@ function defect(s: GameState, events: GameEvent[], unit: Unit, board: Board, hac
   unit.owner = to;
   unit.guarding = false;
   unit.activatedThisRound = true;
+  // No spell binds a unit to its own side: its new friends let it go, and it lets go of them.
+  freeTransfixed(s, events, unit, 'casterLost');
+  releaseVictims(s, events, unit.id);
   if (s.group) s.group.pending = s.group.pending.filter((p) => p.unitId !== unit.id);
   events.push({ type: 'UnitDefected', unitId: unit.id, to });
   returnCarriedFlag(s, events, unit);
@@ -202,9 +209,7 @@ function defect(s: GameState, events: GameEvent[], unit: Unit, board: Board, hac
 function flee(s: GameState, events: GameEvent[], unit: Unit, board: Board, hacks: FreeHacks): void {
   unit.guarding = false;
   if (unit.pos.x === homeColumn(board, unit.owner)) {
-    unit.dead = true;
-    unit.knockedDown = false;
-    events.push({ type: 'UnitRouted', unitId: unit.id });
+    leaveField(s, events, unit);
     return;
   }
   const run = fleeRun(s, unit, board);
@@ -220,6 +225,36 @@ function flee(s: GameState, events: GameEvent[], unit: Unit, board: Board, hacks
   unit.pos = { x: run.to.x, y: run.to.y };
   carryFlags(s, unit);
   events.push({ type: 'UnitFled', unitId: unit.id, from, to: { x: run.to.x, y: run.to.y }, path: run.path });
+}
+
+/** `unit` is out of the game (mutates `s`): run off its own edge, or lost to its fear while transfixed. */
+function leaveField(s: GameState, events: GameEvent[], unit: Unit): void {
+  unit.dead = true;
+  unit.knockedDown = false;
+  delete unit.transfixedBy;
+  events.push({ type: 'UnitRouted', unitId: unit.id });
+  releaseVictims(s, events, unit.id);
+}
+
+/**
+ * Lift the Transfix spell from `unit`, if it is under one (mutates `s`). A unit
+ * that `brokeFree` by its own roll is on its feet whatever state the spell
+ * found it in; one whose `casterLost` its hold is simply free. On its feet, it
+ * takes back a flag it dropped where it stands.
+ */
+export function freeTransfixed(s: GameState, events: GameEvent[], unit: Unit, reason: 'brokeFree' | 'casterLost'): void {
+  if (unit.transfixedBy === undefined) return;
+  delete unit.transfixedBy;
+  if (reason === 'brokeFree') unit.knockedDown = false;
+  events.push({ type: 'TransfixBroken', unitId: unit.id, reason });
+  regrabOnStandUp(s, events, unit);
+}
+
+/** Free every unit the caster `casterId` holds transfixed: it is dead, gone, turned or transfixed itself. */
+export function releaseVictims(s: GameState, events: GameEvent[], casterId: string): void {
+  for (const u of s.units) {
+    if (!u.dead && u.transfixedBy === casterId) freeTransfixed(s, events, u, 'casterLost');
+  }
 }
 
 /**

@@ -4,7 +4,10 @@ import {
   aliveUnits,
   bigMeleeBonus,
   bigTargetBonus,
+  BREAK_FREE_COST,
   canWarCry,
+  isDown,
+  spellTargets,
   warCryTargets,
   combatOdds,
   enemiesOf,
@@ -505,6 +508,106 @@ function activationWorth(members: Unit[], dice: number, need: (u: Unit) => numbe
   return worth;
 }
 
+// --- Magic ------------------------------------------------------------------
+
+/** The range a Magic User keeps its foes at: the reach of a spell of power 2. */
+const CASTER_STANDOFF = 5;
+
+/** What holding a foe transfixed is worth, as a share of its {@link worthOf}: out of the fight, and one blow from dead. */
+const TRANSFIX_WORTH = 0.6;
+
+/** How much more a transfixed foe is worth with one of our fighters still to act and near enough to cut it down. */
+const TRANSFIX_FINISH = 1.6;
+
+/** How much less it is worth with no one to follow the spell up: it only sits out until it breaks free. */
+const TRANSFIX_ALONE = 0.6;
+
+/** How much more it is worth once it has activated this round: it cannot even try to break free until the next. */
+const TRANSFIX_SPENT = 1.5;
+
+/** What a turnover costs a spell turn or a roll to break free, per friend it benches, in {@link worthOf} terms. */
+const MAGIC_BENCH_COST = 1.5;
+
+/** A spell turn worth less than this is not worth giving up the caster's ordinary activation for. */
+const MIN_SPELL_WORTH = 0.8;
+
+/** The chance a die against `quality` comes up a success. */
+const successChance = (quality: number) => Math.min(1, Math.max(0, (7 - quality) / 6));
+
+/** The chance of each number of successes on `dice` dice against `quality`, the first a sure one when `inspired`. */
+function successOdds(quality: number, dice: number, inspired: boolean): number[] {
+  const p = successChance(quality);
+  const sure = inspired ? 1 : 0;
+  const rolled = dice - sure;
+  const odds = new Array<number>(dice + 1).fill(0);
+  for (let hits = 0; hits <= rolled; hits++) odds[hits + sure] = binomial(rolled, hits) * p ** hits * (1 - p) ** (rolled - hits);
+  return odds;
+}
+
+/**
+ * What casting Transfix on `target` with `power` is worth: the chance it fails
+ * to resist, times a share of its worth — more when a friend still to act can
+ * reach it (or shoot it) and finish it, and when it has already activated and
+ * so stays held into the next round; next to nothing when it is held already.
+ */
+function castValue(state: GameState, board: Board, caster: Unit, target: Unit, power: number): number {
+  if (target.transfixedBy !== undefined) return 0.01;
+  const caught = 1 - successChance(target.quality) ** power;
+  const finisher = aliveUnits(state, caster.owner).some((u) => {
+    if (u.id === caster.id || isDown(u) || (u.activatedThisRound && !target.activatedThisRound)) return false;
+    const d = board.distance(u.pos, target.pos);
+    return d <= unitMove(u) + 1 || (u.traits.ranged >= 2 && d <= u.traits.ranged);
+  });
+  const follow = finisher ? TRANSFIX_FINISH : TRANSFIX_ALONE;
+  const spent = target.activatedThisRound ? TRANSFIX_SPENT : 1;
+  return caught * worthOf(state, target) * TRANSFIX_WORTH * follow * spent;
+}
+
+/** The best {@link castValue} a spell of `power` by `caster` could have (0 with no one in reach). */
+function bestCast(state: GameState, board: Board, caster: Unit, power: number): number {
+  let best = 0;
+  for (const target of spellTargets(state, caster, board, power)) best = Math.max(best, castValue(state, board, caster, target, power));
+  return best;
+}
+
+function castScore(state: GameState, board: Board, command: Extract<Command, { type: 'Cast' }>): number {
+  const power = state.spell?.power ?? 0;
+  return 1_000_000 + castValue(state, board, unitById(state, command.casterId)!, unitById(state, command.targetId)!, power) * EV_SCALE;
+}
+
+/**
+ * The activation score of a spell turn or of a transfixed unit's roll to break
+ * free; `undefined` for an ordinary activation. Either is weighed over every
+ * roll the dice could make, against the friends a turnover would bench.
+ *
+ * A spell turn worth casting goes ahead of the fighters, so they find their foe
+ * already helpless; one that is not scores below any ordinary activation. A
+ * held unit with a foe beside it struggles first of all; left alone it waits
+ * until the fighting is done.
+ */
+function magicActivationScore(state: GameState, board: Board, command: ChooseActivation): number | undefined {
+  const unit = unitById(state, command.unitId)!;
+  const breakingFree = unit.transfixedBy !== undefined;
+  if (!command.spell && !breakingFree) return undefined;
+
+  const dice = command.diceCount;
+  const waiting = aliveUnits(state, unit.owner).filter((u) => !u.activatedThisRound && u.id !== unit.id).length;
+  const odds = successOdds(unit.quality, dice, unit.inspired);
+  const threatened = adjacentEnemies(state, unit, board).some((e) => !isDown(e));
+  let worth = 0;
+  odds.forEach((prob, successes) => {
+    const gain = breakingFree
+      ? successes >= BREAK_FREE_COST
+        ? worthOf(state, unit) * (threatened ? 1 : 0.5)
+        : 0
+      : bestCast(state, board, unit, successes);
+    worth += prob * (gain - (dice - successes >= 2 ? waiting * MAGIC_BENCH_COST : 0));
+  });
+
+  if (breakingFree) return (threatened ? 120_000 : 60_000) + worth * ORDER_SCALE;
+  return worth >= MIN_SPELL_WORTH ? 105_000 + Math.min(worth, 8) * ORDER_SCALE : -1;
+}
+
 /** Who a `ChooseActivation` command would activate: the unit alone, or its group. */
 function activated(state: GameState, board: Board, command: ChooseActivation): Unit[] {
   const unit = unitById(state, command.unitId)!;
@@ -572,6 +675,8 @@ function scoreCommand(
   switch (command.type) {
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
+      const magic = magicActivationScore(state, board, command);
+      if (magic !== undefined) return magic;
       if (kings) {
         // The Pig rolls everything when one good roll walks it home.
         const dash = command.diceCount === 3 && unit.id === kings.ourKing?.id && pigCanGetHome(kings, unit) ? 50 : 0;
@@ -636,8 +741,11 @@ function scoreCommand(
       // A ranged unit seeks a standoff: inside its range but out of melee, so it
       // can shoot next turn instead of being dragged into a fight. (When a shot
       // is already available, Shoot outscores every Move anyway.)
-      if (mover.traits.ranged >= 2) {
-        const r = mover.traits.ranged;
+      // A Magic User hangs back the same way, to keep its spell in play: in
+      // contact it cannot cast at all.
+      const standoff = mover.traits.ranged >= 2 ? mover.traits.ranged : mover.traits.magicUser ? CASTER_STANDOFF : 0;
+      if (standoff >= 2) {
+        const r = standoff;
         if (dist >= 2 && dist <= r) return standoffScore(r, dist); // in the sweet spot — short range, else the edge of range
         if (dist < 2) return 40_000; // stepping into melee is a last resort for a shooter
         return 100_000 - dist * 100; // out of range: close the gap
@@ -658,6 +766,9 @@ function scoreCommand(
 
     case 'WarCry':
       return warCryScore(state, unitById(state, command.unitId)!);
+
+    case 'Cast':
+      return castScore(state, board, command);
 
     case 'EndActivation':
       // The Pig standing in the goal wins by ending its activation there.
@@ -971,6 +1082,8 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
   switch (command.type) {
     case 'ChooseActivation': {
       const unit = unitById(state, command.unitId)!;
+      const magic = magicActivationScore(state, board, command);
+      if (magic !== undefined) return magic;
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       const canAttack = enemyDist === 1 || (unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged);
       const goal = goalDistance(plan, unit.pos);
@@ -988,7 +1101,7 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
       const target = unitById(state, targetId)!;
       const attacker = unitById(state, command.attackerId)!;
       let score = command.type === 'Attack' ? 1_000_000 : 900_000;
-      if (target.knockedDown) score += 5_000;
+      if (isDown(target)) score += 5_000;
       score += (6 - target.combat) * 100;
       if (command.type === 'Attack') {
         score += (attacker.combat - target.combat) * 50;
@@ -1024,6 +1137,9 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
 
     case 'WarCry':
       return warCryScore(state, unitById(state, command.unitId)!);
+
+    case 'Cast':
+      return castScore(state, board, command);
 
     case 'EndActivation':
       return 0;

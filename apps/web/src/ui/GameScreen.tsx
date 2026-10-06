@@ -373,10 +373,16 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     wasPicking.current = picking;
   }, [picking, cycleUnit, state.active]);
 
-  const handleActivate = (diceCount: number, group: boolean): void => {
+  const handleActivate = (diceCount: number, group: boolean, spell = false): void => {
     if (!myTurn || !selectedUnitId) return;
     lastPicked.current[state.active] = selectedUnitId;
-    client.send({ type: 'ChooseActivation', unitId: selectedUnitId, diceCount, ...(group ? { group: true as const } : {}) });
+    client.send({
+      type: 'ChooseActivation',
+      unitId: selectedUnitId,
+      diceCount,
+      ...(group ? { group: true as const } : {}),
+      ...(spell ? { spell: true as const } : {}),
+    });
   };
 
   // Keyboard: Q/E step the selection back/forward through the units that can
@@ -437,7 +443,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       // depends on the keyboard layout), so go by the physical key.
       const group = e.shiftKey;
       const diceCount = Number(group ? /^Digit(\d)$/.exec(e.code)?.[1] : e.key);
-      if (!interaction.diceChoices.includes(diceCount)) return;
+      if (!interaction.diceByUnit[selectedUnitId]?.includes(diceCount)) return;
       if (group && groupIds.length === 0) return;
       e.preventDefault();
       lastPicked.current[state.active] = selectedUnitId;
@@ -526,7 +532,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         focusUnitIds={logFocus?.unitIds ?? (inspectedUnitId ? [inspectedUnitId] : groupIds.slice(1))}
         focusPath={logFocus?.path}
         pinnedCell={pinnedCell}
-        diceChoices={myTurn && selectedUnitId && state.phase === 'awaitingActivation' ? interaction.diceChoices : []}
+        diceChoices={myTurn && selectedUnitId && state.phase === 'awaitingActivation' ? (interaction.diceByUnit[selectedUnitId] ?? []) : []}
+        spellChoices={myTurn && selectedUnitId && state.phase === 'awaitingActivation' ? (interaction.spellDiceByUnit[selectedUnitId] ?? []) : []}
         diceGroup={diceGroup}
         onChooseDice={handleActivate}
         playing

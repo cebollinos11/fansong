@@ -17,7 +17,8 @@ export function commandsEqual(a: Command, b: Command): boolean {
         b.type === 'ChooseActivation' &&
         a.unitId === b.unitId &&
         a.diceCount === b.diceCount &&
-        (a.group ?? false) === (b.group ?? false)
+        (a.group ?? false) === (b.group ?? false) &&
+        (a.spell ?? false) === (b.spell ?? false)
       );
     case 'Move':
       return b.type === 'Move' && a.unitId === b.unitId && a.to.x === b.to.x && a.to.y === b.to.y;
@@ -40,6 +41,8 @@ export function commandsEqual(a: Command, b: Command): boolean {
       return b.type === 'Guard' && a.unitId === b.unitId;
     case 'WarCry':
       return b.type === 'WarCry' && a.unitId === b.unitId;
+    case 'Cast':
+      return b.type === 'Cast' && a.casterId === b.casterId && a.targetId === b.targetId;
     case 'EndActivation':
       return b.type === 'EndActivation';
     case 'SwitchGroupMember':

@@ -1,4 +1,4 @@
-import { BASE_MOVE, DUMB_MAX_DICE, livingCount, routThreshold, SPEED_STEP, type GameState, type Owner, type Unit } from '@fansong/engine';
+import { BASE_MOVE, BREAK_FREE_COST, DUMB_MAX_DICE, SPELL_RANGES, TRANSFIX_BONUS, livingCount, routThreshold, SPEED_STEP, type GameState, type Owner, type Unit } from '@fansong/engine';
 import { getPreset, isAiSeat, type MatchSetup } from '@fansong/content';
 
 // Pure HUD presentation (no DOM), so every label and warning is unit-testable.
@@ -98,6 +98,12 @@ export const BROKEN_VERDICT_DETAIL = 'survivors test nerve or flee · the battle
 export const INSPIRED_HELP =
   'Its first activation die this round is a sure 6, but two failures among its other dice still turn it over. Lost on a failed nerve check';
 
+/** What being transfixed does to a unit. */
+export const TRANSFIXED_HELP = `Held fast by a spell: it cannot move or act, counts as no standing unit, is struck or shot at +${TRANSFIX_BONUS}, and any blow that beats it kills. It never hurts its attacker. Its activation is a roll of 2 or 3 dice to break free, which takes ${BREAK_FREE_COST} successes. If it fails a nerve check it is lost. Freed at once if its caster is killed, flees the field, changes sides or is transfixed too`;
+
+/** What a spell turn is, for the dice menu's spell row. */
+export const SPELL_TURN_HELP = `A spell turn: the dice buy no actions. Their successes are the power of one Transfix spell, which reaches ${SPELL_RANGES.join(', ')} hexes at power 1, 2, 3 along a clear line of sight. The target rolls one die per point of power against its Quality, and a single failure leaves it transfixed. Two failed dice still bench you`;
+
 /** The war cry button's tooltip. */
 export const WAR_CRY_HELP =
   'Press C — one action: every friend still to activate within 5 hexes and in sight is inspired, its first activation die a sure 6 (two failures among its other dice still turn it over)';
@@ -128,6 +134,7 @@ export const TRAIT_HELP = {
   dumb: `Slow-witted: rolls at most ${DUMB_MAX_DICE} activation dice`,
   disloyal: 'Not to be trusted: a natural 1 on a nerve check makes it change sides',
   badBalance: 'Unsteady on its feet: a push that moves it also knocks it down',
+  magicUser: `Casts Transfix: on its feet and out of contact, it may take a spell turn instead of acting. The successes rolled are the spell's power (reach ${SPELL_RANGES.join(', ')} hexes in line of sight), and the target must pass that many Quality dice or be held helpless`,
 } as const;
 
 /** Why a flyer carrying a flag has lost its flight. */
@@ -172,6 +179,7 @@ export function traitTags(unit: Pick<Unit, 'traits'>, grounded = false): TraitTa
   if (unit.traits.dumb) tags.push({ label: 'Dumb', help: TRAIT_HELP.dumb });
   if (unit.traits.disloyal) tags.push({ label: 'Disloyal', help: TRAIT_HELP.disloyal });
   if (unit.traits.badBalance) tags.push({ label: 'Bad Balance', help: TRAIT_HELP.badBalance });
+  if (unit.traits.magicUser) tags.push({ label: 'Magic User', help: TRAIT_HELP.magicUser });
   return tags;
 }
 

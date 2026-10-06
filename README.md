@@ -123,6 +123,24 @@ action; the AI, the tests, and any future UI all pick from that list.
   straight back to its base. The side it left is a unit
   short, which can break it; a Leader's defection makes the friends who see it
   test nerve; a King's defection ends the game in its new side's favour.
+- **Magic Users** may give up an ordinary activation for a **spell turn**, as
+  long as they are on their feet and no standing enemy is in contact. The dice
+  are rolled as usual (two failures still turn over), but the successes buy no
+  actions: they are the **power** of one **Transfix** spell. Power 1, 2 or 3
+  reaches **3, 5 or 7 hexes** along a line of sight that a shot could take.
+  The target is picked after the roll, and may be in a melee, knocked down or
+  already held. It rolls one die per point of power against its Quality, and a
+  single failure leaves it **transfixed**. A spell that reaches no one is wasted.
+- **Transfixed** units cannot move or act, and count as knocked down for every
+  rule that asks whether a unit is standing: they outnumber no one, close no
+  pincer, brace no friend, take no free hacks, hold no zone and drop a flag
+  they carry. They are struck and shot at **+2**, **any roll they lose kills
+  them** (Armored still shrugs off a loss by 1, and Tough still turns the first
+  death into a knockdown), and they never hurt their attacker. One that fails a
+  nerve check is removed from the game. Activating a transfixed unit is a roll
+  to **break free** on 2 or 3 dice: two successes free it, on its feet, and a
+  third is an action to spend. It is freed at once if its caster is killed,
+  flees the field, changes sides or is transfixed itself.
 - **Shooting:** −1 beyond short range (the first half of the shooter's reach)
   and −1 against a target in cover (in a forest, or only just visible past a
   blocker). A **Sharpshooter** scores +1 on every shot it takes.
@@ -142,8 +160,8 @@ seed replays identically).
   Opportunist, Savage, Armored, Sharpshooter, Shieldwall,
   Rusher, Slippery, Woodwise, Trample) adds
   3 to Special Abilities and each unfavorable one (Slow, Dumb, Disloyal, Bad
-  Balance) takes 3 off. Leader, Combat Mastery, Whirling and Immovable each
-  count as two favorable traits (+6). Immovable and Bad Balance exclude each other.
+  Balance) takes 3 off. Leader, Combat Mastery, Whirling, Immovable and Magic
+  User each count as two favorable traits (+6). Immovable and Bad Balance exclude each other.
   Every unit moves 5 hexes per Move action; the Slow and Fast traits make it
   3 or 7.
 - **Validation** (`validateWarband`) — checks stat ranges and roster size,
@@ -154,7 +172,7 @@ seed replays identically).
   `-large`: about 400). Medium: `iron-wardens`, `ashfang-raiders`, `goblin-rabble`,
   `free-company`, `night-haunt`, `greenwood-elves`. Large: `bonefield-legion`,
   `wild-menagerie`. Small: `gryphon-eyrie`, `wolf-pack`, `hogwallow-farm`. Between
-  them they field every trait, and each is proven legal by the test suite.
+  them they field every trait but Magic User (army builder only, for now), and each is proven legal by the test suite.
 - **Deploy** (`buildMatch`) — lays two warbands out facing off and emits an
   engine `GameConfig`; the CLI and any future UI share it.
 

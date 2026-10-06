@@ -10,6 +10,10 @@ export interface Interaction {
   selectableUnitIds: string[];
   /** Distinct dice counts offered for activation. */
   diceChoices: number[];
+  /** The dice counts each selectable unit may commit to an ordinary activation. */
+  diceByUnit: Record<string, number[]>;
+  /** The dice counts each Magic User may commit to a spell turn (absent when it has none). */
+  spellDiceByUnit: Record<string, number[]>;
   /** Of {@link selectableUnitIds}, those that may activate as a group. */
   groupUnitIds: string[];
   /** Waiting group members the active one may hand over to (acting, before it does anything). */
@@ -35,6 +39,8 @@ export interface Interaction {
 export function deriveInteraction(legal: Command[]): Interaction {
   const selectable = new Set<string>();
   const diceChoices = new Set<number>();
+  const diceByUnit: Record<string, number[]> = {};
+  const spellDiceByUnit: Record<string, number[]> = {};
   const groupUnitIds = new Set<string>();
   const switchTargetIds: string[] = [];
   const moveTargets: Vec[] = [];
@@ -52,6 +58,7 @@ export function deriveInteraction(legal: Command[]): Interaction {
         selectable.add(c.unitId);
         diceChoices.add(c.diceCount);
         if (c.group) groupUnitIds.add(c.unitId);
+        else (c.spell ? spellDiceByUnit : diceByUnit)[c.unitId] = [...((c.spell ? spellDiceByUnit : diceByUnit)[c.unitId] ?? []), c.diceCount];
         break;
       case 'SwitchGroupMember':
         switchTargetIds.push(c.unitId);
@@ -82,6 +89,8 @@ export function deriveInteraction(legal: Command[]): Interaction {
   return {
     selectableUnitIds: [...selectable],
     diceChoices: [...diceChoices].sort((a, b) => a - b),
+    diceByUnit,
+    spellDiceByUnit,
     groupUnitIds: [...groupUnitIds],
     switchTargetIds,
     moveTargets,

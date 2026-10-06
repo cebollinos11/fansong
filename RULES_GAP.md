@@ -116,8 +116,8 @@ These are implemented, so they are not listed again below:
    riposte repels the attack. *Original:* Spend 2 actions on one attack to give
    the target −1.
 6. **Lethal attacks.** Beating a target that is asleep, transfixed, entangled or
-   otherwise helpless kills it, just like beating a fallen model. This only
-   matters once those conditions exist (§7).
+   otherwise helpless kills it, just like beating a fallen model. ✅ **Done for
+   transfixed targets** (§8); the other conditions do not exist yet (§7).
 
 ## 4. Shooting
 
@@ -226,7 +226,7 @@ combined moves and attacks) is still not done.
 FanSong implements Shooter, Tough, Guard, Big, Flying, Reassembling,
 Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Shieldwall,
 Rusher, Slippery, Whirling, Immovable, Woodwise, Trample, Dumb, Disloyal and Bad
-Balance (see the ✅ entries below), plus Leader (§6). Guard, Reassembling,
+Balance (see the ✅ entries below), plus Leader (§6) and Magic User (§8). Guard, Reassembling,
 Opportunist, Savage, Armored, Sharpshooter, Combat Mastery, Shieldwall,
 Rusher, Immovable, Woodwise, Trample, Dumb, Disloyal and Bad Balance have no
 direct equivalent in the original. The original core rules have roughly 50 more. Each line below is a
@@ -399,10 +399,20 @@ short paraphrase, and the exact effects should be checked before building one.
 
 ## 8. Magic
 
-- **Spellcasters.** Casting a spell is an action, and ranged magic attacks are
-  resolved with an opposed roll similar to shooting.
-- **Transfix.** The target cannot act and is helpless (§3.6) until it breaks
-  free.
+- ✅ **Done — Magic User and Transfix.** *Implemented:* a `magicUser` trait,
+  priced as two favorable traits. On its feet and out of contact with a standing
+  foe, it may make its activation a **spell turn** (`ChooseActivation.spell`):
+  the successes buy no actions but are the power of one Transfix spell, cast
+  (`Cast`) after the roll at any enemy in line of sight within 3, 5 or 7 hexes
+  at power 1, 2 or 3. The target rolls one die per point of power against its
+  Quality, and one failure leaves it transfixed (`Unit.transfixedBy`). A
+  transfixed unit cannot move or act and counts as no standing unit (`isDown`);
+  it is struck or shot at +2, any roll it loses kills it (Armored and Tough
+  still apply), it never hurts its attacker, and a failed nerve check removes
+  it from the game. Its activation is a roll of 2 or 3 dice: two successes
+  break it free, on its feet. It is freed at once when its caster is killed,
+  flees the field, changes sides or is transfixed too. *Not implemented:* other
+  spells and ranged magic attacks.
 - **Cleric:** heals, and is especially strong against Undead and Demons.
 - **Necromancer:** raises the dead, can use fallen models, and is anti-life.
 - **Elementalist:** blasts in an area.

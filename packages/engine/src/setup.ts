@@ -56,6 +56,8 @@ export interface UnitSpec {
   disloyal?: boolean;
   /** Bad Balance: a push that moves it also knocks it down. Never with `immovable`. */
   badBalance?: boolean;
+  /** Magic User: may take a spell turn to cast Transfix. */
+  magicUser?: boolean;
   /**
    * Kill-the-king: this unit is its side's King (exactly one per warband in that
    * mode). Ignored in every other mode.
@@ -131,6 +133,7 @@ function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
       dumb: spec.dumb ?? false,
       disloyal: spec.disloyal ?? false,
       badBalance: spec.badBalance ?? false,
+      magicUser: spec.magicUser ?? false,
     },
     guarding: false,
     inspired: false,

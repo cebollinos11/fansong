@@ -90,6 +90,10 @@ const BASE = [
   { name: 'reassemble', tier: 2, group: 'Traits', when: "A skeleton's bones pull back together", idea: 'bone rattle "klaklaklak"', takes: 1 },
   { name: 'dumb', tier: 2, group: 'Traits', when: 'A question mark wobbles over a Dumb unit', idea: '"duhhh?"', takes: 1 },
   { name: 'defect', tier: 2, group: 'Traits', when: 'A Disloyal unit changes sides', idea: 'sneaky "heh-heh"', takes: 1 },
+  { name: 'spell-cast', tier: 2, group: 'Traits', when: 'A Magic User gathers a spell and looses it', idea: 'rising "wooOOM", then a "fzzt"', takes: 1, fallback: 'power-charge' },
+  { name: 'transfixed', tier: 2, group: 'Traits', when: 'The spell takes hold: a web snaps shut over its target', idea: 'sticky "shhhLUP"', takes: 1, fallback: 'guard-set' },
+  { name: 'spell-resisted', tier: 2, group: 'Traits', when: 'The target shrugs the spell off in sparks', idea: 'fizzling "pfsss"', takes: 1, fallback: 'armor-clang' },
+  { name: 'break-free', tier: 2, group: 'Traits', when: 'A transfixed unit tears out of the web, or is let go', idea: 'ripping "rrrip", then "hah!"', takes: 1, fallback: 'tough-save' },
   { name: 'whoosh-trait', tier: 2, group: 'Traits', when: 'A Rusher lunges, a Slippery unit ducks away, a Whirling one spins, a Trample drives through', idea: 'bigger, longer "FWOOSH"', takes: 1, fallback: 'swing' },
 
   // --- Tier 3: objectives, interface, ambience ------------------------------------

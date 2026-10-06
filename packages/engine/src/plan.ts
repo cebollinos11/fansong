@@ -23,6 +23,8 @@ import {
   unitById,
   unitMove,
   walkRules,
+  isDown,
+  spellTargets,
 } from './query.js';
 import type { Command, GameState, Unit } from './types.js';
 
@@ -51,7 +53,7 @@ export interface ReachNode {
   standable: boolean;
 }
 
-export type PlanKind = 'move' | 'attack' | 'shoot';
+export type PlanKind = 'move' | 'attack' | 'shoot' | 'cast';
 
 /**
  * One complete thing the unit could do, as the sequence of ordinary commands that
@@ -89,7 +91,7 @@ export function multiMoveReach(state: GameState, unit: Unit, board: Board, maxAp
   const provoking = new Set<string>();
   if (!airborne(state, unit)) {
     for (const e of state.units) {
-      if (e.dead || e.knockedDown || e.owner === unit.owner) continue;
+      if (e.dead || isDown(e) || e.owner === unit.owner) continue;
       for (const n of board.neighbors(e.pos)) provoking.add(vecKey(n));
     }
   }
@@ -191,6 +193,19 @@ export function getActionPlans(state: GameState): ActionPlan[] {
   if (!unit || unit.dead || state.actionsRemaining <= 0) return [];
 
   const board = makeHexGrid(state.board);
+  // A spell turn offers the spell and nothing else: one plan per target in reach.
+  if (state.spell) {
+    return spellTargets(state, unit, board, state.spell.power).map((target) => ({
+      kind: 'cast' as const,
+      cost: 1,
+      steps: [{ type: 'Cast' as const, casterId: unit.id, targetId: target.id }],
+      waypoints: [],
+      path: [],
+      to: { ...unit.pos },
+      targetId: target.id,
+      provokes: 0,
+    }));
+  }
   const ap = Math.min(state.actionsRemaining, MAX_PLANNED_ACTIONS);
   const reach = multiMoveReach(state, unit, board, ap);
   const enemies = enemiesOf(state, unit.owner);

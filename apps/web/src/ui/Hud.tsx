@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { airborne, unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
+import { airborne, spellRange, unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
 import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { BROKEN_HELP, INSPIRED_HELP, WAR_CRY_HELP, breaksAtHelp, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, TRANSFIXED_HELP, WAR_CRY_HELP, breaksAtHelp, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import { itemText, type BattleLog } from './log.js';
 import { sideNames } from './sides.js';
@@ -117,7 +117,7 @@ export function Hud(props: Props): JSX.Element {
             <>
               Commit dice to {selected.name}{' '}
               <span className="keys">
-                <kbd>1</kbd>–<kbd>{Math.max(...interaction.diceChoices, 1)}</kbd>
+                <kbd>{Math.min(...(interaction.diceByUnit[selected.id] ?? [1]))}</kbd>–<kbd>{Math.max(...(interaction.diceByUnit[selected.id] ?? [1]))}</kbd>
               </span>
               {interaction.groupUnitIds.includes(selected.id) ? (
                 <span className="keys">
@@ -127,7 +127,11 @@ export function Hud(props: Props): JSX.Element {
               ) : null}
             </>
           ),
-          hint: interaction.groupUnitIds.includes(selected.id)
+          hint: selected.transfixedBy !== undefined
+            ? 'It is transfixed: this roll is its struggle to break free. Two successes free it and a third is an action to spend; fewer and it stays held. Two failures still bench you.'
+            : interaction.spellDiceByUnit[selected.id]
+            ? 'More dice = more actions but higher turnover risk. Or take a spell turn (the Spell row): the successes become the power of one Transfix spell instead of actions.'
+            : interaction.groupUnitIds.includes(selected.id)
             ? 'More dice = more actions but higher turnover risk. One die can never turn over. Hold Shift (or use the group row) to activate every unit like it within 2 hexes on one shared roll. Q/E switch unit, Esc deselects.'
             : 'More dice = more actions but higher turnover risk. One die can never turn over. Q/E switch unit, Esc deselects.',
           tone: 'yours',
@@ -147,8 +151,12 @@ export function Hud(props: Props): JSX.Element {
   } else {
     const waiting = state.group?.pending.length ?? 0;
     turn = {
-      text: `${activeUnit?.name ?? 'Unit'} · ${state.actionsRemaining} action${state.actionsRemaining === 1 ? '' : 's'} left${waiting > 0 ? ` · ${waiting} waiting` : ''}`,
-      hint: interaction.switchTargetIds.length > 0
+      text: state.spell
+        ? `${activeUnit?.name ?? 'Unit'} · Transfix, power ${state.spell.power} · reach ${spellRange(state.spell.power)} hexes`
+        : `${activeUnit?.name ?? 'Unit'} · ${state.actionsRemaining} action${state.actionsRemaining === 1 ? '' : 's'} left${waiting > 0 ? ` · ${waiting} waiting` : ''}`,
+      hint: state.spell
+        ? `Click a highlighted enemy to cast the spell on it. It must pass ${state.spell.power} Quality ${state.spell.power === 1 ? 'die' : 'dice'} or be transfixed.`
+        : interaction.switchTargetIds.length > 0
         ? 'A group is activating: each member acts in turn. Click a pulsing member to let it go first — once this one acts, it has to finish.'
         : state.actionsRemaining >= 2
           ? 'The green field covers everything it can reach with all its actions — the rings mark where each one ends. Hover to see the route and the price; one click spends the lot.'
@@ -304,6 +312,11 @@ function UnitInspector({
         </span>
       ))}
       {u.knockedDown ? <span className="flag down">knocked down</span> : null}
+      {u.transfixedBy !== undefined && !u.dead ? (
+        <span className="flag down" title={TRANSFIXED_HELP}>
+          transfixed
+        </span>
+      ) : null}
       {u.guarding && !u.dead ? <span className="flag guarding">on guard</span> : null}
       {u.inspired && !u.dead ? (
         <span className="flag inspired" title={INSPIRED_HELP}>

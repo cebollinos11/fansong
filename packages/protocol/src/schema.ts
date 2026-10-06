@@ -65,6 +65,8 @@ export const chooseActivationSchema = z
     diceCount: z.number().int().min(1).max(3),
     /** A group activation: the unit's group shares the one roll. */
     group: z.literal(true).optional(),
+    /** A Magic User's spell turn: the successes power one spell. */
+    spell: z.literal(true).optional(),
   })
   .strict();
 
@@ -110,6 +112,14 @@ export const warCryCommandSchema = z
   })
   .strict();
 
+export const castCommandSchema = z
+  .object({
+    type: z.literal('Cast'),
+    casterId: z.string().min(1),
+    targetId: z.string().min(1),
+  })
+  .strict();
+
 export const endActivationSchema = z
   .object({ type: z.literal('EndActivation') })
   .strict();
@@ -128,6 +138,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   shootCommandSchema,
   guardCommandSchema,
   warCryCommandSchema,
+  castCommandSchema,
   endActivationSchema,
   switchGroupMemberSchema,
 ]);
@@ -179,6 +190,7 @@ export const unitTraitsSchema = z
     dumb: z.boolean(),
     disloyal: z.boolean(),
     badBalance: z.boolean(),
+    magicUser: z.boolean(),
   })
   .strict();
 
@@ -199,6 +211,7 @@ export const unitSchema = z
     guarding: z.boolean(),
     inspired: z.boolean(),
     warCried: z.boolean(),
+    transfixedBy: z.string().optional(),
   })
   .strict();
 
@@ -262,6 +275,7 @@ export const gameStateSchema = z
     limits: gameLimitsSchema.optional(),
     group: groupStateSchema.optional(),
     rushed: z.array(z.string()).optional(),
+    spell: z.object({ power: z.number().int() }).strict().optional(),
   })
   .strict();
 
@@ -284,6 +298,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     unitId: z.string(),
     diceCount: z.number(),
     group: z.array(z.string()).optional(),
+    spell: z.literal(true).optional(),
+    breakFree: z.literal(true).optional(),
   }),
   z.object({
     type: z.literal('DiceRolled'),
@@ -325,6 +341,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     defenseShieldwall: z.number().optional(),
     attackWoodwise: z.number().optional(),
     defenseWoodwise: z.number().optional(),
+    attackTransfixed: z.number().optional(),
     powerPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -347,6 +364,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     attackSharpshooter: z.number().optional(),
     attackWoodwise: z.number().optional(),
     defenseWoodwise: z.number().optional(),
+    attackTransfixed: z.number().optional(),
     aimPenalty: z.number().optional(),
     result: combatResultSchema,
     gruesome: z.literal(true).optional(),
@@ -375,6 +393,17 @@ export const gameEventSchema = z.discriminatedUnion('type', [
     gruesome: z.literal(true).optional(),
   }),
   z.object({ type: z.literal('GuardDeclared'), unitId: z.string() }),
+  z.object({
+    type: z.literal('SpellCast'),
+    casterId: z.string(),
+    targetId: z.string(),
+    power: z.number(),
+    quality: z.number(),
+    dice: z.array(z.number()),
+    failures: z.number(),
+    transfixed: z.boolean(),
+  }),
+  z.object({ type: z.literal('TransfixBroken'), unitId: z.string(), reason: z.enum(['brokeFree', 'casterLost']) }),
   z.object({ type: z.literal('WarCry'), unitId: z.string(), inspired: z.array(z.string()) }),
   z.object({ type: z.literal('LeaderFallen'), unitId: z.string() }),
   z.object({
@@ -494,6 +523,7 @@ export const unitSpecSchema = z
     dumb: z.boolean().optional(),
     disloyal: z.boolean().optional(),
     badBalance: z.boolean().optional(),
+    magicUser: z.boolean().optional(),
     king: z.boolean().optional(),
     pig: z.boolean().optional(),
     look: z.string().max(64).optional(),
@@ -599,6 +629,7 @@ export const warbandUnitSchema = z
     dumb: z.boolean().optional(),
     disloyal: z.boolean().optional(),
     badBalance: z.boolean().optional(),
+    magicUser: z.boolean().optional(),
     look: z.string().max(64).optional(),
     tint: tintSchema.optional(),
   })

@@ -1,5 +1,5 @@
 import type { Vec } from './board.js';
-import { livingCount } from './query.js';
+import { isDown, livingCount } from './query.js';
 import type { GameEvent, GameOverReason, GameState, Owner, Unit } from './types.js';
 
 /**
@@ -193,7 +193,7 @@ function tiebreakKey(state: GameState, p: Owner): [number, number, number] {
   let combat = 0;
   for (const u of state.units) {
     if (u.dead || u.owner !== p) continue;
-    if (!u.knockedDown) standing++;
+    if (!isDown(u)) standing++;
     combat += u.combat;
   }
   return [livingCount(state, p), standing, combat];
@@ -299,7 +299,7 @@ export function pigExtracted(state: GameState, unitId: string): boolean {
   const goal = state.mode?.objectives.extraction;
   if (!goal || !isPig(state, unitId)) return false;
   const pig = state.units.find((u) => u.id === unitId);
-  if (!pig || pig.dead || pig.knockedDown) return false;
+  if (!pig || pig.dead || isDown(pig)) return false;
   return goal.some((h) => h.x === pig.pos.x && h.y === pig.pos.y);
 }
 
@@ -324,7 +324,7 @@ export function checkRoundLimit(s: GameState, events: GameEvent[]): boolean {
 export function standingInZone(state: GameState, zone: ReadonlyArray<Vec>): [number, number] {
   const counts: [number, number] = [0, 0];
   for (const u of state.units) {
-    if (u.dead || u.knockedDown) continue;
+    if (u.dead || isDown(u)) continue;
     if (zone.some((h) => h.x === u.pos.x && h.y === u.pos.y)) counts[u.owner]++;
   }
   return counts;
@@ -445,6 +445,8 @@ function pickUpLooseFlag(s: GameState, events: GameEvent[], unit: Unit): void {
  * on its hex — the one it dropped going down — is back in its hands for free.
  */
 export function regrabOnStandUp(s: GameState, events: GameEvent[], unit: Unit): void {
+  // Up off the ground but still transfixed, its hands are not its own yet.
+  if (isDown(unit)) return;
   pickUpLooseFlag(s, events, unit);
 }
 
@@ -495,7 +497,7 @@ export function dropFallenCarriers(s: GameState, events: GameEvent[]): void {
   flags.forEach((f, p) => {
     if (f.carrier === null) return;
     const carrier = s.units.find((u) => u.id === f.carrier);
-    if (carrier && !carrier.dead && !carrier.knockedDown) return;
+    if (carrier && !carrier.dead && !isDown(carrier)) return;
     const at = carrier ? { x: carrier.pos.x, y: carrier.pos.y } : f.at;
     events.push({ type: 'FlagDropped', player: p as Owner, unitId: f.carrier, at: { x: at.x, y: at.y } });
     f.carrier = null;

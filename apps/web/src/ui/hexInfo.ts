@@ -2,6 +2,7 @@ import {
   airborne,
   combatOdds,
   combatScoring,
+  spellRange,
   unitById,
   unitMove,
   vecKey,
@@ -10,7 +11,7 @@ import {
   type Vec,
 } from '@fansong/engine';
 import type { PlanPreview } from '../game/planView.js';
-import { INSPIRED_HELP, traitLine, traitTags } from './hudView.js';
+import { INSPIRED_HELP, TRANSFIXED_HELP, traitLine, traitTags } from './hudView.js';
 import { modifierHelp, previewScores, signed, type RollModifier } from './rollView.js';
 
 // Pure hex-tooltip text (no DOM), so it can be unit-tested.
@@ -114,6 +115,7 @@ export function describeHex(
   if (unit) {
     const marks = [
       unit.knockedDown ? 'Knocked down' : null,
+      unit.transfixedBy !== undefined && !detailed ? 'Transfixed' : null,
       unit.guarding ? 'On guard' : null,
       // Held long enough, inspiration is spelled out below with the abilities.
       unit.inspired && !detailed ? 'Inspired' : null,
@@ -125,6 +127,7 @@ export function describeHex(
       const grounded = unit.traits.flying && !airborne(state, unit);
       // A sure 6 reads as safety, so say plainly that it can still turn over.
       if (unit.inspired) lines.push({ trait: 'Inspired', help: INSPIRED_HELP });
+      if (unit.transfixedBy !== undefined) lines.push({ trait: 'Transfixed', help: TRANSFIXED_HELP });
       lines.push(...traitTags(unit, grounded).map((t) => ({ trait: t.label, help: t.help })));
     } else {
       const traits = traitLine(unit);
@@ -163,12 +166,26 @@ function planLines(state: GameState, plan: PlanPreview, detailed: boolean): HexL
   const name = plan.targetId ? (unitById(state, plan.targetId)?.name ?? 'the enemy') : '';
   const lines: HexLine[] = [];
   if (plan.kind === 'move') lines.push(`Move here — ${planCost(state, plan)}`);
+  else if (plan.kind === 'cast') lines.push(...castLines(state, plan));
   else lines.push(`${planVerb(plan)} ${name} — ${planCost(state, plan)}`);
   const odds = oddsLine(state, plan);
   if (odds) lines.push(odds);
   lines.push(...fightScores(state, plan, detailed));
   if (plan.provokes > 0) lines.push('Breaking away — risks a parting blow');
   return lines;
+}
+
+/** What casting the spell in hand at a plan's target asks of it, and its chance of holding. */
+function castLines(state: GameState, plan: PlanPreview): HexLine[] {
+  const target = plan.targetId ? unitById(state, plan.targetId) : undefined;
+  const power = state.spell?.power ?? 0;
+  if (!target || power < 1) return [];
+  const resist = Math.min(1, Math.max(0, (7 - target.quality) / 6)) ** power;
+  return [
+    `Cast Transfix on ${target.name} — power ${power}, reach ${spellRange(power)} hexes`,
+    `It resists on ${power} ${power === 1 ? 'die' : 'dice'} (${target.quality}+ each) · ${pct(1 - resist)} to hold it`,
+    ...(target.transfixedBy !== undefined ? ['Already transfixed: this would only take over the hold'] : []),
+  ];
 }
 
 /**
@@ -199,7 +216,7 @@ function fightSides(
   state: GameState,
   plan: Pick<PlanPreview, 'kind' | 'targetId' | 'path'>,
 ): Pick<HexFight, 'attacker' | 'defender' | 'riposte' | 'help'> | null {
-  if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return null;
+  if (plan.kind === 'move' || plan.kind === 'cast' || !plan.targetId || !state.activeUnitId) return null;
   const attacker = unitById(state, state.activeUnitId);
   const target = unitById(state, plan.targetId);
   if (!attacker || !target) return null;
@@ -261,7 +278,7 @@ export function oddsLine(
   state: GameState,
   plan: Pick<PlanPreview, 'kind' | 'targetId' | 'path'> & { pressed?: true },
 ): string | null {
-  if (plan.kind === 'move' || !plan.targetId || !state.activeUnitId) return null;
+  if (plan.kind === 'move' || plan.kind === 'cast' || !plan.targetId || !state.activeUnitId) return null;
   const ranged = plan.kind === 'shoot';
   const from = plan.path.at(-1);
   const odds = combatOdds(state, state.activeUnitId, plan.targetId, {

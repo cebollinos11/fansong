@@ -20,7 +20,11 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'ActivationChosen':
       return e.group
         ? `P${e.player} activates a group of ${e.group.length} (${e.group.map((id) => name(state, id)).join(', ')}) with ${e.diceCount} dice`
-        : `P${e.player} activates ${name(state, e.unitId)} with ${e.diceCount} dice`;
+        : e.spell
+          ? `P${e.player} takes a spell turn with ${name(state, e.unitId)} on ${e.diceCount} dice`
+          : e.breakFree
+            ? `P${e.player} rolls ${e.diceCount} dice for ${name(state, e.unitId)} to break free`
+            : `P${e.player} activates ${name(state, e.unitId)} with ${e.diceCount} dice`;
     case 'DiceRolled':
       return `  rolls [${e.dice.join(', ')}] vs Q${e.quality} -> ${e.successes} hit / ${e.failures} miss${e.inspired ? ' (inspired: first die a 6)' : ''}`;
     case 'Turnover':
@@ -32,13 +36,19 @@ export function formatEvent(state: GameState, e: GameEvent): string {
     case 'UnitMoved':
       return `  ${name(state, e.unitId)} moves (${e.from.x},${e.from.y}) -> (${e.to.x},${e.to.y})`;
     case 'AttackResolved':
-      return `  ${name(state, e.attackerId)} ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['outnumbered', e.attackOutnumbered && -e.attackOutnumbered], ['size', e.attackBig], ['swoop', e.attackFly], ['opportunist', e.attackOpportunist], ['pincer', e.attackPincer], ['rusher', e.attackRusher], ['woodwise', e.attackWoodwise], ['foe outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['foe size', e.defenseBig], ['foe opportunist', e.defenseOpportunist], ['foe shieldwall', e.defenseShieldwall], ['foe woodwise', e.defenseWoodwise], ['foe power-blown', e.powerPenalty && -e.powerPenalty]])} -> ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} ${e.powerPenalty ? 'lands a power blow on' : 'attacks'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['outnumbered', e.attackOutnumbered && -e.attackOutnumbered], ['size', e.attackBig], ['swoop', e.attackFly], ['opportunist', e.attackOpportunist], ['pincer', e.attackPincer], ['rusher', e.attackRusher], ['woodwise', e.attackWoodwise], ['transfixed foe', e.attackTransfixed], ['foe outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['foe size', e.defenseBig], ['foe opportunist', e.defenseOpportunist], ['foe shieldwall', e.defenseShieldwall], ['foe woodwise', e.defenseWoodwise], ['foe power-blown', e.powerPenalty && -e.powerPenalty]])} -> ${e.result}${gore(e)}`;
     case 'ShotResolved':
-      return `  ${name(state, e.attackerId)} ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['big target', e.bigTarget], ['flying target', e.flyingTarget], ['opportunist', e.attackOpportunist], ['sharpshooter', e.attackSharpshooter], ['woodwise', e.attackWoodwise], ['foe woodwise', e.defenseWoodwise], ['long range', e.rangePenalty && -e.rangePenalty], ['cover', e.coverPenalty && -e.coverPenalty], ['foe aimed at', e.aimPenalty && -e.aimPenalty]])} -> ${e.result}${gore(e)}`;
+      return `  ${name(state, e.attackerId)} ${e.aimPenalty ? 'takes an aimed shot at' : 'shoots'} ${name(state, e.targetId)}: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['big target', e.bigTarget], ['flying target', e.flyingTarget], ['opportunist', e.attackOpportunist], ['sharpshooter', e.attackSharpshooter], ['woodwise', e.attackWoodwise], ['transfixed target', e.attackTransfixed], ['foe woodwise', e.defenseWoodwise], ['long range', e.rangePenalty && -e.rangePenalty], ['cover', e.coverPenalty && -e.coverPenalty], ['foe aimed at', e.aimPenalty && -e.aimPenalty]])} -> ${e.result}${gore(e)}`;
     case 'FreeHackResolved':
       return `  ${name(state, e.attackerId)} takes a free hack at ${name(state, e.targetId)} leaving contact: ${e.attackScore} vs ${e.defenseScore} (d${e.attackDie}/d${e.defenseDie})${mods([['size', e.attackBig], ['swoop', e.attackFly], ['opportunist', e.attackOpportunist], ['pincer', e.attackPincer], ['woodwise', e.attackWoodwise], ['leaver woodwise', e.defenseWoodwise], ['leaver outnumbered', e.defenseOutnumbered && -e.defenseOutnumbered], ['leaver size', e.defenseBig], ['leaver opportunist', e.defenseOpportunist]])} -> ${e.result === 'defenderRecoiled' ? 'slips away' : e.result}${gore(e)}`;
     case 'GuardDeclared':
       return `  ${name(state, e.unitId)} raises guard`;
+    case 'SpellCast':
+      return `  ✦ ${name(state, e.casterId)} casts Transfix (power ${e.power}) on ${name(state, e.targetId)}: resists with [${e.dice.join(', ')}] vs Q${e.quality} -> ${e.transfixed ? 'TRANSFIXED' : 'shrugs it off'}`;
+    case 'TransfixBroken':
+      return e.reason === 'brokeFree'
+        ? `  ✦ ${name(state, e.unitId)} breaks free of the spell`
+        : `    ✦ ${name(state, e.unitId)} is freed: its caster has lost its hold`;
     case 'WarCry':
       return `  📣 ${name(state, e.unitId)} war cries, inspiring ${e.inspired.length ? e.inspired.map((id) => name(state, id)).join(', ') : 'no one'}`;
     case 'LeaderFallen':
@@ -155,7 +165,7 @@ export function renderRoster(state: GameState): string {
   const side = (owner: 0 | 1) =>
     state.units
       .filter((u) => u.owner === owner)
-      .map((u) => `${kings.has(u.id) ? '♛' : u.id === pig ? '★' : ''}${u.name}${u.dead ? '†' : u.knockedDown ? '↓' : ''}`)
+      .map((u) => `${kings.has(u.id) ? '♛' : u.id === pig ? '★' : ''}${u.name}${u.dead ? '†' : u.knockedDown ? '↓' : ''}${!u.dead && u.transfixedBy !== undefined ? '✦' : ''}`)
       .join(', ');
   return `P0: ${side(0)}\nP1: ${side(1)}`;
 }

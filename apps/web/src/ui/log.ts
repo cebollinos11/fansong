@@ -256,6 +256,7 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('pincer', e.attackPincer),
             bonus('rusher', e.type === 'AttackResolved' ? e.attackRusher : undefined),
             bonus('woodwise', e.attackWoodwise),
+            bonus('transfixed foe', e.type === 'AttackResolved' ? e.attackTransfixed : undefined),
             penalty('outnumbered', e.attackOutnumbered),
           ],
         },
@@ -292,6 +293,7 @@ function fightFor(state: GameState, e: GameEvent, item: LogItem): Fight | null {
             bonus('opportunist', e.attackOpportunist),
             bonus('sharpshooter', e.attackSharpshooter),
             bonus('woodwise', e.attackWoodwise),
+            bonus('transfixed foe', e.attackTransfixed),
             penalty('long range', e.rangePenalty),
             penalty('cover', e.coverPenalty),
           ],
@@ -615,6 +617,33 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
           icon: '🛡',
           parts: [unit(ref(state, e.unitId)), ' raises guard'],
           brief: ['🛡 guard'],
+          category: 'other',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'SpellCast': {
+        const target = ref(state, e.targetId);
+        add({
+          icon: '✦',
+          parts: [
+            unit(ref(state, e.casterId)),
+            ` casts Transfix (power ${e.power}) on `,
+            unit(target),
+            `: it rolls ${e.dice.join(', ')} against ${e.quality}+ and `,
+            e.transfixed ? 'is transfixed' : 'resists',
+          ],
+          brief: e.transfixed ? ['✦ transfixes ', unit(target)] : ['✦ resisted by ', unit(target)],
+          ...(e.transfixed ? { tone: 'danger' as const } : {}),
+          category: 'other',
+          unitIds: [e.casterId, e.targetId],
+        });
+        break;
+      }
+      case 'TransfixBroken':
+        add({
+          icon: '✦',
+          parts: [unit(ref(state, e.unitId)), e.reason === 'brokeFree' ? ' breaks free of the spell' : ' is freed: its caster has lost its hold'],
+          brief: ['✦ freed'],
           category: 'other',
           unitIds: [e.unitId],
         });

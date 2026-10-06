@@ -36,12 +36,17 @@ import {
   regrabOnStandUp,
   scoreZones,
 } from './mode.js';
-import { resolveCombatMorale, type FreeHacks } from './morale.js';
+import { freeTransfixed, releaseVictims, resolveCombatMorale, type FreeHacks } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
 import {
   adjacentEnemies,
   airborne,
+  BREAK_FREE_COST,
+  canCast,
   canWarCry,
+  isDown,
+  spellTargets,
+  TRANSFIX_BONUS,
   warCryTargets,
   groupFor,
   inMelee,
@@ -59,6 +64,8 @@ import {
 } from './query.js';
 import type {
   AttackCommand,
+  CastCommand,
+  ChooseActivation,
   CombatResult,
   Command,
   GameEvent,
@@ -80,9 +87,17 @@ export function reduce(state: GameState, command: Command): ReduceResult {
   const s: GameState = structuredClone(state);
   const events: GameEvent[] = [];
 
+  // A spell turn buys the spell and nothing else.
+  if (s.spell && command.type !== 'Cast' && command.type !== 'EndActivation') {
+    throw new Error(`illegal command: '${command.type}' on a spell turn`);
+  }
+
   switch (command.type) {
     case 'ChooseActivation':
-      handleChoose(s, events, command.unitId, command.diceCount, command.group === true);
+      handleChoose(s, events, command);
+      break;
+    case 'Cast':
+      handleCast(s, events, command);
       break;
     case 'Move':
       handleMove(s, events, command.unitId, command.to);
@@ -126,7 +141,10 @@ function activeUnit(s: GameState): Unit {
 
 // --- Activation -----------------------------------------------------------
 
-function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCount: number, asGroup: boolean): void {
+function handleChoose(s: GameState, events: GameEvent[], command: ChooseActivation): void {
+  const { unitId, diceCount } = command;
+  const asGroup = command.group === true;
+  const spell = command.spell === true;
   requirePhase(s, 'awaitingActivation');
   const unit = unitById(s, unitId);
   if (!unit) throw new Error(`unknown unit '${unitId}'`);
@@ -136,9 +154,15 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   if (diceCount < 1 || diceCount > 3) throw new Error(`diceCount must be 1..3, got ${diceCount}`);
   if (diceCount > maxActivationDice(unit)) throw new Error(`unit '${unitId}' may roll at most ${maxActivationDice(unit)} dice`);
 
+  const board = makeHexGrid(s.board);
+  // A transfixed unit's roll is its struggle to break free.
+  const breakingFree = unit.transfixedBy !== undefined;
+  if (breakingFree && diceCount < BREAK_FREE_COST) throw new Error(`unit '${unitId}' needs ${BREAK_FREE_COST} dice to break free`);
+  if (spell && (asGroup || !canCast(s, unit, board, diceCount))) throw new Error(`unit '${unitId}' cannot take a spell turn on ${diceCount} dice`);
+
   // A group activation: the unit's whole group shares this one roll, for
   // better or worse. Alone, the "group" is just the unit.
-  const members = asGroup ? groupFor(s, unit, makeHexGrid(s.board)) : [unit];
+  const members = asGroup ? groupFor(s, unit, board) : [unit];
   if (members.length === 0) throw new Error(`unit '${unitId}' has no group to activate with`);
 
   // The sure 6 of a war cry needs every member inspired; the roll spends the
@@ -156,6 +180,8 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
     unitId,
     diceCount,
     ...(asGroup ? { group: members.map((m) => m.id) } : {}),
+    ...(spell ? { spell: true as const } : {}),
+    ...(breakingFree ? { breakFree: true as const } : {}),
   });
 
   const { dice, state: rngState } = rollDice(s.rngState, diceCount);
@@ -176,6 +202,18 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
     ...(inspired ? { inspired: true as const } : {}),
   });
 
+  // What the successes buy. Ordinarily an action each. A transfixed unit pays
+  // the first two to break free, or gets nothing; a spell turn puts them all
+  // into the one spell, which is wasted if it reaches no one.
+  let actions = successes;
+  if (breakingFree) {
+    actions = successes >= BREAK_FREE_COST ? successes - BREAK_FREE_COST : 0;
+    if (successes >= BREAK_FREE_COST) freeTransfixed(s, events, unit, 'brokeFree');
+  } else if (spell) {
+    actions = spellTargets(s, unit, board, successes).length > 0 ? 1 : 0;
+    if (actions > 0) s.spell = { power: successes };
+  }
+
   // The twist: 2+ failures = turnover. The player is benched for the rest of the
   // round, but the unit still takes the actions its successes earned first (3
   // dice with 1 success). (With 1 die you can never reach 2 failures, so a
@@ -183,7 +221,7 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   if (failures >= TURNOVER_FAILURES) {
     s.benched[s.active] = true;
     events.push({ type: 'Turnover', player: s.active, unitId });
-    if (successes === 0) {
+    if (actions === 0) {
       // Its activation is over before it began: a golden Pig already home is out.
       if (members.some((m) => extractPig(s, events, m.id))) return;
       s.activeUnitId = null;
@@ -201,7 +239,7 @@ function handleChoose(s: GameState, events: GameEvent[], unitId: string, diceCou
   }
   // A group that rolled nothing ends with its leader; the rest never get a turn of their own.
   if (successes === 0 && members.slice(1).some((m) => extractPig(s, events, m.id))) return;
-  beginActivation(s, events, unit, successes);
+  beginActivation(s, events, unit, actions);
 }
 
 /** Put `unit` to work with `actions` to spend: the start of its own activation, alone or as a group member. */
@@ -351,6 +389,7 @@ function handleAttack(s: GameState, events: GameEvent[], command: AttackCommand)
     canRecoil: canBePushed(targetPush),
     armored: target.traits.armored,
     mastery: target.traits.mastery,
+    helpless: target.transfixedBy !== undefined,
   };
   const result = computeCombatResult(attackSide, defenseSide);
   const gruesome = gruesomeKill(s, board, result, attacker, target, attackScore, defenseScore, attackerPush, targetPush);
@@ -434,7 +473,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
   const { attackDie, defenseDie } = rollPair(s);
   const { attackBase, defenseBase, mods } = shotScoring(s, board, attacker, target, aimPenalty);
   const { attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget } = mods;
-  const { attackOpportunist, attackSharpshooter, attackWoodwise, defenseWoodwise } = mods;
+  const { attackOpportunist, attackSharpshooter, attackWoodwise, defenseWoodwise, attackTransfixed } = mods;
   const attackScore = attackBase + attackDie;
   const defenseScore = defenseBase + defenseDie;
 
@@ -447,6 +486,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     knockedDown: target.knockedDown,
     canRecoil: canBePushed(targetPush),
     armored: target.traits.armored,
+    helpless: target.transfixedBy !== undefined,
   };
   const result = defenderOnly(computeCombatResult(shotSide, targetSide));
   const gruesome = gruesomeKill(s, board, result, attacker, target, attackScore, defenseScore, null, targetPush);
@@ -459,7 +499,7 @@ function handleShoot(s: GameState, events: GameEvent[], command: ShootCommand): 
     defenseDie,
     attackScore,
     defenseScore,
-    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, attackOpportunist, attackSharpshooter, attackWoodwise, defenseWoodwise, aimPenalty }),
+    ...shown({ attackBonus, defenseBonus, rangePenalty: range, coverPenalty: cover, bigTarget, flyingTarget, attackOpportunist, attackSharpshooter, attackWoodwise, defenseWoodwise, attackTransfixed, aimPenalty }),
     result,
     ...(gruesome ? { gruesome } : {}),
   });
@@ -486,6 +526,8 @@ export interface ShotMods {
   attackSharpshooter: number;
   attackWoodwise: number;
   defenseWoodwise: number;
+  /** For shooting a transfixed target. */
+  attackTransfixed: number;
 }
 
 function shotScoring(
@@ -509,6 +551,7 @@ function shotScoring(
     attackSharpshooter: sharpshooterBonus(attacker),
     attackWoodwise: woodwiseBonus(s, board, attacker),
     defenseWoodwise: woodwiseBonus(s, board, target),
+    attackTransfixed: transfixedBonus(target),
   };
   return {
     attackBase:
@@ -518,12 +561,52 @@ function shotScoring(
       mods.flyingTarget +
       mods.attackOpportunist +
       mods.attackSharpshooter +
-      mods.attackWoodwise -
+      mods.attackWoodwise +
+      mods.attackTransfixed -
       mods.rangePenalty -
       mods.coverPenalty,
     defenseBase: target.combat + mods.defenseBonus + mods.defenseWoodwise - aimPenalty,
     mods,
   };
+}
+
+// --- Cast -----------------------------------------------------------------
+
+function handleCast(s: GameState, events: GameEvent[], command: CastCommand): void {
+  requirePhase(s, 'acting');
+  const caster = activeUnit(s);
+  if (caster.id !== command.casterId) throw new Error(`unit '${command.casterId}' is not the activating unit`);
+  const spell = s.spell;
+  if (!spell) throw new Error('no spell turn is under way');
+  const target = spellTargets(s, caster, makeHexGrid(s.board), spell.power).find((u) => u.id === command.targetId);
+  if (!target) throw new Error(`unit '${command.targetId}' is not a target the spell can reach`);
+
+  // The target resists on one die per point of power: a single failure and it is caught.
+  const { dice, state: rngState } = rollDice(s.rngState, spell.power);
+  s.rngState = rngState;
+  const failures = dice.filter((d) => d < target.quality).length;
+  const transfixed = failures > 0;
+  events.push({
+    type: 'SpellCast',
+    casterId: caster.id,
+    targetId: target.id,
+    power: spell.power,
+    quality: target.quality,
+    dice,
+    failures,
+    transfixed,
+  });
+  if (transfixed) {
+    // Cast over another's spell, this one takes its place.
+    target.transfixedBy = caster.id;
+    target.guarding = false; // held fast is no stance to hold
+    // A Magic User caught in a spell loses its grip on its own victims.
+    releaseVictims(s, events, target.id);
+  }
+
+  s.actionsRemaining = 0;
+  if (checkGameOver(s, events)) return;
+  endActivation(s, events);
 }
 
 // --- Guard ----------------------------------------------------------------
@@ -664,7 +747,7 @@ function resolveFreeHacks(s: GameState, events: GameEvent[], mover: Unit, board:
     // A leaver that turned its coat in an earlier hack's rout is going nowhere.
     if (mover.owner !== side) return false;
     // A hacker already cut down, put to flight or turned by an earlier hack's rout has no swing.
-    if (hacker.knockedDown || hacker.dead || hacker.owner === side || board.distance(hacker.pos, mover.pos) !== 1) continue;
+    if (isDown(hacker) || hacker.dead || hacker.owner === side || board.distance(hacker.pos, mover.pos) !== 1) continue;
     const roll = rollMelee(s, board, hacker, mover, 'hack');
     const { attackDie, defenseDie, attackScore, defenseScore } = roll;
     // Only the leaver can be hurt — unless it is a master who ties the hacker.
@@ -743,6 +826,13 @@ export interface MeleeMods {
   defenseShieldwall: number;
   attackWoodwise: number;
   defenseWoodwise: number;
+  /** For striking a transfixed foe. Only ever the aggressor's: a transfixed unit strikes no one. */
+  attackTransfixed: number;
+}
+
+/** What anyone gains striking or shooting at a transfixed `target`: {@link TRANSFIX_BONUS}, else 0. */
+function transfixedBonus(target: Unit): number {
+  return target.transfixedBy !== undefined ? TRANSFIX_BONUS : 0;
 }
 
 /** Which melee an opposed roll is: an attack, a guard's riposte, or a free hack at a leaver. */
@@ -810,6 +900,7 @@ function meleeScoring(
     defenseShieldwall: kind === 'attack' ? shieldwallBonus(s, board, defender) : 0,
     attackWoodwise: woodwiseBonus(s, board, aggressor),
     defenseWoodwise: woodwiseBonus(s, board, defender),
+    attackTransfixed: transfixedBonus(defender),
   };
   return {
     attackBase:
@@ -820,7 +911,8 @@ function meleeScoring(
       mods.attackOpportunist +
       mods.attackPincer +
       mods.attackRusher +
-      mods.attackWoodwise -
+      mods.attackWoodwise +
+      mods.attackTransfixed -
       mods.attackOutnumbered,
     defenseBase:
       defender.combat +
@@ -1007,6 +1099,7 @@ export function combatOdds(
           canRecoil: canBePushed(targetPush),
           armored: target.traits.armored,
           mastery: targetMastery,
+          helpless: target.transfixedBy !== undefined,
         },
       );
       if (result.startsWith('defender')) {
@@ -1206,7 +1299,7 @@ function pushStep(s: GameState, board: Board, unit: Unit, from: Vec, at: Vec): P
   if (board.isBlocked(to)) return { kind: 'blocked' };
   const there = s.units.find((u) => !u.dead && u.id !== unit.id && u.pos.x === to.x && u.pos.y === to.y);
   if (!there) return board.isDeadly(to) && !airborne(s, unit) ? { kind: 'lava', to } : { kind: 'back', to };
-  return there.owner === unit.owner && !there.knockedDown ? { kind: 'supported', by: there } : { kind: 'blocked' };
+  return there.owner === unit.owner && !isDown(there) ? { kind: 'supported', by: there } : { kind: 'blocked' };
 }
 
 /** Whether a push has somewhere to resolve other than a fall (see {@link pushOutcome}). */
@@ -1317,7 +1410,10 @@ function resolveKill(
   }
   unit.dead = true;
   unit.knockedDown = false;
+  delete unit.transfixedBy;
   events.push({ type: 'UnitKilled', unitId: unit.id, byId });
+  // A dead Magic User's spells die with it.
+  releaseVictims(s, events, unit.id);
   return true;
 }
 
@@ -1333,6 +1429,7 @@ function endActivation(s: GameState, events: GameEvent[]): void {
   if (endedId) events.push({ type: 'ActivationEnded', unitId: endedId });
   if (endedId && extractPig(s, events, endedId)) return;
   delete s.rushed;
+  delete s.spell;
   s.activeUnitId = null;
   s.actionsRemaining = 0;
 

@@ -107,6 +107,7 @@ export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, 
       dumb: profile.dumb ?? false,
       disloyal: profile.disloyal ?? false,
       badBalance: profile.badBalance ?? false,
+      magicUser: profile.magicUser ?? false,
     },
     guarding: false,
     inspired: false,
@@ -155,21 +156,32 @@ export function teleportUnit(state: GameState, id: string, pos: Vec): GameState 
 /** The unit fields the inspector may rewrite. */
 export type UnitPatch = Partial<
   Pick<Unit, 'name' | 'owner' | 'quality' | 'combat' | 'dead' | 'knockedDown' | 'activatedThisRound' | 'guarding' | 'inspired' | 'warCried'>
-> & { traits?: Partial<UnitTraits> };
+> & { traits?: Partial<UnitTraits>; /** Hold it transfixed (by whichever enemy is first to hand), or let it go. */ transfixed?: boolean };
 
 /** Rewrite a unit's stats, traits or status flags. */
 export function patchUnit(state: GameState, id: string, patch: UnitPatch): GameState {
   const s = structuredClone(state);
   const unit = s.units.find((u) => u.id === id);
   if (!unit) throw new Error(`No unit '${id}'.`);
-  const { traits, ...rest } = patch;
+  const { traits, transfixed, ...rest } = patch;
   Object.assign(unit, rest);
   if (traits) Object.assign(unit.traits, traits);
+  if (transfixed === false) delete unit.transfixedBy;
+  if (transfixed === true) {
+    // The engine frees a unit whose caster is gone, so the hold needs a living enemy to name.
+    const enemies = s.units.filter((u) => !u.dead && u.owner !== unit.owner);
+    const caster = enemies.find((u) => u.traits.magicUser) ?? enemies[0];
+    if (!caster) throw new Error('No enemy to hold it transfixed.');
+    unit.transfixedBy = caster.id;
+    unit.guarding = false;
+  }
   // A dead unit neither stands guard, lies knocked down, nor is inspired.
   if (unit.dead) {
     unit.knockedDown = false;
     unit.guarding = false;
     unit.inspired = false;
+    delete unit.transfixedBy;
+    for (const u of s.units) if (u.transfixedBy === id) delete u.transfixedBy;
     if (s.activeUnitId === id) dropActivation(s);
   }
   return s;

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Owner } from '@fansong/engine';
 import { anchoredCard, type UnitProjector } from './anchorView.js';
-import { diceHint, groupHint, oddsParts, TURNOVER_COST } from './diceMenuView.js';
-import type { TraitTag } from './hudView.js';
+import { breakFreeHint, breakFreeParts, diceHint, groupHint, oddsParts, spellHint, spellParts, TURNOVER_COST } from './diceMenuView.js';
+import { SPELL_TURN_HELP, TRANSFIXED_HELP, type TraitTag } from './hudView.js';
 import { usePressGuard } from './pressGuard.js';
 
 /** World height above a unit's base that the menu's bottom edge rides at. */
@@ -18,10 +18,14 @@ interface Props {
   inspired: boolean;
   traits: readonly TraitTag[];
   choices: readonly number[];
+  /** Dice a Magic User may commit to a spell turn instead; empty when it has none to take. */
+  spellChoices?: readonly number[];
+  /** The unit is transfixed: the roll is its struggle to break free. */
+  transfixed?: boolean;
   /** Offered when the unit has a group: how many would share the roll, and whether all of them are inspired. */
   group?: { size: number; inspired: boolean };
   project: UnitProjector;
-  onPick: (dice: number, group: boolean) => void;
+  onPick: (dice: number, group: boolean, spell: boolean) => void;
 }
 
 /**
@@ -29,19 +33,23 @@ interface Props {
  * offers the same choice, but a player who has just clicked a unit on the board
  * should not have to cross the screen to answer the question that click asked.
  */
-export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, traits, choices, group, project, onPick }: Props): JSX.Element {
+export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, traits, choices, spellChoices = [], transfixed = false, group, project, onPick }: Props): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   // The tap that picked the unit must not also pick a dice count.
   const { onPointerDown, guard } = usePressGuard();
   // The choice under the pointer (or keyboard focus), whose odds the menu quotes.
-  const [hovered, setHovered] = useState<{ dice: number; group: boolean } | null>(null);
-  const odds = hovered
-    ? oddsParts(hovered.dice, quality, hovered.group ? (group?.inspired ?? false) : inspired)
-    : null;
-  const hover = (dice: number, inGroup: boolean) => ({
-    onPointerEnter: () => setHovered({ dice, group: inGroup }),
+  const [hovered, setHovered] = useState<{ dice: number; group: boolean; spell?: boolean } | null>(null);
+  const odds = !hovered
+    ? null
+    : hovered.spell
+      ? spellParts(hovered.dice, quality, inspired)
+      : transfixed
+        ? breakFreeParts(hovered.dice, quality, inspired)
+        : oddsParts(hovered.dice, quality, hovered.group ? (group?.inspired ?? false) : inspired);
+  const hover = (dice: number, inGroup: boolean, spell = false) => ({
+    onPointerEnter: () => setHovered({ dice, group: inGroup, spell }),
     onPointerLeave: () => setHovered(null),
-    onFocus: () => setHovered({ dice, group: inGroup }),
+    onFocus: () => setHovered({ dice, group: inGroup, spell }),
     onBlur: () => setHovered(null),
   });
 
@@ -97,15 +105,20 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
           ))}
         </div>
       ) : null}
+      {transfixed ? (
+        <div className="dice-menu-group" title={TRANSFIXED_HELP}>
+          Transfixed: roll to break free
+        </div>
+      ) : null}
       <div className="dice-menu-row">
         {choices.map((n, i) => (
           <button
             key={n}
             type="button"
             className="dice-pick"
-            title={diceHint(n, inspired)}
-            aria-label={`Roll ${n} ${n === 1 ? 'die' : 'dice'}`}
-            onClick={guard(() => onPick(n, false))}
+            title={transfixed ? breakFreeHint(n) : diceHint(n, inspired)}
+            aria-label={transfixed ? `Roll ${n} dice to break free` : `Roll ${n} ${n === 1 ? 'die' : 'dice'}`}
+            onClick={guard(() => onPick(n, false, false))}
             {...hover(n, false)}
           >
             {/* An inspired unit's first die is the war cry's sure 6, gold as in the roll. */}
@@ -127,10 +140,32 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
                 className="dice-pick group"
                 title={groupHint(n, group.size, group.inspired)}
                 aria-label={`Roll ${n} ${n === 1 ? 'die' : 'dice'} for the group of ${group.size}`}
-                onClick={guard(() => onPick(n, true))}
+                onClick={guard(() => onPick(n, true, false))}
                 {...hover(n, true)}
               >
                 <DieFace pips={n} sure={group.inspired && i === 0} />
+              </button>
+            ))}
+          </div>
+        </>
+      ) : null}
+      {spellChoices.length > 0 ? (
+        <>
+          <div className="dice-menu-group" title={SPELL_TURN_HELP}>
+            Spell turn: Transfix
+          </div>
+          <div className="dice-menu-row">
+            {spellChoices.map((n) => (
+              <button
+                key={n}
+                type="button"
+                className="dice-pick spell"
+                title={spellHint(n)}
+                aria-label={`Take a spell turn on ${n} ${n === 1 ? 'die' : 'dice'}`}
+                onClick={guard(() => onPick(n, false, true))}
+                {...hover(n, false, true)}
+              >
+                <DieFace pips={n} sure={inspired && n === spellChoices[0]} />
               </button>
             ))}
           </div>
@@ -140,7 +175,7 @@ export function UnitDiceMenu({ unitId, unitName, owner, quality, inspired, trait
       <div className={`dice-menu-odds${odds ? ' live' : ''}`} aria-live="polite">
         {odds ? (
           <>
-            <strong>{hovered?.group ? `Group, ${odds.dice}` : odds.dice}</strong>
+            <strong>{hovered?.group ? `Group, ${odds.dice}` : hovered?.spell ? `Spell, ${odds.dice}` : odds.dice}</strong>
             <span>{odds.act}</span>
             <span className={odds.safe ? 'safe' : 'risk'}>{odds.risk}</span>
           </>

@@ -2824,6 +2824,15 @@ button.secondary {
   fill: #1a1f27;
 }
 
+/* A spell turn's dice, in the violet of the spell. */
+.dice-pick.spell .die-face rect {
+  fill: #d9c8ff;
+}
+
+.dice-pick.spell:hover:not(:disabled) {
+  border-color: #b79bff;
+}
+
 /* The war cry's sure 6, gold as in the roll. */
 .die-face.sure rect {
   fill: #ffae3c;

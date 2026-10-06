@@ -63,6 +63,8 @@ export interface Profile {
   disloyal?: boolean;
   /** Bad Balance: a push that moves it also knocks it down. Never with `immovable`. */
   badBalance?: boolean;
+  /** Magic User: may take a spell turn to cast Transfix on an enemy in sight. */
+  magicUser?: boolean;
 }
 
 /** The kinds of Shooter trait: short range, plain Shooter, and long range. */
@@ -127,7 +129,7 @@ export const COST_WEIGHTS = {
   qualityBase: 7,
 };
 
-/** How many of a profile's traits are favorable (Leader, Combat Mastery, Whirling and Immovable counting twice) and how many unfavorable. */
+/** How many of a profile's traits are favorable (Leader, Combat Mastery, Whirling, Immovable and Magic User counting twice) and how many unfavorable. */
 export function traitCounts(p: Profile): { favorable: number; unfavorable: number } {
   const favorable = [
     p.fast,
@@ -146,7 +148,7 @@ export function traitCounts(p: Profile): { favorable: number; unfavorable: numbe
     p.slippery,
     p.woodwise,
     p.trample,
-  ].filter(Boolean).length + [p.leader, p.mastery, p.whirling, p.immovable].filter(Boolean).length * 2;
+  ].filter(Boolean).length + [p.leader, p.mastery, p.whirling, p.immovable, p.magicUser].filter(Boolean).length * 2;
   const unfavorable = [p.slow, p.dumb, p.disloyal, p.badBalance].filter(Boolean).length;
   return { favorable, unfavorable };
 }

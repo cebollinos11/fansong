@@ -36,7 +36,7 @@ import {
   RollOverlay,
   type ZoneScoreText,
 } from './rollOverlay.js';
-import { describeActivation, describeCombat, describeNerve } from '../ui/rollView.js';
+import { describeActivation, describeCombat, describeNerve, describeResist } from '../ui/rollView.js';
 import { COLOR_NAMES, sidePossessive, type SideNames } from '../ui/sides.js';
 import { BROKEN_VERDICT_DETAIL } from '../ui/hudView.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
@@ -498,6 +498,13 @@ const DREAD_MAX_ZOOM = 0.55;
 const DREAD_FRAME_SLOW = 1.6; // ...and the camera takes this much longer to get there
 const DREAD_DOLLY = 0.93; // then keeps creeping in to this fraction of its distance until the blow lands
 const WINDUP_MS = 320; // the killer holds its swing (or its draw) at the peak this long
+const SPELL_COLOR = 0xb79bff; // a Transfix spell: the caster's glow, the bolt's trail, the ring where it takes hold
+const SPELL_COLORS = [0xffffff, 0xd9c8ff, 0xb79bff];
+const WEB_COLORS = [0xffffff, 0xe6e6f0, 0xcfd2e0]; // the strands a unit tears through as it breaks free
+const WEB_IMAGE = 'projectiles/web.png'; // Wesnoth's web: the bolt in flight, and what holds a transfixed unit
+const WEB_SCALE = 1.8; // the web over a held unit, against the 72px image's own size
+const SPELL_GATHER_MS = 450; // the caster gathers the spell before it flies
+const SPELL_FLIGHT_MS = 380; // the bolt's flight to a target in the next hex (longer the farther it goes)
 const DREAD_COLOR = 0xcdb8ff; // the power gathering in the killer as it does
 const SPOT_IN_MS = 400; // the rest of the board darkens this fast as the build-up starts...
 const SPOT_OUT_MS = 600; // ...and comes back this fast once the killer's triumph is over
@@ -682,6 +689,8 @@ interface Missile {
   arc: number;
   /** What happens where it ends: it sticks in its target, or kicks up the ground or the cover it hit. */
   ending: ShotEnding;
+  /** A spell's bolt: it lands without an arrow's thud, and nothing is left stuck where it struck. */
+  spell?: true;
   /** Its landing effect has played. */
   landed: boolean;
   /** Where its trail last left a puff (null before it sets off). */
@@ -747,6 +756,8 @@ interface UnitFlags {
   dead: boolean;
   knocked: boolean;
   guarding: boolean;
+  /** Held by a Transfix spell: a web hangs over it. */
+  transfixed: boolean;
 }
 
 interface UnitObj {
@@ -786,6 +797,8 @@ interface UnitObj {
   badgePop: number | null;
   /** Dizzy stars circling the head while knocked down. */
   stars: THREE.Group;
+  /** The web a Transfix spell holds it in; hidden while it is free. */
+  web: THREE.Sprite;
   anims: SpriteAnimations;
   /** Frame held while knocked down, or null to crouch instead. */
   downPose: string | null;
@@ -1394,7 +1407,7 @@ export class BoardView {
       obj.turnTo = obj.owner !== u.owner ? u.owner : null;
       obj.traits = u.traits;
       obj.name = u.name;
-      obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead };
+      obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead, transfixed: u.transfixedBy !== undefined && !u.dead };
       obj.grounded = u.traits.flying && !airborne(state, u);
       obj.spent = vm.spentUnitIds?.includes(u.id) ?? false;
 
@@ -1557,7 +1570,8 @@ export class BoardView {
         this.at(t, () => this.flashPick(e.unitId));
       } else if (e.type === 'DiceRolled') {
         const chosen = events.slice(0, i).find((x) => x.type === 'ActivationChosen' && x.unitId === e.unitId);
-        const roll = describeActivation(e, after, chosen?.type === 'ActivationChosen' ? chosen.group?.length : 0);
+        const picked = chosen?.type === 'ActivationChosen' ? chosen : undefined;
+        const roll = describeActivation(e, after, picked?.group?.length, picked?.spell ? 'spell' : picked?.breakFree ? 'breakFree' : null);
         const start = t;
         const resolve = start + activationResolveMs(roll.dice.length);
         const end = start + activationRollMs(roll.dice.length);
@@ -1710,7 +1724,7 @@ export class BoardView {
           nerveAt = base + this.pause(this.frameUnits(rolling, base));
           t = Math.max(t, nerveAt);
         }
-        const roll = describeNerve(e, after);
+        const roll = describeNerve(e, after, this.units.get(e.unitId)?.shown.transfixed === true);
         const start = nerveAt;
         this.at(start, () => {
           this.rolls.addNerve(roll, this.now, NERVE_ROLL_MS + ROLL_LINGER_MS);
@@ -1721,6 +1735,17 @@ export class BoardView {
       } else if (e.type === 'WarCry') {
         t = this.warCry(e.unitId, e.inspired, t);
         lastHit = settle = t;
+      } else if (e.type === 'SpellCast') {
+        const spell = this.castSpell(e, Math.max(t, settle));
+        // The web (and a dropped guard) shows as the last die of its roll settles.
+        hold(e.targetId, spell.resolve);
+        lastHit = settle = spell.resolve;
+        t = spell.end;
+      } else if (e.type === 'TransfixBroken') {
+        const at = Math.max(lastHit, settle);
+        hold(e.unitId, at);
+        this.at(at, () => this.breakFreeFx(e.unitId, e.reason));
+        t = Math.max(t, at + 300);
       } else if (e.type === 'LeaderFallen') {
         const at = Math.max(lastHit, settle, aftermath) + NERVE_LEAD_MS;
         this.at(at, () => {
@@ -1866,7 +1891,8 @@ export class BoardView {
         }
       } else if (e.type === 'UnitRouted') {
         const obj = this.units.get(e.unitId);
-        if (obj) obj.routed = true;
+        // One held by a spell cannot run: it is lost where it stands.
+        if (obj && !obj.shown.transfixed) obj.routed = true;
         hold(e.unitId, settle + 300);
         this.at(settle + 300, () => this.sound('routed'));
       } else if (
@@ -2950,10 +2976,17 @@ export class BoardView {
     }
     stars.visible = false;
 
+    // Drawn over the cutout it holds, whichever way the cutout leans.
+    const web = new THREE.Sprite(new THREE.SpriteMaterial({ map: projectileTexture(WEB_IMAGE), transparent: true, depthWrite: false, depthTest: false }));
+    web.scale.setScalar(72 * SPRITE_PX * WEB_SCALE * (big ? BIG_SCALE : 1));
+    web.renderOrder = 2;
+    web.visible = false;
+    web.raycast = () => {};
+
     const spriteName = spriteFor(name);
     const anims = animationsFor(spriteName);
     const downPose = DOWN_POSES[spriteName] ?? null;
-    const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false });
+    const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false, transfixed: false });
     const obj: UnitObj = {
       id,
       size: big ? BIG_SCALE : 1,
@@ -2976,6 +3009,7 @@ export class BoardView {
       badgeHeld: 0,
       badgePop: null,
       stars,
+      web,
       anims,
       downPose: downPose && anims.death?.frames.some(([f]) => f === downPose) ? downPose : null,
       animator: new UnitAnimator(spriteName, anims),
@@ -3023,7 +3057,7 @@ export class BoardView {
       (err) => console.error(err),
     );
 
-    facing.add(stars); // follows the lunge, and the lean back
+    facing.add(stars, web); // follow the lunge, and the lean back
     group.add(ring, base, facing, badge);
     group.name = name;
     this.scene.add(group);
@@ -3563,7 +3597,7 @@ export class BoardView {
     // On Guard, hold the braced defence pose.
     const guardPose = obj.anims.defendMelee?.frames[1]?.[0] ?? null;
     obj.animator.pose = obj.shown.knocked ? obj.downPose : obj.shown.guarding ? guardPose : null;
-    obj.animator.restless = !obj.shown.knocked && !obj.fade && !obj.walk;
+    obj.animator.restless = !obj.shown.knocked && !obj.shown.transfixed && !obj.fade && !obj.walk;
     const image = obj.animator.update(dtMs);
     if (obj.atlas && image !== obj.shownImage) {
       const rect = obj.atlas.frames.get(image) ?? obj.atlas.frames.get(obj.animator.base);
@@ -3749,6 +3783,13 @@ export class BoardView {
     obj.facing.position.set(off.x, TILE_TOP + BASE_HEIGHT + lift - sink, off.z);
     if (obj.blink && this.now >= obj.blink.end) obj.blink = null;
     obj.facing.visible = !obj.blink || ((this.now - obj.blink.start) % BLINK_MS) >= BLINK_MS / 2;
+    // The web hangs over its middle, a little toward the camera, breathing slowly.
+    obj.web.visible = obj.shown.transfixed && !obj.fade;
+    if (obj.web.visible) {
+      const mid = (obj.shown.knocked ? 0.2 : 0.45) * obj.size;
+      obj.web.position.set(0, mid * Math.cos(this.spriteLean), -mid * Math.sin(this.spriteLean));
+      obj.web.material.opacity = 0.85 + 0.12 * Math.sin(this.now / 420);
+    }
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
     obj.badge.visible = obj.badgeOn && this.now >= obj.badgeHeld;
     if (obj.badgePop !== null && this.now >= obj.badgePop + BADGE_POP_MS) obj.badgePop = null;
@@ -3899,6 +3940,12 @@ export class BoardView {
       const f = (this.now - m.start) / (m.end - m.start);
       if (m.dread && f >= 1) {
         if (this.pierceMissile(m, m.dread.pierce)) this.missiles.splice(i, 1);
+        continue;
+      }
+      if (m.spell && f >= 1) {
+        this.scene.remove(m.sprite);
+        m.sprite.material.dispose();
+        this.missiles.splice(i, 1);
         continue;
       }
       if (f >= 1 && !m.landed) {
@@ -5160,6 +5207,134 @@ export class BoardView {
         map.dispose();
       },
     );
+  }
+
+  /**
+   * A Transfix spell: the caster gathers it in a violet glow and looses a web
+   * at its target, which rolls to resist on a dice card of its own. Caught, the
+   * web closes over it in a flash; resisted, the spell breaks on it in sparks.
+   * Returns when (ms from now) the target's roll settles, and when it is over.
+   */
+  private castSpell(e: Extract<GameEvent, { type: 'SpellCast' }>, at: number): { resolve: number; end: number } {
+    const caster = this.units.get(e.casterId);
+    const target = this.units.get(e.targetId);
+    if (!caster || !target) return { resolve: at, end: at };
+    at += this.pause(this.frameUnits([e.casterId, e.targetId], at));
+    const loose = at + SPELL_GATHER_MS;
+    const hit = loose + SPELL_FLIGHT_MS + this.extraFlightMs(caster, target);
+    this.at(at, () => {
+      this.rolls.retireFight();
+      this.sound('spell-cast');
+      this.setHeading(caster, target.targetPos.clone().sub(caster.targetPos));
+      this.setHeading(target, caster.targetPos.clone().sub(target.targetPos));
+      const clip = caster.anims.ranged?.[0] ?? caster.anims.leading ?? caster.anims.melee?.[0];
+      if (clip) caster.animator.play(clip);
+      caster.glow = { color: SPELL_COLOR, start: this.now, end: this.now + SPELL_GATHER_MS + 250 };
+      const ground = caster.group.position.clone().setY(this.groundY(caster) + 0.04);
+      this.effects.ring(ground, SPELL_COLOR, HEX_SIZE * 0.7, 0.12, { life: SPELL_GATHER_MS / 1000, opacity: 0.9, additive: true });
+    });
+    this.at(loose, () => {
+      const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: projectileTexture(WEB_IMAGE), transparent: true, depthWrite: false }));
+      sprite.scale.setScalar(72 * SPRITE_PX * 0.8);
+      sprite.visible = false;
+      this.scene.add(sprite);
+      const from = this.shotPoint(caster);
+      const to = this.shotPoint(target);
+      this.missiles.push({
+        sprite,
+        from,
+        to,
+        start: this.now,
+        end: this.now + (hit - loose),
+        arc: shotArc(from, to, SHOT_ARC),
+        ending: 'hit',
+        spell: true,
+        landed: false,
+        trailAt: null,
+        puffs: 0,
+      });
+    });
+    const roll = describeResist(e);
+    const resolve = hit + activationResolveMs(roll.dice.length);
+    const end = hit + activationRollMs(roll.dice.length);
+    this.at(hit, () => {
+      this.rolls.addActivation(roll, this.now, end - hit + ROLL_LINGER_MS);
+      this.sound('dice-roll');
+      this.effects.ring(target.group.position.clone().setY(this.groundY(target) + 0.04), SPELL_COLOR, 0.15, HEX_SIZE * 0.8, { life: 0.4, opacity: 0.8, additive: true });
+    });
+    e.dice.forEach((die, k) => this.at(resolve + k * DIE_SOUND_GAP_MS, () => this.sound(die >= e.quality ? 'die-success' : 'die-fail')));
+    this.at(resolve, () => {
+      if (roll.verdict) this.rolls.addVerdict(roll.verdict, this.now);
+      if (e.transfixed) this.transfixFx(target);
+      else this.resistFx(target);
+    });
+    return { resolve, end };
+  }
+
+  /** Transfixed: the web snaps shut over it in a violet flash, and it goes still. */
+  private transfixFx(obj: UnitObj): void {
+    this.sound('transfixed');
+    this.hitStop(IMPACT_STOP_MS, [obj.id]);
+    this.flashUnit(obj.id, 0.45);
+    obj.animator.stop();
+    obj.glow = { color: SPELL_COLOR, start: this.now, end: this.now + GLOW_MS };
+    this.effects.burst({
+      at: this.chest(obj),
+      count: 22,
+      colors: SPELL_COLORS,
+      speed: [0.6, 1.8],
+      up: 0.3,
+      drag: 2.5,
+      life: [0.35, 0.7],
+      size: [0.04, 0.08],
+      blend: 'add',
+    });
+  }
+
+  /** The spell resisted: it breaks on its target in a spray of sparks. */
+  private resistFx(obj: UnitObj): void {
+    this.sound('spell-resisted');
+    const chest = this.chest(obj);
+    this.effects.icon('shield', chest, 0.5, { life: 0.45, color: SPELL_COLOR });
+    this.effects.burst({
+      at: chest,
+      count: 16,
+      colors: SPELL_COLORS,
+      speed: [1.5, 3],
+      up: 0.5,
+      gravity: 5,
+      drag: 1.5,
+      life: [0.2, 0.45],
+      size: [0.03, 0.06],
+      shape: 'square',
+      blend: 'add',
+    });
+  }
+
+  /** Free of the spell: the web tears apart in shreds. By its own strength, it says so. */
+  private breakFreeFx(id: string, reason: 'brokeFree' | 'casterLost'): void {
+    const obj = this.units.get(id);
+    if (!obj) return;
+    this.sound('break-free');
+    this.rolls.addVerdict(
+      reason === 'brokeFree'
+        ? { text: 'Breaks free!', on: [id], tone: 'save' }
+        : { text: 'Freed', detail: 'its caster has lost its hold', on: [id], tone: 'save' },
+      this.now,
+    );
+    if (reason === 'brokeFree') this.flashUnit(id, 0.3);
+    this.effects.burst({
+      at: this.chest(obj),
+      count: 24,
+      colors: WEB_COLORS,
+      speed: [1.2, 2.8],
+      up: 0.6,
+      gravity: 5,
+      drag: 1.8,
+      life: [0.3, 0.6],
+      size: [0.03, 0.07],
+      shape: 'square',
+    });
   }
 
   /** Dumb: a question mark wobbles over its head as it is told to act. */

@@ -1,5 +1,5 @@
 import type { Vec } from './board.js';
-import { airborne } from './query.js';
+import { airborne, isDown } from './query.js';
 import type { CombatResult, GameState, Unit } from './types.js';
 
 /** One combatant's side of an opposed roll. */
@@ -18,6 +18,8 @@ export interface CombatSide {
   armored?: boolean;
   /** Combat Mastery: a tie against a foe without it kills that foe (see {@link masteryStruck}). */
   mastery?: boolean;
+  /** Transfixed: any roll it loses kills it, and it never hurts its opponent, whatever it rolls. */
+  helpless?: boolean;
 }
 
 /**
@@ -47,7 +49,7 @@ export function computeCombatResult(attack: CombatSide, defense: CombatSide): Co
   if (attack.score > defense.score) {
     return attack.score >= defense.score * 2 ? 'defenderKilled' : `defender${beaten(defense, attack.die)}`;
   }
-  if (!canStrikeBack(defense.knockedDown, defense.die)) return 'clash';
+  if (!strikesBack(defense)) return 'clash';
   if (defense.score > attack.score) {
     return defense.score >= attack.score * 2 ? 'attackerKilled' : `attacker${beaten(attack, defense.die)}`;
   }
@@ -64,7 +66,7 @@ export function computeCombatResult(attack: CombatSide, defense: CombatSide): Co
  */
 export function armorHeld(attack: CombatSide, defense: CombatSide): 'attack' | 'defense' | null {
   if (attack.score === defense.score + 1) return defense.armored ? 'defense' : null;
-  if (defense.score === attack.score + 1 && canStrikeBack(defense.knockedDown, defense.die)) {
+  if (defense.score === attack.score + 1 && strikesBack(defense)) {
     return attack.armored ? 'attack' : null;
   }
   return null;
@@ -78,8 +80,8 @@ export function armorHeld(attack: CombatSide, defense: CombatSide): 'attack' | '
  */
 export function masteryStruck(attack: CombatSide, defense: CombatSide): 'attack' | 'defense' | null {
   if (attack.score !== defense.score) return null;
-  if (attack.mastery && !defense.mastery && canStrikeBack(attack.knockedDown, attack.die)) return 'attack';
-  if (defense.mastery && !attack.mastery && canStrikeBack(defense.knockedDown, defense.die)) return 'defense';
+  if (attack.mastery && !defense.mastery && strikesBack(attack)) return 'attack';
+  if (defense.mastery && !attack.mastery && strikesBack(defense)) return 'defense';
   return null;
 }
 
@@ -173,7 +175,7 @@ export function bigTargetBonus(target: Pick<Unit, 'traits'>): number {
  * flyer, brought to earth, loses it — as does one weighed down by a flag.
  */
 export function flyingMeleeBonus(state: GameState, unit: Unit, opponent: Unit): number {
-  if (unit.knockedDown) return 0;
+  if (isDown(unit)) return 0;
   return airborne(state, unit) && !airborne(state, opponent) ? FLYING_MELEE_BONUS : 0;
 }
 
@@ -185,7 +187,7 @@ export function flyingMeleeBonus(state: GameState, unit: Unit, opponent: Unit): 
  * ordinary target again.
  */
 export function flyingTargetBonus(state: GameState, target: Unit): number {
-  return airborne(state, target) && !target.knockedDown ? FLYING_TARGET_BONUS : 0;
+  return airborne(state, target) && !isDown(target) ? FLYING_TARGET_BONUS : 0;
 }
 
 /**
@@ -227,10 +229,10 @@ export function pincerBonus(
   unit: Unit,
   opponent: Unit,
 ): number {
-  if (unit.knockedDown) return 0;
+  if (isDown(unit)) return 0;
   const behind = board.stepAway(unit.pos, opponent.pos);
   const closes = state.units.some(
-    (u) => !u.dead && !u.knockedDown && u.owner === unit.owner && u.id !== unit.id && u.pos.x === behind.x && u.pos.y === behind.y,
+    (u) => !u.dead && !isDown(u) && u.owner === unit.owner && u.id !== unit.id && u.pos.x === behind.x && u.pos.y === behind.y,
   );
   return closes ? PINCER_BONUS : 0;
 }
@@ -245,9 +247,9 @@ export function shieldwallBonus(
   board: { distance(a: Vec, b: Vec): number },
   unit: Unit,
 ): number {
-  if (!unit.traits.shieldwall || unit.knockedDown) return 0;
+  if (!unit.traits.shieldwall || isDown(unit)) return 0;
   const braced = state.units.some(
-    (u) => !u.dead && !u.knockedDown && u.owner === unit.owner && u.id !== unit.id && board.distance(u.pos, unit.pos) === 1,
+    (u) => !u.dead && !isDown(u) && u.owner === unit.owner && u.id !== unit.id && board.distance(u.pos, unit.pos) === 1,
   );
   return braced ? SHIELDWALL_BONUS : 0;
 }
@@ -272,13 +274,18 @@ export function woodwiseBonus(
   board: { feature(v: Vec): unknown },
   unit: Unit,
 ): number {
-  if (!unit.traits.woodwise || unit.knockedDown || airborne(state, unit)) return 0;
+  if (!unit.traits.woodwise || isDown(unit) || airborne(state, unit)) return 0;
   return board.feature(unit.pos) === 'forest' ? WOODWISE_BONUS : 0;
 }
 
 function beaten(loser: CombatSide, winnerDie: number): 'Killed' | 'KnockedDown' | 'Recoiled' {
-  if (loser.knockedDown) return 'Killed';
+  if (loser.knockedDown || loser.helpless) return 'Killed';
   return winnerDie % 2 === 1 && loser.canRecoil ? 'Recoiled' : 'KnockedDown';
+}
+
+/** Whether one side of a roll can hurt the other: never when transfixed, else as {@link canStrikeBack} says. */
+function strikesBack(side: CombatSide): boolean {
+  return !side.helpless && canStrikeBack(side.knockedDown, side.die);
 }
 
 /** Whether a unit can hurt its opponent: always when standing, only on a natural 6 when knocked down. */
@@ -293,9 +300,9 @@ export function canStrikeBack(knockedDown: boolean, die: number): boolean {
  */
 export function highGroundBonus(
   board: { elevation(v: Vec): number },
-  unit: Pick<Unit, 'pos' | 'knockedDown'>,
+  unit: Pick<Unit, 'pos' | 'knockedDown' | 'transfixedBy'>,
   opponent: Pick<Unit, 'pos'>,
 ): number {
-  if (unit.knockedDown) return 0;
+  if (isDown(unit)) return 0;
   return board.elevation(unit.pos) > board.elevation(opponent.pos) ? 1 : 0;
 }

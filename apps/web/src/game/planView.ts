@@ -38,7 +38,7 @@ export interface PlanIndex {
   strikeNowIds: string[];
   /** Enemies strikeable only after walking in. */
   approachIds: string[];
-  /** Of the enemies above, those the offer is to shoot rather than strike in melee. */
+  /** Of the enemies above, those the offer is to shoot — or cast a spell at — rather than strike in melee. */
   shootIds: string[];
   /** Highest action cost among the reachable hexes (0 when there are none). */
   maxCost: number;
@@ -82,7 +82,7 @@ export function buildPlanIndex(plans: ActionPlan[], state: GameState): PlanIndex
 
   for (const [targetId, plan] of index.byTarget) {
     (plan.waypoints.length === 0 ? index.strikeNowIds : index.approachIds).push(targetId);
-    if (plan.kind === 'shoot') index.shootIds.push(targetId);
+    if (plan.kind === 'shoot' || plan.kind === 'cast') index.shootIds.push(targetId);
     // Hovering or clicking the enemy itself is the natural way to aim at it.
     const pos = unitById(state, targetId)?.pos;
     if (pos) index.byCell.set(vecKey(pos), plan);

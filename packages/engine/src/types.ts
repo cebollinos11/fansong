@@ -143,6 +143,13 @@ export interface UnitTraits {
   disloyal: boolean;
   /** Bad Balance: a push that moves it also knocks it down where it lands. Never with {@link immovable}. */
   badBalance: boolean;
+  /**
+   * Magic User: on its feet and out of contact with a standing foe, it may take
+   * a **spell turn** instead of a normal activation (see
+   * {@link ChooseActivation.spell}): the successes of the roll are the power of
+   * one Transfix spell (see {@link CastCommand}).
+   */
+  magicUser: boolean;
 }
 
 export interface Unit {
@@ -185,6 +192,16 @@ export interface Unit {
   inspired: boolean;
   /** Dynamic: this Leader has already war cried this round (cleared at the end of the round). */
   warCried: boolean;
+  /**
+   * Dynamic: held fast by a Transfix spell, cast by the unit with this id.
+   * Omitted when free, so an ordinary state's shape (and every replay hash) is
+   * unchanged. A transfixed unit is helpless (see `isDown` in query.ts): it
+   * cannot move or act, is struck at `TRANSFIX_BONUS`, dies to any blow
+   * that beats it, and is lost outright if it fails a nerve check. Its
+   * activation is a roll to break free. It is freed at once when its caster is
+   * killed, leaves the field, changes sides or is transfixed in turn.
+   */
+  transfixedBy?: string;
 }
 
 export type Phase = 'awaitingActivation' | 'acting' | 'gameOver';
@@ -231,6 +248,11 @@ export interface GameState {
    * is unchanged.
    */
   rushed?: string[];
+  /**
+   * The spell turn in progress: the activating Magic User rolled `power`
+   * successes and has yet to pick its target. Omitted outside one.
+   */
+  spell?: { power: number };
 }
 
 /** A group activation in progress: the members still to act behind the active one. */
@@ -257,6 +279,11 @@ export interface ChooseActivation {
    * unit activates alone.
    */
   group?: true;
+  /**
+   * A Magic User's **spell turn**: the roll's successes are not actions but the
+   * power of one spell, cast with a {@link CastCommand}. Never with `group`.
+   */
+  spell?: true;
 }
 
 export interface MoveCommand {
@@ -304,6 +331,18 @@ export interface WarCryCommand {
   unitId: string;
 }
 
+/**
+ * Cast **Transfix** on an enemy, on a spell turn. The spell reaches
+ * `SPELL_RANGES[power - 1]` hexes along a clear line of sight (as a shot needs).
+ * The target rolls one die per point of power against its Quality, and is
+ * {@link Unit.transfixedBy transfixed} if any of them fails.
+ */
+export interface CastCommand {
+  type: 'Cast';
+  casterId: string;
+  targetId: string;
+}
+
 export interface EndActivation {
   type: 'EndActivation';
 }
@@ -325,6 +364,7 @@ export type Command =
   | ShootCommand
   | GuardCommand
   | WarCryCommand
+  | CastCommand
   | EndActivation
   | SwitchGroupMember;
 
@@ -347,6 +387,10 @@ export type GameEvent =
       diceCount: number;
       /** Present on a group activation: every member sharing the roll, `unitId` first. */
       group?: string[];
+      /** Present on a Magic User's spell turn. */
+      spell?: true;
+      /** Present when the unit is transfixed: the roll is its attempt to break free. */
+      breakFree?: true;
     }
   | {
       type: 'DiceRolled';
@@ -404,6 +448,8 @@ export type GameEvent =
       attackWoodwise?: number;
       /** Woodwise bonus added to the defense score (a Woodwise defender standing in forest); present only when non-zero. */
       defenseWoodwise?: number;
+      /** Bonus added to the attack score for striking a transfixed target; present only when non-zero. */
+      attackTransfixed?: number;
       /** Power-blow penalty subtracted from the defense score; present only on a two-action attack. */
       powerPenalty?: number;
       result: CombatResult;
@@ -438,6 +484,8 @@ export type GameEvent =
       attackWoodwise?: number;
       /** Woodwise bonus added to the defense score (a Woodwise target standing in forest); present only when non-zero. */
       defenseWoodwise?: number;
+      /** Bonus added to the attack score for shooting a transfixed target; present only when non-zero. */
+      attackTransfixed?: number;
       /** Aimed-shot penalty subtracted from the defense score; present only on a two-action shot. */
       aimPenalty?: number;
       /** Only ever a defender-side outcome (a shooter takes no return damage). */
@@ -487,6 +535,26 @@ export type GameEvent =
       gruesome?: true;
     }
   | { type: 'GuardDeclared'; unitId: string }
+  /**
+   * A Magic User cast Transfix at `targetId` with `power` successes. The target
+   * rolled `dice` against its `quality`; any of its `failures` leaves it `transfixed`.
+   */
+  | {
+      type: 'SpellCast';
+      casterId: string;
+      targetId: string;
+      power: number;
+      quality: number;
+      dice: number[];
+      failures: number;
+      transfixed: boolean;
+    }
+  /**
+   * `unitId` is no longer transfixed: it `brokeFree` on its own activation roll
+   * (and is on its feet), or its `casterLost` its hold — killed, gone from the
+   * field, turned coat or transfixed in turn.
+   */
+  | { type: 'TransfixBroken'; unitId: string; reason: 'brokeFree' | 'casterLost' }
   /** A Leader war cried; `inspired` lists the friends it inspired. */
   | { type: 'WarCry'; unitId: string; inspired: string[] }
   /** A Leader was killed; the nerve checks of the friends who saw it fall follow. */

@@ -1,4 +1,4 @@
-import type { CombatScoring, GameEvent } from '@fansong/engine';
+import { BREAK_FREE_COST, spellRange, type CombatScoring, type GameEvent } from '@fansong/engine';
 
 /**
  * Presentation of dice rolls: turns engine roll events into what the board's
@@ -28,6 +28,7 @@ const MODIFIER_HELP: Record<string, string> = {
     'A standing friend holds the hex directly opposite the foe, catching it between them. Any unit on its feet gets it: a rule of the game, not a trait',
   Rusher: "A Rusher's first attack after a Move that brought it into contact with this foe",
   Woodwise: 'A Woodwise unit standing in a forest hex, on every combat roll',
+  Transfixed: 'The target is held by a Transfix spell: easy to hit, and any blow that beats it kills',
   Shieldwall: 'A Shieldwall unit defending against an attack while next to a standing friend',
   Outnumbered: 'One less for each standing enemy in contact beyond the first. A Whirling unit on its feet is never outnumbered',
   'Big target': 'Shooting at a Big unit: it is easier to hit',
@@ -88,6 +89,8 @@ export interface ActivationRoll {
   inspired: boolean;
   /** Result line under the dice, e.g. "2 actions". */
   summary: string;
+  /** What the roll is, when it is not an ordinary activation: a spell turn, a struggle to break free, a spell resisted. */
+  title?: string;
   turnover: boolean;
   verdict: RollVerdict | null;
 }
@@ -131,16 +134,16 @@ type Mods<K extends string> = { readonly [k in K]?: number };
 // The modifiers each side of a melee or a shot can carry, named as the cards
 // show them. Fed by a resolved event, or by `combatScoring` before the blow, so
 // the preview and the roll can't disagree about what a modifier is called.
-function meleeAttackExtras(m: Mods<'attackBonus' | 'attackBig' | 'attackFly' | 'attackOpportunist' | 'attackPincer' | 'attackRusher' | 'attackWoodwise' | 'attackOutnumbered'>): Extras {
-  return [['High ground', m.attackBonus], ['Size', m.attackBig], ['Swoop', m.attackFly], ['Opportunist', m.attackOpportunist], ['Pincer', m.attackPincer], ['Rusher', m.attackRusher], ['Woodwise', m.attackWoodwise], ['Outnumbered', minus(m.attackOutnumbered)]];
+function meleeAttackExtras(m: Mods<'attackBonus' | 'attackBig' | 'attackFly' | 'attackOpportunist' | 'attackPincer' | 'attackRusher' | 'attackWoodwise' | 'attackTransfixed' | 'attackOutnumbered'>): Extras {
+  return [['High ground', m.attackBonus], ['Size', m.attackBig], ['Swoop', m.attackFly], ['Opportunist', m.attackOpportunist], ['Pincer', m.attackPincer], ['Rusher', m.attackRusher], ['Woodwise', m.attackWoodwise], ['Transfixed', m.attackTransfixed], ['Outnumbered', minus(m.attackOutnumbered)]];
 }
 
 function meleeDefenseExtras(m: Mods<'defenseBonus' | 'defenseBig' | 'defenseOpportunist' | 'defenseShieldwall' | 'defenseWoodwise' | 'defenseOutnumbered' | 'powerPenalty'>): Extras {
   return [['High ground', m.defenseBonus], ['Size', m.defenseBig], ['Opportunist', m.defenseOpportunist], ['Shieldwall', m.defenseShieldwall], ['Woodwise', m.defenseWoodwise], ['Outnumbered', minus(m.defenseOutnumbered)], ['Power blow', minus(m.powerPenalty)]];
 }
 
-function shotAttackExtras(m: Mods<'attackBonus' | 'bigTarget' | 'flyingTarget' | 'attackOpportunist' | 'attackSharpshooter' | 'attackWoodwise' | 'rangePenalty' | 'coverPenalty'>): Extras {
-  return [['High ground', m.attackBonus], ['Big target', m.bigTarget], ['Flying target', m.flyingTarget], ['Opportunist', m.attackOpportunist], ['Sharpshooter', m.attackSharpshooter], ['Woodwise', m.attackWoodwise], ['Long range', minus(m.rangePenalty)], ['Cover', minus(m.coverPenalty)]];
+function shotAttackExtras(m: Mods<'attackBonus' | 'bigTarget' | 'flyingTarget' | 'attackOpportunist' | 'attackSharpshooter' | 'attackWoodwise' | 'attackTransfixed' | 'rangePenalty' | 'coverPenalty'>): Extras {
+  return [['High ground', m.attackBonus], ['Big target', m.bigTarget], ['Flying target', m.flyingTarget], ['Opportunist', m.attackOpportunist], ['Sharpshooter', m.attackSharpshooter], ['Woodwise', m.attackWoodwise], ['Transfixed', m.attackTransfixed], ['Long range', minus(m.rangePenalty)], ['Cover', minus(m.coverPenalty)]];
 }
 
 function shotDefenseExtras(m: Mods<'defenseBonus' | 'defenseWoodwise' | 'aimPenalty'>): Extras {
@@ -364,12 +367,15 @@ function combatVerdict(e: Combat, a: RollSide, b: RollSide, after: readonly Game
 /**
  * Describe an activation roll. `after` is the rest of the batch: a Turnover or
  * a stand-up changes the summary. `groupOf` is how many units share the roll
- * in a group activation.
+ * in a group activation. `kind` says what the roll is for when it is not an
+ * ordinary activation: a Magic User's spell turn, or a transfixed unit's
+ * struggle to break free.
  */
 export function describeActivation(
   e: Extract<GameEvent, { type: 'DiceRolled' }>,
   after: readonly GameEvent[] = [],
   groupOf = 0,
+  kind: 'spell' | 'breakFree' | null = null,
 ): ActivationRoll {
   const dice: ActivationRoll['dice'] = e.dice.map((value, i) =>
     e.inspired && i === 0 ? { value, success: true, inspired: true } : { value, success: value >= e.quality },
@@ -380,7 +386,23 @@ export function describeActivation(
   const actions = e.successes - (stood ? 1 : 0);
   const plural = actions === 1 ? 'action' : 'actions';
   const each = groupOf > 1 ? ` each, group of ${groupOf}` : '';
-  const earned = stood ? `Stands up (−1) · ${actions} ${plural}` : actions > 0 ? `${actions} ${plural}${each}` : 'No actions';
+  const left = e.successes - BREAK_FREE_COST;
+  // A spell with no one in its reach ends the activation there and then.
+  const fizzled = after[0]?.type === 'ActivationEnded';
+  const earned =
+    kind === 'spell'
+      ? e.successes === 0
+        ? 'No power: the spell fails'
+        : `Power ${e.successes} · reach ${spellRange(e.successes)} hexes${fizzled ? ' · no one in reach' : ''}`
+      : kind === 'breakFree'
+        ? left >= 0
+          ? `Breaks free${left > 0 ? ` · ${left} ${left === 1 ? 'action' : 'actions'}` : ''}`
+          : `Still held (needs ${BREAK_FREE_COST})`
+        : stood
+          ? `Stands up (−1) · ${actions} ${plural}`
+          : actions > 0
+            ? `${actions} ${plural}${each}`
+            : 'No actions';
   // A turnover with a success still acts first (3 dice, 1 success).
   let summary: string;
   if (turnover) summary = e.successes > 0 ? `${e.failures} fails — turnover · ${earned}` : `${e.failures} fails — turnover`;
@@ -393,17 +415,40 @@ export function describeActivation(
         tone: 'kill',
       }
     : null;
-  return { kind: 'activation', unitId: e.unitId, quality: e.quality, dice, inspired, summary, turnover, verdict };
+  const title = kind === 'spell' ? 'Spell turn' : kind === 'breakFree' ? 'Break free' : undefined;
+  return { kind: 'activation', unitId: e.unitId, quality: e.quality, dice, inspired, summary, turnover, verdict, ...(title ? { title } : {}) };
+}
+
+/**
+ * A Transfix spell's target rolling to resist it: one die per point of power
+ * against its Quality, drawn as an activation roll is. Any failure holds it.
+ */
+export function describeResist(e: Extract<GameEvent, { type: 'SpellCast' }>): ActivationRoll {
+  return {
+    kind: 'activation',
+    unitId: e.targetId,
+    quality: e.quality,
+    dice: e.dice.map((value) => ({ value, success: value >= e.quality })),
+    inspired: false,
+    title: 'Resist the spell',
+    summary: e.transfixed ? `${e.failures} ${e.failures === 1 ? 'fail' : 'fails'} — held by the spell` : 'Every die passes — resisted',
+    turnover: false,
+    verdict: e.transfixed
+      ? { text: 'Transfixed!', detail: 'helpless until it breaks free', on: [e.targetId], tone: 'down' }
+      : { text: 'Resisted', detail: 'the spell slides off', on: [e.targetId], tone: 'save' },
+  };
 }
 
 /** Describe a nerve check; `after` tells a runner leaving the field from one running for its edge, and from a Disloyal unit changing sides. */
 export function describeNerve(
   e: Extract<GameEvent, { type: 'NerveCheck' }>,
   after: readonly GameEvent[] = [],
+  transfixed = false,
 ): NerveRoll {
   const gone = after.some((x) => x.type === 'UnitRouted' && x.unitId === e.unitId);
   const turned = after.some((x) => x.type === 'UnitDefected' && x.unitId === e.unitId);
-  const failed = turned ? 'Changes sides!' : gone ? 'Flees the field!' : 'Flees!';
+  const ran = after.some((x) => x.type === 'UnitFled' && x.unitId === e.unitId);
+  const failed = turned ? 'Changes sides!' : gone ? (transfixed ? 'Held fast: lost!' : 'Flees the field!') : ran || !transfixed ? 'Flees!' : 'Held fast: lost!';
   const summary = e.passed ? 'Holds firm' : e.inspirationLost ? `${failed} Inspiration lost` : failed;
   return { kind: 'nerve', unitId: e.unitId, quality: e.quality, die: e.die, passed: e.passed, summary };
 }

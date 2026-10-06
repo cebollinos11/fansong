@@ -97,6 +97,7 @@ export const TOGGLE_TRAITS = [
   'immovable',
   'woodwise',
   'trample',
+  'magicUser',
   'dumb',
   'disloyal',
   'badBalance',
@@ -154,6 +155,10 @@ export const TRAIT_INFO: Record<TraitKey, { label: string; desc: string }> = {
   immovable: { label: 'Immovable', desc: 'never pushed: a push leaves it standing where it is. Costs as two traits' },
   woodwise: { label: 'Woodwise', desc: '+1 on every combat roll, melee or shot, while standing in a forest hex' },
   trample: { label: 'Trample', desc: 'a foe it pushes in melee goes two hexes, and falls if the second is blocked' },
+  magicUser: {
+    label: 'Magic User',
+    desc: 'may take a spell turn to cast Transfix: the successes are its power (3, 5 or 7 hexes), and a target that fails any of that many Quality dice is held helpless. Costs as two traits',
+  },
   dumb: { label: 'Dumb', desc: `rolls at most ${DUMB_MAX_DICE} activation dice. A drawback: lowers its cost` },
   disloyal: { label: 'Disloyal', desc: 'a natural 1 on a nerve check makes it change sides. A drawback: lowers its cost' },
   badBalance: { label: 'Bad Balance', desc: 'a push that moves it also knocks it down. A drawback: lowers its cost' },

@@ -203,6 +203,10 @@ const SCENES: Record<string, SoundScene> = {
   dumb: demo('dumb'),
   defect: demo('disloyal'),
   'whoosh-trait': demo('rusher'),
+  'spell-cast': demo('transfix'),
+  transfixed: demo('transfix'),
+  'spell-resisted': demo('spellResisted'),
+  'break-free': demo('breakFree'),
 
   ...VOICES,
 };

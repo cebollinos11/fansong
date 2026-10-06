@@ -46,6 +46,15 @@ export function inMelee(state: GameState, unit: Unit, board: Board): boolean {
   );
 }
 
+/**
+ * Whether `unit` is out of the fight where it stands: knocked down, or held by
+ * a Transfix spell. Either way it is no "standing" unit — it outnumbers no one,
+ * closes no pincer, braces no friend, swings at no leaver and holds no ground.
+ */
+export function isDown(unit: Pick<Unit, 'knockedDown' | 'transfixedBy'>): boolean {
+  return unit.knockedDown || unit.transfixedBy !== undefined;
+}
+
 /** A unit that can still be activated this round. */
 export function unitAvailable(u: Unit): boolean {
   return !u.dead && !u.activatedThisRound;
@@ -79,9 +88,9 @@ export function sameProfile(a: Unit, b: Unit): boolean {
  * a roll of its own. Empty when the unit has no one to group with.
  */
 export function groupFor(state: GameState, unit: Unit, board: Board): Unit[] {
-  if (!unitAvailable(unit) || unit.knockedDown) return [];
+  if (!unitAvailable(unit) || isDown(unit)) return [];
   const near = state.units
-    .filter((u) => u.id !== unit.id && u.owner === unit.owner && unitAvailable(u) && !u.knockedDown && sameProfile(u, unit))
+    .filter((u) => u.id !== unit.id && u.owner === unit.owner && unitAvailable(u) && !isDown(u) && sameProfile(u, unit))
     .map((u) => ({ u, d: board.distance(u.pos, unit.pos) }))
     .filter((e) => e.d <= GROUP_RADIUS)
     .sort((a, b) => a.d - b.d)
@@ -110,8 +119,8 @@ export function adjacentEnemies(state: GameState, unit: Unit, board: Board): Uni
  * most one standing foe). A Whirling unit on its feet is never outnumbered.
  */
 export function outnumberedPenalty(state: GameState, unit: Unit, board: Board): number {
-  if (unit.traits.whirling && !unit.knockedDown) return 0;
-  const standing = adjacentEnemies(state, unit, board).filter((u) => !u.knockedDown).length;
+  if (unit.traits.whirling && !isDown(unit)) return 0;
+  const standing = adjacentEnemies(state, unit, board).filter((u) => !isDown(u)).length;
   return Math.max(0, standing - 1);
 }
 
@@ -179,7 +188,7 @@ export function moveReach(state: GameState, unit: Unit, board: Board): Set<strin
  * activating unit, with an action to spend, is checked by the caller.)
  */
 export function canWarCry(state: GameState, unit: Unit): boolean {
-  return unit.traits.leader && !unit.dead && !unit.knockedDown && !unit.warCried && !state.benched[unit.owner];
+  return unit.traits.leader && !unit.dead && !isDown(unit) && !unit.warCried && !state.benched[unit.owner];
 }
 
 /** Farthest a war cry carries, in hexes — and how far off a friend sees a gruesome kill or its Leader fall. */
@@ -204,4 +213,43 @@ export function warCryTargets(state: GameState, leader: Unit, board: Board): Uni
   return aliveUnits(state, leader.owner).filter(
     (u) => !u.traits.leader && !u.activatedThisRound && inEarshot(board, leader.pos, u.pos),
   );
+}
+
+/** How far a Transfix spell reaches, in hexes, by its power (the successes of the spell turn's roll). */
+export const SPELL_RANGES = [3, 5, 7] as const;
+
+/** How much easier a transfixed unit is to hit, in melee or with a shot. */
+export const TRANSFIX_BONUS = 2;
+
+/** Successes a transfixed unit's activation roll needs to break it free; any beyond are actions. */
+export const BREAK_FREE_COST = 2;
+
+/** The reach of a spell of `power` (see {@link SPELL_RANGES}); 0 for no power at all. */
+export function spellRange(power: number): number {
+  return SPELL_RANGES[Math.min(power, SPELL_RANGES.length) - 1] ?? 0;
+}
+
+/**
+ * The enemies `caster` could transfix with a spell of `power`: every living one
+ * within its {@link spellRange reach} and in line of sight, as a shot needs
+ * (units in the lane block it). A target may be in a melee, knocked down, or
+ * transfixed already. In unit order.
+ */
+export function spellTargets(state: GameState, caster: Unit, board: Board, power: number): Unit[] {
+  const range = spellRange(power);
+  const occ = occupiedKeys(state);
+  return enemiesOf(state, caster.owner).filter(
+    (e) => board.distance(caster.pos, e.pos) <= range && board.lineOfSight(caster.pos, e.pos, (v) => occ.has(vecKey(v))),
+  );
+}
+
+/**
+ * Whether `unit` may take a spell turn on `dice` dice: a Magic User on its feet
+ * with no standing enemy in contact, and a target the roll could reach if every
+ * die came up a success.
+ */
+export function canCast(state: GameState, unit: Unit, board: Board, dice: number): boolean {
+  if (!unit.traits.magicUser || unit.dead || isDown(unit)) return false;
+  if (adjacentEnemies(state, unit, board).some((e) => !isDown(e))) return false;
+  return spellTargets(state, unit, board, dice).length > 0;
 }
