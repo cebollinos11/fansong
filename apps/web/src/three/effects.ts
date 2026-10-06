@@ -644,7 +644,8 @@ export class Effects {
     this.items.splice(i, 1);
   }
 
-  private texture(kind: FxTexture): THREE.Texture {
+  /** One of the effects' own images, drawn once and shared (the effects dispose it). */
+  texture(kind: FxTexture): THREE.Texture {
     let t = this.textures.get(kind);
     if (t) return t;
     const canvas = document.createElement('canvas');

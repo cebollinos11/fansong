@@ -435,7 +435,7 @@ export function describeResist(e: Extract<GameEvent, { type: 'SpellCast' }>): Ac
     turnover: false,
     verdict: e.transfixed
       ? { text: 'Transfixed!', detail: 'helpless until it breaks free', on: [e.targetId], tone: 'down' }
-      : { text: 'Resisted', detail: 'the spell slides off', on: [e.targetId], tone: 'save' },
+      : { text: 'Resisted', detail: 'it tears the web apart', on: [e.targetId], tone: 'save' },
   };
 }
 

@@ -500,10 +500,21 @@ const DREAD_DOLLY = 0.93; // then keeps creeping in to this fraction of its dist
 const WINDUP_MS = 320; // the killer holds its swing (or its draw) at the peak this long
 const SPELL_COLOR = 0xb79bff; // a Transfix spell: the caster's glow, the bolt's trail, the ring where it takes hold
 const SPELL_COLORS = [0xffffff, 0xd9c8ff, 0xb79bff];
+const SPELL_TINT = new THREE.Color(SPELL_COLOR);
 const WEB_COLORS = [0xffffff, 0xe6e6f0, 0xcfd2e0]; // the strands a unit tears through as it breaks free
 const WEB_IMAGE = 'projectiles/web.png'; // Wesnoth's web: the bolt in flight, and what holds a transfixed unit
 const WEB_SCALE = 1.8; // the web over a held unit, against the 72px image's own size
-const SPELL_GATHER_MS = 450; // the caster gathers the spell before it flies
+const SPELL_LOOSE_MS = 220; // the caster, its spell already in hand, draws back to throw it
+const FIZZLE_COLORS = [0x5a5766, 0x7d798a, 0xa39fb0]; // the pale smoke a failed spell leaves
+const CHANNEL_FAINT = 0.4; // the charge a caster shows as it starts its spell roll, before a die has landed
+const ORB_COUNT = 7; // motes circling a caster at full power: one, and two more for each point of it
+const FIZZLE_MS = 400; // a spell that comes to nothing gets this long to gutter out
+const WEB_POP_MS = 180; // a thrown web lands too big, and draws in to size
+const WEB_KICK_MS = 170; // one twitch of a web as what it holds strains at it, or as it tightens
+const WEB_BURST_MS = 130; // a web stretches this long before it tears
+const WEB_SET_MS = 380; // the flash of a web hardening over what it has caught
+const WEB_DISSOLVE_MS = 500; // a web whose caster has let go fades away
+const WEB_PAYOFF_MS = 350; // how long a web's tearing or hardening holds the eye before play moves on
 const SPELL_FLIGHT_MS = 380; // the bolt's flight to a target in the next hex (longer the farther it goes)
 const DREAD_COLOR = 0xcdb8ff; // the power gathering in the killer as it does
 const SPOT_IN_MS = 400; // the rest of the board darkens this fast as the build-up starts...
@@ -758,6 +769,8 @@ interface UnitFlags {
   guarding: boolean;
   /** Held by a Transfix spell: a web hangs over it. */
   transfixed: boolean;
+  /** The power of the spell it holds ready on its spell turn, 0 with none: its charge shows that big. */
+  charge: number;
 }
 
 interface UnitObj {
@@ -799,6 +812,27 @@ interface UnitObj {
   stars: THREE.Group;
   /** The web a Transfix spell holds it in; hidden while it is free. */
   web: THREE.Sprite;
+  /**
+   * The web's own motion while its hold is in the balance: just thrown over a
+   * target still rolling to resist (`snare`), strained at by a held unit rolling
+   * to break free (`strain`), stretching to tear (`burst`), or fading as its
+   * caster lets go (`dissolve`). It is drawn through these whatever {@link shown} says.
+   */
+  webFx: { kind: 'snare' | 'strain' | 'burst' | 'dissolve'; start: number } | null;
+  /** One twitch of the web: out (a positive `amount`) as it is strained at, in as it tightens. */
+  webKick: { start: number; amount: number } | null;
+  /** Board time the web hardened over it, while that still flashes. */
+  webSet: number | null;
+  /** Motes circling a caster with a spell gathered; hidden without one. */
+  orbs: THREE.Group;
+  /** A spell roll in progress: the charge gathered so far, which grows with each success. */
+  channel: { level: number } | null;
+  /** The charge as drawn (0 for none), easing toward the spell's power. */
+  aura: number;
+  /** How far round the orbs have turned, the motes owed to the next frame, and when the next pulse on the ground is due. */
+  orbTurn: number;
+  moteDebt: number;
+  auraBeat: number;
   anims: SpriteAnimations;
   /** Frame held while knocked down, or null to crouch instead. */
   downPose: string | null;
@@ -1407,7 +1441,13 @@ export class BoardView {
       obj.turnTo = obj.owner !== u.owner ? u.owner : null;
       obj.traits = u.traits;
       obj.name = u.name;
-      obj.state = { dead: u.dead, knocked: u.knockedDown, guarding: u.guarding && !u.dead, transfixed: u.transfixedBy !== undefined && !u.dead };
+      obj.state = {
+        dead: u.dead,
+        knocked: u.knockedDown,
+        guarding: u.guarding && !u.dead,
+        transfixed: u.transfixedBy !== undefined && !u.dead,
+        charge: state.spell && state.activeUnitId === u.id && !u.dead ? state.spell.power : 0,
+      };
       obj.grounded = u.traits.flying && !airborne(state, u);
       obj.spent = vm.spentUnitIds?.includes(u.id) ?? false;
 
@@ -1574,7 +1614,21 @@ export class BoardView {
         const roll = describeActivation(e, after, picked?.group?.length, picked?.spell ? 'spell' : picked?.breakFree ? 'breakFree' : null);
         const start = t;
         const resolve = start + activationResolveMs(roll.dice.length);
-        const end = start + activationRollMs(roll.dice.length);
+        let end = start + activationRollMs(roll.dice.length);
+        let settled = resolve;
+        const roller = this.units.get(e.unitId);
+        if (roller && picked?.spell) {
+          // The spell is gathered as the dice roll; with no power, or no one in its reach, it fizzles.
+          const fizzles = e.successes === 0 || after[0]?.type === 'ActivationEnded';
+          settled = this.channelSpell(roller, e, start, resolve, fizzles, roll.verdict !== null);
+          // The charge it holds from here on shows only once it has built up.
+          hold(e.unitId, settled);
+          if (fizzles) end = Math.max(end, settled + FIZZLE_MS);
+        } else if (roller && picked?.breakFree) {
+          const free = after.some((x) => x.type === 'TransfixBroken' && x.unitId === e.unitId);
+          settled = this.strainWeb(roller, e, start, resolve, free);
+          end = Math.max(end, settled + WEB_PAYOFF_MS);
+        }
         this.at(start, () => {
           this.rolls.addActivation(roll, this.now, end - start + ROLL_LINGER_MS);
           this.sound('dice-roll');
@@ -1586,7 +1640,7 @@ export class BoardView {
           const verdict = roll.verdict;
           this.at(resolve, () => this.rolls.addVerdict(verdict, this.now));
         }
-        settle = resolve;
+        settle = settled;
         t = end;
       } else if (e.type === 'UnitStoodUp' && e.reassembled) {
         // The round's free stand-ups play as one beat of their own, on the first.
@@ -1737,7 +1791,9 @@ export class BoardView {
         lastHit = settle = t;
       } else if (e.type === 'SpellCast') {
         const spell = this.castSpell(e, Math.max(t, settle));
-        // The web (and a dropped guard) shows as the last die of its roll settles.
+        // The caster holds its charge until the spell leaves it.
+        hold(e.casterId, spell.loose);
+        // The web's hold (and a dropped guard) shows as the last die of its roll settles.
         hold(e.targetId, spell.resolve);
         lastHit = settle = spell.resolve;
         t = spell.end;
@@ -2815,6 +2871,10 @@ export class BoardView {
       obj.badgeHeld = 0;
       obj.badgePop = null;
       obj.facing.visible = true;
+      obj.channel = null;
+      obj.webFx = null;
+      obj.webKick = null;
+      obj.webSet = null;
     }
     this.busyUntil = this.now;
     return true;
@@ -2848,6 +2908,10 @@ export class BoardView {
       obj.badgeHeld = 0;
       obj.badgePop = null;
       obj.facing.visible = true;
+      obj.channel = null;
+      obj.webFx = null;
+      obj.webKick = null;
+      obj.webSet = null;
       obj.mirror.rotation.z = 0;
       obj.animator.moveFor(0, { reset: true });
     }
@@ -2983,10 +3047,27 @@ export class BoardView {
     web.visible = false;
     web.raycast = () => {};
 
+    const orbs = new THREE.Group();
+    for (let i = 0; i < ORB_COUNT; i++) {
+      const orb = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: this.effects.texture('soft'),
+          color: SPELL_COLORS[i % SPELL_COLORS.length],
+          transparent: true,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        }),
+      );
+      orb.renderOrder = 2;
+      orb.raycast = () => {};
+      orbs.add(orb);
+    }
+    orbs.visible = false;
+
     const spriteName = spriteFor(name);
     const anims = animationsFor(spriteName);
     const downPose = DOWN_POSES[spriteName] ?? null;
-    const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false, transfixed: false });
+    const flags = (): UnitFlags => ({ dead: false, knocked: false, guarding: false, transfixed: false, charge: 0 });
     const obj: UnitObj = {
       id,
       size: big ? BIG_SCALE : 1,
@@ -3010,6 +3091,15 @@ export class BoardView {
       badgePop: null,
       stars,
       web,
+      webFx: null,
+      webKick: null,
+      webSet: null,
+      orbs,
+      channel: null,
+      aura: 0,
+      orbTurn: 0,
+      moteDebt: 0,
+      auraBeat: 0,
       anims,
       downPose: downPose && anims.death?.frames.some(([f]) => f === downPose) ? downPose : null,
       animator: new UnitAnimator(spriteName, anims),
@@ -3057,7 +3147,7 @@ export class BoardView {
       (err) => console.error(err),
     );
 
-    facing.add(stars, web); // follow the lunge, and the lean back
+    facing.add(stars, web, orbs); // follow the lunge, and the lean back
     group.add(ring, base, facing, badge);
     group.name = name;
     this.scene.add(group);
@@ -3644,7 +3734,8 @@ export class BoardView {
     }
     if (obj.glow && this.now >= obj.glow.end) obj.glow = null;
     const glow = !cue && obj.glow && this.now >= obj.glow.start ? obj.glow : null;
-    obj.outline.visible = (cue !== null || glow !== null) && obj.atlas !== null;
+    const aura = this.stepAura(obj, dtMs, lerp);
+    obj.outline.visible = (cue !== null || glow !== null || aura > 0.05) && obj.atlas !== null;
     if (cue && obj.atlas) {
       const u = obj.outline.material.uniforms;
       u.uColor!.value.setHex(cue.color);
@@ -3657,6 +3748,12 @@ export class BoardView {
       // A blinking glow flares and dies `beats` times; any other fades in fast and out slowly.
       u.uOpacity!.value = glow.beats ? Math.sin(Math.PI * ((k * glow.beats) % 1)) ** 2 : Math.min(1, k * 8) * (1 - k * k);
       u.uWidth!.value = OUTLINE_HOVER_PX;
+    } else if (aura > 0.05 && obj.atlas) {
+      // A spell in hand rims its caster, brighter the more power is in it.
+      const u = obj.outline.material.uniforms;
+      u.uColor!.value.setHex(SPELL_COLOR);
+      u.uOpacity!.value = Math.min(1, 0.25 + 0.22 * aura) * (0.75 + 0.25 * Math.sin(this.now / 260));
+      u.uWidth!.value = aura > 2.5 ? OUTLINE_HOVER_PX : OUTLINE_PX;
     }
 
     obj.tilt.rotation.z += (obj.targetTilt - obj.tilt.rotation.z) * lerp;
@@ -3712,6 +3809,10 @@ export class BoardView {
         // A knock springs out and back; a shudder wobbles, dying away.
         off.addScaledVector(dir, shake ? Math.sin(k * Math.PI * 6) * (1 - k) : Math.sin(k * Math.PI));
       }
+    }
+    // Fighting a web whose hold is not yet settled, it shakes from side to side.
+    if (obj.webFx?.kind === 'snare' || obj.webFx?.kind === 'strain') {
+      off.addScaledVector(camRight, Math.sin(this.now / 28) * 0.02 * obj.size);
     }
 
     let sink = 0;
@@ -3784,11 +3885,51 @@ export class BoardView {
     if (obj.blink && this.now >= obj.blink.end) obj.blink = null;
     obj.facing.visible = !obj.blink || ((this.now - obj.blink.start) % BLINK_MS) >= BLINK_MS / 2;
     // The web hangs over its middle, a little toward the camera, breathing slowly.
-    obj.web.visible = obj.shown.transfixed && !obj.fade;
+    obj.web.visible = (obj.shown.transfixed || obj.webFx !== null) && !obj.fade;
     if (obj.web.visible) {
       const mid = (obj.shown.knocked ? 0.2 : 0.45) * obj.size;
       obj.web.position.set(0, mid * Math.cos(this.spriteLean), -mid * Math.sin(this.spriteLean));
-      obj.web.material.opacity = 0.85 + 0.12 * Math.sin(this.now / 420);
+      let scale = 1;
+      let opacity = 0.85 + 0.12 * Math.sin(this.now / 420);
+      let bright = 1;
+      let violet = 0; // how far its strands are tinted with the spell's colour: a web not yet set is all spell
+      const fx = obj.webFx;
+      if (fx) {
+        const k = (this.now - fx.start) / (fx.kind === 'snare' ? WEB_POP_MS : fx.kind === 'burst' ? WEB_BURST_MS : WEB_DISSOLVE_MS);
+        const e = THREE.MathUtils.clamp(k, 0, 1);
+        if (fx.kind === 'snare') {
+          // Thrown over it too big, drawing in: thin and trembling until it sets or tears.
+          scale = 1.35 - 0.35 * (1 - (1 - e) ** 2);
+          opacity = 0.6 + 0.08 * Math.sin(this.now / 60);
+          violet = 1;
+        } else if (fx.kind === 'burst') {
+          scale = 1 + 0.3 * e * e;
+          bright = 1 + 2.5 * e;
+        } else if (fx.kind === 'dissolve') {
+          scale = 1 + 0.12 * e;
+          opacity *= 1 - e;
+          violet = e;
+          if (k >= 1) obj.webFx = null;
+        }
+        if (fx.kind === 'snare' || fx.kind === 'strain') obj.web.position.x += Math.sin(this.now / 23) * 0.012 * obj.size;
+      }
+      if (obj.webKick) {
+        const k = (this.now - obj.webKick.start) / WEB_KICK_MS;
+        if (k >= 1) obj.webKick = null;
+        else scale *= 1 + obj.webKick.amount * Math.sin(Math.PI * Math.max(0, k));
+      }
+      if (obj.webSet !== null) {
+        // Hardening: a white flash, and it clamps in a little before it settles.
+        const k = (this.now - obj.webSet) / WEB_SET_MS;
+        if (k >= 1) obj.webSet = null;
+        else {
+          bright = 1 + 3 * (1 - k) ** 2;
+          scale *= 1 - 0.1 * Math.sin(Math.PI * Math.min(1, k * 1.6));
+        }
+      }
+      obj.web.scale.setScalar(72 * SPRITE_PX * WEB_SCALE * obj.size * scale);
+      obj.web.material.opacity = opacity;
+      obj.web.material.color.setHex(0xffffff).lerp(SPELL_TINT, violet).multiplyScalar(bright);
     }
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
     obj.badge.visible = obj.badgeOn && this.now >= obj.badgeHeld;
@@ -5210,17 +5351,204 @@ export class BoardView {
   }
 
   /**
-   * A Transfix spell: the caster gathers it in a violet glow and looses a web
-   * at its target, which rolls to resist on a dice card of its own. Caught, the
-   * web closes over it in a flash; resisted, the spell breaks on it in sparks.
-   * Returns when (ms from now) the target's roll settles, and when it is over.
+   * A spell gathered or in hand: motes circle the caster, more rise round its
+   * feet and a ring draws in under it — all of it bigger, faster and brighter
+   * the more power the spell has. Returns the charge as drawn (0 for none).
    */
-  private castSpell(e: Extract<GameEvent, { type: 'SpellCast' }>, at: number): { resolve: number; end: number } {
+  private stepAura(obj: UnitObj, dtMs: number, lerp: number): number {
+    const power = obj.fade ? 0 : obj.channel ? obj.channel.level : obj.shown.charge;
+    obj.aura += (power - obj.aura) * lerp;
+    const aura = obj.aura;
+    obj.orbs.visible = aura > 0.05;
+    if (!obj.orbs.visible) return 0;
+    const dt = dtMs / 1000;
+    obj.orbTurn += dt * (2.2 + 0.9 * aura);
+    const mid = 0.6 * obj.size;
+    const reach = (0.42 + 0.1 * aura) * obj.size;
+    obj.orbs.children.forEach((child, i) => {
+      const orb = child as THREE.Sprite;
+      // One mote, and two more for each point of power, each fading in as the charge reaches it.
+      const on = THREE.MathUtils.clamp(1 + 2 * aura - i, 0, 1);
+      orb.visible = on > 0;
+      if (!orb.visible) return;
+      const a = obj.orbTurn * (i % 2 ? -1 : 1) * (1 + 0.12 * i) + i * 2.4;
+      orb.position.set(
+        Math.cos(a) * reach,
+        mid + ((i % 3) - 1) * 0.22 * obj.size + Math.sin(a) * reach * 0.25,
+        Math.sin(a) * reach * 0.5 + 0.02,
+      );
+      orb.scale.setScalar((0.3 + 0.09 * aura) * (0.8 + 0.2 * Math.sin(this.now / 130 + i)) * on);
+      orb.material.opacity = on;
+    });
+    const feet = this.feet(obj);
+    obj.moteDebt += dt * (8 + 14 * aura);
+    for (; obj.moteDebt >= 1; obj.moteDebt -= 1) {
+      this.effects.burst({
+        at: feet,
+        count: 1,
+        colors: SPELL_COLORS,
+        speed: [0.03, 0.15],
+        flat: true,
+        up: 0.6 + 0.3 * aura,
+        drag: 0.5,
+        life: [0.6, 1.1],
+        size: [0.06, 0.09 + 0.03 * aura],
+        jitter: (0.3 + 0.1 * aura) * obj.size,
+        blend: 'add',
+      });
+    }
+    if (aura > 0.3 && this.now >= obj.auraBeat) {
+      obj.auraBeat = this.now + 760 - 120 * aura;
+      const wide = HEX_SIZE * (0.5 + 0.17 * aura);
+      this.effects.ring(feet, SPELL_COLOR, wide, 0.1, { life: 0.6, opacity: 0.45 + 0.15 * aura, thick: aura > 2.5, additive: true });
+      // A column of light stands round it, taller with every point of power.
+      this.effects.wall(feet, SPELL_COLOR, wide * 0.75, wide * 0.55, (0.45 + 0.4 * aura) * obj.size, { life: 0.9, opacity: 0.22 + 0.1 * aura });
+      this.effects.burst({
+        at: feet,
+        count: Math.round(1 + 2 * aura),
+        colors: this.dustColors(feet),
+        speed: [0.2, 0.5],
+        flat: true,
+        up: 0.12,
+        drag: 2,
+        life: [0.4, 0.7],
+        size: [0.07, 0.12],
+        grow: 2.2,
+        opacity: 0.4,
+        jitter: 0.12,
+      });
+    }
+    return aura;
+  }
+
+  /**
+   * A Magic User's spell roll, from `start` (ms from now): it gathers the spell
+   * as its dice tumble, the charge on it swelling with each success as that die
+   * sounds from `resolve` on. With no power, or no one in reach (`fizzles`), it
+   * gutters out. `turnover` is whether the roll's own verdict is already up.
+   * Returns when the charge has settled: its caster holds it from then until it
+   * is cast.
+   */
+  private channelSpell(
+    obj: UnitObj,
+    e: Extract<GameEvent, { type: 'DiceRolled' }>,
+    start: number,
+    resolve: number,
+    fizzles: boolean,
+    turnover: boolean,
+  ): number {
+    const done = resolve + e.dice.length * DIE_SOUND_GAP_MS;
+    this.at(start, () => {
+      this.sound('spell-charge');
+      obj.channel = { level: CHANNEL_FAINT };
+      const feet = this.feet(obj);
+      // The ground gives up its dust as the power is drawn in.
+      this.effects.ring(feet, SPELL_COLOR, HEX_SIZE * 0.95, 0.15, { life: 0.55, opacity: 0.8, additive: true });
+      this.effects.burst({
+        at: feet,
+        count: 10,
+        colors: this.dustColors(feet),
+        speed: [0.5, 1.1],
+        flat: true,
+        up: 0.2,
+        drag: 2.5,
+        life: [0.4, 0.75],
+        size: [0.08, 0.14],
+        grow: 2.4,
+        opacity: 0.5,
+        jitter: 0.1,
+      });
+    });
+    e.dice.forEach((die, k) => {
+      if (die < e.quality && !(k === 0 && e.inspired)) return;
+      this.at(resolve + k * DIE_SOUND_GAP_MS, () => {
+        if (!obj.channel) return;
+        const level = (obj.channel.level = Math.floor(obj.channel.level) + 1);
+        const feet = this.feet(obj);
+        this.flashUnit(obj.id, 0.12 + 0.06 * level);
+        this.effects.ring(feet, SPELL_COLOR, 0.15, HEX_SIZE * (0.6 + 0.2 * level), { life: 0.45, opacity: 0.85, thick: level >= 3, additive: true });
+        this.effects.wall(feet, SPELL_COLOR, 0.2, HEX_SIZE * (0.5 + 0.15 * level), (0.7 + 0.45 * level) * obj.size, { life: 0.5, opacity: 0.6 });
+        this.effects.burst({
+          at: feet,
+          count: 6 + 6 * level,
+          colors: SPELL_COLORS,
+          speed: [0.2, 0.6],
+          flat: true,
+          up: 1 + 0.4 * level,
+          drag: 1.2,
+          life: [0.4, 0.8],
+          size: [0.07, 0.1 + 0.03 * level],
+          jitter: 0.25 * obj.size,
+          blend: 'add',
+        });
+      });
+    });
+    this.at(done, () => {
+      const held = obj.channel?.level ?? 0;
+      obj.channel = null;
+      if (fizzles) this.fizzleFx(obj, held, turnover);
+    });
+    return done;
+  }
+
+  /** The spell comes to nothing: what charge there was falls in on itself, and goes up in smoke. */
+  private fizzleFx(obj: UnitObj, held: number, turnover: boolean): void {
+    this.sound('spell-fizzle');
+    if (!turnover) {
+      this.rolls.addVerdict(
+        { text: 'Fizzles', detail: held >= 1 ? 'no one in reach of it' : 'no power in the spell', on: [obj.id], tone: 'down' },
+        this.now,
+      );
+    }
+    const chest = this.chest(obj);
+    obj.aura = 0;
+    obj.squash = { start: this.now, end: this.now + FIZZLE_MS, amount: 0.14 };
+    this.effects.ring(this.feet(obj), SPELL_COLOR, HEX_SIZE * (0.5 + 0.15 * held), 0.05, { life: 0.25, opacity: 0.7, additive: true });
+    this.effects.burst({
+      at: chest,
+      count: 12,
+      colors: FIZZLE_COLORS,
+      speed: [0.15, 0.5],
+      up: 0.55,
+      drag: 1.5,
+      life: [0.5, 0.95],
+      size: [0.1, 0.18],
+      grow: 2.6,
+      opacity: 0.55,
+      jitter: 0.12,
+    });
+    // The last of it drops as dead sparks.
+    this.effects.burst({
+      at: chest,
+      count: 8 + Math.round(4 * held),
+      colors: SPELL_COLORS,
+      speed: [0.4, 1.1],
+      up: 0.6,
+      gravity: 6,
+      drag: 1,
+      life: [0.3, 0.6],
+      size: [0.025, 0.05],
+      shape: 'square',
+      blend: 'add',
+      floor: this.groundY(obj),
+    });
+  }
+
+  /**
+   * A Transfix spell: the caster, its charge already in hand, looses it as a web
+   * at its target. The web is over the target at once, thin and trembling,
+   * while the target rolls to resist on a dice card of its own, straining at it
+   * with each die it passes. Caught, the web hardens over it in a flash;
+   * resisted, the target tears it apart.
+   * Returns (ms from now) when the spell leaves the caster, when the target's
+   * roll is settled, and when it is all over.
+   */
+  private castSpell(e: Extract<GameEvent, { type: 'SpellCast' }>, at: number): { loose: number; resolve: number; end: number } {
     const caster = this.units.get(e.casterId);
     const target = this.units.get(e.targetId);
-    if (!caster || !target) return { resolve: at, end: at };
+    if (!caster || !target) return { loose: at, resolve: at, end: at };
     at += this.pause(this.frameUnits([e.casterId, e.targetId], at));
-    const loose = at + SPELL_GATHER_MS;
+    const loose = at + SPELL_LOOSE_MS;
     const hit = loose + SPELL_FLIGHT_MS + this.extraFlightMs(caster, target);
     this.at(at, () => {
       this.rolls.retireFight();
@@ -5229,9 +5557,8 @@ export class BoardView {
       this.setHeading(target, caster.targetPos.clone().sub(target.targetPos));
       const clip = caster.anims.ranged?.[0] ?? caster.anims.leading ?? caster.anims.melee?.[0];
       if (clip) caster.animator.play(clip);
-      caster.glow = { color: SPELL_COLOR, start: this.now, end: this.now + SPELL_GATHER_MS + 250 };
-      const ground = caster.group.position.clone().setY(this.groundY(caster) + 0.04);
-      this.effects.ring(ground, SPELL_COLOR, HEX_SIZE * 0.7, 0.12, { life: SPELL_GATHER_MS / 1000, opacity: 0.9, additive: true });
+      caster.glow = { color: SPELL_COLOR, start: this.now, end: this.now + SPELL_LOOSE_MS + 250 };
+      this.effects.ring(this.feet(caster), SPELL_COLOR, HEX_SIZE * 0.7, 0.12, { life: SPELL_LOOSE_MS / 1000, opacity: 0.9, additive: true });
     });
     this.at(loose, () => {
       const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: projectileTexture(WEB_IMAGE), transparent: true, depthWrite: false }));
@@ -5253,31 +5580,82 @@ export class BoardView {
         trailAt: null,
         puffs: 0,
       });
+      // All it had gathered goes with the bolt, and the throw rocks it back.
+      const away = caster.targetPos.clone().sub(target.targetPos).setY(0).normalize();
+      caster.aura = 0;
+      caster.jolt = { dir: away.clone().multiplyScalar(0.1), start: this.now, end: this.now + 240, shake: false };
+      this.flashUnit(caster.id, 0.25);
+      this.effects.burst({
+        at: from,
+        count: 8 + 6 * e.power,
+        colors: SPELL_COLORS,
+        speed: [0.8, 2.2],
+        dir: away.clone().negate(),
+        cone: 0.55,
+        drag: 2.5,
+        life: [0.2, 0.45],
+        size: [0.03, 0.06],
+        blend: 'add',
+      });
     });
     const roll = describeResist(e);
     const resolve = hit + activationResolveMs(roll.dice.length);
-    const end = hit + activationRollMs(roll.dice.length);
+    const settled = resolve + e.dice.length * DIE_SOUND_GAP_MS;
+    const end = Math.max(hit + activationRollMs(roll.dice.length), settled + WEB_PAYOFF_MS);
     this.at(hit, () => {
       this.rolls.addActivation(roll, this.now, end - hit + ROLL_LINGER_MS);
       this.sound('dice-roll');
-      this.effects.ring(target.group.position.clone().setY(this.groundY(target) + 0.04), SPELL_COLOR, 0.15, HEX_SIZE * 0.8, { life: 0.4, opacity: 0.8, additive: true });
+      this.sound('web-strain');
+      target.webFx = { kind: 'snare', start: this.now };
+      target.webSet = null;
+      this.effects.ring(this.feet(target), SPELL_COLOR, 0.15, HEX_SIZE * 0.8, { life: 0.4, opacity: 0.8, additive: true });
     });
-    e.dice.forEach((die, k) => this.at(resolve + k * DIE_SOUND_GAP_MS, () => this.sound(die >= e.quality ? 'die-success' : 'die-fail')));
-    this.at(resolve, () => {
+    e.dice.forEach((die, k) =>
+      this.at(resolve + k * DIE_SOUND_GAP_MS, () => {
+        const passed = die >= e.quality;
+        this.sound(passed ? 'die-success' : 'die-fail');
+        this.tugWeb(target, passed);
+      }),
+    );
+    this.at(settled, () => {
       if (roll.verdict) this.rolls.addVerdict(roll.verdict, this.now);
       if (e.transfixed) this.transfixFx(target);
       else this.resistFx(target);
     });
-    return { resolve, end };
+    return { loose, resolve: settled, end };
   }
 
-  /** Transfixed: the web snaps shut over it in a violet flash, and it goes still. */
+  /** One die of a struggle with a web: `out`, the unit strains it and a strand or two snaps; else it draws tighter. */
+  private tugWeb(obj: UnitObj, out: boolean): void {
+    obj.webKick = { start: this.now, amount: out ? 0.16 : -0.12 };
+    if (!out) {
+      this.flashUnit(obj.id, 0.1);
+      return;
+    }
+    this.effects.burst({
+      at: this.chest(obj),
+      count: 5,
+      colors: WEB_COLORS,
+      speed: [1, 2.2],
+      up: 0.4,
+      gravity: 5,
+      drag: 1.8,
+      life: [0.2, 0.4],
+      size: [0.025, 0.05],
+      shape: 'square',
+    });
+  }
+
+  /** Transfixed: the web hardens over it in a white flash, and it goes still. */
   private transfixFx(obj: UnitObj): void {
     this.sound('transfixed');
+    obj.webFx = null;
+    obj.webSet = this.now;
     this.hitStop(IMPACT_STOP_MS, [obj.id]);
     this.flashUnit(obj.id, 0.45);
     obj.animator.stop();
     obj.glow = { color: SPELL_COLOR, start: this.now, end: this.now + GLOW_MS };
+    this.effects.ring(this.feet(obj), SPELL_COLOR, HEX_SIZE * 0.9, 0.2, { life: 0.3, opacity: 0.9, additive: true });
     this.effects.burst({
       at: this.chest(obj),
       count: 22,
@@ -5291,27 +5669,117 @@ export class BoardView {
     });
   }
 
-  /** The spell resisted: it breaks on its target in a spray of sparks. */
+  /** The spell resisted: its target bursts the web that was thrown over it. */
   private resistFx(obj: UnitObj): void {
     this.sound('spell-resisted');
-    const chest = this.chest(obj);
-    this.effects.icon('shield', chest, 0.5, { life: 0.45, color: SPELL_COLOR });
-    this.effects.burst({
-      at: chest,
-      count: 16,
-      colors: SPELL_COLORS,
-      speed: [1.5, 3],
-      up: 0.5,
-      gravity: 5,
-      drag: 1.5,
-      life: [0.2, 0.45],
-      size: [0.03, 0.06],
-      shape: 'square',
-      blend: 'add',
+    const clip = obj.anims.defendMelee;
+    if (clip && !obj.shown.knocked) obj.animator.play(clip);
+    this.shatterWeb(obj, SPELL_COLORS);
+  }
+
+  /**
+   * A web torn apart from inside: it stretches, flares white and flies to
+   * pieces, with sparks of `colors` among the strands.
+   */
+  private shatterWeb(obj: UnitObj, colors: number[] = WEB_COLORS): void {
+    obj.webFx = { kind: 'burst', start: this.now };
+    obj.webKick = null;
+    obj.webSet = null;
+    this.at(WEB_BURST_MS, () => {
+      if (obj.webFx?.kind !== 'burst') return;
+      this.webShards(obj);
+      obj.webFx = null;
+      this.flashUnit(obj.id, 0.35);
+      obj.squash = { start: this.now, end: this.now + 260, amount: -0.1 }; // it stands up out of it
+      const chest = this.chest(obj);
+      this.effects.pop('burst', chest, 0.3, 1.1 * obj.size, { life: 0.25, color: colors[colors.length - 1] });
+      this.effects.burst({
+        at: chest,
+        count: 24,
+        colors: [...WEB_COLORS, ...colors],
+        speed: [1.4, 3.2],
+        up: 0.6,
+        gravity: 5,
+        drag: 1.8,
+        life: [0.3, 0.6],
+        size: [0.03, 0.07],
+        shape: 'square',
+        blend: colors === WEB_COLORS ? 'normal' : 'add',
+      });
     });
   }
 
-  /** Free of the spell: the web tears apart in shreds. By its own strength, it says so. */
+  /** The four quarters of a unit's web, flung apart from where it hangs and falling as they fade. */
+  private webShards(obj: UnitObj): void {
+    const centre = obj.web.getWorldPosition(new THREE.Vector3());
+    const size = obj.web.scale.x / 2;
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+    for (const [i, j] of [[0, 0], [1, 0], [0, 1], [1, 1]] as const) {
+      const map = projectileTexture(WEB_IMAGE).clone();
+      map.repeat.set(0.5, 0.5);
+      map.offset.set(i * 0.5, j * 0.5);
+      map.needsUpdate = true;
+      const mat = new THREE.SpriteMaterial({ map, transparent: true, depthWrite: false, depthTest: false });
+      const shard = new THREE.Sprite(mat);
+      shard.renderOrder = 3;
+      const sx = i - 0.5;
+      const sy = j - 0.5;
+      const from = centre.clone().addScaledVector(right, sx * size).addScaledVector(up, sy * size);
+      const speed = 1.6 + Math.random() * 0.9;
+      const vel = right.clone().multiplyScalar(sx * 2 * speed).addScaledVector(up, sy * 2 * speed + 0.9);
+      const spin = (sx > 0 ? -1 : 1) * (1.5 + Math.random() * 2);
+      const life = 0.5;
+      this.effects.add(
+        shard,
+        life,
+        (k) => {
+          const t = k * life;
+          shard.position.copy(from).addScaledVector(vel, t);
+          shard.position.y -= 3.5 * t * t;
+          shard.scale.setScalar(size * (1 - 0.35 * k));
+          mat.rotation = spin * k;
+          mat.opacity = 1 - k * k;
+        },
+        () => {
+          mat.dispose();
+          map.dispose();
+        },
+      );
+    }
+  }
+
+  /**
+   * A transfixed unit's roll to break free, from `start` (ms from now): it
+   * fights the web as its dice tumble, straining it with each success as that
+   * die sounds from `resolve` on. Unless it gets `free` (its
+   * {@link breakFreeFx} follows), the web snaps back tight over it.
+   * Returns when the struggle is settled.
+   */
+  private strainWeb(obj: UnitObj, e: Extract<GameEvent, { type: 'DiceRolled' }>, start: number, resolve: number, free: boolean): number {
+    const done = resolve + e.dice.length * DIE_SOUND_GAP_MS;
+    this.at(start, () => {
+      this.sound('web-strain');
+      obj.webFx = { kind: 'strain', start: this.now };
+    });
+    e.dice.forEach((die, k) => this.at(resolve + k * DIE_SOUND_GAP_MS, () => this.tugWeb(obj, die >= e.quality || (k === 0 && e.inspired === true))));
+    if (free) return done;
+    this.at(done, () => {
+      if (obj.webFx?.kind !== 'strain') return;
+      this.sound('transfixed');
+      obj.webFx = null;
+      obj.webKick = { start: this.now, amount: -0.2 };
+      obj.squash = { start: this.now, end: this.now + 320, amount: 0.12 }; // it sags, spent
+      obj.glow = { color: SPELL_COLOR, start: this.now, end: this.now + 600 };
+      this.effects.ring(this.feet(obj), SPELL_COLOR, HEX_SIZE * 0.8, 0.2, { life: 0.3, opacity: 0.8, additive: true });
+    });
+    return done;
+  }
+
+  /**
+   * Free of the spell. By its own strength, it bursts the web and says so; let
+   * go by a caster that has lost its hold, the web just fades off it.
+   */
   private breakFreeFx(id: string, reason: 'brokeFree' | 'casterLost'): void {
     const obj = this.units.get(id);
     if (!obj) return;
@@ -5322,18 +5790,24 @@ export class BoardView {
         : { text: 'Freed', detail: 'its caster has lost its hold', on: [id], tone: 'save' },
       this.now,
     );
-    if (reason === 'brokeFree') this.flashUnit(id, 0.3);
+    if (reason === 'brokeFree') {
+      this.shatterWeb(obj);
+      return;
+    }
+    obj.webFx = { kind: 'dissolve', start: this.now };
+    obj.webKick = null;
+    obj.webSet = null;
     this.effects.burst({
       at: this.chest(obj),
-      count: 24,
-      colors: WEB_COLORS,
-      speed: [1.2, 2.8],
-      up: 0.6,
-      gravity: 5,
-      drag: 1.8,
-      life: [0.3, 0.6],
-      size: [0.03, 0.07],
-      shape: 'square',
+      count: 16,
+      colors: SPELL_COLORS,
+      speed: [0.1, 0.4],
+      up: 0.5,
+      drag: 0.8,
+      life: [0.5, 0.9],
+      size: [0.03, 0.06],
+      jitter: 0.3 * obj.size,
+      blend: 'add',
     });
   }
 

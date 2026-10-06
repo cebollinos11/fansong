@@ -95,6 +95,15 @@ const shoots = (result: CombatResult) => (ev: Events) => shot(ev)?.result === re
 
 const CAST: Command = { type: 'Cast', casterId: 'p0u0', targetId: 'p1u0' };
 const spell = (ev: Events) => ev.find((e) => e.type === 'SpellCast');
+const rolled = (ev: Events) => ev.find((e) => e.type === 'DiceRolled');
+
+/** A Magic User (P0) takes a spell turn on `dice` dice, an enemy (P1) three hexes off. */
+function spellTurn(scene: Scene, dice: number): Command {
+  scene.spawn(0, MAGE, scene.behind);
+  scene.spawn(1, BONES, scene.far);
+  scene.fresh(0);
+  return { type: 'ChooseActivation', unitId: 'p0u0', diceCount: dice, spell: true };
+}
 
 /** A Magic User (P0), its spell of power 2 in hand, casts it at `target` (P1) three hexes off. */
 function casting(scene: Scene, target: WarbandUnit = BONES): Command {
@@ -621,10 +630,26 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     shows: (ev) => has(ev, 'UnitRecoiled') && has(ev, 'UnitKnockedDown'),
   },
   {
+    id: 'spellTurn',
+    group: 'Traits',
+    label: 'Magic User: gathers a spell',
+    hint: 'It rolls three successes on its spell turn: the charge swells with each one, and it holds the spell ready for a target.',
+    stage: (s) => spellTurn(s, 3),
+    shows: (ev) => rolled(ev)?.successes === 3,
+  },
+  {
+    id: 'spellFizzle',
+    group: 'Traits',
+    label: 'Magic User: fizzles',
+    hint: 'Not one success on its spell roll: what it had gathered falls in on itself and goes up in smoke.',
+    stage: (s) => spellTurn(s, 1),
+    shows: (ev) => rolled(ev)?.successes === 0,
+  },
+  {
     id: 'transfix',
     group: 'Traits',
     label: 'Magic User: transfixed',
-    hint: 'The caster gathers the spell and looses a web; its target fails a die of its roll to resist, and the web closes over it.',
+    hint: 'The caster looses the spell it holds; the web is over its target as it rolls to resist, and hardens when a die fails.',
     stage: (s) => casting(s),
     shows: (ev) => spell(ev)?.transfixed === true,
   },
@@ -632,7 +657,7 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     id: 'spellResisted',
     group: 'Traits',
     label: 'Magic User: resisted',
-    hint: 'The target passes every die of its roll, and the spell breaks on it in sparks.',
+    hint: 'The target passes every die of its roll, and bursts the web thrown over it.',
     stage: (s) => casting(s, { ...BONES, quality: 2 }),
     shows: (ev) => spell(ev)?.transfixed === false,
   },
@@ -648,6 +673,19 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
       return { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 3 };
     },
     shows: (ev) => has(ev, 'TransfixBroken') && !has(ev, 'Turnover'),
+  },
+  {
+    id: 'stillHeld',
+    group: 'Traits',
+    label: 'Transfixed: still held',
+    hint: 'A held unit strains at the web but rolls only one success, and it snaps back tight.',
+    stage: (s) => {
+      s.spawn(0, ELF, s.attacker, { transfixedBy: 'p1u0' });
+      s.spawn(1, { ...MAGE, name: 'Dark Adept' }, s.beyond);
+      s.fresh(0);
+      return { type: 'ChooseActivation', unitId: 'p0u0', diceCount: 2 };
+    },
+    shows: (ev) => rolled(ev)?.successes === 1 && !has(ev, 'TransfixBroken'),
   },
   {
     id: 'transfixedKill',
