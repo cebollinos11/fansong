@@ -7,13 +7,21 @@ import type { WarbandUnit } from '@fansong/content';
 export function unitKinds(units: readonly WarbandUnit[]): { unit: WarbandUnit; count: number }[] {
   const kinds = new Map<string, { unit: WarbandUnit; count: number }>();
   for (const u of units) {
-    const { name, look, ...rest } = u;
-    const key = canonicalJson({ ...rest, look: look ?? name });
+    const key = unitKindKey(u);
     const kind = kinds.get(key);
     if (kind) kind.count++;
     else kinds.set(key, { unit: u, count: 1 });
   }
   return [...kinds.values()];
+}
+
+/**
+ * What makes two units the same kind: everything but the name, with the look a
+ * unit drawn by its own name spells out, so equal kinds give equal strings.
+ */
+export function unitKindKey(u: WarbandUnit): string {
+  const { name, look, ...rest } = u;
+  return canonicalJson({ ...rest, look: look ?? name });
 }
 
 /** JSON with object keys sorted, so equal values give equal strings. */

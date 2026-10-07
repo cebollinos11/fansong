@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PRESETS, type Warband } from '@fansong/content';
+import { PRESETS, type Warband, type WarbandUnit } from '@fansong/content';
 import {
   ARMIES_KEY,
   armyChoice,
@@ -13,7 +13,28 @@ import {
   saveArmy,
 } from '../src/game/armies.js';
 import type { MapStorage } from '../src/game/customMaps.js';
-import { armyFromPreset, blankUnit, clampStat, moveUnit, templateUnit, traitCost, traitPatch, traitReplaced, traitsOf, uniqueName, withStat, withTint, withTrait } from '../src/ui/armyView.js';
+import {
+  armyFromPreset,
+  blankUnit,
+  clampStat,
+  copyBase,
+  copyLabel,
+  EDITOR_TRAITS,
+  moveUnit,
+  renumberRun,
+  templateUnit,
+  TRAIT_GROUPS,
+  traitCost,
+  traitPatch,
+  traitReplaced,
+  traitsOf,
+  uniqueName,
+  unitRuns,
+  withRunUnit,
+  withStat,
+  withTint,
+  withTrait,
+} from '../src/ui/armyView.js';
 
 function memoryStorage(initial: Record<string, string> = {}): MapStorage & { data: Record<string, string> } {
   const data = { ...initial };
@@ -171,5 +192,72 @@ describe('army builder helpers', () => {
     const units = ['a', 'b', 'c'].map((name) => ({ name, quality: 3, combat: 3 }));
     expect(moveUnit(units, 0, 1).map((u) => u.name)).toEqual(['b', 'a', 'c']);
     expect(moveUnit(units, 2, 5).map((u) => u.name)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('roster rows that stand for several units', () => {
+  const foot = (name: string): WarbandUnit => ({ name, quality: 4, combat: 3, look: 'Recruit' });
+
+  it('names the copies the way "+ Add unit" does', () => {
+    expect(copyLabel('Soldier', 1)).toBe('Soldier');
+    expect(copyLabel('Soldier', 3)).toBe('Soldier 3');
+    expect(copyBase('Soldier 3')).toBe('Soldier');
+    expect(copyBase('Soldier')).toBe('Soldier');
+  });
+
+  it('folds neighbouring copies into one row and leaves named units alone', () => {
+    const units = [foot('Soldier'), foot('Soldier 2'), foot('Soldier 3'), { ...foot('Bob'), combat: 4 }, foot('Alice')];
+    expect(unitRuns(units).map((r) => [r.unit.name, r.at, r.count])).toEqual([
+      ['Soldier', 0, 3],
+      ['Bob', 3, 1],
+      // Alice is the same kind as the Soldiers but is not one of their copies.
+      ['Alice', 4, 1],
+    ]);
+  });
+
+  it('does not fold units that only look alike because they are drawn by name', () => {
+    const byName = [
+      { name: 'Soldier', quality: 4, combat: 3 },
+      { name: 'Soldier 2', quality: 4, combat: 3 },
+    ];
+    expect(unitRuns(byName)).toHaveLength(2);
+  });
+
+  it('edits every unit of a row at once, each keeping its name', () => {
+    const units = [foot('Soldier'), foot('Soldier 2'), foot('Keeper')];
+    const run = unitRuns(units)[0]!;
+    const edited = withRunUnit(units, run, withStat(run.unit, 'combat', 5));
+    expect(edited.map((u) => [u.name, u.combat])).toEqual([
+      ['Soldier', 5],
+      ['Soldier 2', 5],
+      ['Keeper', 3],
+    ]);
+  });
+
+  it('renumbers a row when it is renamed or resized, and empties it to remove it', () => {
+    const units = [foot('Soldier'), foot('Soldier 2'), foot('Keeper')];
+    const run = unitRuns(units)[0]!;
+    expect(renumberRun(units, run, 'Guard', 2).map((u) => u.name)).toEqual(['Guard', 'Guard 2', 'Keeper']);
+    expect(renumberRun(units, run, 'Soldier', 4).map((u) => u.name)).toEqual([
+      'Soldier',
+      'Soldier 2',
+      'Soldier 3',
+      'Soldier 4',
+      'Keeper',
+    ]);
+    expect(renumberRun(units, run, 'Soldier', 1).map((u) => u.name)).toEqual(['Soldier', 'Keeper']);
+    expect(renumberRun(units, run, 'Soldier', 0).map((u) => u.name)).toEqual(['Keeper']);
+  });
+
+  it('keeps a resized row folded, so the stepper can go back down again', () => {
+    const units = [foot('Soldier'), foot('Keeper')];
+    const grown = renumberRun(units, unitRuns(units)[0]!, 'Soldier', 3);
+    expect(unitRuns(grown)[0]).toMatchObject({ at: 0, count: 3 });
+  });
+
+  it('offers every trait in the menu exactly once', () => {
+    const grouped = TRAIT_GROUPS.flatMap((g) => g.traits);
+    expect([...grouped].sort()).toEqual([...EDITOR_TRAITS].sort());
+    expect(new Set(grouped).size).toBe(grouped.length);
   });
 });

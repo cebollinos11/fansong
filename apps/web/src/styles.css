@@ -3116,7 +3116,7 @@ button.tool.active {
 .army {
   min-height: 100%;
   padding: 20px 24px;
-  max-width: 1180px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
@@ -3272,7 +3272,8 @@ button.army-item.active {
 }
 
 .army input.army-unit-name {
-  width: 130px;
+  width: 100%;
+  min-width: 118px;
 }
 
 .army-table select {
@@ -3319,6 +3320,209 @@ button.army-item.active {
 .army-actions button.primary {
   width: auto;
   flex: 1;
+}
+
+/* Quality and Combat are named, not just iconed: a roster's two numbers run in
+   opposite directions, which is the first thing a new player has to learn. */
+.army-stat-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* How many of a unit the army has; one row stands for all of them. */
+.army-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.army-count button {
+  padding: 2px 6px;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.army .army-count input[type='number'] {
+  width: 40px;
+  padding: 5px 2px 5px 6px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Under a row's total, what one of its units costs. */
+.army-pts-each {
+  display: block;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+
+/* Spare width goes to the two fields holding words, not to the dropdowns. */
+@media (min-width: 1321px) {
+  .army-cell-name,
+  .army-cell-look {
+    width: 16%;
+  }
+}
+
+/* --- A roster as cards, where the table no longer fits across ------------
+   Below this width the columns can't all be read at once, and a table that
+   scrolls sideways hides the stats, the points and the remove button behind an
+   edge with nothing to show they are there. One card per row instead, each
+   field carrying the heading the hidden header row used to give it. Wide enough
+   and the cards sit side by side, so a long roster still reads at a glance. */
+@media (max-width: 1320px) {
+  .army:not(.preset-editor) .army-table-wrap {
+    overflow-x: visible;
+  }
+
+  .army:not(.preset-editor) .army-table thead {
+    display: none;
+  }
+
+  .army:not(.preset-editor) .army-table {
+    display: block;
+  }
+
+  .army:not(.preset-editor) .army-table tbody {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(342px, 100%), 1fr));
+    gap: 10px;
+    align-items: start;
+  }
+
+  .army:not(.preset-editor) .army-table tr {
+    display: grid;
+    grid-template-columns: 58px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      'sprite name    name'
+      'sprite look    look'
+      'tint   quality combat'
+      'traits traits  traits'
+      'qty    qty     pts'
+      'acts   acts    acts';
+    gap: 6px 10px;
+    align-items: center;
+    margin: 0;
+    padding: 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+
+  .army:not(.preset-editor) .army-table td {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 0;
+    border-top: none;
+  }
+
+  .army:not(.preset-editor) .army-cell-sprite {
+    grid-area: sprite;
+  }
+
+  .army:not(.preset-editor) .army-cell-name {
+    grid-area: name;
+  }
+
+  .army:not(.preset-editor) .army-cell-look {
+    grid-area: look;
+  }
+
+  .army:not(.preset-editor) .army-cell-tint {
+    grid-area: tint;
+    flex-wrap: wrap;
+    gap: 2px 6px;
+  }
+
+  .army:not(.preset-editor) .army-cell-tint::before {
+    content: attr(data-label);
+    flex-basis: 100%;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* The tick box and the swatch share one narrow line, so neither brings a margin. */
+  .army:not(.preset-editor) .army-cell-tint input {
+    margin: 0;
+  }
+
+  .army:not(.preset-editor) .army-cell-quality {
+    grid-area: quality;
+  }
+
+  .army:not(.preset-editor) .army-cell-combat {
+    grid-area: combat;
+  }
+
+  .army:not(.preset-editor) .army-cell-traits {
+    grid-area: traits;
+    align-items: flex-start;
+  }
+
+  .army:not(.preset-editor) .army-cell-qty {
+    grid-area: qty;
+  }
+
+  .army:not(.preset-editor) .army-cell-pts {
+    grid-area: pts;
+    justify-content: flex-end;
+  }
+
+  .army:not(.preset-editor) .army-cell-actions {
+    grid-area: acts;
+    justify-content: flex-end;
+    padding-top: 2px;
+    border-top: 1px solid var(--line);
+  }
+
+  .army:not(.preset-editor) .army-cell-look::before,
+  .army:not(.preset-editor) .army-cell-stat::before,
+  .army:not(.preset-editor) .army-cell-qty::before,
+  .army:not(.preset-editor) .army-cell-traits::before,
+  .army:not(.preset-editor) .army-cell-pts::before {
+    content: attr(data-label);
+    flex: none;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .army:not(.preset-editor) .army-cell-traits::before {
+    padding-top: 3px;
+  }
+
+  .army:not(.preset-editor) .army-cell-look .picker-look {
+    flex: 1;
+    width: auto;
+  }
+
+  .army:not(.preset-editor) .army-cell-traits .trait-editor {
+    flex: 1;
+  }
+
+  .army:not(.preset-editor) .army-table td.army-traits {
+    min-width: 0;
+    max-width: none;
+  }
+
+  .army:not(.preset-editor) .army-pts-each {
+    display: inline;
+    margin-left: 6px;
+  }
+
+  /* Big enough to hit with a thumb, now that they are not in a dense table. */
+  .army:not(.preset-editor) .army-row-actions button,
+  .army:not(.preset-editor) .army-count button {
+    min-width: 36px;
+    min-height: 32px;
+  }
+
+  .army:not(.preset-editor) .army-row-actions button {
+    margin-left: 6px;
+  }
 }
 
 /* --- Dev preset editor (reuses the army builder's layout) --------------- */
@@ -3624,7 +3828,7 @@ button.army-item.active {
 }
 
 .army-table td.army-traits {
-  min-width: 180px;
+  min-width: 160px;
   max-width: 320px;
 }
 
@@ -3684,6 +3888,36 @@ button.trait-add[aria-expanded='true'] {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* What is being typed at the menu, and what is left of the list. */
+.trait-menu-filter {
+  position: sticky;
+  top: -4px;
+  z-index: 1;
+  margin: -4px -4px 2px;
+  padding: 7px 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.trait-menu-empty {
+  margin: 0;
+  padding: 10px 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.trait-menu h5 {
+  margin: 8px 0 2px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .trait-option {
@@ -3874,7 +4108,8 @@ button.trait-add[aria-expanded='true'] {
 
 /* "Looks like" in a roster table. */
 .picker-look {
-  width: 130px;
+  width: 100%;
+  min-width: 112px;
   padding: 6px 8px;
   background: var(--bg);
 }

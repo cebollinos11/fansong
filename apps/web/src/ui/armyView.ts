@@ -13,6 +13,7 @@ import {
   type WarbandUnit,
 } from '@fansong/content';
 import { UNIT_SPRITES } from '../three/unitSprites.js';
+import { unitKindKey } from './unitKinds.js';
 
 /**
  * Pure helpers behind the army builder screen, kept apart from React so they
@@ -113,6 +114,23 @@ export type TraitKey = ToggleTrait | ShooterTrait;
 
 /** Every trait the editor offers, in display order: movement, then shooting, then the rest. */
 export const EDITOR_TRAITS: readonly TraitKey[] = ['slow', 'fast', ...SHOOTER_TRAITS, ...TOGGLE_TRAITS.slice(2)];
+
+/**
+ * The same traits sorted into what they are for, for the "+ Trait" menu: there
+ * are 27 of them, far too many to scan as one list. Drawbacks are the traits
+ * that pay points back, so they come last. Every trait appears exactly once
+ * (`armies.test.ts` holds the groups and {@link EDITOR_TRAITS} to each other).
+ */
+export const TRAIT_GROUPS: readonly { label: string; traits: readonly TraitKey[] }[] = [
+  { label: 'Movement', traits: ['fast', 'flying', 'slippery', 'rusher', 'immovable'] },
+  { label: 'Shooting', traits: [...SHOOTER_TRAITS, 'sharpshooter'] },
+  {
+    label: 'Fighting',
+    traits: ['tough', 'guard', 'big', 'armored', 'shieldwall', 'mastery', 'whirling', 'opportunist', 'savage', 'woodwise', 'trample', 'reassembling'],
+  },
+  { label: 'Leadership and magic', traits: ['leader', 'magicUser'] },
+  { label: 'Drawbacks', traits: ['slow', 'dumb', 'disloyal', 'badBalance'] },
+];
 
 function isShooterTrait(t: TraitKey): t is ShooterTrait {
   return t.startsWith('shooter-');
@@ -266,4 +284,69 @@ export function moveUnit<T>(units: readonly T[], i: number, delta: number): T[] 
   const [u] = next.splice(i, 1);
   next.splice(j, 0, u!);
   return next;
+}
+
+/**
+ * A block of identical units a roster table shows as one row: the unit itself,
+ * where it starts and how many of it there are. See {@link unitRuns}.
+ */
+export interface UnitRun {
+  /** The first unit of the run — the one the row edits. */
+  unit: WarbandUnit;
+  /** Where the run starts in the roster. */
+  at: number;
+  /** How many units it covers; 1 is an ordinary one-unit row. */
+  count: number;
+}
+
+/** What the `n`th member of a run is called: `base`, then `base 2`, `base 3`, … */
+export function copyLabel(base: string, n: number): string {
+  return n === 1 ? base : `${base} ${n}`;
+}
+
+/** `name` without a trailing copy number: `"Soldier 3"` and `"Soldier"` both give `"Soldier"`. */
+export function copyBase(name: string): string {
+  return name.replace(/ \d+$/, '');
+}
+
+/**
+ * A roster folded into rows. Neighbouring units that are identical but for an
+ * auto-numbered name — `Soldier`, `Soldier 2`, `Soldier 3` — are the copies
+ * "+ Add unit", Duplicate and a preset copy make, so they fold into one row
+ * with a count. A unit given a name of its own keeps a row to itself.
+ */
+export function unitRuns(units: readonly WarbandUnit[]): UnitRun[] {
+  const runs: UnitRun[] = [];
+  for (let at = 0; at < units.length; ) {
+    const unit = units[at]!;
+    const key = unitKindKey(unit);
+    let count = 1;
+    while (
+      at + count < units.length &&
+      unitKindKey(units[at + count]!) === key &&
+      units[at + count]!.name === copyLabel(unit.name, count + 1)
+    )
+      count++;
+    runs.push({ unit, at, count });
+    at += count;
+  }
+  return runs;
+}
+
+/**
+ * `units` with every member of `run` taking `unit`'s stats, look and tint. Each
+ * keeps its own name, so editing a stat never renames anything.
+ */
+export function withRunUnit(units: readonly WarbandUnit[], run: UnitRun, unit: WarbandUnit): WarbandUnit[] {
+  return units.map((u, i) => (i >= run.at && i < run.at + run.count ? { ...unit, name: u.name } : u));
+}
+
+/**
+ * `units` with `run` made `count` copies of itself named `base`, `base 2`, …
+ * This is what renaming a row and what changing its count both do; `count` of 0
+ * takes the run out altogether.
+ */
+export function renumberRun(units: readonly WarbandUnit[], run: UnitRun, base: string, count: number): WarbandUnit[] {
+  const copies = Array.from({ length: Math.max(0, count) }, (_, n) => ({ ...run.unit, name: copyLabel(base, n + 1) }));
+  return [...units.slice(0, run.at), ...copies, ...units.slice(run.at + run.count)];
 }

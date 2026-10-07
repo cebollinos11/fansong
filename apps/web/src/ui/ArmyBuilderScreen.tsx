@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import {
+  ARMY_RULES,
   NAME_LIMITS,
   PRESET_IDS,
   PRESETS,
@@ -24,12 +25,13 @@ import { browserStorage } from '../game/customMaps.js';
 import { downloadJson } from '../game/replay-io.js';
 import { DEFAULT_TINT } from '../three/spriteTint.js';
 import { LookSprite, Picker, UnitSprite, unitItem, warbandItem } from './Picker.js';
-import { StatIcon } from './StatIcons.js';
+import { STAT_INFO, StatIcon } from './StatIcons.js';
 import { TraitEditor } from './TraitEditor.js';
 import {
   ARMY_RULES_TEXT,
   armyFromPreset,
   blankUnit,
+  copyBase,
   EDITABLE_STATS,
   type EditableStat,
   LOOK_GROUPS,
@@ -37,8 +39,11 @@ import {
   moveUnit,
   newArmy,
   presetTemplates,
+  renumberRun,
   STAT_LABELS,
   templateUnit,
+  unitRuns,
+  withRunUnit,
   withStat,
   withTint,
   withTrait,
@@ -52,6 +57,17 @@ interface Props {
 interface Editing {
   id: string;
   warband: Warband;
+  /**
+   * The roster as it was when this army was opened — what "unsaved changes" are
+   * measured against, so an army nobody has touched yet asks nothing on the way
+   * out. `null` for an imported file, which is always worth keeping.
+   */
+  baseline: Warband | null;
+}
+
+/** Open `warband`: its working copy starts out matching itself, so it counts as untouched. */
+function opened(id: string, warband: Warband): Editing {
+  return { id, warband, baseline: warband };
 }
 
 /**
@@ -64,15 +80,19 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
   const [armies, setArmies] = useState<SavedArmy[]>(() => loadArmies(storage));
   const [editing, setEditing] = useState<Editing>(() => {
     const first = armies[0];
-    return first ? { ...first } : { id: newArmyId(armies), warband: newArmy() };
+    return first ? opened(first.id, first.warband) : opened(newArmyId(armies), newArmy());
   });
   const [status, setStatus] = useState<{ text: string; error: boolean } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const stored = armies.find((a) => a.id === editing.id);
-  const dirty = !stored || JSON.stringify(stored.warband) !== JSON.stringify(editing.warband);
   const { warband } = editing;
+  // Changes worth a warning, and work worth a Save: a brand-new army has
+  // nothing to lose on the way out, but it still has never been saved.
+  const dirty = editing.baseline === null || JSON.stringify(editing.baseline) !== JSON.stringify(warband);
+  const savable = dirty || !stored;
   const check = validateArmy(warband);
+  const runs = unitRuns(warband.units);
 
   const report = (text: string, error = false): void => setStatus({ text, error });
   const discardOk = (): boolean =>
@@ -85,11 +105,11 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
 
   const setWarband = (next: Warband): void => setEditing((e) => ({ ...e, warband: next }));
   const setUnits = (units: WarbandUnit[]): void => setWarband({ ...warband, units });
-  const setUnit = (i: number, unit: WarbandUnit): void => setUnits(warband.units.map((u, j) => (j === i ? unit : u)));
 
   const save = (): void => {
     try {
       setArmies(saveArmy(storage, { id: editing.id, warband }));
+      setEditing((e) => ({ ...e, baseline: e.warband }));
       report(check.ok ? `Saved "${warband.name}".` : `Saved "${warband.name}" — fix the problems below to play it.`);
     } catch (e) {
       report(e instanceof Error ? e.message : String(e), true);
@@ -98,14 +118,14 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
 
   const remove = (): void => {
     if (!stored) {
-      open({ id: newArmyId(armies), warband: newArmy() });
+      open(opened(newArmyId(armies), newArmy()));
       return;
     }
     if (!window.confirm(`Delete "${stored.warband.name}"?`)) return;
     try {
       const kept = deleteArmy(storage, stored.id);
       setArmies(kept);
-      setEditing(kept[0] ? { ...kept[0] } : { id: newArmyId(kept), warband: newArmy() });
+      setEditing(kept[0] ? opened(kept[0].id, kept[0].warband) : opened(newArmyId(kept), newArmy()));
       report(`Deleted "${stored.warband.name}".`);
     } catch (e) {
       report(e instanceof Error ? e.message : String(e), true);
@@ -115,7 +135,9 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
   const importFile = async (file: File): Promise<void> => {
     try {
       const imported = parseArmyText(await file.text());
-      open({ id: newArmyId(armies), warband: imported });
+      // No baseline: an import is only in the browser until it is saved, so
+      // leaving without saving really would throw the file's army away.
+      open({ id: newArmyId(armies), warband: imported, baseline: null });
       report(`Imported "${imported.name}" — save it to keep it.`);
     } catch (e) {
       report(e instanceof Error ? e.message : String(e), true);
@@ -147,7 +169,7 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
                 <li key={a.id}>
                   <button
                     className={a.id === editing.id ? 'army-item active' : 'army-item'}
-                    onClick={() => a.id !== editing.id && open({ ...a })}
+                    onClick={() => a.id !== editing.id && open(opened(a.id, a.warband))}
                   >
                     <span>{a.warband.name || '(unnamed)'}</span>
                     <span className="stats">
@@ -159,12 +181,12 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
             })}
           </ul>
           <div className="army-list-actions">
-            <button onClick={() => open({ id: newArmyId(armies), warband: newArmy() })}>+ New army</button>
+            <button onClick={() => open(opened(newArmyId(armies), newArmy()))}>+ New army</button>
             <Picker
               title="Start from a preset"
               kind="warband"
               groups={() => [{ items: PRESET_IDS.map((id) => warbandItem(id, PRESETS[id]!)) }]}
-              onPick={(id) => open({ id: newArmyId(armies), warband: armyFromPreset(id) })}
+              onPick={(id) => open(opened(newArmyId(armies), armyFromPreset(id)))}
             >
               Copy a preset…
             </Picker>
@@ -199,18 +221,27 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
 
           <div className="army-table-wrap">
             <table className="army-table">
-              <UnitTableHead />
+              <UnitTableHead counts />
               <tbody>
-                {warband.units.map((u, i) => (
+                {runs.map((run, r) => (
                   <UnitRow
-                    key={i}
-                    unit={u}
-                    first={i === 0}
-                    last={i === warband.units.length - 1}
-                    onChange={(next) => setUnit(i, next)}
-                    onMove={(delta) => setUnits(moveUnit(warband.units, i, delta))}
-                    onCopy={() => setUnits([...warband.units.slice(0, i + 1), templateUnit(u, warband.units), ...warband.units.slice(i + 1)])}
-                    onRemove={() => setUnits(warband.units.filter((_, j) => j !== i))}
+                    key={run.at}
+                    unit={run.unit}
+                    count={run.count}
+                    first={r === 0}
+                    last={r === runs.length - 1}
+                    titles={{ remove: run.count > 1 ? `Remove all ${run.count}` : 'Remove' }}
+                    // A new name renumbers the whole run; anything else leaves every name alone.
+                    onChange={(next) =>
+                      setUnits(
+                        next.name === run.unit.name
+                          ? withRunUnit(warband.units, run, next)
+                          : renumberRun(warband.units, run, next.name, run.count),
+                      )
+                    }
+                    onCount={(count) => setUnits(renumberRun(warband.units, run, copyBase(run.unit.name), count))}
+                    onMove={(delta) => setUnits(moveUnit(runs, r, delta).flatMap((m) => warband.units.slice(m.at, m.at + m.count)))}
+                    onRemove={() => setUnits(renumberRun(warband.units, run, run.unit.name, 0))}
                   />
                 ))}
               </tbody>
@@ -250,8 +281,8 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
           )}
 
           <div className="army-actions">
-            <button className="primary" onClick={save} disabled={!dirty}>
-              {dirty ? 'Save army' : 'Saved'}
+            <button className="primary" onClick={save} disabled={!savable}>
+              {savable ? 'Save army' : 'Saved'}
             </button>
             <button onClick={() => downloadJson(JSON.stringify(warband, null, 2), armyFileName(warband))}>Export…</button>
             <button onClick={remove}>{stored ? 'Delete' : 'Discard'}</button>
@@ -263,8 +294,12 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
   );
 }
 
-/** The header row of a roster table, matching {@link UnitRow}'s columns (plus any `extra` ones). */
-export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Element {
+/**
+ * The header row of a roster table, matching {@link UnitRow}'s columns (plus any
+ * `extra` ones). `counts` adds the quantity column, for a table whose rows stand
+ * for more than one unit each.
+ */
+export function UnitTableHead({ counts = false, extra }: { counts?: boolean; extra?: React.ReactNode }): JSX.Element {
   return (
     <thead>
       <tr>
@@ -273,11 +308,17 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
         <th>Looks like</th>
         <th title="A colour blended into the unit's sprite (its team colours stay as they are)">Tint</th>
         {EDITABLE_STATS.map((s) => (
-          <th key={s}>
-            <StatIcon stat={s} />
+          // Named, not just an icon: these two numbers are the unit, and which
+          // way each one runs is the first thing a new player has to learn.
+          <th key={s} title={STAT_LABELS[s].title}>
+            <span className="army-stat-head">
+              <StatIcon stat={s} />
+              {STAT_INFO[s].name}
+            </span>
           </th>
         ))}
         <th>Traits</th>
+        {counts ? <th title="How many of this unit the army has">Qty</th> : null}
         <th>Pts</th>
         {extra}
         <th />
@@ -286,20 +327,28 @@ export function UnitTableHead({ extra }: { extra?: React.ReactNode }): JSX.Eleme
   );
 }
 
-/** One editable unit in a roster table (shared with the dev preset editor). */
+/**
+ * One editable unit in a roster table (shared with the dev preset editor). With
+ * `count` the row stands for that many identical units and edits them together;
+ * its stepper then does the work of the duplicate button, which is left out.
+ */
 export function UnitRow({
   unit,
+  count = 1,
   first,
   last,
   rename = (u, name) => ({ ...u, name }),
   extra,
   titles = {},
   onChange,
+  onCount,
   onMove,
   onCopy,
   onRemove,
 }: {
   unit: WarbandUnit;
+  /** How many identical units this row stands for; needs `onCount` to be editable. */
+  count?: number;
   first: boolean;
   last: boolean;
   /** How a typed name is applied to the unit (the default just sets it). */
@@ -309,8 +358,11 @@ export function UnitRow({
   /** Tooltips for the copy and remove buttons, where they mean something more specific. */
   titles?: { copy?: string; remove?: string };
   onChange: (unit: WarbandUnit) => void;
+  /** Given, adds the quantity column (and {@link UnitTableHead} needs `counts`). */
+  onCount?: (count: number) => void;
   onMove: (delta: number) => void;
-  onCopy: () => void;
+  /** Given, adds the duplicate button. */
+  onCopy?: () => void;
   onRemove: () => void;
 }): JSX.Element {
   const valid = statErrors(unit).length === 0;
@@ -318,10 +370,10 @@ export function UnitRow({
   const [lastTint, setLastTint] = useState(unit.tint ?? DEFAULT_TINT);
   return (
     <tr>
-      <td>
+      <td className="army-cell-sprite">
         <UnitSprite unit={unit} className="army-sprite" />
       </td>
-      <td>
+      <td className="army-cell-name" data-label="Name">
         <input
           className="army-unit-name"
           value={unit.name}
@@ -330,7 +382,7 @@ export function UnitRow({
           onChange={(e) => onChange(rename(unit, e.target.value))}
         />
       </td>
-      <td>
+      <td className="army-cell-look" data-label="Looks like">
         <Picker
           title={`What ${unit.name || 'this unit'} looks like`}
           kind="sprite"
@@ -343,7 +395,7 @@ export function UnitRow({
           <span className="picker-look-name">{unit.look !== undefined && LOOKS.includes(unit.look) ? unit.look : '(default)'}</span>
         </Picker>
       </td>
-      <td className="army-tint">
+      <td className="army-tint army-cell-tint" data-label="Tint">
         <input
           type="checkbox"
           checked={unit.tint !== undefined}
@@ -363,7 +415,7 @@ export function UnitRow({
         />
       </td>
       {EDITABLE_STATS.map((s) => (
-        <td key={s}>
+        <td key={s} className={`army-cell-stat army-cell-${s}`} data-label={STAT_INFO[s].name}>
           <select
             className="army-stat"
             value={unit[s] ?? 0}
@@ -371,33 +423,80 @@ export function UnitRow({
             onChange={(e) => onChange(withStat(unit, s, parseInt(e.target.value, 10)))}
           >
             {statOptions(s, unit[s] ?? 0).map((v) => (
+              // Quality reads as the number its dice must roll, as it does everywhere else.
               <option key={v} value={v}>
-                {v}
+                {s === 'quality' ? `${v}+` : v}
               </option>
             ))}
           </select>
         </td>
       ))}
-      <td className="army-traits">
+      <td className="army-traits army-cell-traits" data-label="Traits">
         <TraitEditor unit={unit} onToggle={(t, on) => onChange(withTrait(unit, t, on))} />
       </td>
-      <td className="stats">{valid ? unitCost(unit) : '—'}</td>
+      {onCount ? (
+        <td className="army-cell-qty" data-label="Qty">
+          <CountStepper unit={unit} count={count} onCount={onCount} />
+        </td>
+      ) : null}
+      <td className="stats army-cell-pts" data-label="Points">
+        {!valid ? '—' : count > 1 ? <GroupCost each={unitCost(unit)} count={count} /> : unitCost(unit)}
+      </td>
       {extra}
-      <td className="army-row-actions">
+      <td className="army-row-actions army-cell-actions">
         <button title="Move up" disabled={first} onClick={() => onMove(-1)}>
           ↑
         </button>
         <button title="Move down" disabled={last} onClick={() => onMove(1)}>
           ↓
         </button>
-        <button title={titles.copy ?? 'Duplicate'} onClick={onCopy}>
-          ⧉
-        </button>
+        {onCopy ? (
+          <button title={titles.copy ?? 'Duplicate'} onClick={onCopy}>
+            ⧉
+          </button>
+        ) : null}
         <button title={titles.remove ?? 'Remove'} onClick={onRemove}>
           ✕
         </button>
       </td>
     </tr>
+  );
+}
+
+/** How many of a unit the army has: a number to type, and a step either way. */
+function CountStepper({ unit, count, onCount }: { unit: WarbandUnit; count: number; onCount: (count: number) => void }): JSX.Element {
+  const set = (n: number): void => {
+    if (Number.isFinite(n)) onCount(Math.min(ARMY_RULES.maxUnits, Math.max(1, Math.round(n))));
+  };
+  return (
+    <span className="army-count">
+      <button title={`One fewer ${unit.name}`} disabled={count <= 1} onClick={() => set(count - 1)}>
+        −
+      </button>
+      <input
+        type="number"
+        min={1}
+        max={ARMY_RULES.maxUnits}
+        value={count}
+        aria-label={`How many ${unit.name || 'of this unit'}`}
+        onChange={(e) => set(parseInt(e.target.value, 10))}
+      />
+      <button title={`One more ${unit.name}`} disabled={count >= ARMY_RULES.maxUnits} onClick={() => set(count + 1)}>
+        +
+      </button>
+    </span>
+  );
+}
+
+/** What a row of several identical units costs: the total, over what one of them costs. */
+function GroupCost({ each, count }: { each: number; count: number }): JSX.Element {
+  return (
+    <>
+      {each * count}
+      <span className="army-pts-each">
+        {count} × {each}
+      </span>
+    </>
   );
 }
 
