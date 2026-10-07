@@ -237,9 +237,12 @@ pnpm --filter @fansong/worker deploy    # deploy to Cloudflare (needs `wrangler 
 Point the web app at a deployed worker with `VITE_SERVER_URL` (it defaults to the
 local `wrangler dev` address). In the setup screen, pick **Online with a friend**
 and **Create a room**, then send your friend the code (or the `?room=CODE` invite
-link); they enter it under **Join room**. In the room's lobby each player picks
-their own army (preset or army-builder), the host picks the map (built-in, or
-one of their own editor maps, which is sent to the room) and game mode, and the game starts once both press **Ready**. A player who drops can
+link); they enter it under **Join room**. The room's lobby is the same muster
+screen a local game is set up on — the two warbands squared up, the join code
+beside the title — except that you work your own side of it only. Each player
+picks their own army (preset or army-builder) and King, the host picks the map
+(built-in, or one of their own editor maps, which is sent to the room), the game
+mode and the game length, and the game starts once both press **Ready**. A player who drops can
 rejoin with the same code, and after a game **Rematch** returns both to the
 lobby. The `apps/web` client plays
 local *or* online through one `MatchClient` interface — the board, HUD, and
@@ -394,13 +397,17 @@ absent when unused.
   save to the browser (localStorage) or export/import `.json`. Valid custom maps
   show up in the Setup map picker for local games; online matches use built-in
   maps only (the server can't see your browser's maps).
-- **Army builder** — the Setup screen's **Army builder…** button makes custom
+- **Army builder** — the main menu's **Army builder** button makes custom
   warbands with **no point limit** (1–30 units; the total is shown so players can
   agree on a size). Start blank or from a preset, add preset units as templates,
   set each unit's stats, traits and which sprite it *looks like*. Save to the
-  browser (localStorage) or export/import `.json`. Saved armies show up in the
-  warband pickers for vs-AI, hotseat and online play; they travel inside the
-  `MatchSetup` as `warbands`, so the server and replays need no local storage.
+  browser (localStorage) or export/import `.json`. Either side of the setup
+  screen, and your own side of an online room, opens the same builder on the
+  warband it is fielding — editing your army, or copying the preset you were
+  about to play — and **Use this army** saves it and fields it there and then,
+  without losing the map, the mode or the room you were in. Saved armies show up
+  in the warband pickers for vs-AI, hotseat and online play; they travel inside
+  the `MatchSetup` as `warbands`, so the server and replays need no local storage.
 - **In the web UI** hexes are extruded by elevation with low-poly rocks, joined
   buildings and cone trees; zones, flags, crowns and flag carriers are marked on
   the board, and the HUD shows the mode, scores and flag status.

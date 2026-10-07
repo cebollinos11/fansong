@@ -31,6 +31,7 @@ import {
   ARMY_RULES_TEXT,
   armyFromPreset,
   blankUnit,
+  type BuilderStart,
   copyBase,
   EDITABLE_STATS,
   type EditableStat,
@@ -51,6 +52,18 @@ import {
 
 interface Props {
   onExit: () => void;
+  /**
+   * The army to open, when the builder was reached from a warband choice rather
+   * than from the main menu: a saved one, or a roster to start a new one from.
+   */
+  start?: BuilderStart;
+  /**
+   * Given, the builder is standing in front of a setup screen: it offers to save
+   * the open army and hand its id straight back, to be fielded there and then.
+   */
+  onUse?: (id: string) => void;
+  /** What the way out is called; from the main menu it just goes back. */
+  backLabel?: string;
 }
 
 /** The army being edited: its storage id and the working copy of its roster. */
@@ -73,12 +86,18 @@ function opened(id: string, warband: Warband): Editing {
 /**
  * The army builder: make, edit, save, import and export custom warbands. There
  * is no point limit — the total is shown so players can agree on one themselves.
- * Saved armies appear on the setup screen for local and online play alike.
+ * Saved armies appear on the setup screen for local and online play alike, and
+ * those screens open this builder in front of themselves, so an army made there
+ * can be fielded without leaving the battle being arranged.
  */
-export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
+export function ArmyBuilderScreen({ onExit, start, onUse, backLabel = '⟵ Back' }: Props): JSX.Element {
   const storage = browserStorage();
   const [armies, setArmies] = useState<SavedArmy[]>(() => loadArmies(storage));
   const [editing, setEditing] = useState<Editing>(() => {
+    const wanted = start && 'id' in start ? armies.find((a) => a.id === start.id) : undefined;
+    if (wanted) return opened(wanted.id, wanted.warband);
+    // A roster handed in counts as untouched, so backing straight out asks nothing.
+    if (start && 'warband' in start) return opened(newArmyId(armies), start.warband);
     const first = armies[0];
     return first ? opened(first.id, first.warband) : opened(newArmyId(armies), newArmy());
   });
@@ -148,11 +167,27 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
     if (discardOk()) onExit();
   };
 
+  /** Save the open army and field it on the screen waiting behind this one. */
+  const use = (): void => {
+    if (!onUse) return;
+    if (!check.ok) {
+      report('Fix the problems below before fielding this army.', true);
+      return;
+    }
+    try {
+      saveArmy(storage, { id: editing.id, warband });
+    } catch (e) {
+      report(e instanceof Error ? e.message : String(e), true);
+      return;
+    }
+    onUse(editing.id);
+  };
+
   return (
     <div className="army">
       <header className="army-header">
         <button className="ghost" onClick={exit}>
-          ⟵ Back
+          {backLabel}
         </button>
         <h1>Army builder</h1>
         <p className="hint">{ARMY_RULES_TEXT}</p>
@@ -281,7 +316,12 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
           )}
 
           <div className="army-actions">
-            <button className="primary" onClick={save} disabled={!savable}>
+            {onUse ? (
+              <button className="primary" onClick={use} title="Save this army and field it in the battle you were setting up">
+                Use this army
+              </button>
+            ) : null}
+            <button className={onUse ? undefined : 'primary'} onClick={save} disabled={!savable}>
               {savable ? 'Save army' : 'Saved'}
             </button>
             <button onClick={() => downloadJson(JSON.stringify(warband, null, 2), armyFileName(warband))}>Export…</button>
@@ -290,6 +330,19 @@ export function ArmyBuilderScreen({ onExit }: Props): JSX.Element {
           {status ? <p className={status.error ? 'error' : 'hint'}>{status.text}</p> : null}
         </main>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The army builder standing in front of another screen, which stays mounted
+ * behind it: a setup screen keeps every choice made on it, and an online room
+ * keeps its socket, so an army built here can be fielded without starting over.
+ */
+export function ArmyBuilderOverlay(props: Props): JSX.Element {
+  return (
+    <div className="army-overlay" role="dialog" aria-modal="true" aria-label="Army builder">
+      <ArmyBuilderScreen {...props} />
     </div>
   );
 }

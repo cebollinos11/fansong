@@ -38,6 +38,11 @@ export function isArmyChoice(choice: string): boolean {
   return choice.startsWith(ARMY_PREFIX);
 }
 
+/** The saved-army id a side value names, or `undefined` if it names a preset. */
+export function armyIdOf(choice: string): string | undefined {
+  return choice.startsWith(ARMY_PREFIX) ? choice.slice(ARMY_PREFIX.length) : undefined;
+}
+
 /** Every stored army (in save order). Corrupt storage or entries are skipped, never thrown. */
 export function loadArmies(storage: MapStorage | null): SavedArmy[] {
   let raw: unknown;

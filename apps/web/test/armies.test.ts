@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PRESETS, type Warband, type WarbandUnit } from '@fansong/content';
+import { PRESET_IDS, PRESETS, type Warband, type WarbandUnit } from '@fansong/content';
 import {
   ARMIES_KEY,
   armyChoice,
@@ -11,11 +11,14 @@ import {
   parseArmyText,
   playableArmies,
   saveArmy,
+  type SavedArmy,
 } from '../src/game/armies.js';
 import type { MapStorage } from '../src/game/customMaps.js';
 import {
   armyFromPreset,
   blankUnit,
+  builderStart,
+  choiceAfterBuilder,
   clampStat,
   copyBase,
   copyLabel,
@@ -259,5 +262,37 @@ describe('roster rows that stand for several units', () => {
     const grouped = TRAIT_GROUPS.flatMap((g) => g.traits);
     expect([...grouped].sort()).toEqual([...EDITOR_TRAITS].sort());
     expect(new Set(grouped).size).toBe(grouped.length);
+  });
+});
+
+describe('the army builder reached from a setup screen', () => {
+  const armies: SavedArmy[] = [{ id: 'a1', warband: ARMY }];
+  const [first, second] = PRESET_IDS as [string, string];
+  const copyOf = (id: string): string => `${PRESETS[id]!.name} (copy)`;
+
+  it('opens a saved army as it is, and a fresh copy of the preset a side is fielding', () => {
+    expect(builderStart(armyChoice('a1'))).toEqual({ id: 'a1' });
+    const start = builderStart(second);
+    if (!('warband' in start)) throw new Error('expected a roster to start from');
+    expect(start.warband.name).toBe(copyOf(second));
+    // Each unit keeps the sprite its preset gave it, not whatever its name draws.
+    expect(start.warband.units.every((u) => u.look !== undefined)).toBe(true);
+  });
+
+  it('copies the first preset when the side names nothing known', () => {
+    const start = builderStart('no-such-preset');
+    expect('warband' in start && start.warband.name).toBe(copyOf(first));
+  });
+
+  it('fields the army the builder was told to use, and leaves any other choice alone', () => {
+    expect(choiceAfterBuilder(first, 'a1', armies, second)).toBe(armyChoice('a1'));
+    expect(choiceAfterBuilder(armyChoice('a1'), null, armies, second)).toBe(armyChoice('a1'));
+    expect(choiceAfterBuilder(first, null, armies, second)).toBe(first);
+  });
+
+  it('falls back when the army a side was fielding comes back deleted or illegal', () => {
+    expect(choiceAfterBuilder(armyChoice('a1'), null, [], first)).toBe(first);
+    // An army edited until it breaks the rules never reaches the playable list.
+    expect(choiceAfterBuilder(armyChoice('gone'), 'gone', armies, first)).toBe(first);
   });
 });

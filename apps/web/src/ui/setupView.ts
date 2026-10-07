@@ -1,4 +1,4 @@
-import { supportedModes, type MapDef, type WarbandUnit } from '@fansong/content';
+import { defaultKing, supportedModes, type MapDef, type WarbandUnit } from '@fansong/content';
 import type { GameMode } from '@fansong/engine';
 
 // Pure pieces of the setup screen (no DOM), so they can be unit-tested.
@@ -64,4 +64,12 @@ export function formation(units: readonly WarbandUnit[], lead: number): Formatio
   for (const i of order.filter((i) => units[i]!.big)) place(i, Math.max(0, free.findIndex((s) => s.row === 0)));
   for (const i of order.filter((i) => !units[i]!.big)) place(i, 0);
   return { cols, rows, size, slots: slots.sort((a, b) => a.index - b.index) };
+}
+
+/**
+ * A chosen King kept inside a roster that may have been edited under it: the
+ * unit picked if it is still there, else whichever unit the roster leads with.
+ */
+export function kingIn(units: readonly WarbandUnit[], king: number): number {
+  return king >= 0 && king < units.length ? king : defaultKing(units);
 }

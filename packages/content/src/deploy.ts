@@ -90,7 +90,7 @@ export function defaultPigRounds(map: MapDef, escort: Owner = 0): number {
  * The unit a warband fields as King when none is chosen: its most expensive
  * model (the first such on a tie) — the natural leader, and one that can fight.
  */
-export function defaultKing(units: WarbandUnit[]): number {
+export function defaultKing(units: readonly WarbandUnit[]): number {
   let best = 0;
   units.forEach((u, i) => {
     if (unitCost(u) > unitCost(units[best]!)) best = i;

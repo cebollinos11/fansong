@@ -1,6 +1,6 @@
-import { getMap, DEFAULT_MAP_ID, PRESETS, presetUnit, supportedModes, type WarbandUnit } from '@fansong/content';
+import { getMap, DEFAULT_MAP_ID, defaultKing, PRESETS, presetUnit, supportedModes, type WarbandUnit } from '@fansong/content';
 import { describe, expect, it } from 'vitest';
-import { formation, modesOf } from '../src/ui/setupView.js';
+import { formation, kingIn, modesOf } from '../src/ui/setupView.js';
 
 const soldier = presetUnit('Ironguard')!;
 const giant: WarbandUnit = { ...soldier, name: 'Giant', big: true };
@@ -50,5 +50,14 @@ describe('modesOf', () => {
     const map = getMap(DEFAULT_MAP_ID)!;
     expect(modesOf(map)).toEqual(supportedModes(map));
     expect(modesOf(map)).toBe(modesOf(map));
+  });
+});
+
+describe('kingIn', () => {
+  it('keeps the King a side picked, and crowns the roster default once it is gone', () => {
+    const band3 = band(3);
+    expect(kingIn(band3, 2)).toBe(2);
+    // The army behind a King can be edited shorter while the setup screen waits.
+    for (const out of [-1, 3, 99]) expect(kingIn(band3, out)).toBe(defaultKing(band3));
   });
 });

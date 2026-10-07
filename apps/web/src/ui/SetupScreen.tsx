@@ -6,29 +6,24 @@ import {
   defaultKing,
   defaultPigRounds,
   getMap,
-  listMaps,
   PRESET_IDS,
   PRESETS,
-  validateArmy,
-  validateWarband,
-  warbandCost,
   type MapDef,
   type MapLookup,
   type MatchSetup,
   type Warband,
 } from '@fansong/content';
-import { GAME_MODES, LIMIT_RANGE, MODE_RULES, ROUND_LIMIT, type GameLimits, type GameMode, type Owner } from '@fansong/engine';
+import { MODE_RULES, type GameLimits, type GameMode, type Owner } from '@fansong/engine';
 import { normalizeRoomCode, ROOM_CODE_LENGTH } from '@fansong/protocol';
 import type { Launch } from '../game/launch.js';
-import { MODE_LABELS } from './editorView.js';
+import { ArmyBuilderOverlay } from './ArmyBuilderScreen.js';
+import { builderStart, choiceAfterBuilder } from './armyView.js';
 import { browserStorage, customMapLookup, playableCustomMaps } from '../game/customMaps.js';
-import { armyChoice, choiceWarband, isArmyChoice, playableArmies, type SavedArmy } from '../game/armies.js';
+import { choiceWarband, isArmyChoice, playableArmies, type SavedArmy } from '../game/armies.js';
 import { loadSetupPrefs, saveSetupPrefs } from '../game/setupPrefs.js';
 import { limitsForMode, type LimitsByMode } from '../game/limits.js';
-import { StatIcons } from './StatIcons.js';
 import { FaceOffSetup, type SetupModel } from './FaceOffSetup.js';
-import { modesOf } from './setupView.js';
-import { MapThumb, Picker, profileStats, WarbandStrip, warbandItem, type PickerGroup, type PickerItem } from './Picker.js';
+import { kingIn, modesOf } from './setupView.js';
 
 interface Props {
   initial: MatchSetup;
@@ -137,9 +132,14 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
   const [seed, setSeed] = useState(initial.seed);
   // Custom maps saved from the editor (read once; the editor is a separate screen).
   const [customMaps] = useState(() => playableCustomMaps(browserStorage()));
-  // Saved army-builder armies that can be played (read once, like custom maps).
-  const [armies] = useState(() => playableArmies(browserStorage()));
-  const unitsOf = (choice: string) => (choiceWarband(choice, armies) ?? PRESETS[FALLBACK_PRESET]!).units;
+  // Saved army-builder armies that can be played; read again whenever the
+  // builder, which this screen can open, hands control back.
+  const [armies, setArmies] = useState(() => playableArmies(browserStorage()));
+  // The side whose army is being built in front of this screen, if any.
+  const [builderFor, setBuilderFor] = useState<Owner | null>(null);
+  const unitsIn = (choice: string, list: readonly SavedArmy[]) =>
+    (choiceWarband(choice, list) ?? PRESETS[FALLBACK_PRESET]!).units;
+  const unitsOf = (choice: string) => unitsIn(choice, armies);
   const savedSide = (owner: 0 | 1): string | undefined => {
     const choice = saved.sides?.[owner];
     return choice !== undefined && choiceWarband(choice, armies) ? choice : undefined;
@@ -184,16 +184,48 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
   const problem = useMemo(() => launchProblem(launch, mapLookup), [launch, mapLookup]);
   const start = () => onStart(launch);
 
+  /** The warband a side falls back on when the one it had stops being playable. */
+  const fallbackSide = (owner: 0 | 1): string =>
+    PRESETS[initial.presets[owner]] ? initial.presets[owner] : FALLBACK_PRESET;
+
+  /**
+   * The army builder hands control back: take in whatever it saved, field the
+   * army it was told to use, and leave both sides on a warband that can still
+   * be played — either of them can have been edited or deleted in there.
+   */
+  const closeBuilder = (used: string | null): void => {
+    const owner = builderFor;
+    setBuilderFor(null);
+    if (owner === null) return;
+    const next = playableArmies(browserStorage());
+    setArmies(next);
+    const sides: [string, string] = [
+      choiceAfterBuilder(p0, owner === 0 ? used : null, next, fallbackSide(0)),
+      choiceAfterBuilder(p1, owner === 1 ? used : null, next, fallbackSide(1)),
+    ];
+    setP0(sides[0]);
+    setP1(sides[1]);
+    // A side that changed warbands crowns that one's own King; a side that kept
+    // its warband keeps its King, unless the roster under it grew shorter.
+    setKings(([k0, k1]) => [
+      sides[0] === p0 ? kingIn(unitsIn(sides[0], next), k0) : defaultKing(unitsIn(sides[0], next)),
+      sides[1] === p1 ? kingIn(unitsIn(sides[1], next), k1) : defaultKing(unitsIn(sides[1], next)),
+    ]);
+  };
+
   if (mode !== 'online') {
     const model: SetupModel = {
-      mode: localMode,
       title: MODE_TITLES[mode],
+      names: localMode === 'vsAI' ? ['You', 'AI'] : ['Player 1', 'Player 2'],
       sides: [p0, p1],
       warbands: [choiceWarband(p0, armies) ?? PRESETS[FALLBACK_PRESET]!, choiceWarband(p1, armies) ?? PRESETS[FALLBACK_PRESET]!],
       armies,
+      // One player at this browser arranges both warbands.
+      mine: [true, true],
       pickSide: pickPreset,
       kings,
       pickKing,
+      openBuilder: (owner) => setBuilderFor(owner),
       map: playedMap,
       customMaps,
       pickMap: setMapId,
@@ -204,25 +236,38 @@ export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: P
       limits,
       setLimits: (next) => setLimitsByMode((all) => ({ ...all, [gameMode]: next })),
       defaultRounds: gameMode === 'golden-pig' ? defaultPigRounds(playedMap, escort) : undefined,
-      seed,
-      setSeed,
-      problem,
-      start,
-      onBack,
+      seed: { value: seed, set: setSeed },
       openSandbox: onOpenSandbox && problem === null ? () => onOpenSandbox(launch.setup) : undefined,
+      problem,
+      go: { label: 'Start battle', onClick: start },
+      onBack,
+      backLabel: '⟵ Menu',
     };
-    return <FaceOffSetup model={model} />;
+    return (
+      <>
+        <FaceOffSetup model={model} />
+        {builderFor !== null ? (
+          <ArmyBuilderOverlay
+            start={builderStart(builderFor === 0 ? p0 : p1)}
+            backLabel="⟵ Back to setup"
+            onUse={closeBuilder}
+            onExit={() => closeBuilder(null)}
+          />
+        ) : null}
+      </>
+    );
   }
 
+  // Creating or joining a room, in the same look as the room it leads to.
   return (
-    <div className="setup">
-      <div className="setup-card">
-        <div className="setup-head">
-          <button className="ghost" onClick={onBack}>
-            ⟵ Menu
-          </button>
-          <h1>{MODE_TITLES[mode]}</h1>
-        </div>
+    <div className="muster muster-plain">
+      <header className="muster-top">
+        <button type="button" className="muster-back" onClick={onBack}>
+          ⟵ Menu
+        </button>
+        <h1>{MODE_TITLES[mode]}</h1>
+      </header>
+      <div className="muster-plain-body">
         <OnlinePanel onStart={onStart} />
       </div>
     </div>
@@ -239,7 +284,7 @@ function OnlinePanel({ onStart }: { onStart: (launch: Launch) => void }): JSX.El
         Create a room and send the code (or link) to a friend, or enter the code they sent you. Once you're both in
         the room, you each pick your army and the host picks the map and game mode.
       </p>
-      <button className="primary" onClick={() => onStart({ kind: 'online', code: null })}>
+      <button type="button" className="muster-start" onClick={() => onStart({ kind: 'online', code: null })}>
         Create a room
       </button>
       <form
@@ -258,7 +303,7 @@ function OnlinePanel({ onStart }: { onStart: (launch: Launch) => void }): JSX.El
           spellCheck={false}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
         />
-        <button className="secondary" type="submit" disabled={join.length !== ROOM_CODE_LENGTH}>
+        <button type="submit" disabled={join.length !== ROOM_CODE_LENGTH}>
           Join room
         </button>
       </form>
@@ -266,280 +311,3 @@ function OnlinePanel({ onStart }: { onStart: (launch: Launch) => void }): JSX.El
   );
 }
 
-export function WarbandPicker({
-  label,
-  value,
-  armies,
-  onChange,
-  king,
-  onKing,
-}: {
-  label: string;
-  /** A preset id or a saved-army choice. */
-  value: string;
-  /** Playable saved armies, offered after the presets. */
-  armies: readonly SavedArmy[];
-  onChange: (id: string) => void;
-  /** Kill-the-king: index of the chosen King (omitted in other modes). */
-  king?: number;
-  onKing: (index: number) => void;
-}): JSX.Element {
-  const wb = choiceWarband(value, armies) ?? PRESETS[FALLBACK_PRESET]!;
-  const check = isArmyChoice(value) ? validateArmy(wb) : validateWarband(wb);
-  const groups = (): PickerGroup[] => {
-    const presets = PRESET_IDS.map((id) => warbandItem(id, PRESETS[id]!));
-    if (armies.length === 0) return [{ items: presets }];
-    return [
-      { label: 'Presets', items: presets },
-      { label: 'Your armies', items: armies.map((a) => warbandItem(armyChoice(a.id), a.warband)) },
-    ];
-  };
-  return (
-    <div className="warband-picker">
-      <h3>{label}</h3>
-      <Picker title={`${label}: choose a warband`} kind="warband" groups={groups} value={value} onPick={onChange} className="picker-choice">
-        <span className="picker-choice-text">
-          <strong>{wb.name}</strong>
-          <WarbandStrip warband={wb} />
-        </span>
-      </Picker>
-      <p className="warband-meta">
-        {warbandCost(wb)} pts · {wb.units.length} units {check.ok ? '' : '· illegal'}
-      </p>
-      <Roster warband={wb} king={king} onKing={onKing} />
-    </div>
-  );
-}
-
-/** A warband's units with their stats; in kill-the-king the King is marked, and
- *  picked with a radio when `onKing` is given. */
-export function Roster({
-  warband: wb,
-  king,
-  onKing,
-}: {
-  warband: Warband;
-  king?: number;
-  onKing?: (index: number) => void;
-}): JSX.Element {
-  return (
-    <ul className="roster">
-      {wb.units.map((u, i) => (
-        <li key={i} className={king === i ? 'king' : undefined}>
-          {king === undefined ? (
-            <span>{u.name}</span>
-          ) : !onKing ? (
-            <span>
-              {king === i ? '♛ ' : ''}
-              {u.name}
-            </span>
-          ) : (
-            <label title="Choose this unit as King">
-              <input type="radio" checked={king === i} onChange={() => onKing(i)} />
-              {king === i ? '♛ ' : ''}
-              {u.name}
-            </label>
-          )}
-          <span className="stats">
-            <StatIcons stats={profileStats(u)} />
-            {u.tough ? ' Tough' : ''}
-            {u.guard ? ' Guard' : ''}
-            {u.leader ? ' Leader' : ''}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-export function MapPicker({
-  value,
-  custom,
-  onChange,
-}: {
-  value: string;
-  /** Playable custom maps, listed after the built-ins. */
-  custom: readonly MapDef[];
-  onChange: (id: string) => void;
-}): JSX.Element {
-  const map = getMap(value) ?? custom.find((m) => m.id === value) ?? getMap(DEFAULT_MAP_ID)!;
-  const modes = modesOf(map).map((m) => MODE_LABELS[m]);
-  const item = (m: MapDef): PickerItem => ({
-    key: m.id,
-    title: m.name,
-    detail: `${m.width}×${m.height} · ${modesOf(m).map((x) => MODE_LABELS[x]).join(', ')}`,
-    preview: <MapThumb map={m} />,
-  });
-  const groups = (): PickerGroup[] =>
-    custom.length === 0
-      ? [{ items: listMaps().map(item) }]
-      : [
-          { label: 'Built-in', items: listMaps().map(item) },
-          { label: 'Custom', items: custom.map(item) },
-        ];
-  return (
-    <div className="map-picker">
-      <h3>Map</h3>
-      <Picker title="Choose a map" kind="map" groups={groups} value={map.id} onPick={onChange} className="picker-choice picker-map-choice">
-        <MapThumb map={map} />
-        <span className="picker-choice-text">
-          <strong>{map.name}</strong>
-          <span className="hint">Click to see every map</span>
-        </span>
-      </Picker>
-      <p className="warband-meta">
-        {map.width}×{map.height} · {modes.join(', ')}
-      </p>
-    </div>
-  );
-}
-
-/**
- * Round limit and (in the point-scoring modes) target score for a game mode.
- * Blank/unset shows the mode's default; "No round limit" plays until the mode's
- * own win condition. `onChange(undefined)` resets to the defaults.
- */
-export function LimitsPicker({
-  mode,
-  value,
-  onChange,
-  disabled = false,
-  defaultRounds,
-}: {
-  mode: GameMode;
-  value: GameLimits | undefined;
-  onChange: (limits: GameLimits | undefined) => void;
-  /** The mode's default round limit when it depends on the map (the golden Pig's). */
-  defaultRounds?: number;
-  /** Online guests see the host's choice but can't change it. */
-  disabled?: boolean;
-}): JSX.Element {
-  const rules = MODE_RULES[mode];
-  const unlimited = value?.roundLimit === null;
-  const baseRounds = defaultRounds ?? rules.roundLimit;
-  const rounds = value?.roundLimit ?? baseRounds;
-  const target = value?.targetScore ?? rules.targetScore;
-  const emit = (next: GameLimits): void => onChange(Object.keys(next).length > 0 ? next : undefined);
-  const parse = (text: string): number | undefined => {
-    const n = parseInt(text, 10);
-    return Number.isInteger(n) ? Math.min(LIMIT_RANGE.max, Math.max(LIMIT_RANGE.min, n)) : undefined;
-  };
-  const setRounds = (text: string): void => {
-    const n = parse(text);
-    if (n !== undefined) emit({ ...value, roundLimit: n });
-  };
-  const setTarget = (text: string): void => {
-    const n = parse(text);
-    if (n !== undefined) emit({ ...value, targetScore: n });
-  };
-  return (
-    <fieldset className="limits-picker">
-      <legend>Game length</legend>
-      <label>
-        Round limit
-        <input
-          type="number"
-          aria-label="Round limit"
-          min={LIMIT_RANGE.min}
-          max={LIMIT_RANGE.max}
-          value={unlimited ? '' : (rounds ?? '')}
-          placeholder={unlimited ? 'none' : undefined}
-          disabled={disabled || unlimited}
-          onChange={(e) => setRounds(e.target.value)}
-        />
-      </label>
-      <label>
-        <input
-          type="checkbox"
-          checked={unlimited}
-          disabled={disabled}
-          onChange={(e) => emit({ ...value, roundLimit: e.target.checked ? null : (baseRounds ?? ROUND_LIMIT) })}
-        />
-        No round limit
-      </label>
-      {target !== undefined ? (
-        <label>
-          Points to win
-          <input
-            type="number"
-            aria-label="Points to win"
-            min={LIMIT_RANGE.min}
-            max={LIMIT_RANGE.max}
-            value={target}
-            disabled={disabled}
-            onChange={(e) => setTarget(e.target.value)}
-          />
-        </label>
-      ) : null}
-      <p className="hint">
-        {unlimited || rounds === undefined
-          ? 'No round cap.'
-          : mode === 'golden-pig'
-            ? `The game is called after round ${rounds}: the defender wins if the Pig isn't home by then.`
-            : `The game is called after round ${rounds}: most ${target !== undefined ? 'points' : 'units left'} wins.`}
-      </p>
-      {value && !disabled ? (
-        <button type="button" className="ghost" onClick={() => onChange(undefined)}>
-          Reset to defaults
-        </button>
-      ) : null}
-    </fieldset>
-  );
-}
-
-/** Extract the golden Pig: which seat escorts the Pig (the other defends). */
-export function EscortPicker({
-  value,
-  labels,
-  onChange,
-  disabled = false,
-}: {
-  value: Owner;
-  /** What to call seat 0 and seat 1. */
-  labels: readonly [string, string];
-  onChange: (escort: Owner) => void;
-  /** Online guests see the host's choice but can't change it. */
-  disabled?: boolean;
-}): JSX.Element {
-  return (
-    <fieldset className="mode-picker">
-      <legend>Escort</legend>
-      {([0, 1] as const).map((p) => (
-        <label key={p}>
-          <input type="radio" checked={value === p} disabled={disabled} onChange={() => onChange(p)} />
-          {labels[p]}
-        </label>
-      ))}
-      <p className="hint">
-        The escort gets the golden Pig for free and must walk it into the enemy camp; the other side wins by killing
-        it or running out the clock.
-      </p>
-    </fieldset>
-  );
-}
-
-/** Game mode radio list; modes the map can't host are shown disabled. */
-export function GameModePicker({
-  map,
-  value,
-  onChange,
-}: {
-  map: MapDef;
-  value: GameMode;
-  onChange: (mode: GameMode) => void;
-}): JSX.Element {
-  const supported = modesOf(map);
-  return (
-    <fieldset className="mode-picker">
-      <legend>Game mode</legend>
-      {GAME_MODES.map((m) => (
-        <label key={m} className={supported.includes(m) ? undefined : 'unsupported'}>
-          <input type="radio" checked={value === m} disabled={!supported.includes(m)} onChange={() => onChange(m)} />
-          {MODE_LABELS[m]}
-          {supported.includes(m) ? '' : ' (not on this map)'}
-        </label>
-      ))}
-      {value === 'kill-the-king' ? <p className="hint">Pick each side's King in its roster above.</p> : null}
-    </fieldset>
-  );
-}

@@ -232,14 +232,14 @@ function inviteLaunch(): Launch | null {
 
 function Lobby({ children, onExit }: { children: React.ReactNode; onExit: () => void }): JSX.Element {
   return (
-    <div className="setup">
-      <div className="setup-card">
-        <h1>FanSong</h1>
-        {children}
-        <button className="ghost" onClick={onExit}>
+    <div className="muster muster-plain">
+      <header className="muster-top">
+        <button type="button" className="muster-back" onClick={onExit}>
           ⟵ Back
         </button>
-      </div>
+        <h1>FanSong</h1>
+      </header>
+      <div className="muster-plain-body">{children}</div>
     </div>
   );
 }

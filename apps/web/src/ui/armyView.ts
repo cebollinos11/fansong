@@ -12,6 +12,7 @@ import {
   unitCost,
   type WarbandUnit,
 } from '@fansong/content';
+import { armyChoice, armyIdOf, choiceWarband, type SavedArmy } from '../game/armies.js';
 import { UNIT_SPRITES } from '../three/unitSprites.js';
 import { unitKindKey } from './unitKinds.js';
 
@@ -349,4 +350,35 @@ export function withRunUnit(units: readonly WarbandUnit[], run: UnitRun, unit: W
 export function renumberRun(units: readonly WarbandUnit[], run: UnitRun, base: string, count: number): WarbandUnit[] {
   const copies = Array.from({ length: Math.max(0, count) }, (_, n) => ({ ...run.unit, name: copyLabel(base, n + 1) }));
   return [...units.slice(0, run.at), ...copies, ...units.slice(run.at + run.count)];
+}
+
+/** The army the builder opens on: a saved one by its id, or a roster to start from. */
+export type BuilderStart = { id: string } | { warband: Warband };
+
+/**
+ * What the builder opens on when it is reached from a warband choice on a setup
+ * screen: that saved army, or a fresh copy of the preset the side is fielding —
+ * tweaking a warband that already works is the shortest road to one of your own.
+ */
+export function builderStart(choice: string): BuilderStart {
+  const id = armyIdOf(choice);
+  if (id !== undefined) return { id };
+  return { warband: armyFromPreset(PRESETS[choice] ? choice : PRESET_IDS[0]!) };
+}
+
+/**
+ * A side's warband choice once the builder closes: the army it was told to use,
+ * else the choice it had, else `fallback`. An army can come back deleted, or
+ * edited until it no longer passes the rules, and no side can field one of those.
+ */
+export function choiceAfterBuilder(
+  choice: string,
+  used: string | null,
+  armies: readonly SavedArmy[],
+  fallback: string,
+): string {
+  for (const want of [used === null ? null : armyChoice(used), choice]) {
+    if (want !== null && choiceWarband(want, armies)) return want;
+  }
+  return fallback;
 }

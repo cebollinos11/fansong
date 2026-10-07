@@ -480,81 +480,6 @@ fieldset label {
   margin-right: 20px;
 }
 
-.warband-cols {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-@media (max-width: 620px) {
-  .warband-cols {
-    grid-template-columns: 1fr;
-  }
-}
-
-.warband-picker {
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 14px;
-}
-
-.warband-picker h3 {
-  margin: 0 0 8px;
-}
-
-.map-picker {
-  margin-top: 16px;
-}
-
-.map-picker h3 {
-  margin: 0 0 8px;
-}
-
-
-.warband-meta {
-  color: var(--muted);
-  margin: 8px 0;
-}
-
-.roster {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.roster li {
-  display: flex;
-  justify-content: space-between;
-  padding: 3px 0;
-  border-top: 1px solid var(--line);
-}
-
-.roster li label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.roster li.king {
-  color: #f2c14e;
-}
-
-.mode-picker label {
-  margin-bottom: 4px;
-}
-
-.mode-picker label.unsupported {
-  color: var(--muted);
-  opacity: 0.6;
-}
-
-.roster .stats {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
 /* --- Online: create/join a room, and the room lobby --------------------- */
 .online-panel {
   margin: 18px 0;
@@ -617,11 +542,6 @@ fieldset label {
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
-}
-
-.lobby-status {
-  color: var(--muted);
-  margin: 18px 0 8px;
 }
 
 .seed-row {
@@ -3113,6 +3033,17 @@ button.tool.active {
 }
 
 /* --- Army builder ------------------------------------------------------- */
+
+/* The builder in front of a setup screen or an online room, which stay mounted
+   behind it so the army can be fielded the moment it is built. */
+.army-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: auto;
+  background: var(--bg);
+}
+
 .army {
   min-height: 100%;
   padding: 20px 24px;
@@ -4030,41 +3961,10 @@ button.trait-add[aria-expanded='true'] {
   color: var(--muted);
 }
 
-/* The current choice, shown full width on the setup and lobby screens. */
-.picker-choice {
-  width: 100%;
-  background: var(--bg);
-  padding: 8px 10px;
-}
-
-.picker-choice-text {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.picker-choice-text .hint {
-  font-size: 12px;
-}
-
-.picker-map-choice {
-  gap: 14px;
-}
-
-.picker-map-choice .map-thumb {
-  width: 150px;
-  flex: none;
-}
-
 .map-thumb {
   display: block;
   width: 100%;
   height: auto;
-}
-
-.map-thumb-large {
-  max-width: 320px;
-  margin-bottom: 8px;
 }
 
 .unit-sprite {
@@ -4975,6 +4875,75 @@ button.trait-add[aria-expanded='true'] {
   gap: 18px;
 }
 
+/* A plain muster page: creating or joining a room, and waiting on the server. */
+.muster-plain-body {
+  align-self: center;
+  justify-self: center;
+  width: min(520px, 100%);
+  text-align: center;
+}
+
+.muster-plain-body .hint {
+  color: var(--ink-3);
+  font-size: 15px;
+}
+
+.muster-plain-body .error {
+  color: #ff9a8e;
+}
+
+.muster .online-panel {
+  gap: 16px;
+}
+
+.muster .join-row input {
+  background: var(--well);
+  color: var(--ink);
+  border: 1px solid #4a4f66;
+  border-radius: 3px;
+  letter-spacing: 4px;
+  text-align: center;
+}
+
+.muster .join-row button {
+  padding: 10px 18px;
+}
+
+/* The room code, carried in the header beside the title. */
+.muster-banner {
+  margin-left: auto;
+}
+
+.muster .room-code {
+  margin: 0;
+  padding: 8px 16px;
+  gap: 2px;
+  background: var(--well);
+  border: 1px solid var(--gold-dim);
+  border-radius: 3px;
+}
+
+.muster .room-code-label {
+  font: 600 11px 'Cinzel', Georgia, serif;
+  letter-spacing: 3px;
+  color: #b9a26a;
+}
+
+.muster .room-code-value {
+  font-size: 28px;
+  letter-spacing: 8px;
+  color: var(--gold);
+}
+
+.muster .room-code-actions button {
+  padding: 2px 8px;
+  font-size: 13px;
+  background: transparent;
+  border-color: transparent;
+  color: var(--gold);
+  text-decoration: underline;
+}
+
 .muster button.muster-back {
   padding: 8px 14px;
   background: transparent;
@@ -4999,6 +4968,20 @@ button.trait-add[aria-expanded='true'] {
 .muster-error {
   margin: 0 0 8px;
   color: #ff9a8e;
+}
+
+/* What the game is still waiting on, under the button that starts it. */
+.muster-status {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-style: italic;
+}
+
+/* A rule somebody else sets (the online host's battlefield and mode). */
+.muster-note {
+  margin: 6px 0 0;
+  color: var(--ink-3);
+  font-size: 14px;
 }
 
 .muster button.muster-link {
@@ -5076,6 +5059,12 @@ button.trait-add[aria-expanded='true'] {
   border-color: #3a3f52;
 }
 
+/* The mode in play still reads at full strength when it is the host's to pick. */
+.muster button.mode-tile.on:disabled {
+  opacity: 1;
+  border-color: var(--gold);
+}
+
 .mode-glyph {
   color: var(--gold);
   font-size: 20px;
@@ -5148,6 +5137,13 @@ button.trait-add[aria-expanded='true'] {
   gap: 8px;
   padding: 10px;
   border-color: var(--gold-dim);
+}
+
+/* The battlefield when the host alone picks it: the same card, minus the button. */
+.muster .map-card-fixed {
+  border: 1px solid var(--gold-dim);
+  border-radius: 3px;
+  background: var(--well);
 }
 
 .map-card .map-thumb {
@@ -5230,17 +5226,22 @@ button.trait-add[aria-expanded='true'] {
   content: ' pts';
 }
 
-.muster button.crown {
+/* A crown this screen can move is a button; another player's only shows. */
+.muster .crown {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 30px;
   height: 30px;
   padding: 0;
   background: transparent;
-  border-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
   color: #5c5a66;
   font-size: 18px;
 }
 
-.muster button.crown.on {
+.muster .crown.on {
   color: var(--gold);
   border-color: var(--gold-dim);
 }
@@ -5337,6 +5338,28 @@ button.trait-add[aria-expanded='true'] {
 
 .fo-side .muster-meta {
   margin: 4px 0 6px;
+}
+
+.muster button.fo-build {
+  margin-bottom: 6px;
+}
+
+/* The other player's warband: named, but not this screen's to change. */
+.fo-name-fixed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 260px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid #4a4f66;
+  border-radius: 3px;
+  background: var(--well);
+}
+
+.fo-note {
+  margin-left: 8px;
+  color: var(--gold);
 }
 
 .fo-roster {
@@ -5453,9 +5476,24 @@ button.trait-add[aria-expanded='true'] {
     order: 2;
   }
 
-  .muster button.fo-name {
+  .muster button.fo-name,
+  .fo-name-fixed {
     min-width: 0;
     flex: 1;
+  }
+
+  .muster-top {
+    flex-wrap: wrap;
+  }
+
+  .muster-banner {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .muster .room-code-value {
+    font-size: 22px;
+    letter-spacing: 6px;
   }
 
   .fo-name-row {
