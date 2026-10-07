@@ -200,3 +200,39 @@ describe('PresentationQueue', () => {
     expect(log).toEqual(['present a']);
   });
 });
+
+describe('PresentationQueue.reholdFor', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('swaps a long opening hold for a short one from now', () => {
+    const log: string[] = [];
+    const q = new PresentationQueue<string>((item) => log.push(`present ${item}`), () => {}, 100, 5000);
+    q.holdFor(60_000);
+    q.push('a');
+    vi.advanceTimersByTime(2000);
+    expect(log).toEqual([]);
+    q.reholdFor(500);
+    vi.advanceTimersByTime(499);
+    expect(log).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(log).toEqual(['present a']);
+  });
+
+  it('lets go at once when there is nothing more to hold for', async () => {
+    const q = new PresentationQueue<string>(() => {}, () => {}, 100, 5000);
+    q.holdFor(60_000);
+    expect(q.idle).toBe(false);
+    q.reholdFor(0);
+    expect(q.idle).toBe(true);
+    await q.whenIdle();
+  });
+
+  it('leaves a queue that is not holding alone', () => {
+    const log: string[] = [];
+    const q = new PresentationQueue<string>((item) => log.push(`present ${item}`), () => {}, 100, 5000);
+    q.reholdFor(500);
+    q.push('a');
+    expect(log).toEqual(['present a']);
+  });
+});

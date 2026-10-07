@@ -52,6 +52,19 @@ import {
   tileTopColor,
 } from './terrain.js';
 import { DOWN_POSES, RIDING_SPRITES, spriteFor } from './unitSprites.js';
+import {
+  Coin,
+  type CoinFace,
+  coinDim,
+  coinOffset,
+  coinPose,
+  coinRadius,
+  COIN_IMPACT_MS,
+  COIN_LAND_MS,
+  COIN_SETTLE_MS,
+  COIN_TOSS_MS,
+} from './coin.js';
+import type { CoinTossView } from '../ui/coinView.js';
 
 /** Everything the board needs to draw one frame's worth of interaction state. */
 export interface BoardViewModel {
@@ -477,7 +490,13 @@ const ZONE_SCORE_LEAD_MS = 250; // a zone's verdict is up this long before its p
 const ZONE_SCORE_MS = 1700; // how long its verdict and glow last: fading only as the next zone's turn begins
 const ZONE_UNHELD_COLOR = 0xcfd8e3; // the glow of a zone nobody takes
 const ZONE_GLOW = 0.7; // its opacity at the brightest
+const COIN_DIM = 0.72; // how far the light on the board drops while the coin is in the air
+const COIN_DIST = 0.42; // how far in front of the camera the coin is tossed, as a fraction of its view distance
+const COIN_DIST_MAX = 3.4; // ...and no further out than this, so a wide shot doesn't toss the coin into the board
+const COIN_SPARKS = 26; // sparks struck off the coin as it lands
+const COIN_SHAKE = 0.1; // how hard the landing knocks the camera
 const KEY_PAN_SPEED = 0.9; // WASD pans this many view distances per second, so it feels the same at any zoom
+ // WASD pans this many view distances per second, so it feels the same at any zoom
 const KEY_PAN_EASE_IN = 0.12; // seconds for a WASD pan to come up to speed...
 const KEY_PAN_EASE_OUT = 0.16; // ...and to glide to a stop once the keys are let go
 const KEY_PAN_CODES = { KeyW: [0, 1], KeyS: [0, -1], KeyA: [-1, 0], KeyD: [1, 0] } as const;
@@ -1018,6 +1037,10 @@ export class BoardView {
   private noSkipUntil = 0;
   /** The glow over the zone being scored, on board time. */
   private zoneGlow: { mesh: THREE.InstancedMesh; start: number; end: number } | null = null;
+  /** The coin deciding who strikes first, while it is in the air (see {@link tossCoin}). */
+  private coin: { coin: Coin; winner: Owner; start: number; dist: number; radius: number; landed: boolean } | null = null;
+  /** Fires when the toss is over — played out, skipped, or cut short. */
+  onTossDone: (() => void) | null = null;
   /**
    * Move the camera to the action before playing it: off-screen activations and
    * moves are panned to (see {@link planPan}), and — in `cinematic` — every blow
@@ -2104,6 +2127,104 @@ export class BoardView {
     this.zoneGlow = null;
   }
 
+  /**
+   * Toss the coin that decides who strikes first: a medallion struck with each
+   * side's colour and champion flicks up in front of the camera, hangs, drops,
+   * and rocks flat on the winner's face while the board waits in the dark.
+   * The winner is the engine's (the seed's); this only shows it. Returns how
+   * long the toss takes; {@link onTossDone} fires when it ends, however it ends.
+   */
+  tossCoin(toss: CoinTossView): number {
+    this.endToss(false);
+    // Held in front of the camera, wherever the player has it: near enough to fill
+    // the view, never so far out that it lands among the units.
+    const dist = Math.max(0.8, Math.min(COIN_DIST_MAX, this.currentView().dist * COIN_DIST));
+    const radius = coinRadius(dist, this.camera.fov);
+    const faces = ([0, 1] as const).map((owner) => ({
+      owner,
+      unit: toss.champions[owner],
+      name: toss.names[owner],
+      color: OWNER_COLORS[owner],
+    })) as [CoinFace, CoinFace];
+    const coin = new Coin(faces, radius);
+    coin.dressSprites(faces);
+    this.scene.add(coin.group);
+    this.coin = { coin, winner: toss.winner, start: this.now, dist, radius, landed: false };
+    this.stepCoin();
+    this.sound('coin-toss');
+    this.busyUntil = Math.max(this.busyUntil, this.now + COIN_TOSS_MS);
+    // It can be waved off, but not before it has left the ground.
+    this.noSkipUntil = this.now + 500;
+    return COIN_TOSS_MS;
+  }
+
+  /** Hold the coin in front of the camera in this frame's pose, and play each beat as its time comes. */
+  private stepCoin(): void {
+    const held = this.coin;
+    if (!held) return;
+    const ms = this.now - held.start;
+    if (ms >= COIN_TOSS_MS) {
+      this.endToss();
+      return;
+    }
+    const pose = coinPose(ms, held.winner);
+    const dist = held.dist * pose.push;
+    const { group } = held.coin;
+    // Square to the screen: the coin tumbles about the view's own level.
+    group.quaternion.copy(this.camera.quaternion);
+    group.position
+      .copy(this.camera.position)
+      .addScaledVector(new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion), dist)
+      .addScaledVector(new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion), coinOffset(pose.rise, dist, this.camera.fov));
+    held.coin.apply(pose);
+    if (!held.landed && ms >= COIN_LAND_MS) {
+      held.landed = true;
+      this.landCoin(group.position.clone(), held.radius);
+    }
+  }
+
+  /** The coin stops dead: a ring of light, sparks off its rim, and a knock through the camera. */
+  private landCoin(at: THREE.Vector3, radius: number): void {
+    this.sound('coin-land');
+    this.shakeCamera('rumble', COIN_SHAKE, 280);
+    this.effects.pop('hoop', at, radius * 1.6, radius * 6.5, { life: 0.55, color: GOLD, opacity: 0.9 });
+    this.effects.pop('burst', at, radius * 1.2, radius * 4.2, { life: 0.4, color: 0xfff6d0, opacity: 0.8 });
+    this.effects.burst({
+      at,
+      count: COIN_SPARKS,
+      colors: GOLD_COLORS,
+      speed: [radius * 3, radius * 9],
+      life: [0.35, 0.8],
+      size: [radius * 0.07, radius * 0.16],
+      gravity: radius * 9,
+      drag: 1.2,
+      jitter: radius * 0.9,
+      blend: 'add',
+    });
+    // Once it has stopped rocking, the face it shows is the answer.
+    this.at(COIN_IMPACT_MS + COIN_SETTLE_MS, () => {
+      const held = this.coin;
+      if (!held) return;
+      this.sound('coin-verdict');
+      this.effects.pop('glint', held.coin.group.position.clone(), radius * 2, radius * 7, {
+        life: 0.7,
+        color: OWNER_COLORS[held.winner],
+        opacity: 0.7,
+      });
+    });
+  }
+
+  /** Take the coin away; `tell` is false only when another toss is replacing it. */
+  private endToss(tell = true): void {
+    const held = this.coin;
+    if (!held) return;
+    this.coin = null;
+    held.coin.dispose();
+    this.busyUntil = Math.min(this.busyUntil, this.now);
+    this.noSkipUntil = 0;
+    if (tell) this.onTossDone?.();
+  }
+
   /** A camera move's length plus a beat to settle, or 0 when it made no move. */
   private pause(moveMs: number): number {
     return moveMs > 0 ? moveMs + CAMERA_SETTLE_MS : 0;
@@ -2854,6 +2975,11 @@ export class BoardView {
   skipAnimations(): boolean {
     if (this.timeline.length === 0 && this.busyUntil <= this.now) return false;
     if (this.now < this.noSkipUntil) return false;
+    // A toss waved off is simply over: the result stands, and the banner reads it out.
+    if (this.coin) {
+      this.endToss();
+      return true;
+    }
     this.now = Math.max(this.now, this.busyUntil);
     // Steps run in order, and may schedule more (a strike's hit, its reaction).
     for (let guard = 0; guard < 64 && this.timeline.length > 0; guard++) {
@@ -2948,6 +3074,7 @@ export class BoardView {
 
   dispose(): void {
     this.disposed = true;
+    this.endToss(false);
     this.renderer.setAnimationLoop(null);
     this.controls.dispose();
     this.resizeObserver.disconnect();
@@ -4651,9 +4778,15 @@ export class BoardView {
 
   /** The brightness a unit's cutout is drawn at: dimmed outside a gruesome kill's spotlight. */
   private unitLight(id: string): number {
+    const toss = 1 - COIN_DIM * this.coinAmount();
     const k = this.spotAmount();
-    if (k === 0) return 1;
-    return 1 - SPOT_DIM * k * (1 - (this.spotlight?.lit.get(id) ?? 0));
+    if (k === 0) return toss;
+    return toss * (1 - SPOT_DIM * k * (1 - (this.spotlight?.lit.get(id) ?? 0)));
+  }
+
+  /** How far the board is faded back behind the coin toss right now: 0 not at all, 1 fully. */
+  private coinAmount(): number {
+    return this.coin ? coinDim(this.now - this.coin.start) : 0;
   }
 
   /**
@@ -4670,12 +4803,14 @@ export class BoardView {
     if (!sil && this.impact) {
       for (const id of this.impact.ids) this.units.get(id)?.sprite.material.color.setScalar(IMPACT_WHITE);
     }
-    const light = sil ? 0.06 : 1 - SPOT_LIGHT_DIM * k;
+    const toss = this.coinAmount();
+    const light = sil ? 0.06 : (1 - SPOT_LIGHT_DIM * k) * (1 - COIN_DIM * toss);
+    this.backdrop.setLight(1 - COIN_DIM * toss);
     this.ambient.intensity = AMBIENT_LIGHT * light;
     this.keyLight.intensity = KEY_LIGHT * light;
     this.backdrop.group.visible = !sil;
     (this.scene.background as THREE.Color).setHex(sil ? SILHOUETTE_BACKGROUND : BACKGROUND);
-    this.vignette.style.opacity = String(sil ? 1 : k);
+    this.vignette.style.opacity = String(sil ? 1 : Math.max(k, toss));
     if (!sil) return;
     for (const obj of this.units.values()) {
       if (obj.id === sil.victim) {
@@ -6473,6 +6608,7 @@ export class BoardView {
     this.clampCameraTarget();
     this.controls.update();
     this.followPitch();
+    this.stepCoin();
 
     const camRight = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
     for (const obj of this.units.values()) this.animateUnit(obj, dtMs, lerp, camRight);

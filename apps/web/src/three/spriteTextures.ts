@@ -69,6 +69,8 @@ export interface FrameRect {
  */
 export interface SpriteAtlas {
   texture: THREE.Texture;
+  /** The atlas the texture was built from, for anyone who needs to draw a frame themselves (the coin). */
+  canvas: HTMLCanvasElement;
   frames: Map<string, FrameRect>;
   /** Cell size in source pixels. */
   cellW: number;
@@ -181,6 +183,7 @@ function buildAtlas(
   texture.minFilter = THREE.LinearMipmapLinearFilter;
   return {
     texture,
+    canvas,
     frames: rects,
     cellW,
     cellH,

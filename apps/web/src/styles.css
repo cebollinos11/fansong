@@ -748,6 +748,91 @@ button.ghost {
   color: var(--p1);
 }
 
+/* The coin toss before it: the coin itself is on the board; these are its words, under it. */
+.coin-toss {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  text-align: center;
+}
+
+.coin-toss-call,
+.coin-toss-verdict {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 74%;
+  padding: 0 16px;
+  opacity: 0;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
+}
+
+.coin-toss-call {
+  font-size: 15px;
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  color: var(--gold, #e0b84c);
+  animation: coin-toss-call var(--coin-verdict) ease-out 0.3s forwards;
+}
+
+.coin-toss-verdict {
+  font-size: 46px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  animation: coin-toss-verdict 1.5s cubic-bezier(0.2, 1.4, 0.4, 1) var(--coin-verdict) forwards;
+}
+
+.coin-toss.p0 .coin-toss-verdict {
+  color: var(--p0);
+}
+
+.coin-toss.p1 .coin-toss-verdict {
+  color: var(--p1);
+}
+
+@keyframes coin-toss-call {
+  0% {
+    opacity: 0;
+    letter-spacing: 2px;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    letter-spacing: 9px;
+  }
+}
+
+@keyframes coin-toss-verdict {
+  0% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+@media (max-width: 560px) {
+  .coin-toss-verdict {
+    font-size: 30px;
+  }
+}
+
 /* The battle's opening: the same banner, held longer, with the objective under it. */
 .round-announce.opening {
   animation-duration: 3.6s;

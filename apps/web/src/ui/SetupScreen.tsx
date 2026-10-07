@@ -8,6 +8,7 @@ import {
   getMap,
   PRESET_IDS,
   PRESETS,
+  randomSeed,
   type MapDef,
   type MapLookup,
   type MatchSetup,
@@ -129,7 +130,9 @@ const MODE_TITLES: Record<Mode, string> = {
 export function SetupScreen({ initial, mode, onStart, onBack, onOpenSandbox }: Props): JSX.Element {
   // The choices made last time on this screen, where they are still on offer.
   const [saved] = useState(() => loadSetupPrefs(browserStorage()));
-  const [seed, setSeed] = useState(initial.seed);
+  // A new seed per visit, so each battle rolls its own coin toss and its own dice
+  // (the Advanced box still takes one by hand, to play a match again exactly).
+  const [seed, setSeed] = useState(randomSeed);
   // Custom maps saved from the editor (read once; the editor is a separate screen).
   const [customMaps] = useState(() => playableCustomMaps(browserStorage()));
   // Saved army-builder armies that can be played; read again whenever the

@@ -7,6 +7,7 @@ import {
   defaultKing,
   getMap,
   getPreset,
+  randomSeed,
   validateMap,
   type MapDef,
   type MapLookup,
@@ -138,7 +139,7 @@ export class RoomEngine {
   /** `newSeed` picks each game's seed (injected so tests are deterministic). */
   constructor(
     snapshot: RoomSnapshot = newRoomSnapshot(),
-    private readonly newSeed: () => number = () => Math.floor(Math.random() * 2 ** 31),
+    private readonly newSeed: () => number = randomSeed,
   ) {
     this.room = snapshot;
   }

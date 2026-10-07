@@ -84,6 +84,22 @@ export class PresentationQueue<T> {
     }, ms);
   }
 
+  /**
+   * Swap a hold started by {@link holdFor} for one of `ms` from now — for an
+   * opening that ended when it chose to rather than on the clock (a coin toss
+   * the player waved off). Does nothing unless such a hold is running.
+   */
+  reholdFor(ms: number): void {
+    if (this.disposed || this.current !== null || !this.holding) return;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+    this.holding = false;
+    this.holdFor(ms);
+    if (this.holding) return;
+    this.pump();
+    if (this.idle) this.wake();
+  }
+
   dispose(): void {
     this.disposed = true;
     if (this.timer !== null) clearTimeout(this.timer);

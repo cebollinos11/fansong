@@ -61,6 +61,9 @@ action; the AI, the tests, and any future UI all pick from that list.
 
 ## The activation twist (implemented)
 
+- A **coin toss** decides who leads round 1. It is drawn from the match's seed, so a
+  replay or an online room tosses the same way; the web UI plays it as a coin flip
+  before the first turn (Space skips it).
 - Players alternate **one unit per activation**; initiative flips each round.
 - An activation commits **1–3 dice** rolled vs the unit's Quality; successes
   become action points (move/attack). A **Dumb** unit may roll at most 2.

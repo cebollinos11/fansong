@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, makeHexGrid, reduce, getLegalCommands, vecKey } from '@fansong/engine';
+import { createGame, makeHexGrid, reduce, getLegalCommands, tossInitiative, vecKey } from '@fansong/engine';
 import { buildMatch, DEFAULT_BOARD, DEFAULT_MAP, defaultPigRounds, GOLDEN_PIG, layOutWarband } from '../src/deploy.js';
 import { listMaps } from '../src/mapRegistry.js';
 import { supportedModes } from '../src/mapValidate.js';
@@ -73,6 +73,17 @@ describe('buildMatch', () => {
       initiativeLeader: 1,
     });
     expect(createGame(config).initiativeLeader).toBe(1);
+  });
+
+  it('tosses a coin for the first turn when nobody is named, the same way for the same seed', () => {
+    const leader = (seed: number) =>
+      createGame(buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['night-haunt-medium']!, { seed, board })).initiativeLeader;
+    const leaders = Array.from({ length: 40 }, (_, seed) => leader(seed));
+    expect(leaders).toEqual(leaders.map((_, seed) => tossInitiative(seed)));
+    expect(new Set(leaders)).toEqual(new Set([0, 1]));
+    // Whoever wins the toss is the side to act.
+    const state = createGame(buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['night-haunt-medium']!, { seed: 40, board }));
+    expect(state.active).toBe(state.initiativeLeader);
   });
 });
 

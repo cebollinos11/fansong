@@ -69,12 +69,13 @@ const DOME_VERTEX = /* glsl */ `
 
 const DOME_FRAGMENT = /* glsl */ `
   uniform vec3 uZenith, uHorizon;
+  uniform float uDim;
   varying vec3 vDir;
   void main() {
     vec3 d = normalize(vDir);
     // Eased so the sky leaves the horizon colour gently, meeting the hazy floor without a seam.
     float up = 1.0 - pow(1.0 - clamp(d.y, 0.0, 1.0), 3.0);
-    gl_FragColor = vec4(mix(uHorizon, uZenith, up), 1.0);
+    gl_FragColor = vec4(mix(uHorizon, uZenith, up) * uDim, 1.0);
     #include <colorspace_fragment>
   }`;
 
@@ -89,6 +90,7 @@ const FLOOR_VERTEX = /* glsl */ `
 const FLOOR_FRAGMENT = /* glsl */ `
   uniform vec3 uHorizon, uLit, uShade;
   uniform vec3 uCam;
+  uniform float uDim;
   uniform vec2 uFade;
   /** The board's centre and half extents on the ground, to shade the ground at its foot. */
   uniform vec2 uBoardCentre, uBoardHalf;
@@ -127,7 +129,7 @@ const FLOOR_FRAGMENT = /* glsl */ `
     float dist = max(boardDist(p), 0.0);
     float below = (uCam.y - vWorld.y) / length(vWorld - uCam);
     c = mix(c, uHorizon, max(smoothstep(uFade.x, uFade.y, dist), 1.0 - smoothstep(0.0, 0.12, below)));
-    gl_FragColor = vec4(c, 1.0);
+    gl_FragColor = vec4(c * uDim, 1.0);
     #include <colorspace_fragment>
   }`;
 
@@ -194,6 +196,8 @@ export class Backdrop {
   private readonly dome: THREE.Mesh;
   private readonly floor: THREE.Mesh;
   private readonly materials: THREE.ShaderMaterial[] = [];
+  /** How bright the sky and ground are drawn (1 as painted), shared by both shaders. */
+  private readonly dim = { value: 1 };
   /** Just under the board's tiles. */
   private readonly floorY: number;
 
@@ -210,6 +214,7 @@ export class Backdrop {
     const shared = {
       uZenith: color(wood ? ROOM : SKY.zenith),
       uHorizon: color(wood ? ROOM : SKY.horizon),
+      uDim: this.dim,
     };
 
     const domeMat = new THREE.ShaderMaterial({
@@ -259,6 +264,11 @@ export class Backdrop {
     u.uBoardCentre!.value.set(centre.x, centre.z);
     u.uBoardHalf!.value.set(half.x, half.z);
     u.uOrigin!.value.set(origin.x, origin.z);
+  }
+
+  /** Draw the sky and ground at `light` of their brightness (the coin toss fades them back). */
+  setLight(light: number): void {
+    this.dim.value = light;
   }
 
   /** Keep the sky centred on the camera and the floor under it. */

@@ -1,3 +1,5 @@
+import type { Owner } from './types.js';
+
 /**
  * Seeded, purely-functional RNG (mulberry32).
  *
@@ -51,4 +53,15 @@ export function rollDice(state: number, count: number): { dice: number[]; state:
 export function seedRng(seed: number): number {
   // One mixing step so nearby seeds diverge immediately.
   return rngNext(seed | 0).state;
+}
+
+/**
+ * The coin toss that decides who leads round 1: heads for player 0, tails for
+ * player 1. Drawn from the game's own seed rather than its RNG state, so the
+ * toss costs no draw (every roll in the game is unchanged), is the same for
+ * everyone who holds the seed — both clients of an online room, and anyone
+ * replaying the match — and is settled before the first unit moves.
+ */
+export function tossInitiative(seed: number): Owner {
+  return rngNext(seedRng(seed)).value < 0.5 ? 0 : 1;
 }

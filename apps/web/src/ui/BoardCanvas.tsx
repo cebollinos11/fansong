@@ -12,6 +12,8 @@ import { COLOR_NAMES, type SideNames } from './sides.js';
 import { UnitDiceMenu } from './UnitDiceMenu.js';
 import { canOfferFullscreen, toggleFullscreen, useFullscreen } from './fullscreen.js';
 import { sfx } from '../audio/sfx.js';
+import { COIN_IMPACT_MS, COIN_LAND_MS, COIN_SETTLE_MS } from '../three/coin.js';
+import { tossWords, type CoinTossView } from './coinView.js';
 
 interface Props {
   state: GameState;
@@ -86,6 +88,13 @@ interface Props {
   /** Shown briefly over the board when a new round begins; null the rest of the time. */
   /** The round-start banner; the battle's opening one also states the objective. */
   announcement?: { round: number; owner: Owner; turnLabel: string; objective?: Objective } | null;
+  /**
+   * The coin toss for the first turn, played once when it is first handed over
+   * (before any banner): the board tosses the coin and this says what it showed.
+   */
+  toss?: CoinTossView | null;
+  /** The toss is over: it played out, or the player skipped it. */
+  onTossDone?: () => void;
   /**
    * The zone being scored as a round ends, arriving with its own `events`
    * batch: the board goes to it and shows who takes its point, in place of
@@ -183,8 +192,10 @@ export function BoardCanvas(props: Props): JSX.Element {
     onCellClick: props.onCellClick,
     onCellDrag: props.onCellDrag,
     onEventsPlayed: props.onEventsPlayed,
+    onTossDone: props.onTossDone,
   });
   handlers.current = {
+    onTossDone: props.onTossDone,
     onUnitClick: props.onUnitClick,
     onCellClick: props.onCellClick,
     onCellDrag: props.onCellDrag,
@@ -200,6 +211,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     view.onUnitClick = (id) => handlers.current.onUnitClick(id);
     view.onCellClick = (cell) => handlers.current.onCellClick(cell);
     view.onCellHover = setHover;
+    view.onTossDone = () => handlers.current.onTossDone?.();
     view.buildBoard(props.state);
     view.setBackdrop(loadBackdrop());
     viewRef.current = view;
@@ -319,6 +331,14 @@ export function BoardCanvas(props: Props): JSX.Element {
     markingsKey,
   ]);
 
+  // Toss the coin once per toss handed over. After the names effect above, so
+  // the faces are struck with what the top bar calls each side.
+  const toss = props.toss ?? null;
+  useEffect(() => {
+    if (toss) viewRef.current?.tossCoin(toss);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toss]);
+
   // Fire transient FX when a new event batch arrives; an empty batch (a replay
   // jump, a resync) drops whatever was still playing.
   useEffect(() => {
@@ -406,6 +426,16 @@ export function BoardCanvas(props: Props): JSX.Element {
   return (
     <div className="board-wrap" onPointerMove={onPointerAt} onPointerDown={onPointerAt}>
       <div ref={containerRef} className="board-canvas" />
+      {toss ? (
+        // The words wait on the coin: the call while it is in the air, the verdict once it lies still.
+        <div
+          className={`coin-toss p${toss.winner}`}
+          style={{ '--coin-verdict': `${COIN_LAND_MS + COIN_IMPACT_MS + COIN_SETTLE_MS}ms` } as React.CSSProperties}
+        >
+          <div className="coin-toss-call">{tossWords(toss).call}</div>
+          <div className="coin-toss-verdict">{tossWords(toss).verdict}</div>
+        </div>
+      ) : null}
       {props.announcement ? (
         <div
           key={props.announcement.round}

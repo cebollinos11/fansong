@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rollD6, rollDice, rngNext, seedRng } from '../src/rng.js';
+import { rollD6, rollDice, rngNext, seedRng, tossInitiative } from '../src/rng.js';
 
 describe('rng', () => {
   it('is deterministic for a given state', () => {
@@ -36,5 +36,24 @@ describe('rng', () => {
 
   it('distinct seeds diverge immediately', () => {
     expect(seedRng(1)).not.toEqual(seedRng(2));
+  });
+});
+
+describe('tossInitiative', () => {
+  it('gives the same side for the same seed', () => {
+    for (const seed of [0, 1, 42, 1337, 2 ** 31 - 1]) expect(tossInitiative(seed)).toBe(tossInitiative(seed));
+  });
+
+  it('is a fair coin across seeds', () => {
+    let tails = 0;
+    for (let seed = 0; seed < 20_000; seed++) tails += tossInitiative(seed);
+    expect(tails / 20_000).toBeGreaterThan(0.48);
+    expect(tails / 20_000).toBeLessThan(0.52);
+  });
+
+  it('costs the game no roll: the first die of a seed is what it always was', () => {
+    const before = rollD6(seedRng(42));
+    tossInitiative(42);
+    expect(rollD6(seedRng(42))).toEqual(before);
   });
 });

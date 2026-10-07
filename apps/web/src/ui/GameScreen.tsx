@@ -21,11 +21,14 @@ import { sideNames } from './sides.js';
 import type { LogFocus } from './BattleLogView.js';
 import { appendEvents, emptyLog, type BattleLog } from './log.js';
 import { battleUnstarted, objective, zoneScore } from './modeView.js';
+import { coinTossView, type CoinTossView } from './coinView.js';
 
 /** How long the round-start banner stays up over the board (ms; matches the CSS animation). */
 const ROUND_ANNOUNCE_MS = 1800;
 /** How long the battle's opening banner, which also states the objective, stays up (ms; matches the CSS). */
 const OPENING_MS = 3600;
+/** The longest the first move waits on the coin toss to report that it is over. */
+const TOSS_HOLD_LIMIT_MS = 60_000;
 /** How long a scored zone stays on screen after its point counts, before the next one. */
 const ZONE_SCORE_HOLD_MS = 800;
 
@@ -77,11 +80,17 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   // own timer. Also gates `myTurn` and holds the presentation queue (see the
   // subscribe effect), so nothing next round is clickable or shown until it clears.
   // A battle nobody has moved in yet opens the same way, round 1 with the objective under it.
-  const [roundAnnounce, setRoundAnnounce] = useState<{ round: number; owner: Owner; opening?: boolean } | null>(() => {
+  // First of all, though, the coin is tossed for the first turn: the banner waits for it.
+  const [roundAnnounce, setRoundAnnounce] = useState<{ round: number; owner: Owner; opening?: boolean } | null>(null);
+  const [toss, setToss] = useState<CoinTossView | null>(() => {
     const first = client.getState();
-    return !sandbox && battleUnstarted(first) ? { round: 1, owner: first.active, opening: true } : null;
+    return !sandbox && battleUnstarted(first)
+      ? coinTossView(first, sideNames(client.setup, client.controlledSeats))
+      : null;
   });
-  const openingRef = useRef(roundAnnounce?.opening === true);
+  const openingRef = useRef(toss !== null);
+  // Whether the toss is still to end, so its end is acted on once however often it is reported.
+  const tossing = useRef(toss !== null);
   const queueRef = useRef<PresentationQueue<Transition> | null>(null);
   // How long the transition now showing took to play: 0 when it was instant or skipped.
   const playedMs = useRef(0);
@@ -136,7 +145,10 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     );
     queueRef.current = queue;
     // An AI that leads plays its first move once the opening banner has cleared.
-    if (openingRef.current) queue.holdFor(OPENING_MS);
+    // The toss comes first, and runs on the board's clock, not this one: hold until
+    // its end re-times the hold to the banner alone (see `endToss`). The limit is
+    // only there so a board that never reports back can't lock the game.
+    if (openingRef.current) queue.holdFor(TOSS_HOLD_LIMIT_MS);
     // A round's zones are scored one at a time before it ends, and Reassembling
     // units stand up after the round's banner, not under it.
     const unsub = client.subscribe((t) =>
@@ -175,6 +187,15 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     };
   }, [client]);
 
+  // The coin has landed (or was waved off): now the opening banner, and only it, holds the first move back.
+  const endToss = useCallback(() => {
+    if (!tossing.current) return;
+    tossing.current = false;
+    setToss(null);
+    setRoundAnnounce({ round: 1, owner: client.getState().initiativeLeader, opening: true });
+    queueRef.current?.reholdFor(OPENING_MS);
+  }, [client]);
+
   const ready = status.phase === 'ready';
   // Input waits for the board to catch up, so a human never acts on a result
   // the dice haven't shown yet (once idle, `state` is the client's state). A
@@ -186,6 +207,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     idle &&
     !planning &&
     !roundAnnounce &&
+    !toss &&
     state.phase !== 'gameOver' &&
     client.controlledSeats.includes(state.active);
   const interaction = useMemo(() => deriveInteraction(client.legalCommands()), [state, client]);
@@ -525,6 +547,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
           queueRef.current?.played(ms);
         }}
         announcement={announcement}
+        toss={toss}
+        onTossDone={endToss}
         scoring={scoring}
         onUnitClick={handleUnitClick}
         onCellClick={handleCellClick}
@@ -548,7 +572,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         humanTurn={myTurn}
         resolving={!idle}
         playingUnitId={playingUnitId}
-        roundStarting={roundAnnounce !== null}
+        roundStarting={roundAnnounce !== null || toss !== null}
         scoring={scoring !== null}
         log={log}
         inspectedUnitId={inspectedUnitId}

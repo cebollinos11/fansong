@@ -1,4 +1,4 @@
-import { LIMIT_RANGE, makeHexGrid, vecKey, type GameConfig, type GameLimits, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { LIMIT_RANGE, makeHexGrid, tossInitiative, vecKey, type GameConfig, type GameLimits, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
 import { profileRange, unitCost } from './cost.js';
 import { flatMap, mapHexAt, mapToBoard, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
@@ -15,7 +15,7 @@ export interface MatchOptions {
   board?: BoardSize;
   /** Battlefield to play on: its terrain, and deploy zones units are laid out in. */
   map?: MapDef;
-  /** Player who leads round 1 (default 0). */
+  /** Player who leads round 1 (default: the seed's coin toss, see {@link tossInitiative}). */
   initiativeLeader?: Owner;
   /**
    * Game mode (default `annihilation`). Objective modes other than kill-the-king
@@ -296,7 +296,7 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
       seed: opts.seed,
       board: mapToBoard(map),
       warbands: [pigLast(first, 0), pigLast(second, 1)],
-      initiativeLeader: opts.initiativeLeader ?? 0,
+      initiativeLeader: opts.initiativeLeader ?? tossInitiative(opts.seed),
     };
     if (mode === 'golden-pig') config.objectives = { extraction: map.deployZones[escort === 0 ? 1 : 0].map((v) => ({ x: v.x, y: v.y })) };
     else if (mode !== 'annihilation' && mode !== 'kill-the-king') config.objectives = objectivesFor(map, mode);
@@ -308,7 +308,7 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
       seed: opts.seed,
       board: { width: board.width, height: board.height },
       warbands: [pigLast(layOutWarband(fielded(p0, 0), 0, board), 0), pigLast(layOutWarband(fielded(p1, 1), 1, board), 1)],
-      initiativeLeader: opts.initiativeLeader ?? 0,
+      initiativeLeader: opts.initiativeLeader ?? tossInitiative(opts.seed),
     };
     // The goal is the defender's edge column.
     if (escort !== undefined) {

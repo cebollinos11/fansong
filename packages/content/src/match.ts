@@ -28,6 +28,11 @@ export interface MatchSetup {
   warbands?: [Warband, Warband];
   /** Who controls each seat. Hotseat = [human, human]; vs-AI = [human, ai]. */
   seats: [Seat, Seat];
+  /**
+   * The match's RNG seed: every roll comes from it, and so does the coin toss
+   * for the first turn (see `tossInitiative`). Same seed + same commands = same
+   * game, so this is also what makes a replay reproduce.
+   */
   seed: number;
   /**
    * Map to play on (a built-in id from `listMaps`, or a custom map id the caller
@@ -54,6 +59,15 @@ export interface MatchSetup {
 
 /** Resolves a map id to its definition (built-ins by default). */
 export type MapLookup = (id: string) => MapDef | undefined;
+
+/**
+ * A fresh seed for a match nobody asked to reproduce. The seed decides the coin
+ * toss for the first turn as well as every roll, so a screen that starts match
+ * after match picks a new one each time rather than replaying the same game.
+ */
+export function randomSeed(): number {
+  return Math.floor(Math.random() * 2 ** 31);
+}
 
 export const DEFAULT_SETUP: MatchSetup = {
   presets: ['border-watch-small', 'restless-dead-small'],
