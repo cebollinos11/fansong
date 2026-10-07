@@ -147,9 +147,6 @@ function FaceOffSide({ m, owner }: { m: SetupModel; owner: Owner }): JSX.Element
       <div className="fo-name-row">
         {mine ? (
           <>
-            <button type="button" className="fo-arrow" aria-label="Previous warband" onClick={() => cycle(m, owner, -1)}>
-              ‹
-            </button>
             <Picker
               title={`${name}: choose a warband`}
               kind="warband"
@@ -160,8 +157,8 @@ function FaceOffSide({ m, owner }: { m: SetupModel; owner: Owner }): JSX.Element
             >
               <strong>{m.warbands[owner].name}</strong>
             </Picker>
-            <button type="button" className="fo-arrow" aria-label="Next warband" onClick={() => cycle(m, owner, 1)}>
-              ›
+            <button type="button" className="fo-build" onClick={() => m.openBuilder(owner)}>
+              {isArmyChoice(m.sides[owner]) ? '⚒ Edit army' : '⚒ Build army'}
             </button>
           </>
         ) : (
@@ -174,11 +171,6 @@ function FaceOffSide({ m, owner }: { m: SetupModel; owner: Owner }): JSX.Element
         {meta(m, owner)}
         {note ? <span className="fo-note">{note}</span> : null}
       </p>
-      {mine ? (
-        <button type="button" className="muster-link fo-build" onClick={() => m.openBuilder(owner)}>
-          {isArmyChoice(m.sides[owner]) ? '⚒ Edit this army' : '⚒ Build your own army'}
-        </button>
-      ) : null}
       <details className="fo-roster" open={ktk || undefined}>
         <summary>{ktk && mine ? 'Roster · pick the King' : 'Roster'}</summary>
         <UnitList m={m} owner={owner} />
@@ -243,11 +235,6 @@ const WarbandScene = memo(function WarbandScene({
   );
 });
 
-/** Every warband on offer, in picker order. */
-function choices(armies: readonly SavedArmy[]): string[] {
-  return [...PRESET_IDS, ...armies.map((a) => armyChoice(a.id))];
-}
-
 function warbandGroups(armies: readonly SavedArmy[]): () => PickerGroup[] {
   return () => {
     const presets = PRESET_IDS.map((id) => warbandItem(id, PRESETS[id]!));
@@ -273,13 +260,6 @@ function mapGroups(custom: readonly MapDef[]): () => PickerGroup[] {
           { label: 'Built-in', items: listMaps().map(item) },
           { label: 'Custom', items: custom.map(item) },
         ];
-}
-
-/** Step to the previous or next warband on offer. */
-function cycle(m: SetupModel, owner: Owner, by: 1 | -1): void {
-  const all = choices(m.armies);
-  const i = all.indexOf(m.sides[owner]);
-  m.pickSide(owner, all[(i + by + all.length) % all.length]!);
 }
 
 /**

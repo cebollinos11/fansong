@@ -5308,28 +5308,34 @@ button.trait-add[aria-expanded='true'] {
   top: calc(var(--unit) * var(--y) * 0.58);
 }
 
+/* The warband's name and the way into the army builder, side by side: the
+   name carries twice the width, being the choice most games start with. */
 .fo-name-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
+  justify-content: center;
   gap: 10px;
-}
-
-.muster button.fo-arrow {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  background: transparent;
-  border-color: var(--gold-dim);
-  color: var(--gold);
-  font-size: 24px;
-  line-height: 1;
+  width: min(460px, 100%);
 }
 
 .muster button.fo-name {
-  min-width: 260px;
+  flex: 2 1 0;
+  min-width: 0;
   justify-content: center;
   padding: 8px 16px;
   border-color: var(--gold-dim);
+}
+
+.muster button.fo-build {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding: 8px 10px;
+  background: transparent;
+  border-color: var(--gold-dim);
+  color: var(--gold);
+  font-size: 15px;
+  text-align: center;
 }
 
 .fo-name strong {
@@ -5340,16 +5346,13 @@ button.trait-add[aria-expanded='true'] {
   margin: 4px 0 6px;
 }
 
-.muster button.fo-build {
-  margin-bottom: 6px;
-}
-
 /* The other player's warband: named, but not this screen's to change. */
 .fo-name-fixed {
   display: flex;
+  flex: 1 1 0;
   align-items: center;
   justify-content: center;
-  min-width: 260px;
+  min-width: 0;
   min-height: 44px;
   padding: 8px 16px;
   border: 1px solid #4a4f66;
@@ -5476,12 +5479,6 @@ button.trait-add[aria-expanded='true'] {
     order: 2;
   }
 
-  .muster button.fo-name,
-  .fo-name-fixed {
-    min-width: 0;
-    flex: 1;
-  }
-
   .muster-top {
     flex-wrap: wrap;
   }
@@ -5498,6 +5495,14 @@ button.trait-add[aria-expanded='true'] {
 
   .fo-name-row {
     width: 100%;
+  }
+
+  .fo-name strong {
+    font-size: 19px;
+  }
+
+  .muster button.fo-build {
+    font-size: 14px;
   }
 
   .fo-field {
