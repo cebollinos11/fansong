@@ -753,6 +753,8 @@ button.ghost {
   position: absolute;
   inset: 0;
   z-index: 5;
+  /* The verdict lands scaled up, a full-width line wider than the board: clip it, or the page scrolls. */
+  overflow: hidden;
   pointer-events: none;
   text-align: center;
 }
