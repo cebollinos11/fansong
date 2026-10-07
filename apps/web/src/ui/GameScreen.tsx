@@ -230,17 +230,16 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         : undefined,
     [groupIds, state],
   );
-  // While the human picks a unit or gives it orders, the enemies that can no
-  // longer answer this round (acted already, or their side turned over) sit dimmed.
-  const spentUnitIds = useMemo(
-    () =>
-      myTurn && (state.phase === 'awaitingActivation' || state.phase === 'acting')
-        ? state.units
-            .filter((u) => !u.dead && u.owner !== state.active && (u.activatedThisRound || state.benched[u.owner]))
-            .map((u) => u.id)
-        : [],
-    [myTurn, state],
-  );
+  // Units that can no longer act this round (acted already, or their side
+  // turned over) sit dimmed on both sides, whoever's turn it is. The unit in
+  // hand and the group members waiting behind it are still live.
+  const spentUnitIds = useMemo(() => {
+    if (state.phase === 'gameOver') return [];
+    const live = new Set([state.activeUnitId, ...(state.group?.pending.map((m) => m.unitId) ?? [])]);
+    return state.units
+      .filter((u) => !u.dead && !live.has(u.id) && (u.activatedThisRound || state.benched[u.owner]))
+      .map((u) => u.id);
+  }, [state]);
 
   /** Commit a plan: send its first command, then the rest as the board catches up. */
   const runPlan = useCallback((plan: ActionPlan) => {
@@ -289,10 +288,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
     if (sandbox?.onUnitClick(id)) return;
     if (!myTurn) return;
     if (state.phase === 'awaitingActivation') {
-      if (interaction.selectableUnitIds.includes(id)) {
-        setPinnedCell(null);
-        setSelectedUnitId(id);
-      }
+      setPinnedCell(null);
+      // A unit that can't activate is a click away, which lets go of the one picked.
+      setSelectedUnitId(interaction.selectableUnitIds.includes(id) ? id : null);
       return;
     }
     if (state.phase !== 'acting' || !state.activeUnitId) return;
@@ -348,6 +346,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
   const handleCellClick = (cell: Vec): void => {
     setAttackChoice(null);
     if (sandbox?.onCellClick(cell)) return;
+    // Clicking away lets go of the unit picked to roll, even on the tap that only pins a hex.
+    if (myTurn && state.phase === 'awaitingActivation') setSelectedUnitId(null);
     // Any hex can be looked at, whoever's turn it is; tapping it again lets go.
     if (pinFirst(cell)) return;
     setPinnedCell(null);
@@ -356,9 +356,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
       // One click commits the whole chain, however many actions it spends.
       const plan = plans.byCell.get(vecKey(cell));
       if (plan) runPlan(plan);
-      return;
     }
-    if (state.phase === 'awaitingActivation') setSelectedUnitId(null);
   };
 
   /**

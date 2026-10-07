@@ -81,7 +81,7 @@ export interface BoardViewModel {
   selectableUnitIds: string[];
   /** Unit the human has selected but not yet committed dice for. */
   selectedUnitId: string | null;
-  /** Enemy units already done for the round, drawn dimmed while the human decides. */
+  /** Units of either side already done for the round, drawn with a dimmed base. */
   spentUnitIds?: string[];
   /** Units the reader is pointing at elsewhere (a log line), ringed above every other cue. */
   focusUnitIds?: string[];
@@ -378,8 +378,8 @@ const OUTLINE_THINNING = 0.8; // 0 keeps the outline a fixed share of the sprite
 const OUTLINE_MIN_SCALE = 0.2; // limits on how far zoom thins or thickens it
 const OUTLINE_MAX_SCALE = 1.5;
 
-// An enemy that has already acted this round (or whose side turned over) has
-// its base go dark while the human picks and plans, so what can still answer stands out.
+// A unit that has already acted this round (or whose side turned over) has
+// its base go dark, on either side, so what can still act stands out.
 const SPENT_BASE = new THREE.Color(0x2a2e36); // the colour its base fades toward
 
 // Units are paper cutouts: a Wesnoth sprite standing upright on a round base.
