@@ -64,8 +64,8 @@ describe('coin toss view', () => {
 
   it('reads the verdict out in the side\'s own name', () => {
     const state = game([unit('Levy', 0)], [unit('Whelp', 7)]);
-    expect(tossWords(coinTossView(state, ['You', 'AI'])).verdict).toBe('First strike to you');
-    expect(tossWords({ ...coinTossView(state, ['You', 'AI']), winner: 1 }).verdict).toBe('First strike to AI');
-    expect(tossWords(coinTossView(state, ['Iron Wardens', 'Ashfang Raiders'])).verdict).toBe('First strike to Iron Wardens');
+    expect(tossWords(coinTossView(state, ['You', 'AI'])).verdict).toBe('You begin!');
+    expect(tossWords({ ...coinTossView(state, ['You', 'AI']), winner: 1 }).verdict).toBe('AI begins!');
+    expect(tossWords(coinTossView(state, ['Iron Wardens', 'Ashfang Raiders'])).verdict).toBe('Iron Wardens begins!');
   });
 });

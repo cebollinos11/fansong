@@ -49,9 +49,10 @@ export function coinTossView(state: GameState, names: SideNames): CoinTossView {
 
 /** What the toss banner says while the coin is in the air, and once it has landed. */
 export function tossWords(toss: CoinTossView): { call: string; verdict: string } {
+  const name = sideName(toss.names, toss.winner, true);
   return {
     call: 'The coin is in the air',
-    // No verb to agree: an army's name may be one thing or many.
-    verdict: `First strike to ${sideName(toss.names, toss.winner)}`,
+    // "You begin", but an army is one thing whatever its name: "Iron Wardens begins".
+    verdict: `${name} ${name === 'You' ? 'begin' : 'begins'}!`,
   };
 }
