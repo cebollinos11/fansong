@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { airborne, spellRange, unitById, unitMove, type GameState, type Owner } from '@fansong/engine';
 import type { Interaction } from '../game/interaction.js';
 import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { BROKEN_HELP, INSPIRED_HELP, TRANSFIXED_HELP, WAR_CRY_HELP, breaksAtHelp, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, TRANSFIXED_HELP, WAR_CRY_HELP, breaksAtHelp, leavePrompt, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import { itemText, type BattleLog } from './log.js';
 import { sideNames } from './sides.js';
@@ -78,6 +78,55 @@ function saveLogOpen(open: boolean): void {
 }
 
 /**
+ * The way out of a battle, behind a question. "New match" sits a few pixels
+ * from the battle log's toggle, and a mis-tap on it used to throw the game
+ * away with no way back, so it asks first. Escape or a click on the dimmed
+ * board answers "keep playing"; nothing but the button leaves.
+ */
+function LeaveConfirm({ state, onCancel, onConfirm }: {
+  state: GameState;
+  onCancel: () => void;
+  onConfirm: () => void;
+}): JSX.Element {
+  const prompt = leavePrompt(state);
+  const keepPlaying = useRef<HTMLButtonElement>(null);
+
+  // Keep the keyboard here while the question is up: Escape answers it, and
+  // the game's own Escape (which drops the selection) must not also fire.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    };
+    // Capture on the window runs before the game screen's own window listener.
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [onCancel]);
+
+  // Focus the safe answer, so a stray Enter or Space keeps the battle.
+  useEffect(() => keepPlaying.current?.focus(), []);
+
+  return (
+    <div className="leave-confirm" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
+      <div className="leave-confirm-card" role="dialog" aria-modal="true" aria-label={prompt.title}>
+        <h2>{prompt.title}</h2>
+        <p>{prompt.detail}</p>
+        <div className="leave-confirm-actions">
+          <button ref={keepPlaying} type="button" className="primary" onClick={onCancel}>
+            Keep playing
+          </button>
+          <button type="button" className="ghost danger" onClick={onConfirm}>
+            Leave the battle
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * The match HUD, floating over the board rather than beside it: the score and
  * whose move it is across the top, the battle log (which can be hidden) in the top-right corner, and
  * the unit in hand with its orders along the bottom.
@@ -85,6 +134,8 @@ function saveLogOpen(open: boolean): void {
 export function Hud(props: Props): JSX.Element {
   const { state, setup, controlledSeats, status, interaction, selectedUnitId, humanTurn } = props;
   const [logOpen, setLogOpen] = useState(loadLogOpen);
+  // Set while the way out is waiting on an answer (see {@link LeaveConfirm}).
+  const [leaving, setLeaving] = useState(false);
   const gameOver = state.phase === 'gameOver';
   const selected = selectedUnitId ? unitById(state, selectedUnitId) : null;
   const activeUnit = state.activeUnitId ? unitById(state, state.activeUnitId) : null;
@@ -237,7 +288,13 @@ export function Hud(props: Props): JSX.Element {
           >
             {logOpen ? '▾' : '▸'} Battle log
           </button>
-          <button type="button" className="ghost" onClick={props.onExit}>
+          <button
+            type="button"
+            className="ghost"
+            title={gameOver ? 'Set up another battle' : 'Give up this battle and set up another'}
+            // A finished game has nothing left to lose, so it just goes.
+            onClick={() => (gameOver ? props.onExit() : setLeaving(true))}
+          >
             ⟵ New match
           </button>
         </div>
@@ -275,6 +332,17 @@ export function Hud(props: Props): JSX.Element {
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {leaving ? (
+        <LeaveConfirm
+          state={state}
+          onCancel={() => setLeaving(false)}
+          onConfirm={() => {
+            setLeaving(false);
+            props.onExit();
+          }}
+        />
       ) : null}
     </aside>
   );

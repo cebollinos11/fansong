@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { ROUT_FRACTION, type GameState, type Owner, type UnitTraits } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { BROKEN_HELP, INSPIRED_HELP, breaksAtHelp, TRAIT_HELP, WAR_CRY_HELP, armyName, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, breaksAtHelp, TRAIT_HELP, WAR_CRY_HELP, armyName, leavePrompt, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
 
 const VS_AI: MatchSetup = {
   presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
@@ -165,5 +165,23 @@ describe('inspiration wording', () => {
       expect(text).toMatch(/sure 6/);
       expect(text).toMatch(/two failures among .* still turn/);
     }
+  });
+});
+
+describe('leavePrompt', () => {
+  it('asks before a battle is thrown away, and says what is lost', () => {
+    const state: GameState = { ...createMatchFromPresets(VS_AI), round: 4 };
+    const prompt = leavePrompt(state);
+    expect(prompt.title).toMatch(/\?$/);
+    expect(prompt.detail).toContain('Round 4');
+    expect(prompt.detail).toContain(`${state.units.length} units still standing`);
+    expect(prompt.detail).toMatch(/no saving or resuming/);
+  });
+
+  it('counts only the living, and says "unit" of the last one', () => {
+    const start = createMatchFromPresets(VS_AI);
+    const oneEach = reduceTo(reduceTo(start, 0, 1), 1, 1);
+    expect(leavePrompt(oneEach).detail).toContain('2 units still standing');
+    expect(leavePrompt(reduceTo(oneEach, 1, 0)).detail).toContain('1 unit still standing');
   });
 });

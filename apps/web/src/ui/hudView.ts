@@ -188,3 +188,25 @@ export function traitLine(unit: Pick<Unit, 'traits'>): string | null {
   const tags = traitTags(unit);
   return tags.length > 0 ? tags.map((t) => t.label).join(' · ') : null;
 }
+
+/** The warning on the way out of a match: what leaving throws away. */
+export interface LeavePrompt {
+  /** The question itself. */
+  title: string;
+  /** How far along the battle is, so the player sees what they'd lose. */
+  detail: string;
+}
+
+/**
+ * What to ask before leaving a battle for the setup screen. A match in progress
+ * is gone for good once it is left — no save, no resume — so say so, and say
+ * how far in it is. A finished game has nothing left to lose, so it needs no
+ * question at all and this is never asked for one.
+ */
+export function leavePrompt(state: GameState): LeavePrompt {
+  const standing = livingCount(state, 0) + livingCount(state, 1);
+  return {
+    title: 'Leave this battle?',
+    detail: `Round ${state.round}, ${standing} ${standing === 1 ? 'unit' : 'units'} still standing. The battle is lost for good — there is no saving or resuming it.`,
+  };
+}

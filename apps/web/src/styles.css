@@ -1808,6 +1808,58 @@ button.ghost {
   white-space: nowrap;
 }
 
+/* --- Leaving a battle (the "New match" question) --- */
+.leave-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 20; /* over the whole HUD, dice rolls included */
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(13, 17, 23, 0.6);
+}
+
+.leave-confirm-card {
+  width: min(360px, 100%);
+  padding: 16px 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.leave-confirm-card h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+
+.leave-confirm-card p {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.leave-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Side by side, the safe answer first — not the full-width stack .primary is elsewhere. */
+.leave-confirm-actions button {
+  width: auto;
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.leave-confirm-actions button.danger {
+  color: var(--p1);
+  border-color: var(--p1);
+}
+
 /* The bottom band is the unit bar's: dice cards and verdicts pin above it. */
 .game.play .roll-layer {
   bottom: 64px;
