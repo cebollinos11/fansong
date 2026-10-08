@@ -77,6 +77,8 @@ export interface BoardViewModel {
   approachTargetIds: string[];
   /** Of the targets above, those it would shoot rather than strike in melee. */
   shootTargetIds?: string[];
+  /** Units marked with a crosshair: in range of a shot or a spell. */
+  crosshairUnitIds?: string[];
   /** Own units that may be activated (awaitingActivation phase). */
   selectableUnitIds: string[];
   /** Unit the human has selected but not yet committed dice for. */
@@ -435,6 +437,27 @@ const WAR_CRY_WAVE_HEX_MS = 700; // how long one hex stays lit as the wave passe
 const INSPIRE_BLINKS = 3; // gold blinks an inspired friend gives, the star landing on the last
 const INSPIRE_BLINK_MS = 260; // one blink
 const INSPIRE_HOLD_MS = 450; // the stars stay in view this long before play goes on
+const CROSSHAIR_SIZE = 0.62; // world size of the crosshair over a unit in range
+const CROSSHAIR_HEIGHT = 0.6; // its centre above the unit's base, times the unit's size
+const CROSSHAIR_PULSE_MS = 900; // one slow swell of it
+/** The crosshair, a pixel to a character: `#` its red, `o` the dark edge that keeps it readable on any sprite. */
+const CROSSHAIR_PIXELS = [
+  '......ooo......',
+  '......o#o......',
+  '....ooo#ooo....',
+  '...o###o###o...',
+  '..o#ooo#ooo#o..',
+  '..o#o..o..o#o..',
+  'ooo#o.ooo.o#ooo',
+  'o###oo#o#oo###o',
+  'ooo#o.ooo.o#ooo',
+  '..o#o..o..o#o..',
+  '..o#ooo#ooo#o..',
+  '...o###o###o...',
+  '....ooo#ooo....',
+  '......o#o......',
+  '......ooo......',
+];
 const BADGE_POP_MS = 380; // a badge popping in over a unit, overshooting a little
 
 // Combat effects (see effects.ts). No red anywhere: impacts are white and gold,
@@ -824,6 +847,8 @@ interface UnitObj {
   ring: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
   /** Mode badge sprite (shares a texture per badge kind); hidden when none. */
   badge: THREE.Sprite;
+  /** A crosshair over its body while it is in range of a shot or spell being weighed. */
+  crosshair: THREE.Sprite;
   /** Whether the view model gives it a badge, which shows once {@link badgeHeld} has passed. */
   badgeOn: boolean;
   /** Board time before which its badge stays hidden: a war cry's star waits for the friend to take heart. */
@@ -1128,6 +1153,7 @@ export class BoardView {
   private readonly markerGroup = new THREE.Group();
   private markingsKey: string | undefined;
   private readonly badgeTextures = new Map<string, THREE.Texture>();
+  private crosshairMat: THREE.SpriteMaterial | null = null;
   private starMaterial: THREE.SpriteMaterial | null = null;
   /** Board tile and feature chunks, raycast for cell picking (`userData.cells` maps each triangle to its cell). */
   private readonly tiles: THREE.Mesh[] = [];
@@ -1487,6 +1513,7 @@ export class BoardView {
       const isGuarding = u.guarding && !u.dead;
       const isShot = vm.shootTargetIds?.includes(u.id) ?? false;
       const isFocused = vm.focusUnitIds?.includes(u.id) ?? false;
+      obj.crosshair.visible = !u.dead && !obj.fade && (vm.crosshairUnitIds?.includes(u.id) ?? false);
       obj.cue = isFocused
         ? { color: FOCUS_COLOR, period: 0, far: false }
         : isAttackTarget || isApproachTarget
@@ -3099,6 +3126,8 @@ export class BoardView {
     this.clearZoneGlow();
     this.routeDotGeo?.dispose();
     for (const t of this.badgeTextures.values()) t.dispose();
+    this.crosshairMat?.map?.dispose();
+    this.crosshairMat?.dispose();
     this.starMaterial?.map?.dispose();
     this.starMaterial?.dispose();
     this.rolls.dispose();
@@ -3166,6 +3195,10 @@ export class BoardView {
     badge.position.y = TILE_TOP + BADGE_HEIGHT;
     badge.visible = false;
 
+    const crosshair = new THREE.Sprite(this.crosshairMaterial());
+    crosshair.visible = false;
+    crosshair.renderOrder = 10;
+
     const stars = new THREE.Group();
     for (let i = 0; i < STAR_COUNT; i++) {
       const star = new THREE.Sprite(this.dizzyStarMaterial());
@@ -3218,6 +3251,7 @@ export class BoardView {
       base,
       ring,
       badge,
+      crosshair,
       badgeOn: false,
       badgeHeld: 0,
       badgePop: null,
@@ -3280,7 +3314,7 @@ export class BoardView {
     );
 
     facing.add(stars, web, orbs); // follow the lunge, and the lean back
-    group.add(ring, base, facing, badge);
+    group.add(ring, base, facing, badge, crosshair);
     group.name = name;
     this.scene.add(group);
     return obj;
@@ -4064,6 +4098,11 @@ export class BoardView {
       obj.web.material.color.setHex(0xffffff).lerp(SPELL_TINT, violet).multiplyScalar(bright);
     }
     obj.badge.position.y = TILE_TOP + BADGE_HEIGHT + lift;
+    if (obj.crosshair.visible) {
+      obj.crosshair.position.set(off.x, TILE_TOP + BASE_HEIGHT + CROSSHAIR_HEIGHT * obj.size + lift, off.z);
+      const swell = 1 + 0.08 * Math.sin((this.now / CROSSHAIR_PULSE_MS) * Math.PI * 2);
+      obj.crosshair.scale.setScalar(CROSSHAIR_SIZE * swell);
+    }
     obj.badge.visible = obj.badgeOn && this.now >= obj.badgeHeld;
     if (obj.badgePop !== null && this.now >= obj.badgePop + BADGE_POP_MS) obj.badgePop = null;
     const pop = obj.badgePop !== null ? (this.now - obj.badgePop) / BADGE_POP_MS : 1;
@@ -4575,6 +4614,29 @@ export class BoardView {
     map.colorSpace = THREE.SRGBColorSpace;
     this.starMaterial = new THREE.SpriteMaterial({ map, alphaTest: 0.5 });
     return this.starMaterial;
+  }
+
+  /** The crosshair sprite's material, shared by every unit: {@link CROSSHAIR_PIXELS} drawn a pixel each and never smoothed. */
+  private crosshairMaterial(): THREE.SpriteMaterial {
+    if (this.crosshairMat) return this.crosshairMat;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = CROSSHAIR_PIXELS.length;
+    const g = canvas.getContext('2d')!;
+    CROSSHAIR_PIXELS.forEach((row, y) => {
+      [...row].forEach((px, x) => {
+        if (px === '.') return;
+        g.fillStyle = px === '#' ? '#ff3b30' : '#1b1f27';
+        g.fillRect(x, y, 1, 1);
+      });
+    });
+    const map = new THREE.CanvasTexture(canvas);
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.magFilter = THREE.NearestFilter;
+    map.minFilter = THREE.NearestFilter;
+    map.generateMipmaps = false;
+    // Drawn over the figure it marks, whatever stands in front of it.
+    this.crosshairMat = new THREE.SpriteMaterial({ map, transparent: true, depthTest: false, depthWrite: false });
+    return this.crosshairMat;
   }
 
   /** A small canvas-drawn badge image, cached per kind. */

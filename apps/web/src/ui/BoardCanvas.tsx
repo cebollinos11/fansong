@@ -3,7 +3,7 @@ import { airborne, unitById, vecKey, type GameEvent, type GameState, type Owner,
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay, type ZoneScore } from '../three/BoardView.js';
 import { BACKDROP_LABELS, BACKDROPS, DEFAULT_BACKDROP, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
-import { shotRangeOverlays } from '../game/rangeView.js';
+import { shotRangeView } from '../game/rangeView.js';
 import { describeHex } from './hexInfo.js';
 import { FightTip } from './FightTip.js';
 import { InfoLines } from './StatIcons.js';
@@ -302,11 +302,19 @@ export function BoardCanvas(props: Props): JSX.Element {
   const rangeCell = rangeHeld ? hover : null;
   const rangeKey = rangeCell ? vecKey(rangeCell) : null;
   const rangeUnitId = props.state.activeUnitId ?? props.selectedUnitId;
-  const overlays = useMemo(
-    () => (rangeCell ? [...baseOverlays, ...shotRangeOverlays(props.state, rangeCell, rangeUnitId)] : baseOverlays),
+  const range = useMemo(
+    () => (rangeCell ? shotRangeView(props.state, rangeCell, rangeUnitId) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [baseOverlays, rangeKey, props.state, rangeUnitId],
+    [rangeKey, props.state, rangeUnitId],
   );
+  const overlays = useMemo(() => (range ? [...baseOverlays, ...range.overlays] : baseOverlays), [baseOverlays, range]);
+  // A crosshair marks each enemy in that range; with the key up, each one the
+  // active unit can shoot, or cast its spell at, from where it stands.
+  const crosshairKey = (
+    range ? range.targetIds : (props.shootTargetIds ?? []).filter((id) => props.attackTargetIds.includes(id))
+  ).join(',');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const crosshairUnitIds = useMemo(() => (crosshairKey ? crosshairKey.split(',') : []), [crosshairKey]);
   // A client may hand over a fresh array each render; only a change of seats matters.
   const seatsKey = props.localSeats?.join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -336,6 +344,7 @@ export function BoardCanvas(props: Props): JSX.Element {
       attackTargetIds: props.attackTargetIds,
       approachTargetIds: props.approachTargetIds ?? [],
       shootTargetIds: props.shootTargetIds ?? [],
+      crosshairUnitIds,
       selectableUnitIds: props.selectableUnitIds,
       selectedUnitId: props.selectedUnitId,
       spentUnitIds,
@@ -355,6 +364,7 @@ export function BoardCanvas(props: Props): JSX.Element {
     props.attackTargetIds,
     props.approachTargetIds,
     props.shootTargetIds,
+    crosshairUnitIds,
     props.selectableUnitIds,
     props.selectedUnitId,
     spentUnitIds,

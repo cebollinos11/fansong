@@ -62,16 +62,25 @@ export function shotCells(state: GameState, unit: Unit, board: Board, from: Vec)
 /**
  * {@link shotCells} for any shooter of `owner`'s side with a ranged attack of
  * `range`, real or imagined; `ignoreId` names the unit that would walk to
- * `from`, whose hex left behind blocks nothing.
+ * `from`, whose hex left behind blocks nothing. `near` is the closest it
+ * reaches: 2 for a shot, 1 for a spell, which sees the same way.
  */
-export function shotCellsWithin(state: GameState, board: Board, from: Vec, range: number, owner: Owner, ignoreId?: string): Vec[] {
+export function shotCellsWithin(
+  state: GameState,
+  board: Board,
+  from: Vec,
+  range: number,
+  owner: Owner,
+  ignoreId?: string,
+  near = 2,
+): Vec[] {
   const pinned = state.units.some((u) => !u.dead && !isDown(u) && u.owner !== owner && board.distance(u.pos, from) === 1);
   if (range < 1 || pinned) return [];
   const occ = occupiedKeys(state, ignoreId);
   const seeThrough = (v: Vec): boolean => occ.has(vecKey(v));
   return board
     .cellsWithin(from, range)
-    .filter((c) => board.distance(from, c) >= 2 && !board.isBlocked(c) && board.lineOfSight(from, c, seeThrough));
+    .filter((c) => board.distance(from, c) >= near && !board.isBlocked(c) && board.lineOfSight(from, c, seeThrough));
 }
 
 /**
