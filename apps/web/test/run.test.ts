@@ -35,6 +35,7 @@ import {
   unitView,
   woundInfo,
   type Choice,
+  repeatGuard,
 } from '../src/ui/runView.js';
 
 function memoryStorage(initial: Record<string, string> = {}): MapStorage & { data: Record<string, string> } {
@@ -395,5 +396,16 @@ describe('the run screens', () => {
     expect(runSeedFrom('abc', 77)).toBeNull();
     expect(runSeedFrom('1.5', 77)).toBeNull();
     expect(runSeedFrom('-3', 77)).toBeNull();
+  });
+});
+
+describe('the run buttons', () => {
+  it("ignore a double click's second click", () => {
+    const counts = repeatGuard(400);
+    expect(counts(1000)).toBe(true);
+    expect(counts(1150)).toBe(false);
+    // A click that was ignored doesn't hold the next one back.
+    expect(counts(1450)).toBe(true);
+    expect(counts(1500)).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import type { RunAction, RunState, WarbandUnit } from '@fansong/content';
 import type { RunRecord } from '../game/runStore.js';
 import { TRAIT_INFO, traitTitle, type TraitKey } from './armyView.js';
@@ -20,6 +20,7 @@ import {
   type Choice,
   type DraftView,
   type OfferView,
+  repeatGuard,
   type RewardOptionView,
   type ShopView,
   type Target,
@@ -50,6 +51,12 @@ type Act = (action: RunAction) => void;
  */
 export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: Props): JSX.Element {
   const header = runHeader(run);
+  // A step redraws the screen, often with another button where the last one was:
+  // the second click of a double click must not take that one too.
+  const guard = useRef(repeatGuard()).current;
+  const act: Act = (action) => {
+    if (guard(performance.now())) onAction(action);
+  };
   return (
     <div className="muster run">
       <header className="muster-top run-top">
@@ -84,7 +91,7 @@ export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: P
       </header>
       <main className="run-body">
         {error ? <p className="muster-error">{error}</p> : null}
-        <Phase run={run} records={records} onAction={onAction} onExit={onExit} onNewRun={onNewRun} />
+        <Phase run={run} records={records} onAction={act} onExit={onExit} onNewRun={onNewRun} />
       </main>
     </div>
   );

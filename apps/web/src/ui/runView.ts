@@ -48,6 +48,22 @@ function choice(s: RunState, action: RunAction): Choice {
   return { action, error: runActionError(s, action) };
 }
 
+/** How long after a step the run's buttons ignore clicks (ms): a double click's second click falls inside it. */
+export const REPEAT_GUARD_MS = 400;
+
+/**
+ * A gate for the run's buttons: called with the time of a click, it says
+ * whether the click counts, which it doesn't within `ms` of the last that did.
+ */
+export function repeatGuard(ms: number = REPEAT_GUARD_MS): (now: number) => boolean {
+  let last = -Infinity;
+  return (now) => {
+    if (now - last < ms) return false;
+    last = now;
+    return true;
+  };
+}
+
 /** A name and a line on what it does, for a chip or an option. */
 export interface Info {
   label: string;

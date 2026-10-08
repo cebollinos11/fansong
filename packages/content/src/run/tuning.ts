@@ -58,10 +58,10 @@ export const RUN_TUNING = {
     height: { base: 10, unitsPerHex: 4, max: 20 },
     /** Terrain goes from `from` to `to` over this many rounds. */
     rampRounds: 12,
-    hills: { from: 0.3, to: 0.8 },
-    forest: { from: 0.08, to: 0.16 },
-    rock: { from: 0.03, to: 0.08 },
-    building: { from: 0.01, to: 0.04 },
+    hills: { from: 0.9, to: 1 },
+    forest: { from: 0.14, to: 0.22 },
+    rock: { from: 0.06, to: 0.1 },
+    building: { from: 0.03, to: 0.05 },
     lava: { from: 0.01, to: 0.04 },
     /** Rounds before this one have no lava. */
     lavaFromRound: 4,
