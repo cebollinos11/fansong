@@ -1,0 +1,93 @@
+# Run mode ("roguelike") — design and build plan
+
+## Context
+
+FanSong has one-off matches only (vs AI, hotseat, online). The goal is a single-player **run**: draft a small warband, fight the AI in battle after battle on rising difficulty, improve the warband between battles, and stop when a battle is lost. Scope agreed in the interview:
+
+| Topic | Decision |
+|---|---|
+| Difficulty | Bigger enemy point budget, tougher generated rosters, more hostile maps/modes. **No AI changes.** |
+| Enemies | Generated from the preset factions' unit pools, bought up to a round budget |
+| Growth | All three, layered after every win: unit XP → pick 1 of 3 reward → gold shop |
+| Unit growth | Existing engine traits and Quality/Combat steps only. **No engine changes.** |
+| Attrition | Injury roll for each fallen unit |
+| Start | Draft a warband from random offers |
+| Structure | Linear. Boss every 5th round (kill-the-king vs a champion). Beating round 10 = "victory", then endless |
+| Regular modes | Annihilation, conquest, king-of-the-hill |
+| Persistence | Resume between battles; a battle left midway **restarts** (same seed, same enemy). Local best-run records. Run seed shown and enterable |
+
+## Shape
+
+**All run rules are a pure, seeded state machine in `packages/content/src/run/`** — same spirit as the engine: `RunState` + a step function, no DOM, tested in Node. The web app only renders it and stores it. The engine, protocol, worker and golden replay are untouched.
+
+### Run state (`run/types.ts`)
+
+```ts
+interface RunUnit { id: string; unit: WarbandUnit; xp: number; level: number; kills: number; sitsOut?: boolean }
+interface RunState {
+  version: 1; seed: number; round: number;          // round = battle about to be / being fought
+  phase: 'draft' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
+  roster: RunUnit[]; gold: number; rolls: number;    // rolls = RNG draws spent, so rerolls stay seeded
+  offer?: ...; pending?: ...;                        // current draft/reward/shop stock, level-up choices
+  battle?: { setup: MatchSetup; map: MapDef };       // built at briefing, reused on restart
+  log: RoundSummary[];                               // per round: mode, enemy faction, kills, losses
+}
+```
+
+Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap as in `mapGen.ts` `makeRandom`), keyed by `round` + `rolls`, so a seed reproduces the whole run's offers, enemies and maps.
+
+### Loop
+
+1. **Draft** — pick a leader (1 of 3), then troops (1 of 3, repeated) until ~120 points are spent. Offers come from `PRESET_UNITS` via `presetUnit` (`presets.ts`), costed by `unitCost` (`cost.ts`).
+2. **Briefing** — shows the round's mode, map thumbnail (`ui/mapThumb.ts`), enemy roster. Player may bench units (roster cap 12) and, on boss rounds, pick their King.
+3. **Battle** — ordinary local match: `MatchSetup { warbands: [player, enemy], seats: ['human','ai'], seed, mapId, mode, kings }`.
+4. **Aftermath** (win only) — XP, level-ups, injury rolls.
+5. **Reward** — pick 1 of 3.
+6. **Shop** — spend gold, then next round. Loss at step 3 → `over`, record saved.
+
+### Difficulty (`run/encounter.ts`)
+
+- **Budget:** `enemyPoints(round)` — fixed curve, not tied to the player's strength (so upgrades matter). Start ≈ 90% of the draft budget, +~12%/round, boss rounds +25%. Constants in one `RUN_TUNING` object; tuned with the CLI sim below.
+- **Roster:** pick a faction (a `PRESET_ROSTERS` entry → its unit pool), take its leader, fill to budget weighted toward that roster's own proportions. From round 4, leftover points buy "veteran" upgrades (a favorable trait or stat step) on random units.
+- **Boss (every 5th):** `mode: 'kill-the-king'`; enemy King is a champion — faction leader pushed to Q2/C5+ with stacked traits — plus an escort from the remaining budget.
+- **Map:** `generateRandomMap` (`mapGen.ts`) seeded per round; it already lays objectives for every mode. Size grows with unit count; `TerrainSettings` get denser/rougher by round; later rounds use `symmetric: false`. Regular rounds roll annihilation / conquest / king-of-the-hill (annihilation only for rounds 1–2).
+
+### Growth (`run/progress.ts`, `run/shop.ts`)
+
+- **Battle report:** pure `battleReport(replay)` re-runs the commands through `reduce`, collecting `UnitKilled { unitId, byId }` → kills per player unit, who fell. (Confirm how `buildMatch` in `deploy.ts` assigns unit ids to map them back to roster entries.)
+- **XP:** +1 for fighting, +2 per kill, +1 more for killing a costlier unit. Levels at 3 / 7 / 12 / 18 XP (cap 4). Each level: choose 1 of 2 advances — an existing favorable trait the unit lacks, Combat +1, or Quality −1, within `STAT_BOUNDS` and `statErrors`.
+- **Injury (d6 per fallen unit):** 1 dead; 2 lasting wound (Combat −1, Quality +1, or an unfavorable trait); 3 sits out next battle; 4–6 recovers. Fled units return unhurt; a turncoat (Disloyal) is gone.
+- **Reward (1 of 3):** a recruit, a trait/stat boost for a unit of your choice, a gold purse, or mending a lasting wound.
+- **Gold:** flat per win + per round + share of enemy points killed. **Shop:** 3 recruits (price = `unitCost`), 2 upgrades (price = cost delta × multiplier), heal a wound, paid reroll, sell a unit.
+
+### Web (`apps/web`)
+
+- `game/runStore.ts` — load/save `fansong.run` and `fansong.runRecords`, following `game/armies.ts` (explicit `MapStorage`, untrusted parse, never throws). Saved on every phase change.
+- `ui/RunScreen.tsx` + `ui/runView.ts` (pure view-model, tested) — draft, briefing, aftermath, reward, shop, game-over/records. Unit cards reuse `ArmyBuilderScreen` / `armyView.ts` pieces.
+- `App.tsx` — new `View` `{ kind: 'run' }`; a `RunHost` that shows `RunScreen` or, in `battle`, a `LocalMatchClient` built with a `MapLookup` that returns the run's generated map. `GameScreen` gets an optional `onFinished(replay, winner)` used by its game-over panel ("Continue") in place of rematch.
+- `MenuScreen.tsx` — "Run" button; shows "Continue run (round N)" when one is saved; new-run dialog takes an optional seed.
+- Mid-battle exit: state stays in `battle`; returning rebuilds the same setup → battle restarts.
+
+### Calibration tool (`tools/cli`)
+
+`pnpm play run --seeds N`: the AI plays the player's seat too, with a greedy auto-picker for draft/reward/shop, and reports how deep runs get. Used to set `RUN_TUNING` so an AI-piloted run usually dies around rounds 4–7 (a human should beat that). Committed, unlike the AI bench.
+
+## Milestones
+
+1. **Core** — `run/` types, RNG, draft, encounter generator, battle report, XP, injuries, rewards, shop; exported from `content/src/index.ts`; unit tests (determinism by seed, every generated warband passes `validateArmy`, every generated map passes `validateMap`, budgets respected).
+2. **CLI sim** — auto-picker + `run` subcommand; first tuning pass.
+3. **Playable loop** — menu entry, draft, briefing, battle, win/lose, save/resume, records, seed entry.
+4. **Between-battle screens** — aftermath (XP, level-up choice, injuries), reward pick, shop.
+5. **Bosses and polish** — champion generation, King pick, hostile-map ramp, round-10 victory screen, second tuning pass. README section + PLAN.md milestone.
+
+## Verification
+
+- `pnpm test` and `pnpm typecheck`; golden replay must stay unchanged (no engine edits).
+- `pnpm play run --seeds 200`: no crashes, depth distribution sane, same seed → same result.
+- Live (Playwright, per CLAUDE.md): start a run with a fixed seed, draft, win round 1 (drive via `window.fansong` or play), check aftermath → reward → shop → round 2; reload mid-shop (resumes) and mid-battle (restarts same battle); lose and see the record.
+
+## Open risks
+
+- Kill-the-king bosses put the player's King at risk too; AI already plays that mode, but balance needs the sim.
+- Battle-restart lets a player retry by closing the tab (accepted trade-off; same seed means same dice for the same moves).
+- Shipping a new save key: `version` field so a later format change can drop old runs cleanly.
