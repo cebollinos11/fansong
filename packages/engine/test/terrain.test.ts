@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { makeHexGrid, type BoardData, type Vec } from '../src/board.js';
+import { makeHexGrid, vecKey, type BoardData, type Vec } from '../src/board.js';
+import { shotCells } from '../src/query.js';
 import { highGroundBonus } from '../src/combat.js';
 import { createDemoGame, createGame, normalizeTerrain, type GameConfig } from '../src/setup.js';
 import { getLegalCommands } from '../src/legal.js';
@@ -336,5 +337,65 @@ describe('high ground', () => {
     expect(down.defenseBonus).toBe(1);
     expect(down.defenseScore).toBe(3 + down.defenseDie + 1);
     expect('attackBonus' in down).toBe(false);
+  });
+});
+
+describe('the hexes a shooter could reach from a hex', () => {
+  const archer = { name: 'Archer', quality: 3, combat: 3, ranged: 4, pos: { x: 0, y: 4 } };
+  const game = (foes: Vec[], terrain: BoardData['terrain'] = {}, friends: Vec[] = []) =>
+    createGame({
+      seed: 1,
+      board: { width: 9, height: 9, terrain },
+      warbands: [
+        [archer, ...friends.map((pos, i) => ({ name: `F${i}`, quality: 3, combat: 3, pos }))],
+        foes.map((pos, i) => ({ name: `E${i}`, quality: 3, combat: 3, pos })),
+      ],
+    });
+  const keys = (s: ReturnType<typeof game>, from: Vec) => {
+    const board = makeHexGrid(s.board);
+    return new Set(shotCells(s, s.units[0]!, board, from).map(vecKey));
+  };
+
+  it('covers 2 hexes off to its range, and nothing nearer or farther', () => {
+    const s = game([{ x: 8, y: 8 }]);
+    const board = makeHexGrid(s.board);
+    const cells = shotCells(s, s.units[0]!, board, { x: 4, y: 4 });
+    expect(cells.length).toBeGreaterThan(0);
+    for (const c of cells) {
+      const d = board.distance({ x: 4, y: 4 }, c);
+      expect(d).toBeGreaterThanOrEqual(2);
+      expect(d).toBeLessThanOrEqual(4);
+    }
+    // An open field: every hex in that band is in reach.
+    expect(cells).toHaveLength(board.cellsWithin({ x: 4, y: 4 }, 4).length - 6);
+  });
+
+  it('stops at terrain and at a unit in the lane, but not at the hex it left', () => {
+    expect(keys(game([{ x: 8, y: 8 }]), { x: 0, y: 4 }).has('4,4')).toBe(true);
+    expect(keys(game([{ x: 8, y: 8 }], { '2,4': { feature: 'rock' } }), { x: 0, y: 4 }).has('4,4')).toBe(false);
+    expect(keys(game([{ x: 8, y: 8 }], {}, [{ x: 2, y: 4 }]), { x: 0, y: 4 }).has('4,4')).toBe(false);
+    // Shooting from (4,4) back across its own hex at (2,4)... it has moved, so that hex is empty.
+    const s = game([{ x: 8, y: 8 }]);
+    s.units[0]!.pos = { x: 2, y: 4 };
+    expect(keys(s, { x: 4, y: 4 }).has('0,4')).toBe(true);
+  });
+
+  it('is empty beside a standing enemy, and for a unit with no ranged attack', () => {
+    const s = game([{ x: 5, y: 4 }]);
+    expect(keys(s, { x: 4, y: 4 }).size).toBe(0);
+    expect(shotCells(s, s.units[1]!, makeHexGrid(s.board), { x: 5, y: 4 })).toEqual([]);
+  });
+
+  it('holds an enemy exactly when shooting it is legal', () => {
+    const s = game([{ x: 4, y: 4 }, { x: 3, y: 1 }, { x: 0, y: 8 }, { x: 8, y: 0 }], { '1,2': { feature: 'forest' } }, [{ x: 2, y: 4 }]);
+    s.phase = 'acting';
+    s.active = 0;
+    s.activeUnitId = s.units[0]!.id;
+    s.actionsRemaining = 1;
+    const shootable = getLegalCommands(s).flatMap((c) => (c.type === 'Shoot' ? [c.targetId] : []));
+    const reach = keys(s, s.units[0]!.pos);
+    const inReach = s.units.filter((u) => u.owner === 1 && reach.has(vecKey(u.pos))).map((u) => u.id);
+    expect(inReach.length).toBeGreaterThan(0);
+    expect(inReach.sort()).toEqual([...new Set(shootable)].sort());
   });
 });

@@ -214,6 +214,10 @@ export function Hud(props: Props): JSX.Element {
           : 'Click a green tile to move, a highlighted enemy to attack.',
       tone: 'yours',
     };
+    // A shooter's player wants to know what a hex would let it shoot at.
+    if (!state.spell && activeUnit && activeUnit.traits.ranged >= 1) {
+      turn.hint += ' Hold R over a hex to see what it could shoot at from there.';
+    };
   }
 
   const side = (owner: Owner): JSX.Element => {

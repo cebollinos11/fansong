@@ -3,6 +3,7 @@ import { airborne, unitById, vecKey, type GameEvent, type GameState, type Owner,
 import { BoardView, type BoardViewModel, type CameraMode, type HexOverlay, type ZoneScore } from '../three/BoardView.js';
 import { BACKDROP_LABELS, BACKDROPS, DEFAULT_BACKDROP, type BackdropKind } from '../three/backdrop.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
+import { shotRangeOverlays } from '../game/rangeView.js';
 import { describeHex } from './hexInfo.js';
 import { FightTip } from './FightTip.js';
 import { InfoLines } from './StatIcons.js';
@@ -263,6 +264,32 @@ export function BoardCanvas(props: Props): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [props.playing]);
 
+  // Holding R shows what a shooter on the pointer's hex could shoot at: the
+  // unit standing there, else the one being moved, as if it had walked there.
+  const [rangeHeld, setRangeHeld] = useState(false);
+  useEffect(() => {
+    if (!props.playing) return;
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.code !== 'KeyR' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      setRangeHeld(true);
+    };
+    const onKeyUp = (e: KeyboardEvent): void => {
+      if (e.code === 'KeyR') setRangeHeld(false);
+    };
+    // A key let go while the window is away never sends its keyup.
+    const onBlur = (): void => setRangeHeld(false);
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [props.playing]);
+
   // Game-mode markings, recomputed only when they change (the state is cloned per command).
   const markingsKey = modeMarkingsKey(props.state);
   const markings = useMemo(
@@ -270,7 +297,15 @@ export function BoardCanvas(props: Props): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [markingsKey],
   );
-  const overlays = props.overlays ?? markings.overlays;
+  const baseOverlays = props.overlays ?? markings.overlays;
+  const rangeCell = rangeHeld ? hover : null;
+  const rangeKey = rangeCell ? vecKey(rangeCell) : null;
+  const rangeUnitId = props.state.activeUnitId ?? props.selectedUnitId;
+  const overlays = useMemo(
+    () => (rangeCell ? [...baseOverlays, ...shotRangeOverlays(props.state, rangeCell, rangeUnitId)] : baseOverlays),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [baseOverlays, rangeKey, props.state, rangeUnitId],
+  );
   // A client may hand over a fresh array each render; only a change of seats matters.
   const seatsKey = props.localSeats?.join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -500,7 +535,7 @@ export function BoardCanvas(props: Props): JSX.Element {
         <button
           type="button"
           className="board-reset-view"
-          title="Reset camera (drag to orbit, right-drag to pan, wheel to zoom)"
+          title="Reset camera (drag to orbit, right-drag to pan, wheel to zoom). Hold R over a hex to see what a shooter there could shoot at"
           onClick={() => viewRef.current?.resetCamera()}
         >
           Reset view

@@ -49,6 +49,22 @@ export function inMelee(state: GameState, unit: Unit, board: Board): boolean {
 }
 
 /**
+ * Every hex `unit` could shoot into if it stood on `from`: those a shot from
+ * there reaches (2 hexes off to its range) with a clear line of sight, as a
+ * shot needs — terrain and the units in the lane block it, its own hex left
+ * behind does not. None when it has no ranged attack, or would be locked in
+ * melee at `from`. Hexes no unit can stand on are left out.
+ */
+export function shotCells(state: GameState, unit: Unit, board: Board, from: Vec): Vec[] {
+  if (unit.traits.ranged < 1 || inMelee(state, { ...unit, pos: from }, board)) return [];
+  const occ = occupiedKeys(state, unit.id);
+  const seeThrough = (v: Vec): boolean => occ.has(vecKey(v));
+  return board
+    .cellsWithin(from, unit.traits.ranged)
+    .filter((c) => board.distance(from, c) >= 2 && !board.isBlocked(c) && board.lineOfSight(from, c, seeThrough));
+}
+
+/**
  * Whether `unit` is out of the fight where it stands: knocked down, or held by
  * a Transfix spell. Either way it is no "standing" unit — it outnumbers no one,
  * closes no pincer, braces no friend, swings at no leaver and holds no ground.
