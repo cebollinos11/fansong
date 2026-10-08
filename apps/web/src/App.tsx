@@ -7,7 +7,21 @@ import { ReplayScreen } from './ui/ReplayScreen.js';
 import { EditorScreen } from './ui/EditorScreen.js';
 import { ArmyBuilderScreen } from './ui/ArmyBuilderScreen.js';
 import { LobbyScreen } from './ui/LobbyScreen.js';
-import { createMatchFromPresets, DEFAULT_BOARD, DEFAULT_SETUP, type MatchSetup } from '@fansong/content';
+import {
+  createMatchFromPresets,
+  DEFAULT_BOARD,
+  DEFAULT_SETUP,
+  newRun,
+  runMapLookup,
+  runMatchSetup,
+  runStep,
+  type MatchSetup,
+  type RunAction,
+  type RunState,
+} from '@fansong/content';
+import { RunScreen } from './ui/RunScreen.js';
+import { freshRunSeed, RUN_LEAVE_DETAIL } from './ui/runView.js';
+import { addRunRecord, clearRun, loadRunRecords, runRecord, saveRun, type RunRecord } from './game/runStore.js';
 import { SandboxScreen } from './ui/SandboxScreen.js';
 import { PresetEditorScreen } from './ui/PresetEditorScreen.js';
 import { RecordScreen } from './ui/RecordScreen.js';
@@ -27,6 +41,7 @@ type View =
   | { kind: 'armies' }
   | { kind: 'presets' }
   | { kind: 'record' }
+  | { kind: 'run'; id: number; run: RunState }
   | { kind: 'match'; id: number; launch: Launch }
   | { kind: 'replay'; id: number; replay: Replay }
   | { kind: 'sandbox'; id: number; initial: GameState; setup: MatchSetup };
@@ -48,6 +63,7 @@ export function App(): JSX.Element {
         onPlay={(mode) => setView({ kind: 'setup', mode })}
         onOpenEditor={() => setView({ kind: 'editor' })}
         onOpenArmies={() => setView({ kind: 'armies' })}
+        onRun={(run) => setView({ kind: 'run', id: Date.now(), run })}
         onOpenPresets={devTools() ? () => setView({ kind: 'presets' }) : undefined}
       />
     );
@@ -79,6 +95,10 @@ export function App(): JSX.Element {
 
   if (view.kind === 'record') {
     return <RecordScreen onExit={toMenu} />;
+  }
+
+  if (view.kind === 'run') {
+    return <RunHost key={view.id} initial={view.run} onExit={toMenu} />;
   }
 
   if (view.kind === 'editor') {
@@ -121,6 +141,91 @@ function MatchHost({
 
   if (!client) return <></>;
   return <GameScreen client={client} onExit={onExit} onWatchReplay={onWatchReplay} />;
+}
+
+/**
+ * A run: its screens between battles and, in the battle phase, the battle
+ * itself as an ordinary local match against the AI. Every step goes through
+ * `runStep` and is saved as it is taken, so the run picks up where it was left;
+ * a battle left midway is not saved, and starts over from the same setup.
+ */
+function RunHost({ initial, onExit }: { initial: RunState; onExit: () => void }): JSX.Element {
+  const storage = browserStorage();
+  const [run, setRun] = useState(initial);
+  const [records, setRecords] = useState<RunRecord[]>(() => loadRunRecords(storage));
+  const [error, setError] = useState<string | null>(null);
+
+  // A run handed in is the run in progress from here on (a new one is not saved until now).
+  useEffect(() => {
+    saveRun(storage, initial);
+  }, []);
+
+  const adopt = (next: RunState): void => {
+    if (next.phase === 'over') {
+      // A finished run leaves a record, and nothing to continue.
+      setRecords(addRunRecord(storage, runRecord(next, 'lost')));
+      clearRun(storage);
+    } else {
+      saveRun(storage, next);
+    }
+    setError(null);
+    setRun(next);
+  };
+
+  const step = (action: RunAction): void => {
+    try {
+      adopt(runStep(run, action));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  if (run.phase === 'battle') return <RunBattle key={run.round} run={run} onStep={step} onExit={onExit} />;
+  return (
+    <RunScreen
+      run={run}
+      records={records}
+      error={error}
+      onAction={step}
+      onExit={onExit}
+      onNewRun={() => adopt(newRun(freshRunSeed()))}
+    />
+  );
+}
+
+/** The battle of a run's battle phase. Its replay, handed back, is what moves the run on. */
+function RunBattle({ run, onStep, onExit }: { run: RunState; onStep: (action: RunAction) => void; onExit: () => void }): JSX.Element {
+  const [client, setClient] = useState<LocalMatchClient | null>(null);
+
+  // Built once per battle: the run doesn't change while it is being fought.
+  useEffect(() => {
+    const c = new LocalMatchClient(runMatchSetup(run), runMapLookup(run));
+    setClient(c);
+    return () => c.dispose();
+  }, []);
+
+  // Devtools access, as the sandbox gives it: `fansongRun.client`, `fansongRun.state()`, `fansongRun.step(action)`.
+  useEffect(() => {
+    if (!devTools() || !client) return;
+    const w = window as unknown as { fansongRun?: unknown };
+    w.fansongRun = { client, state: () => run, step: onStep };
+    return () => {
+      delete w.fansongRun;
+    };
+  }, [client, run, onStep]);
+
+  if (!client) return <></>;
+  const finish = (): void => onStep({ type: 'battleResult', replay: client.getReplay() });
+  return (
+    <GameScreen
+      client={client}
+      // A battle that is over has a result, whichever way the player leaves it.
+      onExit={() => (client.getState().phase === 'gameOver' ? finish() : onExit())}
+      onWatchReplay={() => {}}
+      onFinished={finish}
+      exit={{ label: 'Leave', title: 'Back to the menu. The run is saved; this battle starts over', detail: RUN_LEAVE_DETAIL }}
+    />
+  );
 }
 
 /**

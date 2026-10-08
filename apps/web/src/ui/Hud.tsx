@@ -37,6 +37,16 @@ interface Props {
   onGuard: () => void;
   onWarCry: () => void;
   onExit: () => void;
+  /** A run's battle: the way out is named and explained in its own words. */
+  exit?: ExitWording;
+}
+
+/** What the way out of a battle is called, and what its question warns of. */
+export interface ExitWording {
+  label: string;
+  title: string;
+  /** What leaving costs, in place of {@link leavePrompt}'s "lost for good". */
+  detail: string;
 }
 
 /** A one-line connection banner for online play; null when there's nothing to say. */
@@ -83,8 +93,10 @@ function saveLogOpen(open: boolean): void {
  * away with no way back, so it asks first. Escape or a click on the dimmed
  * board answers "keep playing"; nothing but the button leaves.
  */
-function LeaveConfirm({ state, onCancel, onConfirm }: {
+function LeaveConfirm({ state, detail, onCancel, onConfirm }: {
   state: GameState;
+  /** Said in place of the prompt's own warning. */
+  detail?: string;
   onCancel: () => void;
   onConfirm: () => void;
 }): JSX.Element {
@@ -112,7 +124,7 @@ function LeaveConfirm({ state, onCancel, onConfirm }: {
     <div className="leave-confirm" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
       <div className="leave-confirm-card" role="dialog" aria-modal="true" aria-label={prompt.title}>
         <h2>{prompt.title}</h2>
-        <p>{prompt.detail}</p>
+        <p>{detail ?? prompt.detail}</p>
         <div className="leave-confirm-actions">
           <button ref={keepPlaying} type="button" className="primary" onClick={onCancel}>
             Keep playing
@@ -295,11 +307,11 @@ export function Hud(props: Props): JSX.Element {
           <button
             type="button"
             className="ghost"
-            title={gameOver ? 'Set up another battle' : 'Give up this battle and set up another'}
+            title={props.exit?.title ?? (gameOver ? 'Set up another battle' : 'Give up this battle and set up another')}
             // A finished game has nothing left to lose, so it just goes.
             onClick={() => (gameOver ? props.onExit() : setLeaving(true))}
           >
-            ⟵ New match
+            ⟵ {props.exit?.label ?? 'New match'}
           </button>
         </div>
         {logOpen ? <BattleLogView log={props.log} names={names} onFocus={props.onLogFocus} onInspect={props.onInspect} /> : null}
@@ -341,6 +353,7 @@ export function Hud(props: Props): JSX.Element {
       {leaving ? (
         <LeaveConfirm
           state={state}
+          detail={props.exit?.detail}
           onCancel={() => setLeaving(false)}
           onConfirm={() => {
             setLeaving(false);

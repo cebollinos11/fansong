@@ -13,7 +13,7 @@ import { seamHoldMs } from '../game/seams.js';
 import { AttackMenu, type AttackChoice } from './AttackMenu.js';
 import { BoardCanvas } from './BoardCanvas.js';
 import { fightScores, oddsLine } from './hexInfo.js';
-import { Hud } from './Hud.js';
+import { Hud, type ExitWording } from './Hud.js';
 import { SoundCuePanel } from './SoundCuePanel.js';
 import { devTools } from '../devTools.js';
 import { seatLabel, turnPhrase } from './hudView.js';
@@ -38,6 +38,13 @@ interface Props {
   onWatchReplay: (replay: Replay) => void;
   /** Online: go back to the room's lobby for another game (once this one is over). */
   onRematch?: () => void;
+  /**
+   * A battle that is one step of something longer (a run): the game-over panel
+   * offers "Continue" with the finished game, in place of a rematch or a replay.
+   */
+  onFinished?: (replay: Replay, winner: Owner) => void;
+  /** What the HUD's way out is called and warns of, where leaving isn't "a new match". */
+  exit?: ExitWording;
   /** The dev sandbox's hooks into the board (see {@link SandboxHooks}). */
   sandbox?: SandboxHooks;
   /** Drawn over the game (the dev sandbox's panel). */
@@ -57,7 +64,7 @@ export interface SandboxHooks {
   selectedUnitId: string | null;
 }
 
-export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, children }: Props): JSX.Element {
+export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinished, exit, sandbox, children }: Props): JSX.Element {
   // What the board is showing (it may still be rolling dice for it)...
   const [shown, setShown] = useState<{ state: GameState; events: GameEvent[]; scoring?: ZoneTally }>(() => ({
     state: client.getState(),
@@ -580,11 +587,19 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, sandbox, 
         onGuard={handleGuard}
         onWarCry={handleWarCry}
         onExit={onExit}
+        exit={exit}
       />
       {attackChoice ? (
         <AttackMenu choice={attackChoice} onPick={resolveAttackChoice} onCancel={cancelAttackChoice} />
       ) : null}
-      {over && (replay || onRematch) ? (
+      {over && replay && onFinished ? (
+        <div className="gameover-actions">
+          <span>{state.winner === 0 ? 'Victory!' : 'Defeat.'}</span>
+          <button className="primary" onClick={() => onFinished(replay, state.winner as Owner)}>
+            Continue
+          </button>
+        </div>
+      ) : over && (replay || onRematch) ? (
         <div className="gameover-actions">
           <span>Game over.</span>
           {onRematch ? (

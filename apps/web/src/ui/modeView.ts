@@ -29,7 +29,7 @@ export interface ModeHud {
   lines: string[];
 }
 
-const GOALS = {
+export const GOALS = {
   'kill-the-king': 'Kill the enemy King',
   'capture-the-flag': 'Carry the enemy flag to your base',
   'golden-pig': 'Get the golden Pig into the enemy camp',

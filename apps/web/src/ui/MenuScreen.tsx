@@ -1,9 +1,13 @@
-import { useEffect, useState } from 'react';
-import { PRESET_IDS, PRESETS } from '@fansong/content';
+import { useEffect, useRef, useState } from 'react';
+import { newRun, PRESET_IDS, PRESETS, type RunState } from '@fansong/content';
+import { browserStorage } from '../game/customMaps.js';
+import { addRunRecord, loadRun, loadRunRecords, runRecord, type RunRecord } from '../game/runStore.js';
 import { animationsFor, framesOf, type Clip } from '../three/unitAnimations.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
 import { InstallPrompt } from './InstallPrompt.js';
 import { tintedSpriteUrl } from './Picker.js';
+import { RunRecords } from './RunScreen.js';
+import { freshRunSeed, runMenuItem, runSeedFrom } from './runView.js';
 import type { Mode } from './SetupScreen.js';
 import { UpdateCheck } from './UpdateCheck.js';
 
@@ -12,6 +16,8 @@ interface Props {
   onPlay: (mode: Mode) => void;
   onOpenEditor: () => void;
   onOpenArmies: () => void;
+  /** Play a run: the saved one picked back up, or a new one. */
+  onRun: (run: RunState) => void;
   /** With `?dev=1` in the URL: open the preset unit editor. */
   onOpenPresets?: () => void;
 }
@@ -47,7 +53,7 @@ function freshMatchup(): [MenuTeam, MenuTeam] {
 const reducedMotion = (): boolean => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /** The first screen: pick a way to play, or open one of the workshop tools. */
-export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }: Props): JSX.Element {
+export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onRun, onOpenPresets }: Props): JSX.Element {
   const [[home, away]] = useState(freshMatchup);
   const units = [...home.rank, home.leader, away.leader, ...away.rank];
   // Every so often one unit, picked at random, takes a swing.
@@ -61,6 +67,10 @@ export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }
     return () => clearTimeout(timer);
   }, [strike]);
   const strikeOf = (path: string): number => (strike.unit === path ? strike.n : 0);
+  // The run in progress, if one is saved: the run button picks it back up.
+  const [savedRun] = useState(() => loadRun(browserStorage()));
+  const [newRunOpen, setNewRunOpen] = useState(false);
+  const runItem = runMenuItem(savedRun);
 
   return (
     <div className="menu">
@@ -94,6 +104,15 @@ export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }
             <strong>Play vs AI</strong>
             <span>Solo battle</span>
           </button>
+          <button className="menu-item" onClick={() => (savedRun ? onRun(savedRun) : setNewRunOpen(true))}>
+            <strong>{runItem.title}</strong>
+            <span>{runItem.detail}</span>
+          </button>
+          {savedRun ? (
+            <button className="menu-sub" onClick={() => setNewRunOpen(true)}>
+              Start a new run…
+            </button>
+          ) : null}
           <button className="menu-item" onClick={() => onPlay('online')}>
             <strong>Online</strong>
             <span>Create or join a room</span>
@@ -117,7 +136,80 @@ export function MenuScreen({ onPlay, onOpenEditor, onOpenArmies, onOpenPresets }
       <p className="menu-foot">A fan project. Game design inspired by the wargame <em>Song of Blades and Heroes</em>. Unit art from Battle for Wesnoth (GPL).</p>
 
       <InstallPrompt />
+      {newRunOpen ? <NewRunDialog saved={savedRun} onStart={onRun} onClose={() => setNewRunOpen(false)} /> : null}
     </div>
+  );
+}
+
+/**
+ * Starting a run: an optional seed (the same seed meets the same offers,
+ * enemies and battlefields), and the best runs so far. Starting one over a
+ * saved run gives that run up, which the dialog says first.
+ */
+function NewRunDialog({ saved, onStart, onClose }: { saved: RunState | null; onStart: (run: RunState) => void; onClose: () => void }): JSX.Element {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [seedText, setSeedText] = useState('');
+  const [records] = useState<RunRecord[]>(() => loadRunRecords(browserStorage()));
+  const seed = runSeedFrom(seedText, 0);
+
+  useEffect(() => {
+    const d = dialog.current;
+    if (d && !d.open) d.showModal();
+  }, []);
+
+  const start = (): void => {
+    const picked = runSeedFrom(seedText, freshRunSeed());
+    if (picked === null) return;
+    // A run given up with battles won still counts among the best.
+    if (saved && saved.log.length > 0) addRunRecord(browserStorage(), runRecord(saved, 'abandoned'));
+    onStart(newRun(picked));
+  };
+
+  return (
+    <dialog
+      ref={dialog}
+      className="picker-dialog run-dialog"
+      aria-label="New run"
+      onClose={onClose}
+      // A click on the dialog itself (not its contents) is a click on the backdrop.
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <form
+        className="picker-body"
+        onSubmit={(e) => {
+          e.preventDefault();
+          start();
+        }}
+      >
+        <header className="picker-head">
+          <h3>New run</h3>
+          <button type="button" className="ghost" aria-label="Close" onClick={onClose}>
+            ✕
+          </button>
+        </header>
+        <div className="picker-scroll run-dialog-body">
+          <p>Draft a warband, then fight battle after battle against a growing enemy. Each win brings experience, a reward and gold to spend. One lost battle ends the run.</p>
+          {saved ? <p className="error">This gives up the run you have in progress (round {saved.round}, seed {saved.seed}).</p> : null}
+          <label className="run-seed-field">
+            Seed
+            <input
+              inputMode="numeric"
+              placeholder="random"
+              value={seedText}
+              aria-invalid={seed === null}
+              onChange={(e) => setSeedText(e.target.value)}
+            />
+          </label>
+          <p className="hint">
+            {seed === null ? 'A seed is a whole number.' : 'Optional. The same seed meets the same offers, enemies and battlefields.'}
+          </p>
+          <button type="submit" className="primary" disabled={seed === null}>
+            Start the run
+          </button>
+          <RunRecords records={records} />
+        </div>
+      </form>
+    </dialog>
   );
 }
 
