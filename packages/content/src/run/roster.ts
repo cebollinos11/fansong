@@ -8,17 +8,14 @@ import { WILD_UNITS } from './wild.js';
 /** The name the player's warband fights under. */
 export const RUN_WARBAND_NAME = 'Your Warband';
 
-/** Every preset unit, as the pool the draft's offers are drawn from. */
+/** Every preset unit. */
 const POOL: WarbandUnit[] = Object.keys(PRESET_UNITS).map((name) => presetUnit(name)!);
 
 /** The preset units that can lead a drafted warband. */
 export const LEADER_POOL: readonly WarbandUnit[] = POOL.filter((u) => u.leader);
 
-/** The preset units the draft offers as troops. */
-export const TROOP_POOL: readonly WarbandUnit[] = POOL.filter((u) => !u.leader);
-
-/** The units a reward or the shop offers as recruits: the draft's troops, and every wild unit. */
-export const RECRUIT_POOL: readonly WarbandUnit[] = [...TROOP_POOL, ...WILD_UNITS];
+/** The units offered as troops and recruits: the preset units that lead nobody, and every wild unit. */
+export const TROOP_POOL: readonly WarbandUnit[] = [...POOL.filter((u) => !u.leader), ...WILD_UNITS];
 
 /**
  * `unit` under a name none of `taken` has: its own, or numbered (`Wolf 2`,

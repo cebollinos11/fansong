@@ -436,12 +436,12 @@ holds the design.
   it sits out the next battle, otherwise it recovers. Then **pick one reward of
   three** (a recruit, an advance for a unit of your choice, a purse, a healer),
   and spend gold in **camp**: hire recruits, buy training, heal a wound, swap
-  the stock for new, or sell a unit. The roster holds 12. Recruits are not only
-  the preset troops the draft offers: every other creature the game can draw
-  turns up too, each with a profile worked out from how seasoned it is and what
-  it does in a fight.
+  the stock for new, or sell a unit. The roster holds 12. Troops and recruits
+  are not only the preset units: every other land creature the game can draw
+  turns up too, in the draft as in camp, each with a profile worked out from
+  how seasoned it is and what it does in a fight.
 - **The enemy** is built from the preset factions on a point budget that
-  ignores how strong you have grown: half the draft budget in round 1, a
+  ignores how strong you have grown: 100 points in round 1, a
   quarter more each round. It always fields at least three units, of its
   cheapest troops if the budget is short. Rounds 1–2 are annihilation against a patrol out
   without its leader; later rounds also roll king-of-the-hill and conquest, and

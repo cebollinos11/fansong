@@ -28,8 +28,8 @@ export function isBossRound(round: number): boolean {
 
 /** The enemy's point budget in `round`. */
 export function enemyPoints(round: number): number {
-  const { startShare, perRound, bossBonus } = RUN_TUNING.enemy;
-  const points = RUN_TUNING.draft.budget * startShare * (1 + perRound) ** (round - 1);
+  const { start, perRound, bossBonus } = RUN_TUNING.enemy;
+  const points = start * (1 + perRound) ** (round - 1);
   return Math.round(points * (isBossRound(round) ? 1 + bossBonus : 1));
 }
 

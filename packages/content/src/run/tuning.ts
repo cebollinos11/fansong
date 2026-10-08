@@ -16,8 +16,8 @@ export const RUN_TUNING = {
   /** Beating this round is the run's "victory"; play goes on after it. */
   victoryRound: 10,
   enemy: {
-    /** Round 1's enemy budget, as a share of the draft budget. */
-    startShare: 0.5,
+    /** Round 1's enemy budget, in points. */
+    start: 100,
     /** How much the budget grows each round, compounding. */
     perRound: 0.25,
     /** A boss every this many rounds. */

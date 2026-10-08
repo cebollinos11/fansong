@@ -20,7 +20,7 @@ const SEEDS = Array.from({ length: 25 }, (_, i) => i * 7919 + 1);
 
 describe('enemyPoints', () => {
   it('starts below the draft budget and climbs, with a bump on boss rounds', () => {
-    expect(enemyPoints(1)).toBe(Math.round(RUN_TUNING.draft.budget * RUN_TUNING.enemy.startShare));
+    expect(enemyPoints(1)).toBe(RUN_TUNING.enemy.start);
     const regular = ROUNDS.filter((r) => !isBossRound(r));
     regular.slice(1).forEach((r, i) => expect(enemyPoints(r)).toBeGreaterThan(enemyPoints(regular[i]!)));
     // A boss round is worth more than its place on the curve between its neighbours.

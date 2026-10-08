@@ -5,7 +5,8 @@ import type { WarbandUnit } from '../warband.js';
  * Wild units: every unit the game can draw that no preset warband fields. None
  * has a hand-written profile; each is built on load from a one-line sketch —
  * how seasoned it is, what it does in a fight, and whatever else marks its kind.
- * They widen what a run can recruit, and each is named for the look that draws it.
+ * They widen what a run can draft and recruit, and each is named for the look
+ * that draws it.
  */
 
 /** Quality and Combat by rank: a rank 0 unit is rabble, a rank 4 one a legend. */
@@ -258,5 +259,19 @@ function fromSketch(name: string, sketch: string): WarbandUnit {
   return unit;
 }
 
+/** Sketched, but left out for now: creatures of the sea, until there is water for them. */
+export const SEA_CREATURES: readonly string[] = [
+  ...Object.keys(SKETCHES).filter((name) => /^(Merman|Mermaid|Naga) /.test(name)),
+  'Caribe',
+  'Hunter Caribe',
+  'Cuttle Fish',
+  'Kraken',
+  'Tentacle of the Deep',
+  'Great Seahorse',
+  'Water Serpent',
+];
+
 /** Every wild unit. */
-export const WILD_UNITS: readonly WarbandUnit[] = Object.entries(SKETCHES).map(([name, sketch]) => fromSketch(name, sketch));
+export const WILD_UNITS: readonly WarbandUnit[] = Object.entries(SKETCHES)
+  .filter(([name]) => !SEA_CREATURES.includes(name))
+  .map(([name, sketch]) => fromSketch(name, sketch));
