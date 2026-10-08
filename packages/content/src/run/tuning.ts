@@ -17,13 +17,15 @@ export const RUN_TUNING = {
   victoryRound: 10,
   enemy: {
     /** Round 1's enemy budget, as a share of the draft budget. */
-    startShare: 0.9,
-    /** Budget added each round, as a share of round 1's. */
-    perRound: 0.12,
+    startShare: 0.5,
+    /** How much the budget grows each round, compounding. */
+    perRound: 0.25,
     /** A boss every this many rounds. */
     bossEvery: 5,
     /** Extra budget on a boss round, as a share of that round's. */
-    bossBonus: 0.25,
+    bossBonus: 0.2,
+    /** Earlier rounds meet a leaderless patrol: only from this round on does the enemy bring its leader. */
+    leaderFromRound: 3,
     /** Most units an enemy warband fields. */
     maxUnits: 14,
     /** From this round on, points not spent on units buy veteran upgrades. */
@@ -78,17 +80,17 @@ export const RUN_TUNING = {
   /** The d6 a fallen unit rolls: up to `dead` it dies, up to `wound` it takes a lasting wound, up to `sitsOut` it misses the next battle, above that it recovers. */
   injury: { dead: 1, wound: 2, sitsOut: 3 },
   gold: {
-    perWin: 15,
+    perWin: 6,
     /** Times the round just won. */
-    perRound: 3,
+    perRound: 1,
     /** Share of the enemy points destroyed. */
-    killShare: 0.15,
+    killShare: 0.05,
   },
   reward: {
     options: 3,
     /** A gold purse: a base, plus this much per round. */
-    purse: 20,
-    pursePerRound: 3,
+    purse: 15,
+    pursePerRound: 2,
   },
   shop: {
     recruits: 3,

@@ -18,6 +18,9 @@ describe('generateRandomMap', () => {
     [6, 40],
     [40, 6],
     [7, 9],
+    // Sizes where mirroring through the centre is not a symmetry of the hex grid.
+    [11, 10],
+    [15, 10],
     [14, 12],
     [23, 17],
     [MAP_LIMITS.maxWidth, MAP_LIMITS.maxHeight],

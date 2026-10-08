@@ -29,7 +29,7 @@ export function isBossRound(round: number): boolean {
 /** The enemy's point budget in `round`. */
 export function enemyPoints(round: number): number {
   const { startShare, perRound, bossBonus } = RUN_TUNING.enemy;
-  const points = RUN_TUNING.draft.budget * startShare * (1 + perRound * (round - 1));
+  const points = RUN_TUNING.draft.budget * startShare * (1 + perRound) ** (round - 1);
   return Math.round(points * (isBossRound(round) ? 1 + bossBonus : 1));
 }
 
@@ -69,7 +69,7 @@ function champion(leader: WarbandUnit, round: number, budget: number, rnd: RunRa
 
 /**
  * The enemy warband of `round`: a preset faction's leader (its costliest unit,
- * if it has none), then units bought from that faction's roster in its own
+ * if it has none; nobody, before `leaderFromRound`), then units bought from that faction's roster in its own
  * proportions until the budget or the unit cap stops it. From
  * `veteranFromRound` on, a growing share of the budget is kept back, and it
  * and whatever else is left over buy advances for random units. On a
@@ -77,7 +77,7 @@ function champion(leader: WarbandUnit, round: number, budget: number, rnd: RunRa
  * warband never costs more than {@link enemyPoints}.
  */
 export function generateEnemy(round: number, rnd: RunRandom): Enemy {
-  const { maxUnits, veteranFromRound, veteranShare } = RUN_TUNING.enemy;
+  const { maxUnits, leaderFromRound, veteranFromRound, veteranShare } = RUN_TUNING.enemy;
   const budget = enemyPoints(round);
   const faction = rnd.pick(Object.keys(PRESET_ROSTERS));
   const roster = PRESET_ROSTERS[faction]!;
@@ -85,13 +85,16 @@ export function generateEnemy(round: number, rnd: RunRandom): Enemy {
   const lead = slots.find((s) => s.unit.leader) ?? slots[defaultKing(slots.map((s) => s.unit))]!;
   const boss = isBossRound(round);
 
-  const units: WarbandUnit[] = [boss ? champion(lead.unit, round, budget, rnd) : { ...lead.unit }];
-  let left = budget - unitCost(units[0]!);
+  // The first rounds meet a patrol out without its leader.
+  const led = boss || round >= leaderFromRound || !lead.unit.leader;
+  const units: WarbandUnit[] = led ? [boss ? champion(lead.unit, round, budget, rnd) : { ...lead.unit }] : [];
+  let left = budget - units.reduce((sum, u) => sum + unitCost(u), 0);
 
   // Later rounds keep some of the budget back, so it buys better units rather than only more of them.
   const kept = round < veteranFromRound ? 0 : Math.min(veteranShare.max, veteranShare.perRound * (round - veteranFromRound + 1));
   const reserve = Math.floor(budget * kept);
   const troops = slots.filter((s) => s !== lead);
+  if (units.length === 0 && !troops.some((s) => unitCost(s.unit) <= left - reserve)) units.push({ ...lead.unit });
   while (units.length < maxUnits) {
     const affordable = troops.filter((s) => unitCost(s.unit) <= left - reserve);
     if (affordable.length === 0) break;

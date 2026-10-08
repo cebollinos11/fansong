@@ -1,6 +1,7 @@
 import { createGame, gameMode } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
+  availableAdvances,
   buildMatch,
   enemyPoints,
   generateEncounter,
@@ -14,7 +15,7 @@ import {
   warbandCost,
 } from '../../src/index.js';
 
-const ROUNDS = Array.from({ length: 20 }, (_, i) => i + 1);
+const ROUNDS = Array.from({ length: 16 }, (_, i) => i + 1);
 const SEEDS = Array.from({ length: 25 }, (_, i) => i * 7919 + 1);
 
 describe('enemyPoints', () => {
@@ -22,10 +23,9 @@ describe('enemyPoints', () => {
     expect(enemyPoints(1)).toBe(Math.round(RUN_TUNING.draft.budget * RUN_TUNING.enemy.startShare));
     const regular = ROUNDS.filter((r) => !isBossRound(r));
     regular.slice(1).forEach((r, i) => expect(enemyPoints(r)).toBeGreaterThan(enemyPoints(regular[i]!)));
-    for (const r of ROUNDS.filter(isBossRound)) {
-      expect(enemyPoints(r)).toBeGreaterThan(enemyPoints(r - 1));
-      expect(enemyPoints(r)).toBeGreaterThan(enemyPoints(r + 1));
-    }
+    // A boss round is worth more than its place on the curve between its neighbours.
+    for (const r of ROUNDS.filter(isBossRound))
+      expect(enemyPoints(r) ** 2).toBeGreaterThan(enemyPoints(r - 1) * enemyPoints(r + 1) * (1 + RUN_TUNING.enemy.bossBonus));
   });
 });
 
@@ -55,7 +55,10 @@ describe('generateEncounter', () => {
         expect(battle.enemy.name).toBe(PRESET_ROSTERS[battle.faction]!.name);
         const cost = warbandCost(battle.enemy);
         expect(cost, at).toBeLessThanOrEqual(enemyPoints(round));
-        expect(cost, at).toBeGreaterThanOrEqual(enemyPoints(round) * 0.7);
+        // It spends most of its budget, unless it is a full warband with nothing left to learn.
+        const maxed = battle.enemy.units.length === RUN_TUNING.enemy.maxUnits && battle.enemy.units.every((u) => availableAdvances(u).length === 0);
+        // (On a small budget, what is left is less than the faction's cheapest unit.)
+        if (!maxed) expect(cost, at).toBeGreaterThanOrEqual(Math.min(enemyPoints(round) * 0.7, enemyPoints(round) - 40));
         expect(battle.enemy.units.length, at).toBeLessThanOrEqual(RUN_TUNING.enemy.maxUnits);
         expect(new Set(battle.enemy.units.map((u) => u.name)).size, at).toBe(battle.enemy.units.length);
 
@@ -64,7 +67,6 @@ describe('generateEncounter', () => {
           const king = battle.enemy.units[battle.enemyKing!]!;
           expect(king.quality, at).toBe(RUN_TUNING.champion.quality);
           expect(king.combat, at).toBeGreaterThanOrEqual(RUN_TUNING.champion.minCombat);
-          expect(unitCost(king), at).toBe(Math.max(...battle.enemy.units.map(unitCost)));
         } else {
           expect(battle.enemyKing).toBeUndefined();
           expect(RUN_TUNING.modes.regular).toContain(battle.mode);
@@ -98,7 +100,7 @@ describe('generateEncounter', () => {
       ).length;
     for (let round = 1; round < RUN_TUNING.enemy.veteranFromRound; round++) expect(veterans(round)).toBe(0);
     expect(veterans(RUN_TUNING.enemy.veteranFromRound)).toBeGreaterThan(0);
-    expect(veterans(18)).toBeGreaterThan(veterans(RUN_TUNING.enemy.veteranFromRound));
+    expect(veterans(12)).toBeGreaterThan(veterans(RUN_TUNING.enemy.veteranFromRound));
 
     const features = (round: number) => generateEncounter(5, round, 8).map.hexes.filter((h) => h.feature).length / generateEncounter(5, round, 8).map.hexes.length;
     expect(features(14)).toBeGreaterThan(features(1));

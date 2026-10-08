@@ -2,8 +2,20 @@ import { chooseCommand } from '@fansong/ai';
 import { reduce } from '@fansong/engine';
 import { formatEvent, renderBoard, renderRoster } from './format.js';
 import { CliError, helpText, listText, parseArgs, resultLine, setupMatch } from './options.js';
+import { runSimMain } from './runSim.js';
 
 function main(): void {
+  // `pnpm play run …` is the run-mode calibration sim rather than a single match.
+  if (process.argv[2] === 'run') {
+    try {
+      process.exitCode = runSimMain(process.argv.slice(3));
+    } catch (err) {
+      if (!(err instanceof CliError)) throw err;
+      console.error(err.message);
+      process.exit(2);
+    }
+    return;
+  }
   let opts;
   let setup;
   try {

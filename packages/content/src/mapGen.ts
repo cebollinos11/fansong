@@ -155,8 +155,11 @@ function objectiveLayout(w: number, h: number, rnd: Random, symmetric: boolean):
     const zone = blob(c, flankR).filter((v) => half(v) && free(v) && !hillKeys.has(vecKey(v)));
     return zone.length > 0 ? zone : [{ x: mid.x, y: top ? 0 : h - 1 }];
   };
-  const top = flank(true);
-  const bottom = symmetric ? top.map(mirror) : flank(false);
+  // Mirroring isn't always a symmetry of the hex grid, so the hill needn't be its own
+  // mirror image: a mirrored top zone keeps only the hexes whose mirror is clear of it.
+  const clear = flank(true).filter((v) => !symmetric || !hillKeys.has(vecKey(mirror(v))));
+  const top = clear.length > 0 ? clear : flank(true).slice(0, 1);
+  const bottom = symmetric ? top.map(mirror).filter((v) => !hillKeys.has(vecKey(v))) : flank(false);
   const conquest: [Vec[], Vec[], Vec[]] = [top, hill.slice(), bottom];
 
   const reserved = new Set([...deployKeys, ...flagKeys, ...hillKeys, ...[...top, ...bottom].map(vecKey)]);

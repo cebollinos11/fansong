@@ -104,6 +104,7 @@ export function helpText(): string {
   return `fansong play — headless AI-vs-AI runner
 
 Usage: pnpm play [options]
+       pnpm play run [options]   run-mode calibration sim (see: pnpm play run --help)
 
 Options:
   --seed <n>       RNG seed (default 42)
