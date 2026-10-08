@@ -19,7 +19,7 @@ export const RUN_TUNING = {
     /** Round 1's enemy budget, in points. */
     start: 100,
     /** How much the budget grows each round, compounding. */
-    perRound: 0.25,
+    perRound: 0.3,
     /** A boss every this many rounds. */
     bossEvery: 5,
     /** Extra budget on a boss round, as a share of that round's. */

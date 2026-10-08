@@ -142,7 +142,7 @@ export function autoPick(s: RunState): RunAction {
   let bestScore = 0;
   for (const action of legal) {
     const { points, price } = worth(s, action);
-    const score = s.phase === 'shop' ? (price > 0 ? points / price : 0) : points;
+    const score = s.phase === 'shop' ? (price > 0 ? points / price : points > 0 && action.type === 'buyRecruit' ? Infinity : 0) : points;
     if (score > bestScore) [best, bestScore] = [action, score];
   }
   if (best) return best;

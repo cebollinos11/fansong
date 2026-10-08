@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EAGER_CADET,
   advanceCost,
   applyAdvance,
   applyWound,
@@ -34,16 +35,31 @@ const shop = (s: RunState) => s.offer as Shop;
 describe('the shop', () => {
   it('stocks recruits and upgrades someone can take', () => {
     for (let seed = 0; seed < 30; seed++) {
-      const s = inShop(seed, 0);
+      const s = inShop(seed, 1000);
       expect(shop(s).recruits).toHaveLength(RUN_TUNING.shop.recruits);
       expect(shop(s).upgrades).toHaveLength(RUN_TUNING.shop.upgrades);
       expect(new Set(shop(s).recruits.map((u) => u!.name)).size).toBe(RUN_TUNING.shop.recruits);
-      const rich = { ...s, gold: 10_000 };
       shop(s).upgrades.forEach((_, index) =>
-        expect(legalRunActions(rich).some((a) => a.type === 'buyUpgrade' && a.index === index)).toBe(true),
+        expect(legalRunActions(s).some((a) => a.type === 'buyUpgrade' && a.index === index)).toBe(true),
       );
       // With no gold, nothing can be bought.
-      expect(legalRunActions(s).map((a) => a.type).filter((t) => t !== 'sell')).toEqual(['leaveShop']);
+      expect(legalRunActions({ ...s, gold: 0 }).map((a) => a.type).filter((t) => t !== 'sell')).toEqual(['leaveShop']);
+    }
+  });
+
+  it('offers a free Eager Cadet when the gold buys none of the recruits', () => {
+    for (let seed = 0; seed < 30; seed++) {
+      const s = inShop(seed, 0);
+      const { recruits } = shop(s);
+      expect(recruits).toHaveLength(RUN_TUNING.shop.recruits + 1);
+      expect(recruits.at(-1)).toEqual(EAGER_CADET);
+      expect(recruitPrice(recruits.at(-1)!)).toBe(0);
+      const next = runStep(s, { type: 'buyRecruit', index: recruits.length - 1 });
+      expect(next.gold).toBe(0);
+      expect(next.roster.at(-1)!.unit).toMatchObject({ name: 'Eager Cadet', quality: 4, combat: 2 });
+
+      const cheapest = Math.min(...recruits.slice(0, -1).map((u) => recruitPrice(u!)));
+      expect(shop(inShop(seed, cheapest)).recruits).toHaveLength(RUN_TUNING.shop.recruits);
     }
   });
 

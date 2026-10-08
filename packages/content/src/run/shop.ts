@@ -12,20 +12,28 @@ import type { Advance, RunOffer, RunState } from './types.js';
 
 type Shop = Extract<RunOffer, { kind: 'shop' }>;
 
-/** Fresh stock: recruits, and upgrades at least one roster unit could take. */
+/** The volunteer a shop too dear for the player's purse offers for nothing. */
+export const EAGER_CADET: WarbandUnit = { name: 'Eager Cadet', quality: 4, combat: 2, look: 'Recruit' };
+
+/**
+ * Fresh stock: recruits, and upgrades at least one roster unit could take. If
+ * the gold in hand buys none of the recruits, an {@link EAGER_CADET} joins them.
+ */
 export function shopStock(s: RunState, rnd: RunRandom, rerolls = 0): Shop {
   const { recruits, upgrades } = RUN_TUNING.shop;
+  const offered: WarbandUnit[] = recruitOffer(recruits, rnd);
+  if (offered.every((u) => recruitPrice(u) > s.gold)) offered.push({ ...EAGER_CADET });
   return {
     kind: 'shop',
-    recruits: recruitOffer(recruits, rnd),
+    recruits: offered,
     upgrades: rnd.sample(rosterAdvances(s), upgrades),
     rerolls,
   };
 }
 
-/** A recruit costs its points in gold. */
+/** A recruit costs its points in gold; the {@link EAGER_CADET} is free. */
 export function recruitPrice(unit: WarbandUnit): number {
-  return unitCost(unit);
+  return unit.name === EAGER_CADET.name ? 0 : unitCost(unit);
 }
 
 /** An upgrade costs the points it adds to that unit, marked up. */
