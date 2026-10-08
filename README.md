@@ -3,7 +3,7 @@
 A fan, rules-compatible skirmish wargame with a "you go, I go" activation twist.
 See [PLAN.md](PLAN.md) for the full design.
 
-**Status: M0–M7 complete; M8 (source-game melee & shooting rules) in progress.** The game plays on a **flat-top hex grid** (M6) with
+**Status: M0–M7 and M9 (run mode) complete; M8 (source-game melee & shooting rules) in progress.** The game plays on a **flat-top hex grid** (M6) with
 **terrain, premade maps, a map editor and six game modes** (M7). A
 full AI-vs-AI game is playable in the terminal —
 with original **preset warbands**, a **point-buy** cost model, **special-ability
@@ -49,6 +49,7 @@ pnpm play --p0 iron-wardens-medium --p1 ashfang-raiders-medium   # a preset matc
 pnpm play --map twin-towers --mode capture-the-flag  # a map + game mode
 pnpm play --seed 7 -q     # a specific seed, result only
 pnpm play --help          # every option
+pnpm play run --seeds 20  # run-mode sim: how deep AI-piloted runs get
 pnpm typecheck            # tsc across all packages
 ```
 
@@ -414,3 +415,46 @@ absent when unused.
 - **In the web UI** hexes are extruded by elevation with low-poly rocks, joined
   buildings and cone trees; zones, flags, crowns and flag carriers are marked on
   the board, and the HUD shows the mode, scores and flag status.
+
+## Run mode (M9)
+
+A single-player **run** (the menu's **Run** button): draft a small warband,
+fight the AI in battle after battle against a growing enemy, and improve the
+warband between wins. One lost battle ends the run. [RUN_MODE.md](RUN_MODE.md)
+holds the design.
+
+- **Draft** — pick a leader from three offers, then troops one pick at a time
+  until 120 points are spent.
+- **Briefing** — the round's mode, a thumbnail of the battlefield and the enemy
+  roster. Bench units here (a hurt unit sits out on its own).
+- **Battle** — an ordinary match against the AI. Leaving midway keeps the run
+  but not the battle: it starts over from its first move, on the same dice.
+- **After a win** — every unit that fought earns XP (more for kills, more again
+  for killing something costlier) and levels up at 3 / 7 / 12 / 18 XP, choosing
+  one of two advances: a trait it lacks, Combat +1 or Quality −1. Each fallen
+  unit rolls a d6: on a 1 it is dead, on a 2 it takes a lasting wound, on a 3
+  it sits out the next battle, otherwise it recovers. Then **pick one reward of
+  three** (a recruit, an advance for a unit of your choice, a purse, a healer),
+  and spend gold in **camp**: hire recruits, buy training, heal a wound, swap
+  the stock for new, or sell a unit. The roster holds 12.
+- **The enemy** is built from the preset factions on a point budget that
+  ignores how strong you have grown: half the draft budget in round 1, a
+  quarter more each round. Rounds 1–2 are annihilation against a patrol out
+  without its leader; later rounds also roll king-of-the-hill and conquest, and
+  from round 4 part of the budget buys veterans (better units, not more).
+  Battlefields are generated, and get rougher: lava from round 4, unmirrored
+  ground from round 6.
+- **Bosses** — every 5th round is kill-the-king, on a fifth more budget, against a **champion**: the
+  faction's leader at Quality 2+ and Combat 5 or more, with extra traits that
+  grow with each boss. In the briefing, **♛ Crown** picks your own King (the
+  costliest fielded unit by default); lose it and the run is over.
+- **Victory** — beating round 10 wins the run. It then goes on, marked ♛, for
+  as long as the warband lasts; the best runs are kept on the device.
+- **Seeds** — a run's seed fixes its offers, enemies and battlefields. It is
+  shown on every run screen and can be typed in when starting a run.
+
+All of it is a pure, seeded state machine in `packages/content/src/run/`
+(`newRun`, `runStep`, `legalRunActions`), with every number in one `RUN_TUNING`
+object; the web app only draws it and saves it. `pnpm play run --seeds 200`
+plays whole runs with the AI in both seats and a greedy picker, and reports how
+deep they get — the tool the difficulty was tuned with.

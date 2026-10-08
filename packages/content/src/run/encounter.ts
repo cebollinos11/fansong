@@ -69,7 +69,7 @@ function champion(leader: WarbandUnit, round: number, budget: number, rnd: RunRa
 
 /**
  * The enemy warband of `round`: a preset faction's leader (its costliest unit,
- * if it has none; nobody, before `leaderFromRound`), then units bought from that faction's roster in its own
+ * if it has none; neither, before `leaderFromRound`), then units bought from that faction's roster in its own
  * proportions until the budget or the unit cap stops it. From
  * `veteranFromRound` on, a growing share of the budget is kept back, and it
  * and whatever else is left over buy advances for random units. On a
@@ -85,8 +85,8 @@ export function generateEnemy(round: number, rnd: RunRandom): Enemy {
   const lead = slots.find((s) => s.unit.leader) ?? slots[defaultKing(slots.map((s) => s.unit))]!;
   const boss = isBossRound(round);
 
-  // The first rounds meet a patrol out without its leader.
-  const led = boss || round >= leaderFromRound || !lead.unit.leader;
+  // The first rounds meet a patrol out without its leader (or, for a faction that has none, its costliest unit).
+  const led = boss || round >= leaderFromRound;
   const units: WarbandUnit[] = led ? [boss ? champion(lead.unit, round, budget, rnd) : { ...lead.unit }] : [];
   let left = budget - units.reduce((sum, u) => sum + unitCost(u), 0);
 

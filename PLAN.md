@@ -305,6 +305,32 @@ no rules — remove three.js and the game still runs in the CLI.
      short, clear shots and a short-range standoff, and ganging up. The golden
      replay was regenerated. Preset balance shifted (small warbands suffer
      from outnumbering) and is not yet re-tuned.
+10. **M9 — Run mode:** ✅ a single-player roguelike run (design and build plan
+    in [RUN_MODE.md](RUN_MODE.md)): draft a warband, fight battle after battle
+    against a growing enemy, and grow the warband between wins.
+    - **Rules** — a pure, seeded state machine in `packages/content/src/run/`
+      (`RunState`, `runStep`, `legalRunActions`), in the engine's spirit: a run
+      is its seed plus the actions taken, and saves as plain JSON between any
+      two steps. Draft, encounter generation (budget curve, veterans, boss
+      champions, generated maps that get rougher), the battle report read back
+      from the replay, XP and advances, injuries, rewards and the shop. Every
+      number sits in `RUN_TUNING`. No engine, protocol or worker changes; the
+      golden replay is untouched.
+    - **Battles** are ordinary local matches: the client plays
+      `runBattleConfig` and hands the replay back as the `battleResult` action.
+    - **Sim** — `pnpm play run` pilots whole runs with the AI in both seats and
+      a greedy picker. Two tuning passes: the first set the budget curve (half
+      the draft budget, ×1.25 a round, bosses +20%); the second stopped
+      leaderless factions from opening with their costliest monster, which had
+      been half of all round-1 deaths.
+    - **Web** — `RunScreen` over the pure view-model `runView.ts` (every button
+      is a `Choice` from `runActionError`, so no rules live in the app),
+      `runStore.ts` for the saved run and the best-run records, and a `RunHost`
+      in `App.tsx` that shows the screens or the battle. Beating round 10 is
+      marked as the run's victory, after which it goes on endlessly.
+    - **Known limits** — battles are swingy and one loss ends the run; in the
+      sim every boss loss is the AI pilot's own King dying, so boss numbers
+      there say little about a human who guards theirs.
 
 ---
 

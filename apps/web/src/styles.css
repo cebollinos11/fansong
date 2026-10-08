@@ -5749,6 +5749,14 @@ button.trait-add[aria-expanded='true'] {
   user-select: all;
 }
 
+.run-status .run-won {
+  border-color: var(--gold);
+}
+
+.run-won dd {
+  color: var(--gold);
+}
+
 .run-body {
   display: flex;
   flex-direction: column;
@@ -6055,6 +6063,11 @@ button.trait-add[aria-expanded='true'] {
   font: 800 28px/1.15 'Cinzel', Georgia, serif;
   letter-spacing: 2px;
   color: var(--gold);
+}
+
+.run-triumph {
+  border-color: var(--gold);
+  text-align: center;
 }
 
 .run-history,

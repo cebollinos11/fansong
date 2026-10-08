@@ -126,6 +126,8 @@ export interface RunHeader {
   boss: boolean;
   /** The roster's size, cap and points, e.g. "5/12 units · 118 pts". */
   roster: string;
+  /** Whether the run has beaten its victory round: from there it only goes on. */
+  victorious: boolean;
 }
 
 const TITLES: Record<RunState['phase'], string> = {
@@ -138,15 +140,25 @@ const TITLES: Record<RunState['phase'], string> = {
   over: 'The run is over',
 };
 
+/**
+ * Whether the run has only just been won: the battle of its victory round is
+ * the last one in its history, and the next round hasn't begun.
+ */
+function justWon(s: RunState): boolean {
+  const last = s.log.at(-1);
+  return s.phase !== 'over' && !!last?.won && last.round === s.round && last.round === RUN_TUNING.victoryRound;
+}
+
 export function runHeader(s: RunState): RunHeader {
   const boss = (s.phase === 'briefing' || s.phase === 'battle') && isBossRound(s.round);
   return {
-    title: boss ? 'Boss battle' : TITLES[s.phase],
+    title: boss ? 'Boss battle' : s.phase === 'aftermath' && justWon(s) ? 'The run is won' : TITLES[s.phase],
     round: s.round,
     gold: s.gold,
     seed: s.seed,
     boss,
     roster: `${s.roster.length}/${RUN_TUNING.rosterCap} units · ${rosterCost(s)} pts`,
+    victorious: runVictorious(s),
   };
 }
 
@@ -185,7 +197,7 @@ export function draftView(s: RunState): DraftView | null {
 /** How each mode a run can roll is won, for the briefing. */
 const MODE_GOALS: Partial<Record<GameMode, string>> = {
   annihilation: ANNIHILATION_GOAL,
-  'kill-the-king': GOALS['kill-the-king'],
+  'kill-the-king': `${GOALS['kill-the-king']} before yours falls`,
   'king-of-the-hill': 'Hold the hill when a round ends to score; the first to the target wins',
   conquest: 'Hold the three zones when a round ends to score; the first to the target wins',
 };
@@ -228,6 +240,8 @@ export interface BriefingView {
   };
   /** The battlefield, with this mode's objectives only. */
   map: MapDef;
+  /** Whether the battlefield has lava on it. */
+  lava: boolean;
   units: BriefingUnit[];
   /** "5 units · 118 pts take the field". */
   fielded: string;
@@ -254,6 +268,7 @@ export function briefingView(s: RunState): BriefingView | null {
       ...(king ? { king } : {}),
     },
     map: battlefield(battle.map, battle.mode),
+    lava: battle.map.hexes.some((hex) => hex.feature === 'lava'),
     units: s.roster.map((u) => {
       const fights = fielded.includes(u);
       return {
@@ -287,6 +302,8 @@ export function fateText(line: AftermathLine): { text: string; tone: 'ok' | 'hur
 }
 
 export interface AftermathView {
+  /** Only after the battle that wins the run: what to say about it. */
+  triumph: { headline: string; detail: string } | null;
   gold: number;
   lines: { unitId: string; name: string; kills: number; xp: number; text: string; tone: 'ok' | 'hurt' | 'lost' }[];
   /** Levels waiting to be spent: one choice of advances per unit at a time. */
@@ -310,6 +327,12 @@ export function aftermathView(s: RunState): AftermathView | null {
     });
   }
   return {
+    triumph: justWon(s)
+      ? {
+          headline: `Round ${RUN_TUNING.victoryRound} is beaten: the run is won`,
+          detail: 'From here it goes on for as long as the warband lasts, against an enemy that keeps growing.',
+        }
+      : null,
     gold: s.aftermath.gold,
     lines: s.aftermath.units.map((line) => ({ unitId: line.unitId, name: line.name, kills: line.kills, xp: line.xp, ...fateText(line) })),
     levelUps,
@@ -458,7 +481,7 @@ export function recordLine(r: RunRecord): string {
 /** The menu's run button: a new run, or the one to pick back up. */
 export function runMenuItem(saved: RunState | null): { title: string; detail: string } {
   return saved
-    ? { title: 'Continue run', detail: `Round ${saved.round} · seed ${saved.seed}` }
+    ? { title: 'Continue run', detail: `Round ${saved.round} · seed ${saved.seed}${runVictorious(saved) ? ' · ♛ won' : ''}` }
     : { title: 'Run', detail: 'Draft a warband, fight until it falls' };
 }
 

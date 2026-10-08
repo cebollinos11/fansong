@@ -82,6 +82,19 @@ describe('generateEncounter', () => {
     expect([...modes].sort()).toEqual([...RUN_TUNING.modes.regular, RUN_TUNING.modes.boss].sort());
   });
 
+  it('sends a patrol without its leader, or its costliest unit, before the leader round', () => {
+    const heads = (round: number) =>
+      SEEDS.map((seed) => generateEncounter(seed, round, 4)).filter((battle) => {
+        const pool = PRESET_ROSTERS[battle.faction]!.units.map((slot) => ({ name: slot.unit, ...PRESET_UNITS[slot.unit]! }));
+        const dearest = Math.max(...pool.map((u) => unitCost(u)));
+        const head = pool.find((u) => u.leader) ?? pool.find((u) => unitCost(u) === dearest)!;
+        // The fallback for a budget that buys nobody else aside, the head stays home.
+        return battle.enemy.units.length > 1 && battle.enemy.units.some((u) => u.name === head.name);
+      }).length;
+    for (let round = 1; round < RUN_TUNING.enemy.leaderFromRound; round++) expect(heads(round), `round ${round}`).toBe(0);
+    expect(heads(RUN_TUNING.enemy.leaderFromRound)).toBe(SEEDS.length);
+  });
+
   it('deploys into a playable game', () => {
     for (const round of [1, 3, 5, 9, 10, 16]) {
       const battle = generateEncounter(99, round, 6);

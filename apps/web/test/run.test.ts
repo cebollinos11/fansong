@@ -229,6 +229,10 @@ describe('the run screens', () => {
     expect(view.map).toEqual({ ...s.battle!.map, objectives: {} });
     const hill = briefingView({ ...s, battle: { ...s.battle!, mode: 'king-of-the-hill' } })!.map.objectives;
     expect(hill).toEqual({ hill: s.battle!.map.objectives.hill });
+    // Lava, where the field has any, is pointed out.
+    expect(view.lava).toBe(false);
+    const molten = { ...s.battle!.map, hexes: s.battle!.map.hexes.map((hex, i) => (i === 0 ? { ...hex, feature: 'lava' as const } : hex)) };
+    expect(briefingView({ ...s, battle: { ...s.battle!, map: molten } })!.lava).toBe(true);
     expect(view.units).toHaveLength(s.roster.length);
     expect(view.units.every((u) => u.fielded && !u.king && u.crown === null && u.bench?.error === null)).toBe(true);
     expect(view.start.error).toBeNull();
@@ -252,6 +256,7 @@ describe('the run screens', () => {
     const view = briefingView(boss)!;
     expect(view.boss).toBe(true);
     expect(view.enemy.king).toBe(boss.battle!.enemy.units[0]);
+    expect(view.goal).toBe('Kill the enemy King before yours falls');
     expect(view.units.filter((u) => u.king)).toHaveLength(1);
     const other = view.units.find((u) => !u.king)!;
     expect(other.crown!.error).toBeNull();
@@ -279,6 +284,26 @@ describe('the run screens', () => {
     }
     expect(aftermathView(s)!.next.error).toBeNull();
     expect(taken(s, aftermathView(s)!.next).phase).toBe('reward');
+  });
+
+  it('marks the win of the victory round as the run\'s victory, and the run as won from then on', () => {
+    expect(aftermathView(WON)!.triumph).toBeNull();
+    expect(runHeader(WON)).toMatchObject({ title: 'Victory', victorious: false });
+
+    // The same win, had it been the victory round's.
+    const round = RUN_TUNING.victoryRound;
+    const won: RunState = { ...WON, round, log: [{ ...WON.log[0]!, round }] };
+    expect(aftermathView(won)!.triumph!.headline).toBe(`Round ${round} is beaten: the run is won`);
+    expect(runHeader(won)).toMatchObject({ title: 'The run is won', victorious: true });
+
+    // It is said once: the run goes on, marked as won, and keeps the mark when it ends.
+    const next = playTo(playTo(won, 'shop'), 'briefing');
+    expect(next.round).toBe(round + 1);
+    expect(runHeader(next)).toMatchObject({ title: 'Briefing', victorious: true });
+    expect(runMenuItem(next).detail).toBe(`Round ${round + 1} · seed ${next.seed} · ♛ won`);
+    const later: RunState = { ...WON, round: round + 1, log: [{ ...WON.log[0]!, round }, { ...WON.log[0]!, round: round + 1 }] };
+    expect(aftermathView(later)!.triumph).toBeNull();
+    expect(overView({ ...next, phase: 'over' })).toMatchObject({ victorious: true, headline: `A victorious run, ended in round ${round + 1}` });
   });
 
   it('words every fate', () => {

@@ -70,6 +70,12 @@ export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: P
             <dt>Warband</dt>
             <dd>{header.roster}</dd>
           </div>
+          {header.victorious ? (
+            <div className="run-won" title="This run has beaten its last boss. It goes on until a battle is lost">
+              <dt>Run</dt>
+              <dd>♛ Won</dd>
+            </div>
+          ) : null}
           <div title="Start a new run with this seed to meet the same offers, enemies and battlefields">
             <dt>Seed</dt>
             <dd className="run-seed">{header.seed}</dd>
@@ -230,6 +236,7 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
         <MapThumb map={view.map} className="map-thumb run-map" />
         <p className="muster-meta">
           {view.map.width}×{view.map.height} hexes · blue is your edge
+          {view.lava ? ' · red-orange is lava' : ''}
         </p>
       </section>
 
@@ -299,6 +306,12 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
 function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act: Act }): JSX.Element {
   return (
     <>
+      {view.triumph ? (
+        <section className="run-panel run-triumph">
+          <h2 className="run-headline">♛ {view.triumph.headline}</h2>
+          <p className="muster-meta">{view.triumph.detail}</p>
+        </section>
+      ) : null}
       <section className="run-panel">
         <h2 className="muster-label">After the battle</h2>
         <p className="muster-meta">

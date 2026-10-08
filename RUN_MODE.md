@@ -48,7 +48,7 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 ### Difficulty (`run/encounter.ts`)
 
 - **Budget:** `enemyPoints(round)` — fixed curve, not tied to the player's strength (so upgrades matter). Constants in one `RUN_TUNING` object; tuned with the CLI sim below. After the first tuning pass: start at 50% of the draft budget, ×1.25 each round (compounding), boss rounds +20%. (The first guess — 90%, +12% a round — killed four runs in ten in round 1 and then let survivors snowball.)
-- **Roster:** pick a faction (a `PRESET_ROSTERS` entry → its unit pool), take its leader (from round 3; rounds 1–2 meet a leaderless patrol), fill to budget weighted toward that roster's own proportions. From round 4, a growing share of the budget is kept back and, with any leftover points, buys "veteran" upgrades (a favorable trait or stat step) on random units.
+- **Roster:** pick a faction (a `PRESET_ROSTERS` entry → its unit pool), take its leader (from round 3; rounds 1–2 meet a leaderless patrol — for a faction with no leader, one without its costliest unit, which alone used to cause half of all round-1 deaths), fill to budget weighted toward that roster's own proportions. From round 4, a growing share of the budget is kept back and, with any leftover points, buys "veteran" upgrades (a favorable trait or stat step) on random units.
 - **Boss (every 5th):** `mode: 'kill-the-king'`; enemy King is a champion — faction leader pushed to Q2/C5+ with stacked traits — plus an escort from the remaining budget.
 - **Map:** `generateRandomMap` (`mapGen.ts`) seeded per round; it already lays objectives for every mode. Size grows with unit count; `TerrainSettings` get denser/rougher by round; later rounds use `symmetric: false`. Regular rounds roll annihilation / conquest / king-of-the-hill (annihilation only for rounds 1–2).
 
@@ -89,6 +89,6 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 ## Open risks
 
 - **Battles are swingy, and one loss ends the run.** Measured with the AI in both seats: a 2:1 points edge wins only about 85% of battles (a mirror match is ~45% from the player's seat), so even an easy round kills about one run in ten. First-pass sim (100 seeds): median death in round 5, a quarter of AI-piloted runs beat round 10, the first boss kills one run in six. If that feels unfair in play, the fix is a rule (a second life, a retreat), not more tuning.
-- Kill-the-king bosses put the player's King at risk too; AI already plays that mode, but balance needs the sim.
+- Kill-the-king bosses put the player's King at risk too; AI already plays that mode, but balance needs the sim. Second pass (200 seeds): every boss loss in the sim is the pilot's own King dying, and neither dropping the boss bonus nor a Quality 3 champion moves the first boss's win rate out of the noise (70% → 73% / 75%). The sim measures how the AI guards a King, not how hard the boss is, so the boss numbers were left alone pending human playtests.
 - Battle-restart lets a player retry by closing the tab (accepted trade-off; same seed means same dice for the same moves).
 - Shipping a new save key: `version` field so a later format change can drop old runs cleanly.

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-FanSong is a fan, rules-compatible *Song of Blades and Heroes*–style skirmish wargame with a "you go, I go" activation twist. [README.md](README.md) describes the rules as implemented; [PLAN.md](PLAN.md) holds the design and milestones (M0–M7 done, M8 in progress); [RULES_GAP.md](RULES_GAP.md) tracks the original rules not yet implemented.
+FanSong is a fan, rules-compatible *Song of Blades and Heroes*–style skirmish wargame with a "you go, I go" activation twist. [README.md](README.md) describes the rules as implemented; [PLAN.md](PLAN.md) holds the design and milestones (M0–M7 and M9, the run mode, done; M8 in progress); [RULES_GAP.md](RULES_GAP.md) tracks the original rules not yet implemented.
 
 When reporting to me, be extremely concise. Sacrifice grammar for the sake of concision.
 
