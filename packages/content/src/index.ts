@@ -8,3 +8,4 @@ export * from './mapValidate.js';
 export * from './mapRegistry.js';
 export * from './editor.js';
 export * from './mapGen.js';
+export * from './run/index.js';
