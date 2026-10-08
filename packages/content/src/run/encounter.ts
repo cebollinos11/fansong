@@ -70,14 +70,15 @@ function champion(leader: WarbandUnit, round: number, budget: number, rnd: RunRa
 /**
  * The enemy warband of `round`: a preset faction's leader (its costliest unit,
  * if it has none; neither, before `leaderFromRound`), then units bought from that faction's roster in its own
- * proportions until the budget or the unit cap stops it. From
+ * proportions until the budget or the unit cap stops it. It always fields
+ * `minUnits`: if the budget can't pay for that many, the cheapest troops make
+ * up the number, the one way a warband costs more than {@link enemyPoints}. From
  * `veteranFromRound` on, a growing share of the budget is kept back, and it
  * and whatever else is left over buy advances for random units. On a
- * boss round the leader is a {@link champion} and the rest is its escort. The
- * warband never costs more than {@link enemyPoints}.
+ * boss round the leader is a {@link champion} and the rest is its escort.
  */
 export function generateEnemy(round: number, rnd: RunRandom): Enemy {
-  const { maxUnits, leaderFromRound, veteranFromRound, veteranShare } = RUN_TUNING.enemy;
+  const { minUnits, maxUnits, leaderFromRound, veteranFromRound, veteranShare } = RUN_TUNING.enemy;
   const budget = enemyPoints(round);
   const faction = rnd.pick(Object.keys(PRESET_ROSTERS));
   const roster = PRESET_ROSTERS[faction]!;
@@ -94,10 +95,16 @@ export function generateEnemy(round: number, rnd: RunRandom): Enemy {
   const kept = round < veteranFromRound ? 0 : Math.min(veteranShare.max, veteranShare.perRound * (round - veteranFromRound + 1));
   const reserve = Math.floor(budget * kept);
   const troops = slots.filter((s) => s !== lead);
-  if (units.length === 0 && !troops.some((s) => unitCost(s.unit) <= left - reserve)) units.push({ ...lead.unit });
+  const cheapest = Math.min(...troops.map((s) => unitCost(s.unit)));
   while (units.length < maxUnits) {
-    const affordable = troops.filter((s) => unitCost(s.unit) <= left - reserve);
-    if (affordable.length === 0) break;
+    // Short of its fewest units, a pick must leave enough for the cheapest troops still owed.
+    const short = units.length < minUnits;
+    const room = short ? left - (minUnits - units.length - 1) * cheapest : left - reserve;
+    let affordable = troops.filter((s) => unitCost(s.unit) <= room);
+    if (affordable.length === 0) {
+      if (!short) break;
+      affordable = troops.filter((s) => unitCost(s.unit) === cheapest);
+    }
     const unit = uniquelyNamed(rnd.weighted(affordable, (s) => s.count).unit, units.map((u) => u.name));
     units.push(unit);
     left -= unitCost(unit);

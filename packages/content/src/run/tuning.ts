@@ -26,6 +26,8 @@ export const RUN_TUNING = {
     bossBonus: 0.2,
     /** Earlier rounds meet a leaderless patrol: only from this round on does the enemy bring its leader. */
     leaderFromRound: 3,
+    /** Fewest units an enemy warband fields, even if its cheapest troops then cost more than the budget. */
+    minUnits: 3,
     /** Most units an enemy warband fields. */
     maxUnits: 14,
     /** From this round on, points not spent on units buy veteran upgrades. */
@@ -73,7 +75,7 @@ export const RUN_TUNING = {
     /** On top of `perKill`, for killing a unit that costs more than the killer. */
     costlierKill: 1,
     /** Total XP at which a unit reaches level 1, 2, …; the last is the cap. */
-    levels: [3, 7, 12, 18] as readonly number[],
+    levels: [6, 14, 24, 36] as readonly number[],
     /** Advances offered per level. */
     choices: 2,
   },

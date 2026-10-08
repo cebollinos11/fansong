@@ -48,17 +48,17 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 ### Difficulty (`run/encounter.ts`)
 
 - **Budget:** `enemyPoints(round)` — fixed curve, not tied to the player's strength (so upgrades matter). Constants in one `RUN_TUNING` object; tuned with the CLI sim below. After the first tuning pass: start at 50% of the draft budget, ×1.25 each round (compounding), boss rounds +20%. (The first guess — 90%, +12% a round — killed four runs in ten in round 1 and then let survivors snowball.)
-- **Roster:** pick a faction (a `PRESET_ROSTERS` entry → its unit pool), take its leader (from round 3; rounds 1–2 meet a leaderless patrol — for a faction with no leader, one without its costliest unit, which alone used to cause half of all round-1 deaths), fill to budget weighted toward that roster's own proportions. From round 4, a growing share of the budget is kept back and, with any leftover points, buys "veteran" upgrades (a favorable trait or stat step) on random units.
+- **Roster:** pick a faction (a `PRESET_ROSTERS` entry → its unit pool), take its leader (from round 3; rounds 1–2 meet a leaderless patrol — for a faction with no leader, one without its costliest unit, which alone used to cause half of all round-1 deaths), fill to budget weighted toward that roster's own proportions. Always at least 3 units (`enemy.minUnits`): a budget too small for that — rounds 1–3 used to meet one or two units — buys the faction's cheapest troops and goes over. From round 4, a growing share of the budget is kept back and, with any leftover points, buys "veteran" upgrades (a favorable trait or stat step) on random units.
 - **Boss (every 5th):** `mode: 'kill-the-king'`; enemy King is a champion — faction leader pushed to Q2/C5+ with stacked traits — plus an escort from the remaining budget.
 - **Map:** `generateRandomMap` (`mapGen.ts`) seeded per round; it already lays objectives for every mode. Size grows with unit count; `TerrainSettings` get denser/rougher by round; later rounds use `symmetric: false`. Regular rounds roll annihilation / conquest / king-of-the-hill (annihilation only for rounds 1–2).
 
 ### Growth (`run/progress.ts`, `run/shop.ts`)
 
 - **Battle report:** pure `battleReport(replay)` re-runs the commands through `reduce`, collecting `UnitKilled { unitId, byId }` → kills per player unit, who fell. (Confirm how `buildMatch` in `deploy.ts` assigns unit ids to map them back to roster entries.)
-- **XP:** +1 for fighting, +2 per kill, +1 more for killing a costlier unit. Levels at 3 / 7 / 12 / 18 XP (cap 4). Each level: choose 1 of 2 advances — an existing favorable trait the unit lacks, Combat +1, or Quality −1, within `STAT_BOUNDS` and `statErrors`.
+- **XP:** +1 for fighting, +2 per kill, +1 more for killing a costlier unit. Levels at 6 / 14 / 24 / 36 XP (cap 4; the first pass, 3 / 7 / 12 / 18, levelled a unit on its first kill). Each level: choose 1 of 2 advances — an existing favorable trait the unit lacks, Combat +1, or Quality −1, within `STAT_BOUNDS` and `statErrors`.
 - **Injury (d6 per fallen unit):** 1 dead; 2 lasting wound (Combat −1, Quality +1, or an unfavorable trait); 3 sits out next battle; 4–6 recovers. Fled units return unhurt; a turncoat (Disloyal) is gone.
 - **Reward (1 of 3):** a recruit, a trait/stat boost for a unit of your choice, a gold purse, or mending a lasting wound.
-- **Gold:** flat per win + per round + share of enemy points killed. **Shop:** 3 recruits (price = `unitCost`), 2 upgrades (price = cost delta × multiplier), heal a wound, paid reroll, sell a unit.
+- **Gold:** flat per win + per round + share of enemy points killed. **Recruits** (reward and shop) come from `RECRUIT_POOL`: the draft's preset troops plus the wild units of `run/wild.ts` — every sprite no preset fields, each built on load from a one-line sketch (rank → Quality/Combat, role → traits, plus traits of its own). **Shop:** 3 recruits (price = `unitCost`), 2 upgrades (price = cost delta × multiplier), heal a wound, paid reroll, sell a unit.
 
 ### Web (`apps/web`)
 

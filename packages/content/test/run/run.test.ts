@@ -32,7 +32,8 @@ function checkState(s: RunState): void {
   for (const u of s.roster) expect(u.level).toBeLessThanOrEqual(RUN_TUNING.xp.levels.length);
   if (s.battle) {
     expect(validateArmy(s.battle.enemy).errors).toEqual([]);
-    expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round));
+    expect(s.battle.enemy.units.length).toBeGreaterThanOrEqual(RUN_TUNING.enemy.minUnits);
+    if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits) expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round));
     expect(validateMap(s.battle.map, s.battle.mode).errors).toEqual([]);
   }
   expect(Boolean(s.battle)).toBe(s.phase === 'briefing' || s.phase === 'battle');

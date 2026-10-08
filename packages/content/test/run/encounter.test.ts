@@ -41,7 +41,7 @@ describe('generateEncounter', () => {
     expect(generateEncounter(42, 4, 4)).not.toEqual(a);
   });
 
-  it('fields a legal enemy warband within the round budget, on a valid map', () => {
+  it('fields a legal enemy warband of at least three units, within the round budget where it can, on a valid map', () => {
     const factions = new Set<string>();
     const modes = new Set<string>();
     for (const seed of SEEDS)
@@ -54,7 +54,9 @@ describe('generateEncounter', () => {
         expect(validateArmy(battle.enemy).errors, at).toEqual([]);
         expect(battle.enemy.name).toBe(PRESET_ROSTERS[battle.faction]!.name);
         const cost = warbandCost(battle.enemy);
-        expect(cost, at).toBeLessThanOrEqual(enemyPoints(round));
+        // Only a warband made up to its fewest units may cost more than the budget.
+        expect(battle.enemy.units.length, at).toBeGreaterThanOrEqual(RUN_TUNING.enemy.minUnits);
+        if (battle.enemy.units.length > RUN_TUNING.enemy.minUnits) expect(cost, at).toBeLessThanOrEqual(enemyPoints(round));
         // It spends most of its budget, unless it is a full warband with nothing left to learn.
         const maxed = battle.enemy.units.length === RUN_TUNING.enemy.maxUnits && battle.enemy.units.every((u) => availableAdvances(u).length === 0);
         // (On a small budget, what is left is less than the faction's cheapest unit.)

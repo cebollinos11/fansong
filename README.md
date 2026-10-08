@@ -430,16 +430,20 @@ holds the design.
 - **Battle** — an ordinary match against the AI. Leaving midway keeps the run
   but not the battle: it starts over from its first move, on the same dice.
 - **After a win** — every unit that fought earns XP (more for kills, more again
-  for killing something costlier) and levels up at 3 / 7 / 12 / 18 XP, choosing
+  for killing something costlier) and levels up at 6 / 14 / 24 / 36 XP, choosing
   one of two advances: a trait it lacks, Combat +1 or Quality −1. Each fallen
   unit rolls a d6: on a 1 it is dead, on a 2 it takes a lasting wound, on a 3
   it sits out the next battle, otherwise it recovers. Then **pick one reward of
   three** (a recruit, an advance for a unit of your choice, a purse, a healer),
   and spend gold in **camp**: hire recruits, buy training, heal a wound, swap
-  the stock for new, or sell a unit. The roster holds 12.
+  the stock for new, or sell a unit. The roster holds 12. Recruits are not only
+  the preset troops the draft offers: every other creature the game can draw
+  turns up too, each with a profile worked out from how seasoned it is and what
+  it does in a fight.
 - **The enemy** is built from the preset factions on a point budget that
   ignores how strong you have grown: half the draft budget in round 1, a
-  quarter more each round. Rounds 1–2 are annihilation against a patrol out
+  quarter more each round. It always fields at least three units, of its
+  cheapest troops if the budget is short. Rounds 1–2 are annihilation against a patrol out
   without its leader; later rounds also roll king-of-the-hill and conquest, and
   from round 4 part of the budget buys veterans (better units, not more).
   Battlefields are generated, and get rougher: lava from round 4, unmirrored

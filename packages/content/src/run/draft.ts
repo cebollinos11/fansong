@@ -1,7 +1,7 @@
 import { unitCost } from '../cost.js';
 import type { WarbandUnit } from '../warband.js';
 import type { RunRandom } from './rng.js';
-import { LEADER_POOL, TROOP_POOL } from './roster.js';
+import { LEADER_POOL, RECRUIT_POOL, TROOP_POOL } from './roster.js';
 import { RUN_TUNING } from './tuning.js';
 
 /**
@@ -22,5 +22,5 @@ export function troopOffer(points: number, rnd: RunRandom): WarbandUnit[] {
 
 /** `count` different recruits for a reward or the shop. */
 export function recruitOffer(count: number, rnd: RunRandom): WarbandUnit[] {
-  return rnd.sample(TROOP_POOL, count);
+  return rnd.sample(RECRUIT_POOL, count);
 }

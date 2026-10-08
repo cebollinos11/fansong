@@ -85,7 +85,8 @@ describe('XP', () => {
   });
 
   it('levels at the thresholds and no further', () => {
-    expect([0, 2, 3, 6, 7, 11, 12, 17, 18, 500].map(levelFor)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
+    const [a, b, c, d] = RUN_TUNING.xp.levels as [number, number, number, number];
+    expect([0, a - 1, a, b - 1, b, c - 1, c, d - 1, d, 500].map(levelFor)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
   });
 
   it('offers one level at a time, each a choice of different advances', () => {
@@ -128,8 +129,9 @@ describe('the aftermath', () => {
       { round: 1, mode: 'annihilation', enemy: before.battle!.enemy.name, boss: false, won: true, kills: before.roster.length, losses: 0, gold: s.gold },
     ]);
     expect(s.aftermath!.units.map((l) => l.unitId)).toEqual(before.battle!.fielded);
-    // 4 XP is a level, so everyone has a choice waiting.
-    expect(s.pending).toHaveLength(s.roster.length);
+    // One battle's XP is not yet a level.
+    expect(xp).toBeLessThan(RUN_TUNING.xp.levels[0]!);
+    expect(s.pending).toBeUndefined();
   });
 
   it('loses a turncoat, brings back one that fled, and rolls for each one that fell', () => {
