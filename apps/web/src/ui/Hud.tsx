@@ -216,7 +216,7 @@ export function Hud(props: Props): JSX.Element {
     };
     // A shooter's player wants to know what a hex would let it shoot at.
     if (!state.spell && activeUnit && activeUnit.traits.ranged >= 1) {
-      turn.hint += ' Hold R over a hex to see what it could shoot at from there.';
+      turn.hint += ' Hold R over any hex, at any time, to see what it could shoot at from there.';
     };
   }
 

@@ -56,11 +56,21 @@ export function inMelee(state: GameState, unit: Unit, board: Board): boolean {
  * melee at `from`. Hexes no unit can stand on are left out.
  */
 export function shotCells(state: GameState, unit: Unit, board: Board, from: Vec): Vec[] {
-  if (unit.traits.ranged < 1 || inMelee(state, { ...unit, pos: from }, board)) return [];
-  const occ = occupiedKeys(state, unit.id);
+  return shotCellsWithin(state, board, from, unit.traits.ranged, unit.owner, unit.id);
+}
+
+/**
+ * {@link shotCells} for any shooter of `owner`'s side with a ranged attack of
+ * `range`, real or imagined; `ignoreId` names the unit that would walk to
+ * `from`, whose hex left behind blocks nothing.
+ */
+export function shotCellsWithin(state: GameState, board: Board, from: Vec, range: number, owner: Owner, ignoreId?: string): Vec[] {
+  const pinned = state.units.some((u) => !u.dead && !isDown(u) && u.owner !== owner && board.distance(u.pos, from) === 1);
+  if (range < 1 || pinned) return [];
+  const occ = occupiedKeys(state, ignoreId);
   const seeThrough = (v: Vec): boolean => occ.has(vecKey(v));
   return board
-    .cellsWithin(from, unit.traits.ranged)
+    .cellsWithin(from, range)
     .filter((c) => board.distance(from, c) >= 2 && !board.isBlocked(c) && board.lineOfSight(from, c, seeThrough));
 }
 

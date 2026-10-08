@@ -18,12 +18,18 @@ const state = () =>
 describe('the shot range shown under the pointer', () => {
   it('asks about the unit on the hex, else the one being moved', () => {
     const s = state();
-    expect(rangeShooter(s, { x: 3, y: 4 }, 'p0u0')?.id).toBe('p0u0');
-    expect(rangeShooter(s, { x: 0, y: 4 }, null)?.id).toBe('p0u0');
-    // A unit with no ranged attack has no range to show, wherever it stands.
-    expect(rangeShooter(s, { x: 3, y: 4 }, 'p0u1')).toBeNull();
-    expect(rangeShooter(s, { x: 0, y: 6 }, 'p0u0')).toBeNull();
-    expect(rangeShooter(s, { x: 3, y: 4 }, null)).toBeNull();
+    expect(rangeShooter(s, { x: 3, y: 4 }, 'p0u0')).toEqual({ owner: 0, range: 4, unitId: 'p0u0' });
+    expect(rangeShooter(s, { x: 0, y: 4 }, null)).toEqual({ owner: 0, range: 4, unitId: 'p0u0' });
+    expect(rangeShooter(s, { x: 6, y: 4 }, 'p0u0')).toEqual({ owner: 1, range: 5, unitId: 'p1u0' });
+  });
+
+  it('falls back to range 5 for a unit with no ranged attack, or no unit at all', () => {
+    const s = state();
+    expect(rangeShooter(s, { x: 3, y: 4 }, 'p0u1')).toEqual({ owner: 0, range: 5, unitId: 'p0u1' });
+    expect(rangeShooter(s, { x: 3, y: 4 }, null)).toEqual({ owner: s.active, range: 5 });
+    // Nobody active: from (1,4) the foe at (6,4) is exactly 5 off.
+    expect(shotRangeOverlays(s, { x: 1, y: 4 }, null)[1]!.cells.map(vecKey)).toEqual(['6,4']);
+    expect(shotRangeOverlays(s, { x: 0, y: 5 }, null)[1]!.cells).toEqual([]);
   });
 
   it('marks an enemy the move would bring into range apart from the empty reach', () => {

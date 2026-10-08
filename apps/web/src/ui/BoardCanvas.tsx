@@ -265,7 +265,8 @@ export function BoardCanvas(props: Props): JSX.Element {
   }, [props.playing]);
 
   // Holding R shows what a shooter on the pointer's hex could shoot at: the
-  // unit standing there, else the one being moved, as if it had walked there.
+  // unit standing there, else the one being moved, as if it had walked there,
+  // else (or for a unit with no ranged attack) a range of 5.
   const [rangeHeld, setRangeHeld] = useState(false);
   useEffect(() => {
     if (!props.playing) return;
@@ -535,7 +536,7 @@ export function BoardCanvas(props: Props): JSX.Element {
         <button
           type="button"
           className="board-reset-view"
-          title="Reset camera (drag to orbit, right-drag to pan, wheel to zoom). Hold R over a hex to see what a shooter there could shoot at"
+          title="Reset camera (drag to orbit, right-drag to pan, wheel to zoom). Hold R over a hex to see what a shooter there could shoot at (range 5 unless the unit has its own)"
           onClick={() => viewRef.current?.resetCamera()}
         >
           Reset view
