@@ -5,11 +5,12 @@ import { autoPick, battleLine, parseRunArgs, runHelpText, runSimMain, simulateRu
 
 describe('parseRunArgs', () => {
   it('has defaults and reads every flag', () => {
-    expect(parseRunArgs([])).toEqual({ seeds: 20, seed: 1, maxRounds: 30, verbose: false, help: false });
-    expect(parseRunArgs(['--seeds', '200', '--seed', '7', '--max-rounds', '12', '-v'])).toEqual({
+    expect(parseRunArgs([])).toEqual({ seeds: 20, seed: 1, maxRounds: 30, mission: 'easy', verbose: false, help: false });
+    expect(parseRunArgs(['--seeds', '200', '--seed', '7', '--max-rounds', '12', '--mission', 'hard', '-v'])).toEqual({
       seeds: 200,
       seed: 7,
       maxRounds: 12,
+      mission: 'hard',
       verbose: true,
       help: false,
     });
@@ -22,6 +23,7 @@ describe('parseRunArgs', () => {
     expect(() => parseRunArgs(['--seeds', '0'])).toThrow(/at least 1/);
     expect(() => parseRunArgs(['--seeds', '2.5'])).toThrow(CliError);
     expect(() => parseRunArgs(['--bogus'])).toThrow(/Unknown option/);
+    expect(() => parseRunArgs(['--mission', 'reckless'])).toThrow(/easy, middle, hard/);
   });
 });
 
@@ -59,6 +61,15 @@ describe('simulateRun', () => {
     if (a.end === 'lost') expect(a.final.phase).toBe('over');
     else expect(a.final.round).toBe(4);
     for (const b of a.battles) expect(b.playerUnits).toBeLessThanOrEqual(RUN_TUNING.rosterCap);
+  });
+
+  it('fights the mission its policy names', () => {
+    const threat = (policy: 'easy' | 'middle' | 'hard') => simulateRun(5, 1, policy).battles[0]!.threat;
+    expect(threat('easy')).toBeLessThanOrEqual(threat('middle'));
+    expect(threat('middle')).toBeLessThanOrEqual(threat('hard'));
+    expect(threat('easy')).toBeLessThan(threat('hard'));
+    const reward = (policy: 'easy' | 'hard') => simulateRun(5, 1, policy).battles[0]!.reward;
+    expect(reward('easy')).toBeLessThan(reward('hard'));
   });
 
   it('stops at the round cap or at a loss', () => {

@@ -33,10 +33,13 @@ function checkState(s: RunState): void {
   if (s.battle) {
     expect(validateArmy(s.battle.enemy).errors).toEqual([]);
     expect(s.battle.enemy.units.length).toBeGreaterThanOrEqual(RUN_TUNING.enemy.minUnits);
-    if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits) expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round));
+    if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits)
+      expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round, RUN_TUNING.mission.threat.max));
     expect(validateMap(s.battle.map, s.battle.mode).errors).toEqual([]);
   }
   expect(Boolean(s.battle)).toBe(s.phase === 'briefing' || s.phase === 'battle');
+  const owed = { draft: 'draft', mission: 'missions', aftermath: 'reward', reward: 'reward', shop: 'shop' } as Record<string, string>;
+  expect(s.offer?.kind).toBe(owed[s.phase]);
 }
 
 /**
@@ -89,7 +92,7 @@ describe('a run', () => {
       if (!last.log.some((r) => r.won)) expect(last.gold).toBe(0);
     }
     expect(won).toBeGreaterThan(0);
-    expect([...seen].sort()).toEqual(['aftermath', 'battle', 'briefing', 'draft', 'over', 'reward', 'shop']);
+    expect([...seen].sort()).toEqual(['aftermath', 'battle', 'briefing', 'draft', 'mission', 'over', 'reward', 'shop']);
   });
 
   it("meets the same enemies whatever the player's choices", () => {
@@ -98,9 +101,12 @@ describe('a run', () => {
       const b = generateEncounter(77, round, 4);
       expect(a).toEqual(b);
     }
-    const s = drafted(77);
-    expect(s.battle).toEqual(generateEncounter(77, 1, s.roster.length));
-    expect(drafted(77)).toEqual(s);
+    const s = autoUntil(newRun(77), 'mission');
+    const { enemies, ...ground } = generateEncounter(77, 1, s.roster.length);
+    expect(s.offer).toMatchObject({ kind: 'missions', ...ground });
+    if (s.offer?.kind !== 'missions') throw new Error('no missions on offer');
+    expect(s.offer.missions.map((m) => m.enemy)).toEqual(enemies.map((e) => e.warband));
+    expect(drafted(77)).toEqual(drafted(77));
   });
 
   it('builds the battle once, so a battle left midway restarts the same', () => {
@@ -139,8 +145,8 @@ describe('a run', () => {
         expect(() => runStep(inBattle(seed + 100), { type: 'battleResult', replay })).toThrow(/not of this round/);
         const shop = autoUntil(next, 'shop');
         const round2 = runStep(shop, { type: 'leaveShop' });
-        expect([round2.round, round2.phase, round2.rolls]).toEqual([2, 'briefing', 0]);
-        expect(round2.battle).toEqual(generateEncounter(seed, 2, round2.roster.length));
+        expect([round2.round, round2.phase, round2.rolls]).toEqual([2, 'mission', 1]);
+        expect(round2.offer).toMatchObject({ kind: 'missions', map: generateEncounter(seed, 2, round2.roster.length).map });
       }
     }
     expect([lost > 0, won > 0]).toEqual([true, true]);
@@ -154,6 +160,65 @@ describe('a run', () => {
     expect(runVictorious({ ...s, log: [{ ...entry, round: RUN_TUNING.victoryRound, won: true }] })).toBe(true);
   });
 });
+
+describe('the missions', () => {
+  it('fights the one picked, for the pay it showed', () => {
+    const s = autoUntil(newRun(8), 'mission');
+    if (s.offer?.kind !== 'missions') throw new Error('no missions on offer');
+    const { missions, mode, map, seed } = s.offer;
+    expect(missions).toHaveLength(RUN_TUNING.mission.count);
+    expect(legalRunActions(s)).toEqual(missions.map((_, index) => ({ type: 'pickMission', index })));
+    expect(runActionError(s, { type: 'pickMission', index: missions.length })).toMatch(/no mission/);
+    expect(runActionError(s, { type: 'startBattle' })).not.toBeNull();
+    missions.forEach((m, index) => {
+      const picked = runStep(s, { type: 'pickMission', index });
+      expect(picked.phase).toBe('briefing');
+      expect(picked.offer).toBeUndefined();
+      expect(picked.battle).toEqual({ mode, map, seed, faction: m.faction, enemy: m.enemy, threat: m.threat, rewards: m.rewards, rewardValue: m.rewardValue });
+    });
+  });
+
+  it('pays more for a harder one', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = autoUntil(newRun(seed), 'mission');
+      if (s.offer?.kind !== 'missions') throw new Error('no missions on offer');
+      const values = s.offer.missions.map((m) => m.rewardValue);
+      expect(values).toEqual([...values].sort((a, b) => a - b));
+    }
+  });
+
+  it('pays what it showed once the battle is won, or its worth in gold if nobody is left to take it', () => {
+    let checked = 0;
+    for (let seed = 40; seed < 60 && checked < 3; seed++) {
+      const s = inBattle(seed);
+      const { rewards, rewardValue } = s.battle!;
+      const won = runStep(s, { type: 'battleResult', replay: playBattle(s) });
+      if (won.phase !== 'aftermath') continue;
+      checked++;
+      expect(won.offer).toEqual({ kind: 'reward', rewards, value: rewardValue });
+      const owed = autoUntil(won, 'reward');
+      const gold = owed.gold;
+      const size = owed.roster.length;
+      const paid = runStep(owed, legalRunActions(owed)[0]!);
+      expect(paid.phase).toBe('shop');
+      const purse = (owed.offer as { rewards: typeof rewards }).rewards.reduce((sum, r) => sum + (r.kind === 'gold' ? r.amount : 0), 0);
+      expect(paid.gold).toBe(gold + purse);
+      expect(paid.roster.length).toBe(size + (rewards.some((r) => r.kind === 'recruit') ? 1 : 0));
+
+      // A boost nobody can take any more turns to gold.
+      const stuck = clone(won);
+      delete stuck.pending;
+      stuck.offer = { kind: 'reward', rewards: [{ kind: 'mend' }, { kind: 'gold', amount: 3 }], value: 13 };
+      for (const u of stuck.roster) delete u.wounds;
+      const turned = runStep(stuck, { type: 'continue' });
+      expect(turned.offer).toEqual({ kind: 'reward', rewards: [{ kind: 'gold', amount: 13 }], value: 13 });
+      expect(legalRunActions(turned)).toEqual([{ type: 'reward' }]);
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+});
+
+const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 describe('the briefing', () => {
   it('benches units, but always leaves someone to fight', () => {
@@ -179,14 +244,18 @@ describe('the briefing', () => {
     const regular = drafted(8);
     expect(runActionError(regular, { type: 'setKing', unitId: regular.roster[0]!.id })).toMatch(/no King/);
 
-    let s: RunState = { ...drafted(8), round: RUN_TUNING.enemy.bossEvery };
-    s.battle = generateEncounter(s.seed, s.round, s.roster.length);
-    expect(s.battle.mode).toBe('kill-the-king');
+    const shop = { ...drafted(8), phase: 'shop', round: RUN_TUNING.enemy.bossEvery - 1, offer: { kind: 'shop', recruits: [], upgrades: [], rerolls: 0 } } as RunState;
+    delete shop.battle;
+    const boss = runStep(shop, { type: 'leaveShop' });
+    expect(legalRunActions(boss)).toEqual([{ type: 'pickMission', index: 0 }]);
+    let s = runStep(boss, { type: 'pickMission', index: 0 });
+    expect(s.battle!.mode).toBe('kill-the-king');
+    expect(s.battle!.rewardValue).toBeGreaterThan(0);
     const last = s.roster.at(-1)!;
     expect(runActionError(s, { type: 'setKing', unitId: 'nobody' })).not.toBeNull();
     const byDefault = runMatchSetup(runStep(s, { type: 'startBattle' }));
     expect(byDefault.kings![0]).toBe(0);
-    expect(byDefault.kings![1]).toBe(s.battle.enemyKing);
+    expect(byDefault.kings![1]).toBe(s.battle!.enemyKing);
 
     s = runStep(s, { type: 'setKing', unitId: last.id });
     const started = runStep(s, { type: 'startBattle' });
@@ -228,7 +297,8 @@ describe('runStep', () => {
     const wrong: RunAction[] = [
       { type: 'draftPick', index: 0 },
       { type: 'continue' },
-      { type: 'reward', index: 0 },
+      { type: 'reward' },
+      { type: 'pickMission', index: 0 },
       { type: 'leaveShop' },
       { type: 'reroll' },
       { type: 'advance', unitId: s.roster[0]!.id, index: 0 },

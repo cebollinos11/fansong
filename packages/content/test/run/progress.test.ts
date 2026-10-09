@@ -13,7 +13,12 @@ import {
   mendWound,
   PRESET_UNITS,
   presetUnit,
-  rewardOffer,
+  isBossRound,
+  missionRewardOffers,
+  missionRewards,
+  rewardKinds,
+  rewardsClaimable,
+  rewardValue,
   rollLevelUps,
   RUN_TUNING,
   runStep,
@@ -100,6 +105,7 @@ describe('XP', () => {
     expect(choices[0]).not.toEqual(choices[1]);
 
     s.phase = 'aftermath';
+    s.offer = { kind: 'reward', rewards: [{ kind: 'gold', amount: 5 }], value: 5 };
     const before = s.roster[0]!.unit;
     s = runStep(s, { type: 'advance', unitId: id, index: 1 });
     expect(s.roster[0]!.unit).toEqual(applyAdvance(before, choices[1]!));
@@ -183,7 +189,20 @@ describe('the aftermath', () => {
 });
 
 describe('the reward', () => {
-  it('offers options that can all be taken', () => {
+  it('is worth more the harder the mission, and most for a boss', () => {
+    const { min, max } = RUN_TUNING.mission.threat;
+    const { base, perRound, boss } = RUN_TUNING.mission.reward;
+    expect(rewardValue(3, 1)).toBe(base + perRound * 3);
+    expect(rewardValue(3, min)).toBeLessThan(rewardValue(3, 1));
+    expect(rewardValue(3, max)).toBeGreaterThan(rewardValue(3, 1));
+    expect(rewardValue(3, 0)).toBeGreaterThan(0);
+    expect(rewardValue(4, 1)).toBeGreaterThan(rewardValue(3, 1));
+    const round = RUN_TUNING.enemy.bossEvery;
+    expect(isBossRound(round)).toBe(true);
+    expect(rewardValue(round, 1)).toBe((base + perRound * round) * boss);
+  });
+
+  it('offers pay that can be taken, of different kinds where the roster allows', () => {
     for (let seed = 0; seed < 40; seed++) {
       const s = inBattle(seed);
       if (seed % 2) {
@@ -192,21 +211,37 @@ describe('the reward', () => {
         hurt.unit = applyWound(hurt.unit, { kind: 'combat' });
       }
       if (seed % 3 === 0) while (s.roster.length < RUN_TUNING.rosterCap) s.roster.push({ ...clone(s.roster[0]!), id: `x${s.roster.length}` });
-      const options = rewardOffer(s, makeRunRandom(seed, 1, 0));
-      expect(options).toHaveLength(RUN_TUNING.reward.options);
-      for (const option of options) {
-        const takers = s.roster.filter((u) => {
-          try {
-            applyReward(clone(s), option, u.id);
-            return true;
-          } catch {
-            return false;
-          }
-        });
-        expect(takers.length, JSON.stringify(option)).toBeGreaterThan(0);
-        if (option.kind === 'recruit') expect(s.roster.length).toBeLessThan(RUN_TUNING.rosterCap);
-      }
+      const kinds = rewardKinds(s);
+      expect(kinds.includes('recruit')).toBe(s.roster.length < RUN_TUNING.rosterCap);
+      expect(kinds.includes('mend')).toBe(seed % 2 === 1);
+      const values = [8 + seed, 20 + seed, 45 + seed];
+      const offers = missionRewardOffers(s, values, makeRunRandom(seed, 1, 0));
+      expect(offers).toHaveLength(values.length);
+      offers.forEach((rewards, i) => {
+        expect(rewardsClaimable(s, rewards), JSON.stringify(rewards)).toBe(true);
+        expect(rewards.filter((r) => r.kind !== 'gold').length).toBeLessThanOrEqual(1);
+        for (const r of rewards) if (r.kind === 'gold') expect(r.amount).toBeGreaterThan(0);
+        // A recruit or a mending is priced as the shop prices it, and gold makes up the rest.
+        const purse = rewards.reduce((sum, r) => sum + (r.kind === 'gold' ? r.amount : 0), 0);
+        const main = rewards.find((r) => r.kind !== 'gold');
+        if (!main) expect(purse).toBe(values[i]);
+        else if (main.kind !== 'boost') {
+          const worth = main.kind === 'recruit' ? unitCost(main.unit) : RUN_TUNING.shop.heal;
+          expect(worth).toBeLessThanOrEqual(values[i]! * 1.1);
+          if (purse > 0) expect(worth + purse).toBe(values[i]);
+          else expect(values[i]! - worth).toBeLessThan(RUN_TUNING.mission.reward.spareGold);
+        }
+      });
     }
+  });
+
+  it('falls back to a purse when nothing of the kind fits the value', () => {
+    const s = inBattle(3);
+    const rnd = makeRunRandom(1, 1, 0);
+    expect(missionRewards(s, 'recruit', 2, rnd)).toEqual([{ kind: 'gold', amount: 2 }]);
+    expect(missionRewards(s, 'mend', 2, rnd)).toEqual([{ kind: 'gold', amount: 2 }]);
+    expect(missionRewards(s, 'gold', 30, rnd)).toEqual([{ kind: 'gold', amount: 30 }]);
+    expect(missionRewards(s, 'mend', 30, rnd)).toEqual([{ kind: 'mend' }, { kind: 'gold', amount: 30 - RUN_TUNING.shop.heal }]);
   });
 
   it('applies each kind', () => {

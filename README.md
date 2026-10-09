@@ -426,8 +426,15 @@ holds the design.
 - **Draft** — pick a leader from three offers, then troops one pick at a time
   until 120 points are spent. Each unit that joins, here or later, can be
   given a name of your own (✎ on its card renames it any time outside battle).
-- **Briefing** — the round's mode, a thumbnail of the battlefield and the enemy
-  roster. Bench units here (a hurt unit sits out on its own).
+- **Missions** — each round offers three battles on the same battlefield, in
+  the same mode, against three different enemies. A card shows how hard its
+  enemy is (one to five skulls), the enemy's units as blacked-out shapes, and
+  exactly what winning pays: a recruit, an advance for a unit of your choice, a
+  healer or a purse, topped up with gold. The harder the fight, the more it
+  pays. The pick is final.
+- **Briefing** — the mode, a thumbnail of the battlefield, the enemy still in
+  shadow and the reward at stake. Bench units here (a hurt unit sits out on its
+  own). Who the enemy really is shows only on the field.
 - **Battle** — an ordinary match against the AI. Leaving midway keeps the run
   but not the battle: it starts over from its first move, on the same dice.
 - **After a win** — every unit that fought earns XP (more for kills, more again
@@ -435,9 +442,9 @@ holds the design.
   one of two advances: a trait it lacks, Combat +1 or Quality −1. Then the
   **tending of the wounded**: you throw a d6 for each fallen unit in turn, on a
   card showing its odds: on a 1 it is dead, on a 2 it takes a lasting wound, on
-  a 3 it sits out the next battle, otherwise it recovers. Then **pick one reward of
-  three** (a recruit, an advance for a unit of your choice, a purse, a healer),
-  and spend gold in **camp**: hire recruits, buy training, heal a wound, swap
+  a 3 it sits out the next battle, otherwise it recovers. Then **claim the
+  mission's reward** (if the battle left nobody who can take it, it comes as
+  gold instead), and spend gold in **camp**: hire recruits, buy training, heal a wound, swap
   the stock for new, or sell a unit. If your gold can't hire any recruit on
   offer, an Eager Cadet (Q4+, C2) signs on for free. The roster holds 12. Troops and recruits
   are not only the preset units: every other land creature the game can draw
@@ -445,7 +452,9 @@ holds the design.
   how seasoned it is and what it does in a fight.
 - **The enemy** is built from the preset factions on a point budget that
   ignores how strong you have grown: 100 points in round 1, a
-  third or so (30%) more each round. It always fields at least three units, of its
+  third or so (30%) more each round. Each of a round's three missions gets its
+  own roll of 75% to 130% of that budget, and pays in step: under half the
+  round's usual reward at the bottom, about 1.75 times it at the top. It always fields at least three units, of its
   cheapest troops if the budget is short. Rounds 1–2 are annihilation against a patrol out
   without its leader; later rounds also roll king-of-the-hill and conquest, and
   from round 4 part of the budget buys veterans (better units, not more).
@@ -453,10 +462,12 @@ holds the design.
   ground from round 6.
 - **Bosses** — every 5th round is kill-the-king, on a fifth more budget, against a **champion**: the
   faction's leader at Quality 2+ and Combat 5 or more, with extra traits that
-  grow with each boss. In the briefing, **♛ Crown** picks your own King (the
+  grow with each boss. A boss round has no choice of mission: the boss is the
+  only way on, shown with a crown over its King's shadow, and it pays twice the
+  usual reward. In the briefing, **♛ Crown** picks your own King (the
   costliest fielded unit by default); lose it and the run is over.
 - **Rivals** — the best runs kept on the device come back: a new run meets up to
-  three of the warbands they ended with, each in place of the rolled enemy in the
+  three of the warbands they ended with, each as one of the three missions of the
   regular round (from round 2) whose budget is nearest its cost.
 - **Victory** — beating round 10 wins the run. It then goes on, marked ♛, for
   as long as the warband lasts; the best runs are kept on the device.
@@ -467,4 +478,5 @@ All of it is a pure, seeded state machine in `packages/content/src/run/`
 (`newRun`, `runStep`, `legalRunActions`), with every number in one `RUN_TUNING`
 object; the web app only draws it and saves it. `pnpm play run --seeds 200`
 plays whole runs with the AI in both seats and a greedy picker, and reports how
-deep they get — the tool the difficulty was tuned with.
+deep they get — the tool the difficulty was tuned with. `--mission easy`,
+`middle` or `hard` sets which of each round's missions its player takes.

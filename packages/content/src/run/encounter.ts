@@ -15,7 +15,8 @@ import type { Advance, RunBattle } from './types.js';
  * What a round throws at the player. Difficulty is the enemy's point budget, a
  * fixed curve of the round that ignores how strong the player has grown, so
  * every upgrade counts; later rounds also get veterans, rougher maps and, every
- * few rounds, a boss.
+ * few rounds, a boss. A regular round offers several enemies to choose between,
+ * each bought with its own share of that budget.
  *
  * A round's encounter comes from the run's seed and the round alone, whatever
  * the player did before it: the same seed always meets the same enemies on the
@@ -29,11 +30,18 @@ export function isBossRound(round: number): boolean {
   return round % RUN_TUNING.enemy.bossEvery === 0;
 }
 
-/** The enemy's point budget in `round`. */
-export function enemyPoints(round: number): number {
+/** The enemy's point budget in `round`, for a mission `threat` times as hard as the round's usual. */
+export function enemyPoints(round: number, threat = 1): number {
   const { start, perRound, bossBonus } = RUN_TUNING.enemy;
   const points = start * (1 + perRound) ** (round - 1);
-  return Math.round(points * (isBossRound(round) ? 1 + bossBonus : 1));
+  return Math.round(points * (isBossRound(round) ? 1 + bossBonus : 1) * threat);
+}
+
+/** How many skulls a mission of `threat` shows, from 1 to `mission.skulls`. */
+export function missionSkulls(threat: number): number {
+  const { threat: band, skulls } = RUN_TUNING.mission;
+  const t = (threat - band.min) / (band.max - band.min);
+  return Math.max(1, Math.min(skulls, 1 + Math.round(t * (skulls - 1))));
 }
 
 /** The mode `round` is played in. */
@@ -50,6 +58,17 @@ export interface Enemy {
   warband: Warband;
   /** Boss rounds: index into the warband of its champion, the enemy King. */
   king?: number;
+  /** The warband's cost over the round's budget. */
+  threat: number;
+}
+
+/** A round's battle but for the player's side of it: one mode and one battlefield, and the enemies to choose between, easiest first. */
+export interface Encounter {
+  mode: GameMode;
+  map: MapDef;
+  /** The match's RNG seed. */
+  seed: number;
+  enemies: Enemy[];
 }
 
 /**
@@ -79,11 +98,11 @@ function champion(leader: WarbandUnit, round: number, budget: number, rnd: RunRa
  * `veteranFromRound` on, a growing share of the budget is kept back, and it
  * and whatever else is left over buy advances for random units. On a
  * boss round the leader is a {@link champion} and the rest is its escort.
+ * `threat` scales the budget; `faction` names the roster instead of rolling it.
  */
-export function generateEnemy(round: number, rnd: RunRandom): Enemy {
+export function generateEnemy(round: number, rnd: RunRandom, threat = 1, faction: string = rnd.pick(Object.keys(PRESET_ROSTERS))): Enemy {
   const { minUnits, maxUnits, leaderFromRound, veteranFromRound, veteranShare } = RUN_TUNING.enemy;
-  const budget = enemyPoints(round);
-  const faction = rnd.pick(Object.keys(PRESET_ROSTERS));
+  const budget = enemyPoints(round, threat);
   const roster = PRESET_ROSTERS[faction]!;
   const slots = roster.units.map((slot) => ({ unit: presetUnit(slot.unit)!, count: slot.count ?? 1 }));
   const lead = slots.find((s) => s.unit.leader) ?? slots[defaultKing(slots.map((s) => s.unit))]!;
@@ -129,7 +148,8 @@ export function generateEnemy(round: number, rnd: RunRandom): Enemy {
     }
   }
 
-  const enemy: Enemy = { faction, warband: { name: roster.name, units } };
+  const warband: Warband = { name: roster.name, units };
+  const enemy: Enemy = { faction, warband, threat: warbandCost(warband) / enemyPoints(round) };
   if (boss) enemy.king = 0;
   return enemy;
 }
@@ -164,28 +184,28 @@ export function generateRunMap(round: number, units: number, seed: number): MapD
 }
 
 /**
- * Everything about `round`'s battle but the player's side of it, for a roster
- * of `playerUnits`. A `rival` (a past run's warband) takes the rolled enemy's
- * place, on the same ground.
+ * `round`'s battle but for the player's side of it, for a roster of
+ * `playerUnits`: on a regular round `mission.count` enemies of different
+ * factions and strengths, on a boss round the one boss. A `rival` (a past run's
+ * warband) takes the first rolled enemy's place. The ground is sized for the
+ * largest of them.
  */
-export function generateEncounter(seed: number, round: number, playerUnits: number, rival?: Warband): RunBattle {
+export function generateEncounter(seed: number, round: number, playerUnits: number, rival?: Warband): Encounter {
+  const { count, threat } = RUN_TUNING.mission;
   const rnd = makeRunRandom(seed, round, 0, RUN_STREAM.encounter);
   const mode = rollMode(round, rnd);
-  const rolled = generateEnemy(round, rnd);
-  const enemy: Enemy = rival ? { faction: RIVAL_FACTION, warband: rival } : rolled;
+  const boss = isBossRound(round);
+  const enemies = rnd
+    .sample(Object.keys(PRESET_ROSTERS), boss ? 1 : count)
+    .map((faction) => generateEnemy(round, rnd, boss ? 1 : threat.min + rnd.next() * (threat.max - threat.min), faction));
+  if (rival) enemies[0] = { faction: RIVAL_FACTION, warband: rival, threat: warbandCost(rival) / enemyPoints(round) };
+  enemies.sort((a, b) => a.threat - b.threat);
   const mapSeed = rnd.int(0, 2 ** 31 - 1);
-  const battle: RunBattle = {
-    mode,
-    faction: enemy.faction,
-    enemy: enemy.warband,
-    map: generateRunMap(round, playerUnits + enemy.warband.units.length, mapSeed),
-    seed: rnd.int(0, 2 ** 31 - 1),
-  };
-  if (enemy.king !== undefined) battle.enemyKing = enemy.king;
-  return battle;
+  const largest = Math.max(...enemies.map((e) => e.warband.units.length));
+  return { mode, map: generateRunMap(round, playerUnits + largest, mapSeed), seed: rnd.int(0, 2 ** 31 - 1), enemies };
 }
 
 /** Point cost of a battle's enemy warband. */
-export function enemyCost(battle: RunBattle): number {
+export function enemyCost(battle: Pick<RunBattle, 'enemy'>): number {
   return warbandCost(battle.enemy);
 }

@@ -25,10 +25,15 @@ import { CliError } from './options.js';
 /**
  * The run-mode calibration sim (`pnpm play run`): the AI plays the player's
  * seat as well as the enemy's, a greedy picker makes every choice between
- * battles, and the report says how deep runs get. It is how `RUN_TUNING` is
+ * battles (but for the mission, which `--mission` sets), and the report says
+ * how deep runs get. It is how `RUN_TUNING` is
  * set: an AI-piloted run should usually die around rounds 4–7, which a human
  * should beat.
  */
+
+/** Which of a round's missions the sim's player takes: the easiest, the middle one or the hardest. */
+export type MissionPolicy = 'easy' | 'middle' | 'hard';
+const MISSION_POLICIES: readonly MissionPolicy[] = ['easy', 'middle', 'hard'];
 
 export interface RunSimOptions {
   /** How many runs to play. */
@@ -37,6 +42,7 @@ export interface RunSimOptions {
   seed: number;
   /** Stop a run that is still alive after this many rounds. */
   maxRounds: number;
+  mission: MissionPolicy;
   /** Print a line per battle. */
   verbose: boolean;
   help: boolean;
@@ -53,13 +59,17 @@ function numberArg(flag: string, value: string | undefined, min: number): number
 
 /** Parse the arguments after `run`. Throws {@link CliError} on a malformed flag. */
 export function parseRunArgs(argv: string[]): RunSimOptions {
-  const opts: RunSimOptions = { seeds: 20, seed: 1, maxRounds: 30, verbose: false, help: false };
+  const opts: RunSimOptions = { seeds: 20, seed: 1, maxRounds: 30, mission: 'easy', verbose: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--seeds') opts.seeds = numberArg(arg, argv[++i], 1);
     else if (arg === '--seed') opts.seed = numberArg(arg, argv[++i], 0);
     else if (arg === '--max-rounds') opts.maxRounds = numberArg(arg, argv[++i], 1);
-    else if (arg === '--verbose' || arg === '-v') opts.verbose = true;
+    else if (arg === '--mission') {
+      const policy = argv[++i] as MissionPolicy;
+      if (!MISSION_POLICIES.includes(policy)) throw new CliError(`--mission needs one of ${MISSION_POLICIES.join(', ')}`);
+      opts.mission = policy;
+    } else if (arg === '--verbose' || arg === '-v') opts.verbose = true;
     else if (arg === '--help' || arg === '-h') opts.help = true;
     else throw new CliError(`Unknown option "${arg}". Try run --help.`);
   }
@@ -70,7 +80,7 @@ export function runHelpText(): string {
   return `fansong play run — run-mode calibration sim
 
 Plays whole runs with the AI in both seats and a greedy picker choosing every
-draft pick, level-up, reward and purchase, then reports how deep the runs got.
+draft pick, level-up and purchase, then reports how deep the runs got.
 
 Usage: pnpm play run [options]
 
@@ -78,6 +88,8 @@ Options:
   --seeds <n>       Runs to play (default 20)
   --seed <n>        Seed of the first run; the rest count up (default 1)
   --max-rounds <n>  Stop a surviving run after this many rounds (default 30)
+  --mission <which> Which of a round's missions to fight: easy, middle or hard
+                    (default easy)
   --verbose, -v     Print a line per battle
   --help, -h        Show this help
 `;
@@ -103,12 +115,13 @@ function worth(s: RunState, action: RunAction): { points: number; price: number 
       return { points: advanceCost(unit(action.unitId).unit, advance), price: 0 };
     }
     case 'reward': {
-      const option = s.offer?.kind === 'reward' ? s.offer.options[action.index]! : undefined;
-      if (!option) return { points: 0, price: 0 };
-      if (option.kind === 'gold') return { points: option.amount, price: 0 };
-      if (option.kind === 'recruit') return { points: unitCost(option.unit), price: 0 };
-      if (option.kind === 'mend') return { points: mendGain(unit(action.unitId)), price: 0 };
-      return { points: advanceCost(unit(action.unitId).unit, option.advance), price: 0 };
+      // Only what goes to a unit differs between the ways to take a reward.
+      let points = 0;
+      for (const option of s.offer?.kind === 'reward' ? s.offer.rewards : []) {
+        if (option.kind === 'mend') points += mendGain(unit(action.unitId));
+        else if (option.kind === 'boost') points += advanceCost(unit(action.unitId).unit, option.advance);
+      }
+      return { points, price: 0 };
     }
     case 'buyRecruit': {
       const recruit = s.offer?.kind === 'shop' ? s.offer.recruits[action.index]! : undefined;
@@ -130,13 +143,15 @@ function worth(s: RunState, action: RunAction): { points: number; price: number 
 /**
  * The greedy picker: of the legal actions, the one worth the most points — in
  * the shop, the most points per gold, buying until nothing worth its price is
- * left. It fields everyone, never rerolls and never sells. Deterministic: ties
- * go to the first action listed.
+ * left. It fields everyone, never rerolls and never sells, and takes the
+ * mission `mission` names. Deterministic: ties go to the first action listed.
  */
-export function autoPick(s: RunState): RunAction {
+export function autoPick(s: RunState, mission: MissionPolicy = 'easy'): RunAction {
   const legal = legalRunActions(s);
   const only = (type: RunAction['type']) => legal.find((a) => a.type === type);
   if (s.phase === 'briefing') return only('startBattle')!;
+  // Missions are listed easiest first.
+  if (s.phase === 'mission') return legal[mission === 'easy' ? 0 : mission === 'hard' ? legal.length - 1 : Math.floor(legal.length / 2)]!;
 
   let best: RunAction | undefined;
   let bestScore = 0;
@@ -162,6 +177,10 @@ export interface BattleStat {
   playerPoints: number;
   enemyUnits: number;
   enemyPoints: number;
+  /** The mission's threat: the enemy's cost over the round's budget. */
+  threat: number;
+  /** What the mission paid, or would have, in gold's worth. */
+  reward: number;
   /** Lasting wounds the fielded units carried in. */
   wounds: number;
 }
@@ -177,7 +196,7 @@ export interface RunResult {
 }
 
 /** Play one whole run with the AI in both seats and {@link autoPick} choosing. */
-export function simulateRun(seed: number, maxRounds: number): RunResult {
+export function simulateRun(seed: number, maxRounds: number, mission: MissionPolicy = 'easy'): RunResult {
   let s = newRun(seed);
   const battles: BattleStat[] = [];
   let end: RunResult['end'] = 'capped';
@@ -188,7 +207,7 @@ export function simulateRun(seed: number, maxRounds: number): RunResult {
       break;
     }
     if (s.phase !== 'battle') {
-      s = runStep(s, autoPick(s));
+      s = runStep(s, autoPick(s, mission));
       continue;
     }
     const battle = s.battle!;
@@ -211,6 +230,8 @@ export function simulateRun(seed: number, maxRounds: number): RunResult {
       playerPoints: warbandCost(fielded),
       enemyUnits: battle.enemy.units.length,
       enemyPoints: warbandCost(battle.enemy),
+      threat: battle.threat,
+      reward: battle.rewardValue,
       wounds,
     });
   }
@@ -239,7 +260,7 @@ export function summarize(results: RunResult[]): string {
 
   const battles = results.flatMap((r) => r.battles);
   const last = Math.max(0, ...battles.map((b) => b.round));
-  lines.push('', 'round  fought   won  died here  player pts  enemy pts (budget)  units');
+  lines.push('', 'round  fought   won  died here  player pts  enemy pts (budget)  threat  reward  units');
   for (let round = 1; round <= last; round++) {
     const here = battles.filter((b) => b.round === round);
     if (here.length === 0) continue;
@@ -252,6 +273,8 @@ export function summarize(results: RunResult[]): string {
         pct(here.length - won, results.length).padStart(10),
         mean(here.map((b) => b.playerPoints)).toFixed(0).padStart(11),
         `${mean(here.map((b) => b.enemyPoints)).toFixed(0)} (${enemyPoints(round)})`.padStart(19),
+        mean(here.map((b) => b.threat)).toFixed(2).padStart(7),
+        mean(here.map((b) => b.reward)).toFixed(0).padStart(7),
         `${mean(here.map((b) => b.playerUnits)).toFixed(1)} v ${mean(here.map((b) => b.enemyUnits)).toFixed(1)}`.padStart(11),
       ].join(' '),
     );
@@ -280,7 +303,7 @@ export function runSimMain(argv: string[], print: (line: string) => void = conso
   const started = Date.now();
   const results: RunResult[] = [];
   for (let i = 0; i < opts.seeds; i++) {
-    const result = simulateRun(opts.seed + i, opts.maxRounds);
+    const result = simulateRun(opts.seed + i, opts.maxRounds, opts.mission);
     results.push(result);
     if (opts.verbose) for (const b of result.battles) print(battleLine(result.seed, b));
   }

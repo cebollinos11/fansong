@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import type { RunAction, RunState, WarbandUnit } from '@fansong/content';
 import type { RunRecord } from '../game/runStore.js';
 import { TRAIT_INFO, traitTitle, type TraitKey } from './armyView.js';
-import { MapThumb, UnitSprite, unitLine } from './Picker.js';
+import { LookSprite, MapThumb, UnitSprite, unitLine } from './Picker.js';
 import { NameUnit, TendWounded, wasTended } from './RunCeremony.js';
 import {
   aftermathView,
@@ -10,6 +10,7 @@ import {
   draftView,
   historyLines,
   levelLine,
+  missionsView,
   overView,
   recordLine,
   rewardView,
@@ -20,9 +21,12 @@ import {
   type BriefingView,
   type Choice,
   type DraftView,
+  type EnemyShadow,
+  type MissionsView,
   type OfferView,
   repeatGuard,
-  type RewardOptionView,
+  type RewardLine,
+  type RewardView,
   type ShopView,
   type Target,
   type UnitView,
@@ -48,9 +52,9 @@ type Act = (action: RunAction) => void;
 const RenameContext = createContext<((unitId: string) => void) | null>(null);
 
 /**
- * Everything of a run that isn't the battle itself: the draft, the briefing
- * before each battle, and what follows a win — the aftermath, the reward pick
- * and the camp's shop — down to the screen that ends it. It only draws
+ * Everything of a run that isn't the battle itself: the draft, the choice of
+ * mission and the briefing before each battle, and what follows a win — the
+ * aftermath, the mission's reward and the camp's shop — down to the screen that ends it. It only draws
  * {@link runView.ts}'s view of the run and hands the chosen action back.
  */
 export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: Props): JSX.Element {
@@ -135,6 +139,7 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
   const view = useMemo(
     () => ({
       draft: draftView(run),
+      missions: missionsView(run),
       briefing: briefingView(run),
       aftermath: aftermathView(run),
       reward: rewardView(run),
@@ -143,9 +148,10 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
     [run],
   );
   if (view.draft) return <Draft run={run} view={view.draft} act={onAction} />;
+  if (view.missions) return <Missions run={run} view={view.missions} act={onAction} />;
   if (view.briefing) return <Briefing view={view.briefing} act={onAction} />;
   if (view.aftermath) return <Aftermath run={run} view={view.aftermath} act={onAction} />;
-  if (view.reward) return <Reward run={run} options={view.reward} act={onAction} />;
+  if (view.reward) return <Reward run={run} view={view.reward} act={onAction} />;
   if (view.shop) return <Shop view={view.shop} act={onAction} />;
   if (run.phase === 'over') return <Over run={run} records={records} onExit={onExit} onNewRun={onNewRun} />;
   return null;
@@ -273,43 +279,121 @@ function Draft({ run, view, act }: { run: RunState; view: DraftView; act: Act })
   );
 }
 
+/** A mission's difficulty: skulls, and a word for them. */
+function Threat({ enemy }: { enemy: EnemyShadow }): JSX.Element {
+  const label = enemy.threat;
+  return (
+    <p className="run-threat" title={`${label}: ${enemy.skulls} of ${enemy.maxSkulls} skulls`} aria-label={`${label}: ${enemy.skulls} of ${enemy.maxSkulls} skulls`}>
+      {Array.from({ length: enemy.maxSkulls }, (_, i) => (
+        <span key={i} className={i < enemy.skulls ? 'on' : undefined} aria-hidden="true">
+          {'☠\uFE0E'}
+        </span>
+      ))}
+      <strong>{label}</strong>
+    </p>
+  );
+}
+
+/** An enemy warband in shadow: its units as blacked-out shapes, a crown over its King. */
+function Shadows({ enemy }: { enemy: EnemyShadow }): JSX.Element {
+  return (
+    <>
+      <ul className="run-shadows" aria-label={`${enemy.count} enemy units, unknown until the battle`}>
+        {enemy.units.map((u, i) => (
+          <li key={i} className={u.king ? 'king' : undefined} title={u.king ? 'The enemy King' : undefined}>
+            <LookSprite look={u.look} className="unit-sprite run-shadow" />
+          </li>
+        ))}
+      </ul>
+      <p className="muster-meta">
+        {enemy.count} units{enemy.rival ? ' · the warband a past run of yours ended with' : ''}
+      </p>
+    </>
+  );
+}
+
+/** What a mission pays: a line per reward, a recruit with its card. */
+function Rewards({ rewards }: { rewards: readonly RewardLine[] }): JSX.Element {
+  return (
+    <ul className="run-rewards">
+      {rewards.map((r, i) => (
+        <li key={i} title={r.detail}>
+          {r.recruit ? <UnitSprite unit={r.recruit.unit} className="unit-sprite run-sprite" /> : null}
+          <div>
+            <strong>{r.title}</strong>
+            {r.recruit ? (
+              <>
+                {unitLine(r.recruit.unit, r.recruit.cost)}
+                <div className="run-tags">
+                  <Traits traits={r.recruit.traits} />
+                </div>
+              </>
+            ) : (
+              <small>{r.detail}</small>
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The battlefield of a round, and how the battle on it is won. */
+function Field({ view }: { view: Pick<MissionsView, 'mode' | 'goal' | 'map' | 'lava'> }): JSX.Element {
+  return (
+    <section className="run-panel run-field">
+      <h2 className="muster-label">{view.mode}</h2>
+      <p className="run-goal">{view.goal}</p>
+      <MapThumb map={view.map} className="map-thumb run-map" />
+      <p className="muster-meta">
+        {view.map.width}×{view.map.height} hexes · blue is your edge
+        {view.lava ? ' · red-orange is lava' : ''}
+      </p>
+    </section>
+  );
+}
+
+function Missions({ run, view, act }: { run: RunState; view: MissionsView; act: Act }): JSX.Element {
+  return (
+    <>
+      <section className="run-panel">
+        <h2 className="muster-label">{view.boss ? 'The boss bars the way' : 'Pick a fight'}</h2>
+        <p className="muster-meta">
+          {view.boss
+            ? 'There is no way round this one. Its warband stays in shadow until the battle.'
+            : 'Each enemy stays in shadow until the battle. The harder the fight, the better it pays, and only a win pays at all.'}
+        </p>
+        <div className="run-offers run-missions">
+          {view.missions.map((m, i) => (
+            <div key={i} className="run-offer run-mission">
+              <Threat enemy={m.enemy} />
+              <Shadows enemy={m.enemy} />
+              <h3 className="run-mission-pay">Winning pays</h3>
+              <Rewards rewards={m.rewards} />
+              <Go choice={m.pick} act={act} className="run-go">
+                {view.boss ? 'Face the boss' : 'Take this fight'}
+              </Go>
+            </div>
+          ))}
+        </div>
+      </section>
+      <Field view={view} />
+      <Roster run={run} />
+    </>
+  );
+}
+
 function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element {
   return (
     <div className="run-briefing">
-      <section className="run-panel run-field">
-        <h2 className="muster-label">{view.mode}</h2>
-        <p className="run-goal">{view.goal}</p>
-        <MapThumb map={view.map} className="map-thumb run-map" />
-        <p className="muster-meta">
-          {view.map.width}×{view.map.height} hexes · blue is your edge
-          {view.lava ? ' · red-orange is lava' : ''}
-        </p>
-      </section>
+      <Field view={view} />
 
       <section className="run-panel">
-        <h2 className="muster-label side-label-1">The enemy: {view.enemy.name}</h2>
-        <p className="muster-meta">
-          {view.enemy.count} units · {view.enemy.points} pts
-          {view.enemy.rival ? ' · the warband a past run of yours ended with' : ''}
-        </p>
-        <ul className="run-enemy">
-          {view.enemy.kinds.map((k, i) => (
-            <li key={i}>
-              <UnitSprite unit={k.unit} />
-              <div>
-                <strong>
-                  {k.unit.name.replace(/ \d+$/, '')}
-                  {k.count > 1 ? ` ×${k.count}` : ''}
-                </strong>
-                {view.enemy.king === k.unit ? <span className="run-flag king">♛ King</span> : null}
-                {unitLine(k.unit)}
-                <div className="run-tags">
-                  <Traits traits={k.traits} />
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <h2 className="muster-label side-label-1">The enemy</h2>
+        <Threat enemy={view.enemy} />
+        <Shadows enemy={view.enemy} />
+        <h3 className="run-mission-pay">Winning pays</h3>
+        <Rewards rewards={view.rewards} />
       </section>
 
       <section className="run-panel run-yours">
@@ -364,8 +448,9 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
       <section className="run-panel">
         <h2 className="muster-label">After the battle</h2>
         <p className="muster-meta">
-          The win pays <span className="run-gold">{view.gold} gold</span>.
+          The win pays <span className="run-gold">{view.gold} gold</span>, and the mission's reward is yours to claim.
         </p>
+        <Rewards rewards={view.rewards} />
         <table className="run-table">
           <thead>
             <tr>
@@ -407,7 +492,7 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
       ) : null}
 
       <Go choice={view.next} act={act} className="run-go run-go-big">
-        {view.levelUps.length > 0 ? 'Spend the levels first' : 'Claim a reward'}
+        {view.levelUps.length > 0 ? 'Spend the levels first' : 'Claim the reward'}
       </Go>
       <Roster run={run} />
     </>
@@ -435,35 +520,22 @@ function Targets({ targets, act, none }: { targets: readonly Target[]; act: Act;
   );
 }
 
-function Reward({ run, options, act }: { run: RunState; options: RewardOptionView[]; act: Act }): JSX.Element {
+function Reward({ run, view, act }: { run: RunState; view: RewardView; act: Act }): JSX.Element {
   return (
     <>
       <section className="run-panel">
-        <h2 className="muster-label">Choose one</h2>
-        <div className="run-offers">
-          {options.map((option, i) =>
-            option.recruit ? (
-              <OfferCard key={i} offer={option.recruit}>
-                <p className="muster-note">{option.detail}</p>
-                <Go choice={option.take!} act={act} className="run-go">
-                  Recruit
-                </Go>
-              </OfferCard>
-            ) : (
-              <div key={i} className="run-offer">
-                <strong className="run-offer-name">{option.title}</strong>
-                <p className="muster-note">{option.detail}</p>
-                {option.take ? (
-                  <Go choice={option.take} act={act} className="run-go">
-                    Take
-                  </Go>
-                ) : (
-                  <Targets targets={option.targets ?? []} act={act} none="No unit can use it." />
-                )}
-              </div>
-            ),
-          )}
-        </div>
+        <h2 className="muster-label">The mission's reward</h2>
+        <Rewards rewards={view.rewards} />
+        {view.take ? (
+          <Go choice={view.take} act={act} className="run-go run-go-big">
+            Take it
+          </Go>
+        ) : (
+          <>
+            <p className="muster-meta">Choose who gets it.</p>
+            <Targets targets={view.targets ?? []} act={act} none="No unit can use it." />
+          </>
+        )}
       </section>
       <Roster run={run} />
     </>

@@ -189,7 +189,7 @@ function NewRunDialog({ saved, onStart, onClose }: { saved: RunState | null; onS
           </button>
         </header>
         <div className="picker-scroll run-dialog-body">
-          <p>Draft a warband, then fight battle after battle against a growing enemy. Each win brings experience, a reward and gold to spend. One lost battle ends the run.</p>
+          <p>Draft a warband, then fight battle after battle against a growing enemy. Each round you pick one of three fights: the harder it is, the better it pays. Each win brings experience, that reward and gold to spend. One lost battle ends the run.</p>
           {saved ? <p className="error">This gives up the run you have in progress (round {saved.round}, seed {saved.seed}).</p> : null}
           <label className="run-seed-field">
             Seed

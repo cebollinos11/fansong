@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
-import { injuryFor, legalRunActions, newRun, runBattleConfig, runStep, RUN_TUNING, type RunAction, type RunPhase, type RunState } from '@fansong/content';
+import {
+  injuryFor,
+  legalRunActions,
+  missionSkulls,
+  newRun,
+  runBattleConfig,
+  runStep,
+  RUN_TUNING,
+  unitCost,
+  type RewardOption,
+  type RunAction,
+  type RunPhase,
+  type RunState,
+} from '@fansong/content';
 import { recordReplay } from '@fansong/engine';
 import type { MapStorage } from '../src/game/customMaps.js';
 import {
@@ -30,13 +43,16 @@ import {
   renameError,
   standingUnits,
   levelLine,
+  missionsView,
   overView,
   recordLine,
+  rewardLine,
   rewardView,
   runHeader,
   runMenuItem,
   runSeedFrom,
   shopView,
+  threatLabel,
   unitView,
   woundInfo,
   type Choice,
@@ -109,7 +125,7 @@ describe('the saved run', () => {
       expect(loadRun(storage)).toEqual(s);
       s = s.phase === 'battle' ? fight(s) : runStep(s, legalRunActions(s).find((a) => a.type !== 'reroll' && a.type !== 'sell' && a.type !== 'bench')!);
     }
-    expect([...seen]).toEqual(expect.arrayContaining(['draft', 'briefing', 'battle']));
+    expect([...seen]).toEqual(expect.arrayContaining(['draft', 'mission', 'briefing', 'battle']));
   });
 
   it('carries on from a loaded run exactly as from the one saved', () => {
@@ -127,7 +143,7 @@ describe('the saved run', () => {
     expect(loadRun(memoryStorage())).toBeNull();
     expect(loadRun(memoryStorage({ [RUN_KEY]: '{not json' }))).toBeNull();
     expect(loadRun(memoryStorage({ [RUN_KEY]: '[]' }))).toBeNull();
-    expect(loadRun(memoryStorage({ [RUN_KEY]: JSON.stringify({ ...newRun(1), version: 2 }) }))).toBeNull();
+    expect(loadRun(memoryStorage({ [RUN_KEY]: JSON.stringify({ ...newRun(1), version: 1 }) }))).toBeNull();
     const storage = memoryStorage();
     saveRun(storage, newRun(1));
     clearRun(storage);
@@ -145,12 +161,17 @@ describe('the saved run', () => {
 
   it('rejects a run whose pieces are not what they say', () => {
     const briefing = playTo(newRun(5), 'briefing');
+    const missions = playTo(newRun(5), 'mission');
     const broken: unknown[] = [
       { ...briefing, roster: [] },
       { ...briefing, roster: [{ ...briefing.roster[0], unit: { name: 'Ghost' } }] },
       { ...briefing, roster: [briefing.roster[0], briefing.roster[0]] },
       { ...briefing, battle: undefined },
       { ...briefing, battle: { ...briefing.battle, map: { id: 'x' } } },
+      { ...briefing, battle: { ...briefing.battle, rewards: [{ kind: 'loot' }] } },
+      { ...briefing, battle: { ...briefing.battle, threat: 'high' } },
+      { ...missions, offer: { ...missions.offer, missions: [] } },
+      { ...missions, offer: undefined },
       { ...briefing, phase: 'shop' },
       { ...briefing, phase: 'battle' },
       { ...briefing, phase: 'nowhere' },
@@ -248,12 +269,54 @@ describe('the run screens', () => {
     expect(draftView(playTo(s, 'briefing'))).toBeNull();
   });
 
+  it('lays out the missions: shadows, skulls and pay, on one field', () => {
+    const s = playTo(newRun(11), 'mission');
+    const offer = s.offer!;
+    if (offer.kind !== 'missions') throw new Error('no missions on offer');
+    const view = missionsView(s)!;
+    expect(runHeader(s).title).toBe('Choose your battle');
+    expect(view.mode).toBe('Annihilation');
+    expect(view.boss).toBe(false);
+    expect(view.map).toEqual({ ...offer.map, objectives: {} });
+    expect(view.missions).toHaveLength(RUN_TUNING.mission.count);
+    view.missions.forEach((m, i) => {
+      const mission = offer.missions[i]!;
+      expect(m.enemy.count).toBe(mission.enemy.units.length);
+      expect(m.enemy.units).toHaveLength(mission.enemy.units.length);
+      expect(m.enemy.units.some((u) => u.king)).toBe(false);
+      expect(m.enemy.rival).toBe(false);
+      expect(m.rewards).toHaveLength(mission.rewards.length);
+      // Nothing but shapes of the enemy reaches the screen.
+      expect(Object.keys(m.enemy.units[0]!).sort()).toEqual(['king', 'look']);
+      const picked = taken(s, m.pick);
+      expect(picked.phase).toBe('briefing');
+      expect(picked.battle!.enemy).toEqual(mission.enemy);
+    });
+    // Easiest first: the skulls never go down along the row.
+    const skulls = view.missions.map((m) => m.enemy.skulls);
+    expect(skulls).toEqual([...skulls].sort((a, b) => a - b));
+    expect(missionsView(playTo(s, 'briefing'))).toBeNull();
+
+    expect(threatLabel(1)).toBe('Easy pickings');
+    expect(threatLabel(RUN_TUNING.mission.skulls)).toBe('Deadly');
+    expect(rewardLine({ kind: 'gold', amount: 12 }).title).toBe('12 gold');
+    expect(rewardLine({ kind: 'boost', advance: { kind: 'combat' } }).title).toBe('Combat +1');
+    expect(rewardLine({ kind: 'mend' }).title).toBe('A healer');
+    expect(rewardLine({ kind: 'recruit', unit: s.roster[0]!.unit }).recruit!.cost).toBe(unitCost(s.roster[0]!.unit));
+  });
+
   it('briefs the battle: the enemy, the field, and who fights', () => {
     const s = playTo(newRun(11), 'briefing');
     const view = briefingView(s)!;
     expect(view.mode).toBe('Annihilation');
     expect(view.boss).toBe(false);
-    expect(view.enemy.kinds.reduce((n, k) => n + k.count, 0)).toBe(view.enemy.count);
+    // The enemy is only shapes and a skull count; what winning pays is spelt out.
+    expect(view.enemy.units.map((u) => u.look)).toEqual(s.battle!.enemy.units.map((u) => u.look ?? u.name));
+    expect(view.enemy.count).toBe(s.battle!.enemy.units.length);
+    expect(view.enemy.skulls).toBe(missionSkulls(s.battle!.threat));
+    expect(view.enemy.threat).toBe(threatLabel(view.enemy.skulls));
+    expect(JSON.stringify(view.enemy)).not.toContain('combat');
+    expect(view.rewards).toEqual(s.battle!.rewards.map(rewardLine));
     // The field is drawn with this mode's objectives only: annihilation has none.
     expect(view.map).toEqual({ ...s.battle!.map, objectives: {} });
     const hill = briefingView({ ...s, battle: { ...s.battle!, mode: 'king-of-the-hill' } })!.map.objectives;
@@ -284,7 +347,8 @@ describe('the run screens', () => {
     const boss: RunState = { ...s, battle: { ...s.battle!, mode: 'kill-the-king', enemyKing: 0 } };
     const view = briefingView(boss)!;
     expect(view.boss).toBe(true);
-    expect(view.enemy.king).toBe(boss.battle!.enemy.units[0]);
+    expect(view.enemy.units.map((u) => u.king)).toEqual(boss.battle!.enemy.units.map((_, i) => i === 0));
+    expect(view.enemy).toMatchObject({ skulls: RUN_TUNING.mission.skulls, threat: 'Boss' });
     expect(view.goal).toBe('Kill the enemy King before yours falls');
     expect(view.units.filter((u) => u.king)).toHaveLength(1);
     const other = view.units.find((u) => !u.king)!;
@@ -382,17 +446,30 @@ describe('the run screens', () => {
     });
   });
 
-  it('offers rewards that can all be taken, and only to units that can have them', () => {
+  it("hands over the mission's reward, to a unit that can have it where it needs one", () => {
+    expect(aftermathView(WON)!.rewards).toEqual((WON.offer as { rewards: RewardOption[] }).rewards.map(rewardLine));
     const s = playTo(WON, 'reward');
-    const options = rewardView(s)!;
-    expect(options).toHaveLength(s.offer?.kind === 'reward' ? s.offer.options.length : -1);
-    for (const option of options) {
-      if (option.take) expect(taken(s, option.take).phase).toBe('shop');
-      else {
-        expect(option.targets!.length).toBeGreaterThan(0);
-        for (const t of option.targets!) expect(taken(s, t.give).phase).toBe('shop');
-      }
+    const view = rewardView(s)!;
+    expect(view.rewards.length).toBeGreaterThan(0);
+    if (view.take) expect(taken(s, view.take).phase).toBe('shop');
+    else {
+      expect(view.targets!.length).toBeGreaterThan(0);
+      for (const t of view.targets!) expect(taken(s, t.give).phase).toBe('shop');
     }
+
+    // A boost goes to one unit, and only those that can learn it are offered.
+    const boost: RunState = { ...s, offer: { kind: 'reward', rewards: [{ kind: 'boost', advance: { kind: 'combat' } }, { kind: 'gold', amount: 4 }], value: 10 } };
+    const given = rewardView(boost)!;
+    expect(given.take).toBeUndefined();
+    expect(given.rewards.map((r) => r.title)).toEqual(['Combat +1', '4 gold']);
+    const target = given.targets![0]!;
+    expect(target.change).toMatch(/^Combat \d → \d$/);
+    const after = taken(boost, target.give);
+    expect(after.gold).toBe(boost.gold + 4);
+    expect(after.roster.find((u) => u.id === target.unitId)!.unit.combat).toBe(target.unit.combat + 1);
+
+    const purse: RunState = { ...s, offer: { kind: 'reward', rewards: [{ kind: 'gold', amount: 9 }], value: 9 } };
+    expect(taken(purse, rewardView(purse)!.take!).gold).toBe(s.gold + 9);
   });
 
   it('prices the shop from the rules, and greys out what gold can\'t buy', () => {
@@ -404,7 +481,8 @@ describe('the run screens', () => {
     for (const r of view.recruits) expect(r!.buy.error === null).toBe(r!.price <= s.gold);
     for (const u of view.upgrades) for (const t of u!.targets) expect(t.give.error === null).toBe(t.price! <= s.gold);
     expect(view.reroll.buy.error === null).toBe(view.reroll.price <= s.gold);
-    expect(view.units.every((u) => u.sell.sell.error === null && u.heal === null)).toBe(true);
+    // Only a unit carrying a lasting wound can be healed.
+    expect(view.units.every((u, i) => u.sell.sell.error === null && (u.heal === null) === !s.roster[i]!.wounds?.length)).toBe(true);
 
     // A rich warband buys a recruit: the slot empties and the roster grows.
     const rich = { ...s, gold: 999 };
@@ -423,7 +501,7 @@ describe('the run screens', () => {
     const last = { ...s, roster: s.roster.slice(0, 1) };
     expect(shopView(last)!.units[0]!.sell.sell.error).toBe('the last unit cannot be sold');
 
-    expect(taken(s, view.leave)).toMatchObject({ phase: 'briefing', round: 2 });
+    expect(taken(s, view.leave)).toMatchObject({ phase: 'mission', round: 2 });
   });
 
   it('sums up a run that is over', () => {

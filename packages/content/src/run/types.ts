@@ -46,9 +46,9 @@ export interface RunUnit {
   wounds?: Wound[];
 }
 
-export type RunPhase = 'draft' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
+export type RunPhase = 'draft' | 'mission' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
 
-/** One choice of the reward pick. */
+/** One thing a won mission pays. */
 export type RewardOption =
   | { kind: 'recruit'; unit: WarbandUnit }
   /** An advance for a unit of the player's choice. */
@@ -57,10 +57,28 @@ export type RewardOption =
   /** Mends the oldest lasting wound of a unit of the player's choice. */
   | { kind: 'mend' };
 
-/** What the player is choosing from right now. A shop slot is `null` once bought. */
+/** One of the battles a round offers: who is fought, and what winning pays. */
+export interface RunMission {
+  /** The preset roster the enemy was built from, or `RIVAL_FACTION` for a past run's warband. */
+  faction: string;
+  enemy: Warband;
+  /** Boss rounds: index into `enemy.units` of the enemy King. */
+  enemyKing?: number;
+  /** How hard it is: the enemy's cost over the round's budget. */
+  threat: number;
+  /** What winning pays, all of it. At most one part needs a unit to go to. */
+  rewards: RewardOption[];
+  /** What `rewards` are worth in gold: paid instead if they can no longer be taken. */
+  rewardValue: number;
+}
+
+/** What the player is choosing from, or is owed, right now. A shop slot is `null` once bought. */
 export type RunOffer =
   | { kind: 'draft'; stage: 'leader' | 'troop'; units: WarbandUnit[] }
-  | { kind: 'reward'; options: RewardOption[] }
+  /** The round's missions, easiest first, all in the same mode on the same ground. */
+  | { kind: 'missions'; mode: GameMode; map: MapDef; seed: number; missions: RunMission[] }
+  /** The won mission's pay, held from the win until it is claimed. */
+  | { kind: 'reward'; rewards: RewardOption[]; value: number }
   | { kind: 'shop'; recruits: (WarbandUnit | null)[]; upgrades: (Advance | null)[]; rerolls: number };
 
 /** A level a unit has earned and not yet spent: pick one of `choices`. */
@@ -69,7 +87,7 @@ export interface LevelUp {
   choices: Advance[];
 }
 
-/** The round's battle: rolled on entering the briefing, and kept as is if the battle restarts. */
+/** The round's battle: the mission the player picked, kept as is if the battle restarts. */
 export interface RunBattle {
   mode: GameMode;
   /** The preset roster the enemy was built from, or `RIVAL_FACTION` for a past run's warband. */
@@ -80,6 +98,10 @@ export interface RunBattle {
   map: MapDef;
   /** The match's RNG seed. */
   seed: number;
+  /** The mission's difficulty and pay: see {@link RunMission}. */
+  threat: number;
+  rewards: RewardOption[];
+  rewardValue: number;
   /** Boss rounds: the roster unit the player made King (default: the costliest fielded). */
   playerKing?: string;
   /** Set when the battle starts: the roster ids fielded, in warband order (unit `p0u{i}` is `fielded[i]`). */
@@ -155,7 +177,7 @@ export interface RoundSummary {
 }
 
 export interface RunState {
-  version: 1;
+  version: 2;
   seed: number;
   /** The battle about to be, or being, fought. Starts at 1. */
   round: number;
@@ -180,6 +202,8 @@ export interface RunState {
 export type RunAction =
   /** Draft: take `offer.units[index]`. */
   | { type: 'draftPick'; index: number }
+  /** Mission: fight `offer.missions[index]`. */
+  | { type: 'pickMission'; index: number }
   /** Briefing: leave a unit out of the battle, or put it back. */
   | { type: 'bench'; unitId: string; benched: boolean }
   /** Briefing of a boss round: make a unit the King. */
@@ -191,15 +215,15 @@ export type RunAction =
   | { type: 'advance'; unitId: string; index: number }
   /** Aftermath: go on to the reward. */
   | { type: 'continue' }
-  /** Reward: take `options[index]`; a boost or a mending names its unit. */
-  | { type: 'reward'; index: number; unitId?: string }
+  /** Reward: take the mission's pay; a boost or a mending names its unit. */
+  | { type: 'reward'; unitId?: string }
   | { type: 'buyRecruit'; index: number }
   | { type: 'buyUpgrade'; index: number; unitId: string }
   /** Shop: mend a unit's oldest lasting wound. */
   | { type: 'heal'; unitId: string }
   | { type: 'reroll' }
   | { type: 'sell'; unitId: string }
-  /** Shop: on to the next round's briefing. */
+  /** Shop: on to the next round's missions. */
   | { type: 'leaveShop' }
   /** Any phase but the battle: give a roster unit a name of the player's own. */
   | { type: 'rename'; unitId: string; name: string };

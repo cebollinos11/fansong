@@ -40,8 +40,8 @@ describe('the draft', () => {
     for (let seed = 0; seed < 60; seed++) {
       for (const pick of [() => 0, (n: number) => n - 1, (n: number, step: number) => (seed + step) % n]) {
         const s = draft(seed, pick);
-        expect(s.phase).toBe('briefing');
-        expect(s.offer).toBeUndefined();
+        expect(s.phase).toBe('mission');
+        expect(s.offer?.kind).toBe('missions');
         expect(s.roster.filter((u) => u.unit.leader)).toHaveLength(1);
         expect(s.roster.length).toBeLessThanOrEqual(RUN_TUNING.rosterCap);
         expect(rosterCost(s)).toBeLessThanOrEqual(RUN_TUNING.draft.budget);

@@ -97,11 +97,27 @@ export const RUN_TUNING = {
     /** Share of the enemy points destroyed. */
     killShare: 0.05,
   },
-  reward: {
-    options: 3,
-    /** A gold purse: a base, plus this much per round. */
-    purse: 15,
-    pursePerRound: 2,
+  /** The missions a round offers, and what they pay. */
+  mission: {
+    /** Missions to choose between on a regular round (a boss round has one). */
+    count: 3,
+    /** Each mission's enemy is bought with the round's budget times a roll between these. */
+    threat: { min: 0.75, max: 1.3 },
+    /** Skulls a mission at `threat.max` or over shows; one at `threat.min` or under shows 1. */
+    skulls: 5,
+    reward: {
+      /** What a mission of threat 1 pays, in gold's worth: a base, plus this much per round. */
+      base: 30,
+      perRound: 4,
+      /** Each 1% of threat over (under) 1 adds (takes off) this many % of that… */
+      slope: 2.5,
+      /** …but never down to less than this share of it. */
+      min: 0.4,
+      /** A boss pays this many times it. */
+      boss: 2,
+      /** A recruit, boost or mending worth less than the mission pays is topped up in gold, if the gap is at least this. */
+      spareGold: 3,
+    },
   },
   shop: {
     recruits: 3,

@@ -8,11 +8,11 @@ FanSong has one-off matches only (vs AI, hotseat, online). The goal is a single-
 |---|---|
 | Difficulty | Bigger enemy point budget, tougher generated rosters, more hostile maps/modes. **No AI changes.** |
 | Enemies | Generated from the preset factions' unit pools, bought up to a round budget |
-| Growth | All three, layered after every win: unit XP → pick 1 of 3 reward → gold shop |
+| Growth | All three, layered after every win: unit XP → the mission's reward → gold shop |
 | Unit growth | Existing engine traits and Quality/Combat steps only. **No engine changes.** |
 | Attrition | Injury roll for each fallen unit |
 | Start | Draft a warband from random offers |
-| Structure | Linear. Boss every 5th round (kill-the-king vs a champion). Beating round 10 = "victory", then endless |
+| Structure | Each round a choice of 3 missions (harder pays more; enemies shown as silhouettes). Boss every 5th round (kill-the-king vs a champion, no choice). Beating round 10 = "victory", then endless |
 | Regular modes | Annihilation, conquest, king-of-the-hill |
 | Persistence | Resume between battles; a battle left midway **restarts** (same seed, same enemy). Local best-run records. Run seed shown and enterable |
 
@@ -25,11 +25,11 @@ FanSong has one-off matches only (vs AI, hotseat, online). The goal is a single-
 ```ts
 interface RunUnit { id: string; unit: WarbandUnit; xp: number; level: number; kills: number; sitsOut?: boolean }
 interface RunState {
-  version: 1; seed: number; round: number;          // round = battle about to be / being fought
-  phase: 'draft' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
+  version: 2; seed: number; round: number;          // round = battle about to be / being fought
+  phase: 'draft' | 'mission' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
   roster: RunUnit[]; gold: number; rolls: number;    // rolls = RNG draws spent, so rerolls stay seeded
-  offer?: ...; pending?: ...;                        // current draft/reward/shop stock, level-up choices
-  battle?: { setup: MatchSetup; map: MapDef };       // built at briefing, reused on restart
+  offer?: ...; pending?: ...;                        // current draft/missions/owed reward/shop stock, level-up choices
+  battle?: { setup: MatchSetup; map: MapDef; ... };  // the mission picked (enemy, threat, rewards); reused on restart
   log: RoundSummary[];                               // per round: mode, enemy faction, kills, losses
 }
 ```
@@ -39,25 +39,27 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 ### Loop
 
 1. **Draft** — pick a leader (1 of 3), then troops (1 of 3, repeated) until ~120 points are spent. Leaders come from `PRESET_UNITS` via `presetUnit` (`presets.ts`); troops from `TROOP_POOL`, the preset troops plus the wild units (see Growth). All costed by `unitCost` (`cost.ts`).
-2. **Briefing** — shows the round's mode, map thumbnail (`ui/mapThumb.ts`), enemy roster. Player may bench units (roster cap 12) and, on boss rounds, pick their King.
-3. **Battle** — ordinary local match: `MatchSetup { warbands: [player, enemy], seats: ['human','ai'], seed, mapId, mode, kings }`.
-4. **Aftermath** (win only) — XP, level-ups, injury rolls.
-5. **Reward** — pick 1 of 3.
-6. **Shop** — spend gold, then next round. Loss at step 3 → `over`, record saved.
+2. **Mission** — pick 1 of 3 battles (a boss round offers only the boss). All three share the round's mode and map; each has its own enemy, shown as silhouettes with a skull rating, and its own reward, shown in full. The pick is final.
+3. **Briefing** — shows the mode, map thumbnail (`ui/mapThumb.ts`), the enemy still as silhouettes, and the reward. Player may bench units (roster cap 12) and, on boss rounds, pick their King. The enemy roster is only seen in the battle.
+4. **Battle** — ordinary local match: `MatchSetup { warbands: [player, enemy], seats: ['human','ai'], seed, mapId, mode, kings }`.
+5. **Aftermath** (win only) — XP, level-ups, injury rolls.
+6. **Reward** — claim what the mission promised (a boost or mending asks which unit). If nobody can take it any more, it is paid as gold of the same worth.
+7. **Shop** — spend gold, then next round. Loss at step 4 → `over`, record saved.
 
 ### Difficulty (`run/encounter.ts`)
 
 - **Budget:** `enemyPoints(round)` — fixed curve, not tied to the player's strength (so upgrades matter). Constants in one `RUN_TUNING` object; tuned with the CLI sim below. Start at 100 points, ×1.3 each round (compounding), boss rounds +20%; ×1.25 left a human at 405 points facing 304 in round 6. The sim-tuned start was 50% of the draft budget; 100 is from playtest feedback and not yet re-tuned (AI-piloted runs now die around round 4). (The first guess — 90%, +12% a round — killed four runs in ten in round 1 and then let survivors snowball.)
 - **Roster:** pick a faction (a `PRESET_ROSTERS` entry → its unit pool), take its leader (from round 3; rounds 1–2 meet a leaderless patrol — for a faction with no leader, one without its costliest unit, which alone used to cause half of all round-1 deaths), fill to budget weighted toward that roster's own proportions. Always at least 3 units (`enemy.minUnits`): a budget too small for that — rounds 1–3 used to meet one or two units — buys the faction's cheapest troops and goes over. From round 4, a growing share of the budget is kept back and, with any leftover points, buys "veteran" upgrades (a favorable trait or stat step) on random units.
+- **Missions (`mission` in `RUN_TUNING`):** a regular round rolls 3 enemies of different factions, each on the round's budget times its own roll in 0.75–1.3, sorted easiest first. A mission's `threat` is its enemy's real cost over the round's budget; skulls (1–5) are that mapped over the roll's range. The enemies come from seed + round alone (stream `RUN_STREAM.encounter`); the rewards are rolled for the roster as it stands. A rival takes the first rolled enemy's slot, at its own threat.
 - **Boss (every 5th):** `mode: 'kill-the-king'`; enemy King is a champion — faction leader pushed to Q2/C5+ with stacked traits — plus an escort from the remaining budget.
-- **Map:** `generateRandomMap` (`mapGen.ts`) seeded per round; it already lays objectives for every mode. Size grows with unit count; `TerrainSettings` get denser/rougher by round; later rounds use `symmetric: false`. Regular rounds roll annihilation / conquest / king-of-the-hill (annihilation only for rounds 1–2).
+- **Map:** one per round, shared by its missions and sized for the largest enemy. `generateRandomMap` (`mapGen.ts`) seeded per round; it already lays objectives for every mode. Size grows with unit count; `TerrainSettings` get denser/rougher by round; later rounds use `symmetric: false`. Regular rounds roll annihilation / conquest / king-of-the-hill (annihilation only for rounds 1–2).
 
 ### Growth (`run/progress.ts`, `run/shop.ts`)
 
 - **Battle report:** pure `battleReport(replay)` re-runs the commands through `reduce`, collecting `UnitKilled { unitId, byId }` → kills per player unit, who fell. (Confirm how `buildMatch` in `deploy.ts` assigns unit ids to map them back to roster entries.)
 - **XP:** +1 for fighting, +2 per kill, +1 more for killing a costlier unit. Levels at 6 / 14 / 24 / 36 XP (cap 4; the first pass, 3 / 7 / 12 / 18, levelled a unit on its first kill). Each level: choose 1 of 2 advances — an existing favorable trait the unit lacks, Combat +1, or Quality −1, within `STAT_BOUNDS` and `statErrors`.
 - **Injury (d6 per fallen unit):** 1 dead; 2 lasting wound (Combat −1, Quality +1, or an unfavorable trait); 3 sits out next battle; 4–6 recovers. Fled units return unhurt; a turncoat (Disloyal) is gone.
-- **Reward (1 of 3):** a recruit, a trait/stat boost for a unit of your choice, a gold purse, or mending a lasting wound.
+- **Reward (per mission, shown before the pick):** worth `(base + perRound × round) × (1 + slope × (threat − 1))` in gold (floor `min`; a boss pays `boss` times the base), where a recruit is worth its points, a boost its shop price for the roster's median taker, a mending the shop's heal price. Each mission gets a kind — recruit, boost, purse, mending; different kinds across the three where the roster allows — then something of that kind worth about the value, topped up in gold (or all gold if nothing fits). Tuned with the sim (100 seeds per policy) so a threat-1 mission pays about what the old pick-1-of-3 reward gave a greedy picker (base 30, +4 a round; half that starved every policy): always taking the easiest mission dies least early but meets the first boss weak (38% win), always taking the hardest loses 30% of runs in round 1 but is the only policy that beats round 10. All three reach round 3.0–3.5 on average, as before missions (3.4).
 - **Gold:** flat per win + per round + share of enemy points killed. **Recruits** (reward and shop) come from `TROOP_POOL`, as the draft's troops do: the preset troops plus the wild units of `run/wild.ts` — every sprite no preset fields (sea creatures left out for now: `SEA_CREATURES`), each built on load from a one-line sketch (rank → Quality/Combat, role → traits, plus traits of its own). **Shop:** 3 recruits (price = `unitCost`; if the gold in hand buys none of them, a free `EAGER_CADET`, Q4+ C2, is added), 2 upgrades (price = cost delta × multiplier), heal a wound, paid reroll, sell a unit.
 
 ### Web (`apps/web`)
@@ -70,7 +72,7 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 
 ### Calibration tool (`tools/cli`)
 
-`pnpm play run --seeds N`: the AI plays the player's seat too, with a greedy auto-picker for draft/reward/shop, and reports how deep runs get. Used to set `RUN_TUNING` so an AI-piloted run usually dies around rounds 4–7 (a human should beat that). Committed, unlike the AI bench.
+`pnpm play run --seeds N`: the AI plays the player's seat too, with a greedy auto-picker for draft/reward/shop and a fixed mission policy (`--mission easy|middle|hard`, default easy), and reports how deep runs get. Used to set `RUN_TUNING` so an AI-piloted run usually dies around rounds 4–7 (a human should beat that). Committed, unlike the AI bench.
 
 ## Milestones
 

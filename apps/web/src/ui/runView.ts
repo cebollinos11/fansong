@@ -3,10 +3,11 @@ import {
   applyAdvance,
   canAdvance,
   defaultKing,
-  enemyCost,
   fieldedUnits,
   isBossRound,
   isWounded,
+  missionSkulls,
+  rewardNeedsUnit,
   RIVAL_FACTION,
   playerWarband,
   recruitPrice,
@@ -21,7 +22,9 @@ import {
   type Advance,
   type AftermathLine,
   type MapDef,
+  type RewardOption,
   type RunAction,
+  type RunMission,
   type RunState,
   type RunUnit,
   type WarbandUnit,
@@ -31,7 +34,6 @@ import type { RunRecord } from '../game/runStore.js';
 import { TRAIT_INFO, traitsOf, type TraitKey } from './armyView.js';
 import { MODE_LABELS } from './editorView.js';
 import { ANNIHILATION_GOAL, GOALS } from './modeView.js';
-import { unitKinds } from './unitKinds.js';
 
 /**
  * The run screens' view-model, kept apart from React so it can be tested
@@ -149,6 +151,7 @@ export interface RunHeader {
 
 const TITLES: Record<RunState['phase'], string> = {
   draft: 'Draft your warband',
+  mission: 'Choose your battle',
   briefing: 'Briefing',
   battle: 'Battle',
   aftermath: 'Victory',
@@ -167,7 +170,7 @@ function justWon(s: RunState): boolean {
 }
 
 export function runHeader(s: RunState): RunHeader {
-  const boss = (s.phase === 'briefing' || s.phase === 'battle') && isBossRound(s.round);
+  const boss = (s.phase === 'mission' || s.phase === 'briefing' || s.phase === 'battle') && isBossRound(s.round);
   return {
     title: boss ? 'Boss battle' : s.phase === 'aftermath' && justWon(s) ? 'The run is won' : TITLES[s.phase],
     round: s.round,
@@ -230,6 +233,90 @@ function battlefield(map: MapDef, mode: GameMode): MapDef {
   return { ...map, objectives: {} };
 }
 
+/** One thing a mission pays, as its card lists it. */
+export interface RewardLine {
+  title: string;
+  detail: string;
+  /** A recruit: the unit that joins. */
+  recruit?: OfferView;
+}
+
+export function rewardLine(option: RewardOption): RewardLine {
+  switch (option.kind) {
+    case 'gold':
+      return { title: `${option.amount} gold`, detail: 'A purse to spend in camp' };
+    case 'recruit':
+      return { title: option.unit.name, detail: 'Joins your warband', recruit: offerView(option.unit) };
+    case 'mend':
+      return { title: 'A healer', detail: "Mends one unit's oldest lasting wound" };
+    case 'boost': {
+      const info = advanceInfo(option.advance);
+      return { title: info.label, detail: `For one unit of your choice: ${info.help}` };
+    }
+  }
+}
+
+/**
+ * An enemy warband as it is shown before the battle: only the shapes of its
+ * units, blacked out, and how dangerous it is. Who they are is learnt on the field.
+ */
+export interface EnemyShadow {
+  /** A unit each, in the warband's order, to draw as silhouettes. */
+  units: { look: string; king: boolean }[];
+  count: number;
+  /** How hard the battle is, out of `maxSkulls`. */
+  skulls: number;
+  maxSkulls: number;
+  /** A word for that: "Light", "Deadly", or "Boss". */
+  threat: string;
+  /** Whether it is the warband a past run ended with. */
+  rival: boolean;
+}
+
+function enemyShadow(m: Pick<RunMission, 'enemy' | 'enemyKing' | 'threat' | 'faction'>): EnemyShadow {
+  const maxSkulls = RUN_TUNING.mission.skulls;
+  // A boss is the round's whole budget and a champion: every skull, whatever its threat says.
+  const boss = m.enemyKing !== undefined;
+  const skulls = boss ? maxSkulls : missionSkulls(m.threat);
+  return {
+    units: m.enemy.units.map((u, i) => ({ look: u.look ?? u.name, king: i === m.enemyKing })),
+    count: m.enemy.units.length,
+    skulls,
+    maxSkulls,
+    threat: boss ? 'Boss' : threatLabel(skulls, maxSkulls),
+    rival: m.faction === RIVAL_FACTION,
+  };
+}
+
+/** What a difficulty in skulls is called. */
+export function threatLabel(skulls: number, maxSkulls: number = RUN_TUNING.mission.skulls): string {
+  const names = ['Easy pickings', 'Light', 'An even fight', 'Hard', 'Deadly'];
+  return names[Math.round(((skulls - 1) / Math.max(1, maxSkulls - 1)) * (names.length - 1))]!;
+}
+
+export interface MissionsView {
+  mode: string;
+  goal: string;
+  boss: boolean;
+  /** The battlefield every mission of the round is fought on, with this mode's objectives only. */
+  map: MapDef;
+  lava: boolean;
+  missions: { enemy: EnemyShadow; rewards: RewardLine[]; pick: Choice }[];
+}
+
+export function missionsView(s: RunState): MissionsView | null {
+  if (s.phase !== 'mission' || s.offer?.kind !== 'missions') return null;
+  const { mode, map, missions } = s.offer;
+  return {
+    mode: MODE_LABELS[mode],
+    goal: MODE_GOALS[mode] ?? ANNIHILATION_GOAL,
+    boss: isBossRound(s.round),
+    map: battlefield(map, mode),
+    lava: map.hexes.some((hex) => hex.feature === 'lava'),
+    missions: missions.map((m, index) => ({ enemy: enemyShadow(m), rewards: m.rewards.map(rewardLine), pick: choice(s, { type: 'pickMission', index }) })),
+  };
+}
+
 export interface BriefingUnit {
   view: UnitView;
   /** Whether it fights this battle. */
@@ -246,17 +333,10 @@ export interface BriefingView {
   mode: string;
   goal: string;
   boss: boolean;
-  enemy: {
-    name: string;
-    points: number;
-    count: number;
-    /** Its units folded into kinds, as the setup screens show a warband. */
-    kinds: { unit: WarbandUnit; count: number; traits: TraitKey[] }[];
-    /** Boss rounds: the enemy King. */
-    king?: WarbandUnit;
-    /** Whether it is the warband a past run ended with. */
-    rival: boolean;
-  };
+  /** The enemy, still only shapes: it is met on the field. */
+  enemy: EnemyShadow;
+  /** What winning pays. */
+  rewards: RewardLine[];
   /** The battlefield, with this mode's objectives only. */
   map: MapDef;
   /** Whether the battlefield has lava on it. */
@@ -274,19 +354,12 @@ export function briefingView(s: RunState): BriefingView | null {
   const fielded = fieldedUnits(s);
   const warband = playerWarband(s);
   const kingId = boss ? (fielded.find((u) => u.id === battle.playerKing) ?? fielded[defaultKing(warband.units)])?.id : undefined;
-  const king = battle.enemyKing === undefined ? undefined : battle.enemy.units[battle.enemyKing];
   return {
     mode: MODE_LABELS[battle.mode],
     goal: MODE_GOALS[battle.mode] ?? ANNIHILATION_GOAL,
     boss,
-    enemy: {
-      name: battle.enemy.name,
-      points: enemyCost(battle),
-      count: battle.enemy.units.length,
-      kinds: unitKinds(battle.enemy.units).map((k) => ({ ...k, traits: traitsOf(k.unit) })),
-      ...(king ? { king } : {}),
-      rival: battle.faction === RIVAL_FACTION,
-    },
+    enemy: enemyShadow(battle),
+    rewards: battle.rewards.map(rewardLine),
     map: battlefield(battle.map, battle.mode),
     lava: battle.map.hexes.some((hex) => hex.feature === 'lava'),
     units: s.roster.map((u) => {
@@ -400,6 +473,8 @@ export interface AftermathView {
   triumph: { headline: string; detail: string } | null;
   gold: number;
   lines: { unitId: string; name: string; kills: number; xp: number; text: string; tone: 'ok' | 'hurt' | 'lost' }[];
+  /** What the mission pays, claimed next. */
+  rewards: RewardLine[];
   /** Levels waiting to be spent: one choice of advances per unit at a time. */
   levelUps: { view: UnitView; options: { info: Info; change: string; take: Choice }[] }[];
   next: Choice;
@@ -428,6 +503,7 @@ export function aftermathView(s: RunState): AftermathView | null {
         }
       : null,
     gold: s.aftermath.gold,
+    rewards: s.offer?.kind === 'reward' ? s.offer.rewards.map(rewardLine) : [],
     lines: s.aftermath.units.map((line) => ({ unitId: line.unitId, name: line.name, kills: line.kills, xp: line.xp, ...fateText(line) })),
     levelUps,
     next: choice(s, { type: 'continue' }),
@@ -445,41 +521,29 @@ export interface Target {
   give: Choice;
 }
 
-export interface RewardOptionView {
-  title: string;
-  detail: string;
-  /** A recruit on offer. */
-  recruit?: OfferView;
-  /** Taken as it is: a purse, a recruit. */
+export interface RewardView {
+  /** Everything the mission pays. */
+  rewards: RewardLine[];
+  /** Pay that goes to nobody in particular: take it as it is. */
   take?: Choice;
-  /** Given to a unit: every unit that can have it. */
+  /** Pay with a part for one unit: every unit that can have it. */
   targets?: Target[];
 }
 
-export function rewardView(s: RunState): RewardOptionView[] | null {
+export function rewardView(s: RunState): RewardView | null {
   if (s.phase !== 'reward' || s.offer?.kind !== 'reward') return null;
-  return s.offer.options.map((option, index): RewardOptionView => {
-    const giveTo = (change: (u: RunUnit) => string): Target[] =>
-      s.roster
-        .map((u) => ({ unitId: u.id, unit: u.unit, change: change(u), give: choice(s, { type: 'reward', index, unitId: u.id }) }))
-        .filter((t) => t.give.error === null);
-    switch (option.kind) {
-      case 'gold':
-        return { title: `${option.amount} gold`, detail: 'A purse to spend in camp', take: choice(s, { type: 'reward', index }) };
-      case 'recruit':
-        return { title: option.unit.name, detail: 'Joins your warband', recruit: offerView(option.unit), take: choice(s, { type: 'reward', index }) };
-      case 'mend':
-        return {
-          title: 'A healer',
-          detail: "Mends one unit's oldest lasting wound",
-          targets: giveTo((u) => (u.wounds?.[0] ? `Mends ${woundInfo(u.wounds[0]).label}` : '')),
-        };
-      case 'boost': {
-        const info = advanceInfo(option.advance);
-        return { title: info.label, detail: `For one unit: ${info.help}`, targets: giveTo((u) => advanceChange(u.unit, option.advance)) };
-      }
-    }
-  });
+  const { rewards } = s.offer;
+  const lines = rewards.map(rewardLine);
+  const given = rewards.find(rewardNeedsUnit);
+  if (!given) return { rewards: lines, take: choice(s, { type: 'reward' }) };
+  const change = (u: RunUnit): string =>
+    given.kind === 'boost' ? advanceChange(u.unit, given.advance) : u.wounds?.[0] ? `Mends ${woundInfo(u.wounds[0]).label}` : '';
+  return {
+    rewards: lines,
+    targets: s.roster
+      .map((u) => ({ unitId: u.id, unit: u.unit, change: change(u), give: choice(s, { type: 'reward', unitId: u.id }) }))
+      .filter((t) => t.give.error === null),
+  };
 }
 
 export interface ShopView {

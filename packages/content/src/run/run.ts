@@ -6,14 +6,14 @@ import type { Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
 import { generateEncounter } from './encounter.js';
-import { applyAftermath, applyReward, rewardOffer, rollLevelUps } from './progress.js';
+import { applyAftermath, applyReward, missionRewardOffers, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
 import { scheduleRivals } from './rivals.js';
 import { makeRunRandom, type RunRandom } from './rng.js';
 import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, renameUnit, rosterCost, rosterUnit } from './roster.js';
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
 import { RUN_TUNING } from './tuning.js';
-import type { RunAction, RunState } from './types.js';
+import type { RunAction, RunMission, RunState } from './types.js';
 
 /**
  * The run state machine. A run is `newRun(seed)` plus the actions taken:
@@ -33,21 +33,30 @@ function roll(s: RunState): RunRandom {
 
 /** A new run, at its leader pick. It meets some of `past` (warbands earlier runs ended with) again as enemies. */
 export function newRun(seed: number, past: readonly Warband[] = []): RunState {
-  const s: RunState = { version: 1, seed: Math.floor(seed), round: 1, phase: 'draft', roster: [], gold: 0, rolls: 0, nextId: 1, log: [] };
+  const s: RunState = { version: 2, seed: Math.floor(seed), round: 1, phase: 'draft', roster: [], gold: 0, rolls: 0, nextId: 1, log: [] };
   const rivals = scheduleRivals(s.seed, past);
   if (rivals.length > 0) s.rivals = rivals;
   s.offer = { kind: 'draft', stage: 'leader', units: leaderOffer(roll(s)) };
   return s;
 }
 
-/** Roll the round's battle and go to its briefing (mutates `s`). */
-function enterBriefing(s: RunState): void {
-  s.phase = 'briefing';
-  delete s.offer;
+/**
+ * Roll the round's missions and put them up for choosing (mutates `s`). The
+ * enemies come from the seed and the round alone; what each pays is rolled for
+ * the roster as it stands, so every reward offered can be taken.
+ */
+function enterMission(s: RunState): void {
   const rival = s.rivals?.find((r) => r.round === s.round)?.warband;
-  s.battle = generateEncounter(s.seed, s.round, s.roster.length, rival);
-  // A bench that would leave nobody to fight is cleared.
-  if (fitUnits(s).every((u) => u.benched)) for (const u of s.roster) delete u.benched;
+  const { mode, map, seed, enemies } = generateEncounter(s.seed, s.round, s.roster.length, rival);
+  const values = enemies.map((e) => rewardValue(s.round, e.threat));
+  const rewards = missionRewardOffers(s, values, roll(s));
+  const missions = enemies.map((e, i): RunMission => {
+    const mission: RunMission = { faction: e.faction, enemy: e.warband, threat: e.threat, rewards: rewards[i]!, rewardValue: values[i]! };
+    if (e.king !== undefined) mission.enemyKing = e.king;
+    return mission;
+  });
+  s.phase = 'mission';
+  s.offer = { kind: 'missions', mode, map, seed, missions };
 }
 
 /** Whether the run has beaten its victory round (it may still be going). */
@@ -88,7 +97,21 @@ export function runStep(state: RunState, action: RunAction): RunState {
       const left = RUN_TUNING.draft.budget - rosterCost(s);
       const units = s.roster.length < RUN_TUNING.rosterCap ? troopOffer(left, roll(s)) : [];
       if (units.length > 0) s.offer = { kind: 'draft', stage: 'troop', units };
-      else enterBriefing(s);
+      else enterMission(s);
+      break;
+    }
+    case 'pickMission': {
+      need('mission');
+      const offer = s.offer?.kind === 'missions' ? s.offer : undefined;
+      const mission = offer?.missions[action.index];
+      if (!offer || !mission) throw new Error(`no mission ${action.index}`);
+      const { faction, enemy, enemyKing, threat, rewards, rewardValue: value } = mission;
+      s.battle = { mode: offer.mode, faction, enemy, map: offer.map, seed: offer.seed, threat, rewards, rewardValue: value };
+      if (enemyKing !== undefined) s.battle.enemyKing = enemyKing;
+      s.phase = 'briefing';
+      delete s.offer;
+      // A bench that would leave nobody to fight is cleared.
+      if (fitUnits(s).every((u) => u.benched)) for (const u of s.roster) delete u.benched;
       break;
     }
     case 'bench': {
@@ -138,6 +161,7 @@ export function runStep(state: RunState, action: RunAction): RunState {
       if (report.winner === null) throw new Error('the battle is not over');
       if (report.winner === 0) {
         applyAftermath(s, report, roll(s));
+        s.offer = { kind: 'reward', rewards: battle.rewards, value: battle.rewardValue };
         s.phase = 'aftermath';
       } else {
         s.log.push({
@@ -170,15 +194,16 @@ export function runStep(state: RunState, action: RunAction): RunState {
     case 'continue': {
       need('aftermath');
       if (s.pending?.length) throw new Error('there are levels still to spend');
-      s.offer = { kind: 'reward', options: rewardOffer(s, roll(s)) };
+      if (s.offer?.kind !== 'reward') throw new Error('no reward is owed');
+      // Pay the battle left nobody to take (the unit it suited died) comes as gold.
+      if (!rewardsClaimable(s, s.offer.rewards)) s.offer.rewards = [{ kind: 'gold', amount: s.offer.value }];
       s.phase = 'reward';
       break;
     }
     case 'reward': {
       need('reward');
-      const option = s.offer?.kind === 'reward' ? s.offer.options[action.index] : undefined;
-      if (!option) throw new Error(`no reward ${action.index}`);
-      applyReward(s, option, action.unitId);
+      if (s.offer?.kind !== 'reward') throw new Error('no reward is owed');
+      for (const option of s.offer.rewards) applyReward(s, option, rewardNeedsUnit(option) ? action.unitId : undefined);
       s.offer = shopStock(s, roll(s));
       s.phase = 'shop';
       break;
@@ -207,7 +232,7 @@ export function runStep(state: RunState, action: RunAction): RunState {
       need('shop');
       s.round++;
       s.rolls = 0;
-      enterBriefing(s);
+      enterMission(s);
       break;
     case 'rename':
       if (s.phase === 'battle' || s.phase === 'over') throw new Error('units cannot be renamed now');
@@ -240,6 +265,9 @@ export function legalRunActions(s: RunState): RunAction[] {
     case 'draft':
       if (s.offer?.kind === 'draft') s.offer.units.forEach((_, index) => candidates.push({ type: 'draftPick', index }));
       break;
+    case 'mission':
+      if (s.offer?.kind === 'missions') s.offer.missions.forEach((_, index) => candidates.push({ type: 'pickMission', index }));
+      break;
     case 'briefing':
       candidates.push({ type: 'startBattle' });
       for (const u of s.roster) candidates.push({ type: 'bench', unitId: u.id, benched: !u.benched });
@@ -250,11 +278,10 @@ export function legalRunActions(s: RunState): RunAction[] {
       candidates.push({ type: 'continue' });
       break;
     case 'reward':
-      if (s.offer?.kind === 'reward')
-        s.offer.options.forEach((option, index) => {
-          if (option.kind === 'gold' || option.kind === 'recruit') candidates.push({ type: 'reward', index });
-          else for (const unitId of ids) candidates.push({ type: 'reward', index, unitId });
-        });
+      if (s.offer?.kind === 'reward') {
+        if (s.offer.rewards.some(rewardNeedsUnit)) for (const unitId of ids) candidates.push({ type: 'reward', unitId });
+        else candidates.push({ type: 'reward' });
+      }
       break;
     case 'shop':
       candidates.push({ type: 'leaveShop' });

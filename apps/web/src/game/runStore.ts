@@ -45,7 +45,7 @@ export interface RunRecord {
   units?: WarbandUnit[];
 }
 
-const PHASES: readonly RunPhase[] = ['draft', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'over'];
+const PHASES: readonly RunPhase[] = ['draft', 'mission', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'over'];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -81,6 +81,24 @@ function kinded(raw: unknown, kinds: readonly string[], what: string): Record<st
 
 const STEP_KINDS = ['trait', 'combat', 'quality'];
 
+/** What a mission pays: a list of rewards. */
+function parseRewards(raw: unknown): unknown[] {
+  return list(raw, 'bad reward').map((o) => {
+    const option = kinded(o, ['recruit', 'boost', 'gold', 'mend'], 'bad reward');
+    if (option.kind === 'recruit') return { ...option, unit: parseUnit(option.unit) };
+    if (option.kind === 'boost') kinded(option.advance, STEP_KINDS, 'bad reward');
+    if (option.kind === 'gold') count(option.amount, 'bad reward');
+    return option;
+  });
+}
+
+/** A mission, or the battle one became: who is fought, how hard it is and what it pays. */
+function parseMission(raw: unknown): Record<string, unknown> {
+  if (!isRecord(raw) || typeof raw.faction !== 'string' || typeof raw.threat !== 'number' || !(raw.threat >= 0)) fail('bad mission');
+  count(raw.rewardValue, 'bad mission');
+  return { ...raw, enemy: parseWarband(raw.enemy), rewards: parseRewards(raw.rewards) };
+}
+
 /**
  * Parse an untrusted saved run. Throws a friendly `Error` unless it has the
  * shape of a {@link RunState} whose every unit and map parses, and the run's
@@ -89,7 +107,7 @@ const STEP_KINDS = ['trait', 'combat', 'quality'];
  */
 export function parseRun(raw: unknown): RunState {
   if (!isRecord(raw)) fail('it is not an object');
-  if (raw.version !== 1) fail('it is from another version');
+  if (raw.version !== 2) fail('it is from another version');
   if (typeof raw.seed !== 'number' || !Number.isSafeInteger(raw.seed)) fail('it has no seed');
   if (typeof raw.phase !== 'string' || !(PHASES as readonly string[]).includes(raw.phase)) fail('it has no phase');
   const phase = raw.phase as RunPhase;
@@ -119,18 +137,17 @@ export function parseRun(raw: unknown): RunState {
   }
 
   if (raw.offer !== undefined) {
-    const offer = kinded(raw.offer, ['draft', 'reward', 'shop'], 'bad offer');
+    const offer = kinded(raw.offer, ['draft', 'missions', 'reward', 'shop'], 'bad offer');
     if (offer.kind === 'draft') {
       next.offer = { ...offer, units: list(offer.units, 'bad draft offer').map(parseUnit) };
+    } else if (offer.kind === 'missions') {
+      if (typeof offer.mode !== 'string' || typeof offer.seed !== 'number') fail('bad missions');
+      const missions = list(offer.missions, 'bad missions').map(parseMission);
+      if (missions.length === 0) fail('bad missions');
+      next.offer = { ...offer, map: parseMap(offer.map), missions };
     } else if (offer.kind === 'reward') {
-      const options = list(offer.options, 'bad reward offer').map((o) => {
-        const option = kinded(o, ['recruit', 'boost', 'gold', 'mend'], 'bad reward');
-        if (option.kind === 'recruit') return { ...option, unit: parseUnit(option.unit) };
-        if (option.kind === 'boost') kinded(option.advance, STEP_KINDS, 'bad reward');
-        if (option.kind === 'gold') count(option.amount, 'bad reward');
-        return option;
-      });
-      next.offer = { ...offer, options };
+      count(offer.value, 'bad reward');
+      next.offer = { ...offer, rewards: parseRewards(offer.rewards) };
     } else {
       count(offer.rerolls, 'bad shop');
       list(offer.upgrades, 'bad shop').forEach((a) => a === null || kinded(a, STEP_KINDS, 'bad shop'));
@@ -138,7 +155,8 @@ export function parseRun(raw: unknown): RunState {
     }
   }
   const offerKind = isRecord(next.offer) ? next.offer.kind : undefined;
-  if ((phase === 'draft' || phase === 'reward' || phase === 'shop') && offerKind !== phase) fail(`its ${phase} has nothing on offer`);
+  const owed: Partial<Record<RunPhase, string>> = { draft: 'draft', mission: 'missions', aftermath: 'reward', reward: 'reward', shop: 'shop' };
+  if (owed[phase] !== undefined && offerKind !== owed[phase]) fail(`its ${phase} has nothing on offer`);
 
   if (raw.pending !== undefined) {
     for (const p of list(raw.pending, 'bad level-ups')) {
@@ -163,8 +181,8 @@ export function parseRun(raw: unknown): RunState {
 
   if (raw.battle !== undefined) {
     const battle = raw.battle;
-    if (!isRecord(battle) || typeof battle.mode !== 'string' || typeof battle.faction !== 'string') fail('bad battle');
-    next.battle = { ...battle, enemy: parseWarband(battle.enemy), map: parseMap(battle.map) };
+    if (!isRecord(battle) || typeof battle.mode !== 'string') fail('bad battle');
+    next.battle = { ...parseMission(battle), map: parseMap(battle.map) };
   }
   if ((phase === 'briefing' || phase === 'battle') && raw.battle === undefined) fail('its battle is missing');
 

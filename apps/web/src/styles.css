@@ -6009,26 +6009,109 @@ button.trait-add[aria-expanded='true'] {
   max-height: 320px;
 }
 
-.run-enemy {
+.run-missions {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.run-mission > .muster-meta {
+  margin: 0;
+}
+
+.run-threat {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin: 0;
+  font-size: 20px;
+}
+
+.run-threat span {
+  opacity: 0.22;
+}
+
+.run-threat span.on {
+  opacity: 1;
+  color: #e0563f;
+}
+
+.run-threat strong {
+  margin-left: 8px;
+  font: 600 16px 'Cinzel', Georgia, serif;
+  letter-spacing: 1px;
+}
+
+.run-shadows {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
+  padding: 10px 6px 4px;
+  list-style: none;
+  background: radial-gradient(ellipse at 50% 100%, rgba(120, 132, 180, 0.28), transparent 70%);
+  border-radius: 4px;
+}
+
+.run-shadows li {
+  position: relative;
+}
+
+.run-shadows li.king::before {
+  content: '♛';
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--gold);
+  font-size: 16px;
+}
+
+/* An enemy not yet met: its sprite blacked out, so only the shape shows. */
+.run-shadow {
+  width: 52px;
+  height: 52px;
+  filter: brightness(0) drop-shadow(0 0 1px rgba(190, 200, 240, 0.55));
+}
+
+.run-mission-pay {
+  margin: 4px 0 0;
+  color: var(--ink-3);
+  font: 600 12px 'Cinzel', Georgia, serif;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.run-rewards {
   display: grid;
   gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
+  text-align: left;
 }
 
-.run-enemy li {
+.run-rewards li {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.run-enemy strong {
-  margin-right: 8px;
+.run-rewards strong {
+  display: block;
+  color: var(--gold);
 }
 
-.run-enemy .unit-line {
+.run-rewards small {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.run-rewards .unit-line {
   display: flex;
+}
+
+.run-panel > .run-rewards {
+  margin: 10px 0 14px;
 }
 
 .run-table {
