@@ -7,6 +7,7 @@ import {
   fieldedUnits,
   isBossRound,
   isWounded,
+  RIVAL_FACTION,
   playerWarband,
   recruitPrice,
   rerollPrice,
@@ -253,6 +254,8 @@ export interface BriefingView {
     kinds: { unit: WarbandUnit; count: number; traits: TraitKey[] }[];
     /** Boss rounds: the enemy King. */
     king?: WarbandUnit;
+    /** Whether it is the warband a past run ended with. */
+    rival: boolean;
   };
   /** The battlefield, with this mode's objectives only. */
   map: MapDef;
@@ -282,6 +285,7 @@ export function briefingView(s: RunState): BriefingView | null {
       count: battle.enemy.units.length,
       kinds: unitKinds(battle.enemy.units).map((k) => ({ ...k, traits: traitsOf(k.unit) })),
       ...(king ? { king } : {}),
+      rival: battle.faction === RIVAL_FACTION,
     },
     map: battlefield(battle.map, battle.mode),
     lava: battle.map.hexes.some((hex) => hex.feature === 'lava'),

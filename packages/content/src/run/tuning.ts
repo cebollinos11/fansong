@@ -35,6 +35,15 @@ export const RUN_TUNING = {
     /** Share of the budget kept back from buying units, for veterans: this much more each round from `veteranFromRound`, up to a cap. */
     veteranShare: { perRound: 0.04, max: 0.4 },
   },
+  /** Warbands of past runs, met again as enemies. */
+  rivals: {
+    /** Most past warbands one run meets. */
+    max: 3,
+    /** None before this round. */
+    fromRound: 2,
+    /** A past warband fights in a round whose enemy budget its cost is within these shares of. */
+    band: { min: 0.75, max: 1.3 },
+  },
   champion: {
     /** A boss's champion is pushed to this Quality… */
     quality: 2,

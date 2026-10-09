@@ -21,7 +21,7 @@ import {
 } from '@fansong/content';
 import { RunScreen } from './ui/RunScreen.js';
 import { freshRunSeed, RUN_LEAVE_DETAIL } from './ui/runView.js';
-import { addRunRecord, clearRun, loadRunRecords, runRecord, saveRun, type RunRecord } from './game/runStore.js';
+import { addRunRecord, clearRun, loadRunRecords, pastWarbands, runRecord, saveRun, type RunRecord } from './game/runStore.js';
 import { SandboxScreen } from './ui/SandboxScreen.js';
 import { PresetEditorScreen } from './ui/PresetEditorScreen.js';
 import { RecordScreen } from './ui/RecordScreen.js';
@@ -188,7 +188,7 @@ function RunHost({ initial, onExit }: { initial: RunState; onExit: () => void })
       error={error}
       onAction={step}
       onExit={onExit}
-      onNewRun={() => adopt(newRun(freshRunSeed()))}
+      onNewRun={() => adopt(newRun(freshRunSeed(), pastWarbands(records)))}
     />
   );
 }

@@ -453,9 +453,12 @@ holds the design.
   faction's leader at Quality 2+ and Combat 5 or more, with extra traits that
   grow with each boss. In the briefing, **♛ Crown** picks your own King (the
   costliest fielded unit by default); lose it and the run is over.
+- **Rivals** — the best runs kept on the device come back: a new run meets up to
+  three of the warbands they ended with, each in place of the rolled enemy in the
+  regular round (from round 2) whose budget is nearest its cost.
 - **Victory** — beating round 10 wins the run. It then goes on, marked ♛, for
   as long as the warband lasts; the best runs are kept on the device.
-- **Seeds** — a run's seed fixes its offers, enemies and battlefields. It is
+- **Seeds** — a run's seed fixes its offers, enemies and battlefields (rivals aside). It is
   shown on every run screen and can be typed in when starting a run.
 
 All of it is a pure, seeded state machine in `packages/content/src/run/`

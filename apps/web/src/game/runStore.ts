@@ -6,6 +6,7 @@ import {
   runVictorious,
   type RunPhase,
   type RunState,
+  type Warband,
   type WarbandUnit,
 } from '@fansong/content';
 import type { MapStorage } from './customMaps.js';
@@ -40,6 +41,8 @@ export interface RunRecord {
   at: number;
   /** The names of the warband it ended with. */
   roster: string[];
+  /** The warband it ended with, to meet again in later runs (absent from records older than that). */
+  units?: WarbandUnit[];
 }
 
 const PHASES: readonly RunPhase[] = ['draft', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'over'];
@@ -163,6 +166,14 @@ export function parseRun(raw: unknown): RunState {
   }
   if ((phase === 'briefing' || phase === 'battle') && raw.battle === undefined) fail('its battle is missing');
 
+  if (raw.rivals !== undefined) {
+    next.rivals = list(raw.rivals, 'bad rivals').map((r) => {
+      if (!isRecord(r)) fail('bad rivals');
+      count(r.round, 'bad rivals');
+      return { ...r, warband: parseWarband(r.warband) };
+    });
+  }
+
   const run = next as unknown as RunState;
   // The rules have the last word: a run they can't go on from is no run.
   legalRunActions(run);
@@ -213,7 +224,13 @@ export function runRecord(run: RunState, end: RunRecord['end'], now: number = Da
     victorious: runVictorious(run),
     at: now,
     roster: run.roster.map((u) => u.unit.name),
+    units: run.roster.map((u) => ({ ...u.unit })),
   };
+}
+
+/** The warbands `records` ended with, as later runs meet them again. */
+export function pastWarbands(records: readonly RunRecord[]): Warband[] {
+  return records.flatMap((r) => (r.units?.length ? [{ name: `The ${r.end === 'lost' ? 'Fallen' : 'Deserters'} of Round ${r.round}`, units: r.units }] : []));
 }
 
 /** Best first: the most battles won, the newer of two equals ahead. */
@@ -233,10 +250,16 @@ export function loadRunRecords(storage: MapStorage | null): RunRecord[] {
   const records: RunRecord[] = [];
   for (const entry of raw) {
     if (!isRecord(entry)) continue;
-    const { seed, wins, round, kills, end, victorious, at, roster } = entry;
+    const { seed, wins, round, kills, end, victorious, at, roster, units } = entry;
     const whole = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v);
     if (!whole(seed) || !whole(wins) || !whole(round) || !whole(kills) || !whole(at)) continue;
     if (end !== 'lost' && end !== 'abandoned') continue;
+    let warband: WarbandUnit[] | undefined;
+    try {
+      warband = units === undefined ? undefined : parseWarband({ name: '', units }).units;
+    } catch {
+      // A warband this version can't read is not met again; the record still stands.
+    }
     records.push({
       seed,
       wins,
@@ -246,6 +269,7 @@ export function loadRunRecords(storage: MapStorage | null): RunRecord[] {
       victorious: victorious === true,
       at,
       roster: Array.isArray(roster) ? roster.filter((n): n is string => typeof n === 'string') : [],
+      ...(warband ? { units: warband } : {}),
     });
   }
   return records.sort(byDepth);

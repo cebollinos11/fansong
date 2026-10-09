@@ -12,6 +12,7 @@ import {
   parseRun,
   RUN_KEY,
   RUN_RECORDS_KEY,
+  pastWarbands,
   runRecord,
   saveRun,
   type RunRecord,
@@ -192,6 +193,29 @@ describe('run records', () => {
     const mixed = JSON.stringify([record(1, 1), { seed: 'x' }, null, { ...record(3, 2), end: 'won' }, { ...record(4, 3), roster: [1, 'Wolf'] }]);
     expect(loadRunRecords(memoryStorage({ [RUN_RECORDS_KEY]: mixed })).map((r) => [r.wins, r.roster])).toEqual([[4, ['Wolf']], [1, []]]);
     expect(addRunRecord(null, record(1, 1))).toEqual([record(1, 1)]);
+  });
+
+  it('keeps the warband a run ended with, to meet again in later runs', () => {
+    const over = lostRun();
+    const storage = memoryStorage();
+    addRunRecord(storage, runRecord(over, 'lost', 1));
+    addRunRecord(storage, record(1, 2));
+    const records = loadRunRecords(storage);
+    const units = records.find((r) => r.at === 1)!.units;
+    expect(units).toEqual(over.roster.map((u) => u.unit));
+    expect(pastWarbands(records)).toEqual([{ name: `The Fallen of Round ${over.round}`, units }]);
+    // A warband that no longer reads is dropped, not the record.
+    const bad = JSON.stringify([{ ...record(1, 1), units: [{ name: 'X' }] }]);
+    expect(loadRunRecords(memoryStorage({ [RUN_RECORDS_KEY]: bad }))).toEqual([record(1, 1)]);
+  });
+
+  it('saves and loads a run with rivals', () => {
+    const units = lostRun().roster.map((u) => u.unit);
+    const s = newRun(3, [{ name: 'Old', units }, { name: 'Older', units: units.concat(units).map((u, i) => ({ ...u, name: `${u.name} ${i}` })) }]);
+    expect(s.rivals?.length).toBeGreaterThan(0);
+    const storage = memoryStorage();
+    saveRun(storage, s);
+    expect(loadRun(storage)).toEqual(s);
   });
 
   it('reads as a line', () => {

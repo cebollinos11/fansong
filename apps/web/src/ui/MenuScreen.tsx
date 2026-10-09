@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { newRun, PRESET_IDS, PRESETS, type RunState } from '@fansong/content';
 import { browserStorage } from '../game/customMaps.js';
-import { addRunRecord, loadRun, loadRunRecords, runRecord, type RunRecord } from '../game/runStore.js';
+import { addRunRecord, loadRun, loadRunRecords, pastWarbands, runRecord, type RunRecord } from '../game/runStore.js';
 import { animationsFor, framesOf, type Clip } from '../three/unitAnimations.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
 import { InstallPrompt } from './InstallPrompt.js';
@@ -161,8 +161,9 @@ function NewRunDialog({ saved, onStart, onClose }: { saved: RunState | null; onS
     const picked = runSeedFrom(seedText, freshRunSeed());
     if (picked === null) return;
     // A run given up with battles won still counts among the best.
-    if (saved && saved.log.length > 0) addRunRecord(browserStorage(), runRecord(saved, 'abandoned'));
-    onStart(newRun(picked));
+    const past = saved && saved.log.length > 0 ? addRunRecord(browserStorage(), runRecord(saved, 'abandoned')) : records;
+    // Warbands of runs gone by come back as enemies.
+    onStart(newRun(picked, pastWarbands(past)));
   };
 
   return (

@@ -72,7 +72,7 @@ export interface LevelUp {
 /** The round's battle: rolled on entering the briefing, and kept as is if the battle restarts. */
 export interface RunBattle {
   mode: GameMode;
-  /** The preset roster the enemy was built from. */
+  /** The preset roster the enemy was built from, or `RIVAL_FACTION` for a past run's warband. */
   faction: string;
   enemy: Warband;
   /** Boss rounds: index into `enemy.units` of the enemy King. */
@@ -86,6 +86,12 @@ export interface RunBattle {
   fielded?: string[];
   /** Set when the battle starts: the match to play. Its `mapId` resolves through `runMapLookup`. */
   setup?: MatchSetup;
+}
+
+/** A past run's warband, met again as the enemy of `round`. */
+export interface RunRival {
+  round: number;
+  warband: Warband;
 }
 
 /** How a fielded unit ended a battle. */
@@ -162,6 +168,8 @@ export interface RunState {
   /** The last won battle's results, kept until the next battle. */
   aftermath?: Aftermath;
   log: RoundSummary[];
+  /** Past runs' warbands this run meets, by round, picked when it began. */
+  rivals?: RunRival[];
 }
 
 export type RunAction =

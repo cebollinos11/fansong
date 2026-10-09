@@ -2,11 +2,13 @@ import type { GameConfig } from '@fansong/engine';
 import { DEFAULT_BOARD, defaultKing } from '../deploy.js';
 import { getMap } from '../mapRegistry.js';
 import { configFromSetup, type MapLookup, type MatchSetup } from '../match.js';
+import type { Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
 import { generateEncounter } from './encounter.js';
 import { applyAftermath, applyReward, rewardOffer, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
+import { scheduleRivals } from './rivals.js';
 import { makeRunRandom, type RunRandom } from './rng.js';
 import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, rosterCost, rosterUnit } from './roster.js';
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
@@ -29,9 +31,11 @@ function roll(s: RunState): RunRandom {
   return makeRunRandom(s.seed, s.round, s.rolls++);
 }
 
-/** A new run, at its leader pick. */
-export function newRun(seed: number): RunState {
+/** A new run, at its leader pick. It meets some of `past` (warbands earlier runs ended with) again as enemies. */
+export function newRun(seed: number, past: readonly Warband[] = []): RunState {
   const s: RunState = { version: 1, seed: Math.floor(seed), round: 1, phase: 'draft', roster: [], gold: 0, rolls: 0, nextId: 1, log: [] };
+  const rivals = scheduleRivals(s.seed, past);
+  if (rivals.length > 0) s.rivals = rivals;
   s.offer = { kind: 'draft', stage: 'leader', units: leaderOffer(roll(s)) };
   return s;
 }
@@ -40,7 +44,8 @@ export function newRun(seed: number): RunState {
 function enterBriefing(s: RunState): void {
   s.phase = 'briefing';
   delete s.offer;
-  s.battle = generateEncounter(s.seed, s.round, s.roster.length);
+  const rival = s.rivals?.find((r) => r.round === s.round)?.warband;
+  s.battle = generateEncounter(s.seed, s.round, s.roster.length, rival);
   // A bench that would leave nobody to fight is cleared.
   if (fitUnits(s).every((u) => u.benched)) for (const u of s.roster) delete u.benched;
 }

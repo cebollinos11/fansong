@@ -251,6 +251,7 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
         <h2 className="muster-label side-label-1">The enemy: {view.enemy.name}</h2>
         <p className="muster-meta">
           {view.enemy.count} units · {view.enemy.points} pts
+          {view.enemy.rival ? ' · the warband a past run of yours ended with' : ''}
         </p>
         <ul className="run-enemy">
           {view.enemy.kinds.map((k, i) => (

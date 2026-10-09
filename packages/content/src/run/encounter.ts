@@ -22,6 +22,9 @@ import type { Advance, RunBattle } from './types.js';
  * same ground. (Only the board's size follows the number of units on it.)
  */
 
+/** The `faction` of a battle against a past run's warband. */
+export const RIVAL_FACTION = 'rival';
+
 export function isBossRound(round: number): boolean {
   return round % RUN_TUNING.enemy.bossEvery === 0;
 }
@@ -160,11 +163,16 @@ export function generateRunMap(round: number, units: number, seed: number): MapD
   });
 }
 
-/** Everything about `round`'s battle but the player's side of it, for a roster of `playerUnits`. */
-export function generateEncounter(seed: number, round: number, playerUnits: number): RunBattle {
+/**
+ * Everything about `round`'s battle but the player's side of it, for a roster
+ * of `playerUnits`. A `rival` (a past run's warband) takes the rolled enemy's
+ * place, on the same ground.
+ */
+export function generateEncounter(seed: number, round: number, playerUnits: number, rival?: Warband): RunBattle {
   const rnd = makeRunRandom(seed, round, 0, RUN_STREAM.encounter);
   const mode = rollMode(round, rnd);
-  const enemy = generateEnemy(round, rnd);
+  const rolled = generateEnemy(round, rnd);
+  const enemy: Enemy = rival ? { faction: RIVAL_FACTION, warband: rival } : rolled;
   const mapSeed = rnd.int(0, 2 ** 31 - 1);
   const battle: RunBattle = {
     mode,
