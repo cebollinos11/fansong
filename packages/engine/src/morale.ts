@@ -137,7 +137,9 @@ export function routThreshold(state: GameState, owner: Owner): number {
 function routCheck(s: GameState, events: GameEvent[], owner: Owner, board: Board, hacks: FreeHacks): void {
   if (s.broken[owner]) return;
   const start = s.startCount[owner];
-  if (start <= 0 || livingCount(s, owner) > routThreshold(s, owner)) return;
+  // A unit that walked off by the retreat flag is no loss: it still counts as standing.
+  const retreated = s.retreat ? s.units.filter((u) => u.owner === owner && u.retreated).length : 0;
+  if (start <= 0 || livingCount(s, owner) + retreated > routThreshold(s, owner)) return;
 
   s.broken[owner] = true;
   events.push({ type: 'WarbandBroken', player: owner });

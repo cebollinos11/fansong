@@ -767,6 +767,10 @@ function scoreCommand(
     case 'WarCry':
       return warCryScore(state, unitById(state, command.unitId)!);
 
+    // The AI fights every battle out: it never sounds the retreat.
+    case 'Retreat':
+      return -Infinity;
+
     case 'Cast':
       return castScore(state, board, command);
 
@@ -1137,6 +1141,10 @@ function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, comman
 
     case 'WarCry':
       return warCryScore(state, unitById(state, command.unitId)!);
+
+    // The AI fights every battle out: it never sounds the retreat.
+    case 'Retreat':
+      return -Infinity;
 
     case 'Cast':
       return castScore(state, board, command);

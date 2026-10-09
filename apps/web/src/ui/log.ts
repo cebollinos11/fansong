@@ -153,6 +153,7 @@ const GAME_OVER_REASONS: Record<GameOverReason, string> = {
   flag: 'flag captured',
   pig: 'the golden Pig has fallen',
   extracted: 'the golden Pig reached the enemy camp',
+  retreat: 'the losing side retreated',
 };
 
 /** A line flattened to text (the HUD callout, tooltips, tests), naming the sides by `names`. */

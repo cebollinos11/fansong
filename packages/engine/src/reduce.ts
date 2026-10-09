@@ -43,8 +43,10 @@ import {
   airborne,
   BREAK_FREE_COST,
   canCast,
+  canRetreat,
   canWarCry,
   isDown,
+  retreatHex,
   spellTargets,
   TRANSFIX_BONUS,
   warCryTargets,
@@ -113,6 +115,9 @@ export function reduce(state: GameState, command: Command): ReduceResult {
       break;
     case 'WarCry':
       handleWarCry(s, events, command.unitId);
+      break;
+    case 'Retreat':
+      handleRetreat(s, events, command.unitId);
       break;
     case 'EndActivation':
       handleEndActivation(s, events);
@@ -323,6 +328,7 @@ function handleMove(s: GameState, events: GameEvent[], unitId: string, to: { x: 
     if (rushed.length > 0) s.rushed = rushed;
   }
   if (flagsAfterMove(s, events, unitId)) return;
+  if (leaveByRetreatFlag(s, events, unit)) return;
 
   if (s.actionsRemaining <= 0) endActivation(s, events);
 }
@@ -641,6 +647,51 @@ function handleWarCry(s: GameState, events: GameEvent[], unitId: string): void {
   }
   events.push({ type: 'WarCry', unitId, inspired });
   if (s.actionsRemaining <= 0) endActivation(s, events);
+}
+
+// --- Retreat --------------------------------------------------------------
+
+function handleRetreat(s: GameState, events: GameEvent[], unitId: string): void {
+  requirePhase(s, 'acting');
+  const unit = activeUnit(s);
+  if (unit.id !== unitId) throw new Error(`unit '${unitId}' is not the activating unit`);
+  const board = makeHexGrid(s.board);
+  if (!canRetreat(s, unit, board)) throw new Error('unit cannot sound the retreat (not a Leader, knocked down, already called, or its side has nowhere to retreat to)');
+  if (s.actionsRemaining <= 0) throw new Error('no actions remaining');
+
+  s.actionsRemaining -= 1;
+  const hex = retreatHex(s, unit, board)!;
+  s.retreat = { owner: unit.owner, hex };
+  events.push({ type: 'RetreatCalled', unitId, hex: { x: hex.x, y: hex.y } });
+  if (s.actionsRemaining <= 0) endActivation(s, events);
+}
+
+/**
+ * After `unit` ends a Move (mutates `s`): standing on its own side's retreat
+ * flag, it leaves the field unhurt and its activation ends. It is no casualty,
+ * so nobody tests nerve and nobody is credited. When the side's last Leader
+ * leaves, the game ends there, lost. Only a Move does this — never a push, a
+ * recoil or a flight. Returns whether the unit left.
+ */
+function leaveByRetreatFlag(s: GameState, events: GameEvent[], unit: Unit): boolean {
+  const retreat = s.retreat;
+  if (!retreat || retreat.owner !== unit.owner) return false;
+  if (unit.pos.x !== retreat.hex.x || unit.pos.y !== retreat.hex.y) return false;
+
+  unit.dead = true;
+  unit.retreated = true;
+  unit.guarding = false;
+  events.push({ type: 'UnitRetreated', unitId: unit.id, at: { x: unit.pos.x, y: unit.pos.y } });
+  // A Magic User gone from the field holds no one.
+  releaseVictims(s, events, unit.id);
+  if (unit.traits.leader && !s.units.some((u) => !u.dead && u.owner === unit.owner && u.traits.leader)) {
+    // Whatever it carried falls where it stood before the game is called.
+    dropFallenCarriers(s, events);
+    finishGame(s, events, other(unit.owner), 'retreat');
+    return true;
+  }
+  endActivation(s, events);
+  return true;
 }
 
 /**
@@ -1526,6 +1577,8 @@ function checkGameOver(s: GameState, events: GameEvent[]): boolean {
   const p0 = livingCount(s, 0);
   const p1 = livingCount(s, 1);
   if (p0 > 0 && p1 > 0) return false;
-  finishGame(s, events, p0 > 0 ? 0 : 1, 'annihilation');
+  const winner: Owner = p0 > 0 ? 0 : 1;
+  // A side that called the retreat and has no one left on the field got away (or died trying).
+  finishGame(s, events, winner, s.retreat?.owner === other(winner) ? 'retreat' : 'annihilation');
   return true;
 }

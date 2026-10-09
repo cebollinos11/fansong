@@ -41,6 +41,8 @@ export function commandsEqual(a: Command, b: Command): boolean {
       return b.type === 'Guard' && a.unitId === b.unitId;
     case 'WarCry':
       return b.type === 'WarCry' && a.unitId === b.unitId;
+    case 'Retreat':
+      return b.type === 'Retreat' && a.unitId === b.unitId;
     case 'Cast':
       return b.type === 'Cast' && a.casterId === b.casterId && a.targetId === b.targetId;
     case 'EndActivation':

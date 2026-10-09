@@ -202,6 +202,13 @@ export interface Unit {
    * killed, leaves the field, changes sides or is transfixed in turn.
    */
   transfixedBy?: string;
+  /**
+   * It left the field by its side's retreat flag (see {@link GameState.retreat}).
+   * Such a unit is also `dead`, so every "living unit" query drops it, but it is
+   * no casualty: it shakes no one, counts toward no rout and, a King, is not slain.
+   * Omitted otherwise.
+   */
+  retreated?: true;
 }
 
 export type Phase = 'awaitingActivation' | 'acting' | 'gameOver';
@@ -253,6 +260,18 @@ export interface GameState {
    * successes and has yet to pick its target. Omitted outside one.
    */
   spell?: { power: number };
+  /**
+   * The hexes each player's retreat flag may be planted on (see
+   * {@link RetreatCommand}); an empty list means that player cannot retreat.
+   * Omitted when the game was set up with none, so an ordinary state's shape
+   * (and every replay hash) is unchanged.
+   */
+  retreatZones?: [Vec[], Vec[]];
+  /**
+   * The retreat `owner`'s Leader has called, and the hex its flag stands on. Set
+   * by the call and never cleared: a side retreats once a game.
+   */
+  retreat?: { owner: Owner; hex: Vec };
 }
 
 /** A group activation in progress: the members still to act behind the active one. */
@@ -332,6 +351,18 @@ export interface WarCryCommand {
 }
 
 /**
+ * A Leader **sounds the retreat**: one action, once a game, not while knocked
+ * down, and only in a game set up with {@link GameState.retreatZones retreat
+ * zones} for its side. A flag goes up on one hex of the zone (see `retreatHex`
+ * in query.ts). From then on a friend that ends a Move on that hex leaves the
+ * field unhurt, and when the side's last Leader does, the game ends, lost.
+ */
+export interface RetreatCommand {
+  type: 'Retreat';
+  unitId: string;
+}
+
+/**
  * Cast **Transfix** on an enemy, on a spell turn. The spell reaches
  * `SPELL_RANGES[power - 1]` hexes along a clear line of sight (as a shot needs).
  * The target rolls one die per point of power against its Quality, and is
@@ -364,6 +395,7 @@ export type Command =
   | ShootCommand
   | GuardCommand
   | WarCryCommand
+  | RetreatCommand
   | CastCommand
   | EndActivation
   | SwitchGroupMember;
@@ -557,6 +589,10 @@ export type GameEvent =
   | { type: 'TransfixBroken'; unitId: string; reason: 'brokeFree' | 'casterLost' }
   /** A Leader war cried; `inspired` lists the friends it inspired. */
   | { type: 'WarCry'; unitId: string; inspired: string[] }
+  /** A Leader sounded the retreat: its side's flag is planted on `hex`. */
+  | { type: 'RetreatCalled'; unitId: string; hex: Vec }
+  /** `unitId` ended a Move on its side's retreat flag at `at` and left the field, unhurt. */
+  | { type: 'UnitRetreated'; unitId: string; at: Vec }
   /** A Leader was killed; the nerve checks of the friends who saw it fall follow. */
   | { type: 'LeaderFallen'; unitId: string }
   | {
@@ -658,11 +694,11 @@ export type GameEvent =
   | { type: 'FlagReturned'; player: Owner; unitId: string }
   /** Capture-the-flag: `player` carried the enemy flag home with `unitId` (and wins). */
   | { type: 'FlagCaptured'; player: Owner; unitId: string }
-  /** `reason` is present only in an objective mode (see {@link ModeState}) or when a round limit ends the game. */
+  /** `reason` is present only in an objective mode (see {@link ModeState}), or when a round limit or a retreat ends the game. */
   | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
 
-/** Why a game ended: last side standing, target score, round cap, king slain, flag captured, golden Pig fallen, or golden Pig extracted. */
-export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag' | 'pig' | 'extracted';
+/** Why a game ended: last side standing, target score, round cap, king slain, flag captured, golden Pig fallen, golden Pig extracted, or the loser retreated. */
+export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag' | 'pig' | 'extracted' | 'retreat';
 
 export interface ReduceResult {
   state: GameState;

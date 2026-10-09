@@ -51,6 +51,10 @@ export function formatEvent(state: GameState, e: GameEvent): string {
         : `    ✦ ${name(state, e.unitId)} is freed: its caster has lost its hold`;
     case 'WarCry':
       return `  📣 ${name(state, e.unitId)} war cries, inspiring ${e.inspired.length ? e.inspired.map((id) => name(state, id)).join(', ') : 'no one'}`;
+    case 'RetreatCalled':
+      return `  ⚑ ${name(state, e.unitId)} sounds the retreat: the flag goes up at (${e.hex.x},${e.hex.y})`;
+    case 'UnitRetreated':
+      return `    ⚑ ${name(state, e.unitId)} leaves the field by the retreat flag`;
     case 'LeaderFallen':
       return `  ‼ Leader ${name(state, e.unitId)} has fallen`;
     case 'GuardRiposte':
@@ -165,7 +169,7 @@ export function renderRoster(state: GameState): string {
   const side = (owner: 0 | 1) =>
     state.units
       .filter((u) => u.owner === owner)
-      .map((u) => `${kings.has(u.id) ? '♛' : u.id === pig ? '★' : ''}${u.name}${u.dead ? '†' : u.knockedDown ? '↓' : ''}${!u.dead && u.transfixedBy !== undefined ? '✦' : ''}`)
+      .map((u) => `${kings.has(u.id) ? '♛' : u.id === pig ? '★' : ''}${u.name}${u.retreated ? '⚑' : u.dead ? '†' : u.knockedDown ? '↓' : ''}${!u.dead && u.transfixedBy !== undefined ? '✦' : ''}`)
       .join(', ');
   return `P0: ${side(0)}\nP1: ${side(1)}`;
 }

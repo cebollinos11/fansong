@@ -252,6 +252,38 @@ export function warCryTargets(state: GameState, leader: Unit, board: Board): Uni
   );
 }
 
+/**
+ * The hex `leader`'s retreat flag would be planted on: of its side's retreat
+ * zone, the empty hex a unit can stand on that lies farthest from the nearest
+ * living enemy. Ties go to the one nearest the Leader, then to the zone's own
+ * order, so no dice are thrown. Undefined when the side has no zone, or no hex
+ * of it is free.
+ */
+export function retreatHex(state: GameState, leader: Unit, board: Board): Vec | undefined {
+  const zone = state.retreatZones?.[leader.owner] ?? [];
+  const enemies = enemiesOf(state, leader.owner);
+  let best: { hex: Vec; safety: number; walk: number } | undefined;
+  for (const hex of zone) {
+    if (!board.inBounds(hex) || board.isBlocked(hex) || board.isDeadly(hex) || isOccupied(state, hex)) continue;
+    const safety = enemies.reduce((least, e) => Math.min(least, board.distance(hex, e.pos)), Infinity);
+    const walk = board.distance(hex, leader.pos);
+    if (!best || safety > best.safety || (safety === best.safety && walk < best.walk)) best = { hex, safety, walk };
+  }
+  return best && { x: best.hex.x, y: best.hex.y };
+}
+
+/**
+ * Whether `unit` may sound the retreat: a living Leader on its feet whose side
+ * has not called one yet and has somewhere to plant the flag (see
+ * {@link retreatHex}). (Being the activating unit, with an action to spend, is
+ * checked by the caller.)
+ */
+export function canRetreat(state: GameState, unit: Unit, board: Board): boolean {
+  if (!state.retreatZones || state.retreat) return false;
+  if (!unit.traits.leader || unit.dead || isDown(unit)) return false;
+  return retreatHex(state, unit, board) !== undefined;
+}
+
 /** How far a Transfix spell reaches, in hexes, by its power (the successes of the spell turn's roll). */
 export const SPELL_RANGES = [3, 5, 7] as const;
 

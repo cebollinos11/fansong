@@ -228,7 +228,8 @@ export function roundLimitWinner(state: GameState): Owner {
 
 /**
  * End the game (mutates `s`). The `GameOver` event names its reason only in an
- * objective mode, so an annihilation game's events are unchanged.
+ * objective mode, at a round limit or after a retreat, so an ordinary
+ * annihilation game's events are unchanged.
  */
 export function finishGame(s: GameState, events: GameEvent[], winner: Owner, reason: GameOverReason): void {
   s.winner = winner;
@@ -236,7 +237,7 @@ export function finishGame(s: GameState, events: GameEvent[], winner: Owner, rea
   s.activeUnitId = null;
   s.actionsRemaining = 0;
   delete s.group;
-  events.push(s.mode || reason === 'roundLimit' ? { type: 'GameOver', winner, reason } : { type: 'GameOver', winner });
+  events.push(s.mode || reason === 'roundLimit' || reason === 'retreat' ? { type: 'GameOver', winner, reason } : { type: 'GameOver', winner });
 }
 
 /**
@@ -268,6 +269,7 @@ export function isKing(state: GameState, unitId: string): boolean {
 
 /**
  * Kill-the-king: the player whose King has fallen (killed or routed), if any.
+ * A King that left by its side's retreat flag has not fallen.
  * Units are scanned in order, so the answer is deterministic — though one
  * combat only ever costs one side units, so both Kings never fall at once.
  */
@@ -275,7 +277,7 @@ export function fallenKingOwner(state: GameState): Owner | undefined {
   const kings = state.mode?.kings;
   if (!kings) return undefined;
   for (const u of state.units) {
-    if (u.dead && (u.id === kings[0] || u.id === kings[1])) return u.owner;
+    if (u.dead && !u.retreated && (u.id === kings[0] || u.id === kings[1])) return u.owner;
   }
   return undefined;
 }

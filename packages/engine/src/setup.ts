@@ -93,6 +93,12 @@ export interface GameConfig {
   objectives?: ModeObjectives;
   /** Custom round limit / target score (default: the mode's own; see {@link GameLimits}). */
   limits?: GameLimits;
+  /**
+   * The hexes player 0's and player 1's retreat flag may be planted on (see
+   * `RetreatCommand`). An empty list means that player cannot retreat; omitted
+   * (or both empty), nobody can and the game is the ordinary one.
+   */
+  retreatZones?: [Vec[], Vec[]];
 }
 
 function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
@@ -224,6 +230,11 @@ export function createGame(config: GameConfig): GameState {
   if (mode) state.mode = mode;
   const limits = normalizeLimits(config.mode, config.limits);
   if (limits) state.limits = limits;
+  // Likewise the retreat zones: a game without any carries nothing.
+  const zones = config.retreatZones;
+  if (zones && (zones[0].length > 0 || zones[1].length > 0)) {
+    state.retreatZones = [zones[0].map((v) => ({ x: v.x, y: v.y })), zones[1].map((v) => ({ x: v.x, y: v.y }))];
+  }
   return state;
 }
 

@@ -17,6 +17,7 @@ import type {
   ModeState,
   MoveCommand,
   Owner,
+  RetreatCommand,
   ShootCommand,
   TerrainFeature,
   Unit,
@@ -112,6 +113,13 @@ export const warCryCommandSchema = z
   })
   .strict();
 
+export const retreatCommandSchema = z
+  .object({
+    type: z.literal('Retreat'),
+    unitId: z.string().min(1),
+  })
+  .strict();
+
 export const castCommandSchema = z
   .object({
     type: z.literal('Cast'),
@@ -138,6 +146,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   shootCommandSchema,
   guardCommandSchema,
   warCryCommandSchema,
+  retreatCommandSchema,
   castCommandSchema,
   endActivationSchema,
   switchGroupMemberSchema,
@@ -212,6 +221,7 @@ export const unitSchema = z
     inspired: z.boolean(),
     warCried: z.boolean(),
     transfixedBy: z.string().optional(),
+    retreated: z.literal(true).optional(),
   })
   .strict();
 
@@ -276,6 +286,8 @@ export const gameStateSchema = z
     group: groupStateSchema.optional(),
     rushed: z.array(z.string()).optional(),
     spell: z.object({ power: z.number().int() }).strict().optional(),
+    retreatZones: z.tuple([z.array(vecSchema), z.array(vecSchema)]).optional(),
+    retreat: z.object({ owner: ownerSchema, hex: vecSchema }).strict().optional(),
   })
   .strict();
 
@@ -405,6 +417,8 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('TransfixBroken'), unitId: z.string(), reason: z.enum(['brokeFree', 'casterLost']) }),
   z.object({ type: z.literal('WarCry'), unitId: z.string(), inspired: z.array(z.string()) }),
+  z.object({ type: z.literal('RetreatCalled'), unitId: z.string(), hex: vecSchema }),
+  z.object({ type: z.literal('UnitRetreated'), unitId: z.string(), at: vecSchema }),
   z.object({ type: z.literal('LeaderFallen'), unitId: z.string() }),
   z.object({
     type: z.literal('GuardRiposte'),
@@ -476,7 +490,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('GameOver'),
     winner: ownerSchema,
-    reason: z.enum(['annihilation', 'score', 'roundLimit', 'king', 'flag', 'pig', 'extracted']).optional(),
+    reason: z.enum(['annihilation', 'score', 'roundLimit', 'king', 'flag', 'pig', 'extracted', 'retreat']).optional(),
   }),
 ]);
 
@@ -559,6 +573,12 @@ export const gameConfigSchema = z
     mode: gameModeSchema.optional(),
     objectives: modeObjectivesSchema.optional(),
     limits: gameLimitsSchema.optional(),
+    retreatZones: z
+      .tuple([
+        z.array(vecSchema).max(MAP_LIMITS.maxWidth * MAP_LIMITS.maxHeight),
+        z.array(vecSchema).max(MAP_LIMITS.maxWidth * MAP_LIMITS.maxHeight),
+      ])
+      .optional(),
   })
   .strict();
 
@@ -685,6 +705,7 @@ export type SchemaDriftChecks = [
   Expect<Eq<z.infer<typeof attackCommandSchema>, AttackCommand>>,
   Expect<Eq<z.infer<typeof shootCommandSchema>, ShootCommand>>,
   Expect<Eq<z.infer<typeof guardCommandSchema>, GuardCommand>>,
+  Expect<Eq<z.infer<typeof retreatCommandSchema>, RetreatCommand>>,
   Expect<Eq<z.infer<typeof endActivationSchema>, EndActivation>>,
   Expect<Eq<z.infer<typeof unitSchema>, Unit>>,
   Expect<Eq<z.infer<typeof boardDataSchema>, BoardData>>,

@@ -1,6 +1,6 @@
 import { makeHexGrid, vecKey, type Vec } from './board.js';
 import { PRESSED_COST } from './combat.js';
-import { BREAK_FREE_COST, canCast, canWarCry, enemiesOf, groupFor, inMelee, isOccupied, maxActivationDice, moveReach, occupiedKeys, spellTargets, unitAvailable, unitById, unitMove } from './query.js';
+import { BREAK_FREE_COST, canCast, canRetreat, canWarCry, enemiesOf, groupFor, inMelee, isOccupied, maxActivationDice, moveReach, occupiedKeys, spellTargets, unitAvailable, unitById, unitMove } from './query.js';
 import type { Command, GameState } from './types.js';
 
 /** Dice a player may commit to an activation. */
@@ -98,6 +98,11 @@ export function getLegalCommands(state: GameState): Command[] {
   // War cry: a Leader on its feet, once a round, spends an action to inspire its friends.
   if (canWarCry(state, unit)) {
     commands.push({ type: 'WarCry', unitId: unit.id });
+  }
+
+  // Retreat: a Leader on its feet, once a game, where the game has retreat zones.
+  if (canRetreat(state, unit, board)) {
+    commands.push({ type: 'Retreat', unitId: unit.id });
   }
 
   // Moves: every empty cell reachable within move range by walking around

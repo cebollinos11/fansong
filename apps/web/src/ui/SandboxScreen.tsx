@@ -775,6 +775,8 @@ function describeCommand(state: GameState, c: Command): string {
       return `Guard: ${name(c.unitId)}`;
     case 'WarCry':
       return `War cry: ${name(c.unitId)}`;
+    case 'Retreat':
+      return `Sound the retreat: ${name(c.unitId)}`;
     case 'Cast':
       return `Cast Transfix: ${name(c.casterId)} → ${name(c.targetId)}`;
     case 'EndActivation':
