@@ -321,6 +321,80 @@ export function fateText(line: AftermathLine): { text: string; tone: 'ok' | 'hur
   }
 }
 
+/** One face of the injury die: what that roll does to a fallen unit. */
+export interface InjuryFace {
+  die: number;
+  label: string;
+  tone: 'ok' | 'hurt' | 'lost';
+}
+
+/** The six faces of the injury die, from {@link RUN_TUNING}'s odds. */
+export function injuryFaces(): InjuryFace[] {
+  const { dead, wound, sitsOut } = RUN_TUNING.injury;
+  return [1, 2, 3, 4, 5, 6].map((die) =>
+    die <= dead
+      ? { die, label: 'Dies', tone: 'lost' }
+      : die <= wound
+        ? { die, label: 'Lasting wound', tone: 'hurt' }
+        : die <= sitsOut
+          ? { die, label: 'Sits out', tone: 'hurt' }
+          : { die, label: 'Recovers', tone: 'ok' },
+  );
+}
+
+/** A fallen unit's turn in the tending of the wounded: who, the die it rolled and what came of it. */
+export interface InjuryCheck {
+  unitId: string;
+  name: string;
+  look: string;
+  tint?: string;
+  die: number;
+  /** Big word stamped on the card once the die lands. */
+  verdict: string;
+  /** What it means, under the verdict. */
+  detail: string;
+  tone: 'ok' | 'hurt' | 'lost';
+}
+
+/** The units that fell in the battle just won, in the order their dice are thrown. */
+export function injuryChecks(s: RunState): InjuryCheck[] {
+  if (s.phase !== 'aftermath' || !s.aftermath) return [];
+  const checks: InjuryCheck[] = [];
+  for (const line of s.aftermath.units) {
+    if (line.fate !== 'fell' || line.die === undefined) continue;
+    const base = { unitId: line.unitId, name: line.name, look: line.look ?? line.name, tint: line.tint, die: line.die };
+    switch (line.injury) {
+      case 'dead':
+        checks.push({ ...base, verdict: 'Dead', detail: 'Its wounds were too deep. It is gone for good.', tone: 'lost' });
+        break;
+      case 'wound': {
+        const w = line.wound ? woundInfo(line.wound) : null;
+        checks.push({ ...base, verdict: w ? `Wounded: ${w.label}` : 'Wounded', detail: w ? `It carries ${w.help}.` : 'It carries a lasting wound.', tone: 'hurt' });
+        break;
+      }
+      case 'sitsOut':
+        checks.push({ ...base, verdict: 'Sits out', detail: 'It needs rest, and misses the next battle.', tone: 'hurt' });
+        break;
+      default:
+        checks.push({ ...base, verdict: 'Recovers', detail: 'Patched up and fit to fight.', tone: 'ok' });
+    }
+  }
+  return checks;
+}
+
+/** Names of the fielded units that came through the battle standing (or fled and came back). */
+export function standingUnits(s: RunState): { name: string; look: string; tint?: string }[] {
+  if (!s.aftermath) return [];
+  return s.aftermath.units
+    .filter((l) => l.fate === 'survived' || l.fate === 'fled')
+    .map((l) => ({ name: l.name, look: l.look ?? l.name, tint: l.tint }));
+}
+
+/** Why `name` can't be `unitId`'s new name, or `null` if it can. */
+export function renameError(s: RunState, unitId: string, name: string): string | null {
+  return runActionError(s, { type: 'rename', unitId, name });
+}
+
 export interface AftermathView {
   /** Only after the battle that wins the run: what to say about it. */
   triumph: { headline: string; detail: string } | null;

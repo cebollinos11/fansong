@@ -155,6 +155,8 @@ export function parseRun(raw: unknown): RunState {
       count(line.kills, 'bad aftermath');
       count(line.xp, 'bad aftermath');
       if (line.wound !== undefined) kinded(line.wound, STEP_KINDS, 'bad aftermath');
+      if (line.die !== undefined && (count(line.die, 'bad aftermath') < 1 || (line.die as number) > 6)) fail('bad aftermath');
+      if ((line.look !== undefined && typeof line.look !== 'string') || (line.tint !== undefined && typeof line.tint !== 'string')) fail('bad aftermath');
     }
   }
   if (phase === 'aftermath' && raw.aftermath === undefined) fail('its aftermath is missing');

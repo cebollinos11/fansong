@@ -80,7 +80,8 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
   for (const unitId of battle.fielded!) {
     const u = rosterUnit(s, unitId);
     const r = report.units[unitId]!;
-    const line: AftermathLine = { unitId, name: u.unit.name, fate: r.fate, kills: r.kills, xp: 0 };
+    const line: AftermathLine = { unitId, name: u.unit.name, fate: r.fate, kills: r.kills, xp: 0, look: u.unit.look ?? u.unit.name };
+    if (u.unit.tint) line.tint = u.unit.tint;
     lines.push(line);
     const lose = () => {
       s.roster = s.roster.filter((x) => x !== u);
@@ -95,7 +96,8 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
     u.kills += r.kills;
     if (r.fate !== 'fell') continue;
 
-    let injury = injuryFor(rnd.d6());
+    line.die = rnd.d6();
+    let injury = injuryFor(line.die);
     if (injury === 'wound') {
       const wounds = availableWounds(u.unit);
       if (wounds.length === 0) injury = 'sitsOut';

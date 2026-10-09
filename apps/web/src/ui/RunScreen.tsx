@@ -1,8 +1,9 @@
-import { useMemo, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { RunAction, RunState, WarbandUnit } from '@fansong/content';
 import type { RunRecord } from '../game/runStore.js';
 import { TRAIT_INFO, traitTitle, type TraitKey } from './armyView.js';
 import { MapThumb, UnitSprite, unitLine } from './Picker.js';
+import { NameUnit, TendWounded, wasTended } from './RunCeremony.js';
 import {
   aftermathView,
   briefingView,
@@ -43,6 +44,9 @@ interface Props {
 
 type Act = (action: RunAction) => void;
 
+/** Opens the naming prompt for a roster unit; `null` where units can't be renamed. */
+const RenameContext = createContext<((unitId: string) => void) | null>(null);
+
 /**
  * Everything of a run that isn't the battle itself: the draft, the briefing
  * before each battle, and what follows a win — the aftermath, the reward pick
@@ -57,6 +61,23 @@ export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: P
   const act: Act = (action) => {
     if (guard(performance.now())) onAction(action);
   };
+
+  // Units that join the warband are offered a name of the player's own, one at a time.
+  const known = useRef<Set<string> | null>(null);
+  const [naming, setNaming] = useState<{ unitId: string; joining: boolean }[]>([]);
+  useEffect(() => {
+    const ids = run.roster.map((u) => u.id);
+    const before = known.current;
+    known.current = new Set(ids);
+    if (!before || run.phase === 'over') return;
+    const joined = ids.filter((id) => !before.has(id));
+    if (joined.length > 0) setNaming((q) => [...q, ...joined.map((unitId) => ({ unitId, joining: true }))]);
+  }, [run]);
+  const renamable = run.phase !== 'over' && run.phase !== 'battle';
+  const openRename = (unitId: string): void => setNaming((q) => [...q, { unitId, joining: false }]);
+  // A unit sold or lost before its turn to be named drops out of the queue.
+  const naming0 = naming.find((n) => run.roster.some((u) => u.id === n.unitId));
+
   return (
     <div className="muster run">
       <header className="muster-top run-top">
@@ -91,8 +112,20 @@ export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: P
       </header>
       <main className="run-body">
         {error ? <p className="muster-error">{error}</p> : null}
-        <Phase run={run} records={records} onAction={act} onExit={onExit} onNewRun={onNewRun} />
+        <RenameContext.Provider value={renamable ? openRename : null}>
+          <Phase run={run} records={records} onAction={act} onExit={onExit} onNewRun={onNewRun} />
+        </RenameContext.Provider>
       </main>
+      {naming0 ? (
+        <NameUnit
+          key={`${naming0.unitId}:${naming0.joining}`}
+          run={run}
+          unitId={naming0.unitId}
+          joining={naming0.joining}
+          onRename={(name) => onAction({ type: 'rename', unitId: naming0.unitId, name })}
+          onClose={() => setNaming((q) => q.filter((n) => n !== naming0))}
+        />
+      ) : null}
     </div>
   );
 }
@@ -154,12 +187,18 @@ function Traits({ traits }: { traits: readonly TraitKey[] }): JSX.Element | null
 
 /** A roster unit: its sprite, name, level, numbers, traits and wounds, with whatever it can do now beside it. */
 function UnitCard({ view, dim = false, tags, children }: { view: UnitView; dim?: boolean; tags?: ReactNode; children?: ReactNode }): JSX.Element {
+  const rename = useContext(RenameContext);
   return (
     <li className={`run-unit${dim ? ' dim' : ''}`}>
       <UnitSprite unit={view.unit} className="unit-sprite run-sprite" />
       <div className="run-unit-main">
         <div className="run-unit-name">
           <strong>{view.unit.name}</strong>
+          {rename ? (
+            <button type="button" className="run-rename" title="Rename this unit" aria-label={`Rename ${view.unit.name}`} onClick={() => rename(view.id)}>
+              ✎
+            </button>
+          ) : null}
           <span className="run-level" title={`${view.kills} ${view.kills === 1 ? 'kill' : 'kills'} this run`}>
             {levelLine(view)}
           </span>
@@ -312,8 +351,10 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
 }
 
 function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act: Act }): JSX.Element {
+  const [tended, setTended] = useState(() => wasTended(run));
   return (
     <>
+      {tended ? null : <TendWounded run={run} onDone={() => setTended(true)} />}
       {view.triumph ? (
         <section className="run-panel run-triumph">
           <h2 className="run-headline">♛ {view.triumph.headline}</h2>

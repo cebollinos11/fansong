@@ -196,6 +196,31 @@ describe('the briefing', () => {
   });
 });
 
+describe('renaming', () => {
+  it('names a unit anew, still drawn as before, outside the battle', () => {
+    const s = drafted(5);
+    const u = s.roster[0]!;
+    const named = runStep(s, { type: 'rename', unitId: u.id, name: '  Old   Grim ' });
+    const after = named.roster[0]!.unit;
+    expect(after.name).toBe('Old Grim');
+    expect(after.look).toBe(u.unit.look ?? u.unit.name);
+    expect({ ...after, name: u.unit.name, look: undefined }).toEqual({ ...u.unit, look: undefined });
+    const again = runStep(named, { type: 'rename', unitId: u.id, name: 'Older Grim' });
+    expect(again.roster[0]!.unit.look).toBe(u.unit.look ?? u.unit.name);
+  });
+
+  it('refuses a blank, overlong or taken name, and in battle', () => {
+    const s = drafted(5);
+    const [a, b] = s.roster;
+    expect(runActionError(s, { type: 'rename', unitId: a!.id, name: '   ' })).not.toBeNull();
+    expect(runActionError(s, { type: 'rename', unitId: a!.id, name: 'x'.repeat(33) })).not.toBeNull();
+    expect(runActionError(s, { type: 'rename', unitId: a!.id, name: b!.unit.name })).not.toBeNull();
+    expect(runActionError(s, { type: 'rename', unitId: a!.id, name: a!.unit.name })).toBeNull();
+    const fighting = runStep(s, { type: 'startBattle' });
+    expect(runActionError(fighting, { type: 'rename', unitId: a!.id, name: 'Later' })).toBe('units cannot be renamed now');
+  });
+});
+
 describe('runStep', () => {
   it('throws on an action its phase does not allow, and leaves the state alone', () => {
     const s = drafted(5);

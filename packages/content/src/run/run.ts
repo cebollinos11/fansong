@@ -10,7 +10,7 @@ import { applyAftermath, applyReward, rewardOffer, rollLevelUps } from './progre
 import { battleReport } from './report.js';
 import { scheduleRivals } from './rivals.js';
 import { makeRunRandom, type RunRandom } from './rng.js';
-import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, rosterCost, rosterUnit } from './roster.js';
+import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, renameUnit, rosterCost, rosterUnit } from './roster.js';
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
 import { RUN_TUNING } from './tuning.js';
 import type { RunAction, RunState } from './types.js';
@@ -208,6 +208,10 @@ export function runStep(state: RunState, action: RunAction): RunState {
       s.round++;
       s.rolls = 0;
       enterBriefing(s);
+      break;
+    case 'rename':
+      if (s.phase === 'battle' || s.phase === 'over') throw new Error('units cannot be renamed now');
+      renameUnit(s, action.unitId, action.name);
       break;
     default:
       throw new Error(`unknown action ${JSON.stringify(action satisfies never)}`);

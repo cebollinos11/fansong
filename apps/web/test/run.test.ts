@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
-import { legalRunActions, newRun, runBattleConfig, runStep, RUN_TUNING, type RunAction, type RunPhase, type RunState } from '@fansong/content';
+import { injuryFor, legalRunActions, newRun, runBattleConfig, runStep, RUN_TUNING, type RunAction, type RunPhase, type RunState } from '@fansong/content';
 import { recordReplay } from '@fansong/engine';
 import type { MapStorage } from '../src/game/customMaps.js';
 import {
@@ -25,6 +25,10 @@ import {
   draftView,
   fateText,
   historyLines,
+  injuryChecks,
+  injuryFaces,
+  renameError,
+  standingUnits,
   levelLine,
   overView,
   recordLine,
@@ -290,6 +294,39 @@ describe('the run screens', () => {
     // A King left on the bench passes the crown back to the default.
     const benched = briefingView(runStep(taken(boss, other.crown!), { type: 'bench', unitId: other.view.id, benched: true }))!;
     expect(benched.units.find((u) => u.king)!.view.id).not.toBe(other.view.id);
+  });
+
+  it('reads the injury die face by face as the rules do', () => {
+    const tone = { dead: 'lost', wound: 'hurt', sitsOut: 'hurt', recovered: 'ok' } as const;
+    expect(injuryFaces().map((f) => f.tone)).toEqual([1, 2, 3, 4, 5, 6].map((d) => tone[injuryFor(d)]));
+  });
+
+  it('throws a die for each unit that fell, and shows what came of it', () => {
+    const s: RunState = JSON.parse(JSON.stringify(WON));
+    const [first, ...rest] = s.aftermath!.units;
+    s.aftermath!.units = [
+      { ...first!, fate: 'fell', die: 1, injury: 'dead', look: 'Wolf' },
+      { ...first!, unitId: 'x2', name: 'Bob', fate: 'fell', die: 2, injury: 'wound', wound: { kind: 'combat' } },
+      { ...first!, unitId: 'x3', fate: 'fell', die: 5, injury: 'recovered' },
+      ...rest.map((l) => ({ ...l, fate: 'survived' as const })),
+    ];
+    const checks = injuryChecks(s);
+    expect(checks.map((c) => [c.die, c.tone])).toEqual([
+      [1, 'lost'],
+      [2, 'hurt'],
+      [5, 'ok'],
+    ]);
+    expect(checks[0]!.look).toBe('Wolf');
+    expect(checks[1]!.verdict).toBe('Wounded: Combat −1');
+    expect(standingUnits(s)).toHaveLength(rest.length);
+    expect(injuryChecks(WON).length).toBe(WON.aftermath!.units.filter((l) => l.fate === 'fell').length);
+  });
+
+  it('checks a new name against the rules', () => {
+    const [a, b] = WON.roster;
+    expect(renameError(WON, a!.id, 'Brave Sir Robin')).toBeNull();
+    if (b) expect(renameError(WON, a!.id, b.unit.name)).not.toBeNull();
+    expect(renameError(WON, a!.id, '')).not.toBeNull();
   });
 
   it('tells the battle\'s aftermath, and spends levels before moving on', () => {

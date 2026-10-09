@@ -153,6 +153,8 @@ describe('the aftermath', () => {
         const was = before.roster.find((u) => u.id === id)!;
         const now = s.roster.find((u) => u.id === id);
         outcomes.add(line.injury!);
+        expect(line.injury).toBe(injuryFor(line.die!) === 'wound' && !line.wound ? 'sitsOut' : injuryFor(line.die!));
+        expect(line.look).toBe(was.unit.look ?? was.unit.name);
         if (line.injury === 'dead') expect(now).toBeUndefined();
         else if (line.injury === 'wound') {
           expect(now!.wounds).toEqual([line.wound]);

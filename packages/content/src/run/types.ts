@@ -126,8 +126,13 @@ export interface AftermathLine {
   fate: UnitFate;
   kills: number;
   xp: number;
+  /** A fallen unit: the d6 it rolled for its injury. */
+  die?: number;
   injury?: Injury;
   wound?: Wound;
+  /** What it was drawn as (`look ?? name`) and its tint, to show it even after it died. */
+  look?: string;
+  tint?: string;
 }
 
 export interface Aftermath {
@@ -195,4 +200,6 @@ export type RunAction =
   | { type: 'reroll' }
   | { type: 'sell'; unitId: string }
   /** Shop: on to the next round's briefing. */
-  | { type: 'leaveShop' };
+  | { type: 'leaveShop' }
+  /** Any phase but the battle: give a roster unit a name of the player's own. */
+  | { type: 'rename'; unitId: string; name: string };

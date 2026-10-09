@@ -113,6 +113,11 @@ const BASE = [
   { name: 'ui-hover', tier: 3, group: 'Interface', when: 'The pointer comes onto a button', idea: 'the faintest "p"', takes: 1, gain: 0.25 },
   { name: 'your-turn', tier: 3, group: 'Interface', when: 'Play passes to you, against the AI or online', idea: '"ahem", or "bing-bong"', takes: 1, gain: 0.8 },
 
+  { name: 'tend-roll', tier: 3, group: 'Run', when: 'After a won battle, the die is thrown for a fallen unit', idea: 'held breath, then a rattly "brrrdl"', takes: 1, fallback: 'dice-roll' },
+  { name: 'tend-dead', tier: 3, group: 'Run', when: 'A fallen unit dies of its wounds', idea: 'mournful low "dooong"', takes: 1, fallback: 'death' },
+  { name: 'tend-hurt', tier: 3, group: 'Run', when: 'A fallen unit takes a lasting wound, or must sit out', idea: 'pained "oof"', takes: 1, fallback: 'die-fail' },
+  { name: 'tend-ok', tier: 3, group: 'Run', when: 'A fallen unit recovers', idea: 'relieved "phew!"', takes: 1, fallback: 'die-success' },
+
   { name: 'amb-table', tier: 3, group: 'Ambience', when: 'All game long, on the table backdrop', idea: '20 to 30 seconds of quiet room: a hum, a clock, a far-off cough', takes: 1, gain: 0.35, loop: true },
   { name: 'amb-meadow', tier: 3, group: 'Ambience', when: 'All game long, on the meadow backdrop', idea: '20 to 30 seconds of wind and birdsong', takes: 1, gain: 0.35, loop: true },
 ] as const satisfies readonly SfxCue[];

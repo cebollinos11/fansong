@@ -424,16 +424,18 @@ warband between wins. One lost battle ends the run. [RUN_MODE.md](RUN_MODE.md)
 holds the design.
 
 - **Draft** — pick a leader from three offers, then troops one pick at a time
-  until 120 points are spent.
+  until 120 points are spent. Each unit that joins, here or later, can be
+  given a name of your own (✎ on its card renames it any time outside battle).
 - **Briefing** — the round's mode, a thumbnail of the battlefield and the enemy
   roster. Bench units here (a hurt unit sits out on its own).
 - **Battle** — an ordinary match against the AI. Leaving midway keeps the run
   but not the battle: it starts over from its first move, on the same dice.
 - **After a win** — every unit that fought earns XP (more for kills, more again
   for killing something costlier) and levels up at 6 / 14 / 24 / 36 XP, choosing
-  one of two advances: a trait it lacks, Combat +1 or Quality −1. Each fallen
-  unit rolls a d6: on a 1 it is dead, on a 2 it takes a lasting wound, on a 3
-  it sits out the next battle, otherwise it recovers. Then **pick one reward of
+  one of two advances: a trait it lacks, Combat +1 or Quality −1. Then the
+  **tending of the wounded**: you throw a d6 for each fallen unit in turn, on a
+  card showing its odds: on a 1 it is dead, on a 2 it takes a lasting wound, on
+  a 3 it sits out the next battle, otherwise it recovers. Then **pick one reward of
   three** (a recruit, an advance for a unit of your choice, a purse, a healer),
   and spend gold in **camp**: hire recruits, buy training, heal a wound, swap
   the stock for new, or sell a unit. If your gold can't hire any recruit on

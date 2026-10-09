@@ -1,6 +1,7 @@
 import { unitCost } from '../cost.js';
 import { PRESET_UNITS, presetUnit } from '../presets.js';
 import type { Warband, WarbandUnit } from '../warband.js';
+import { NAME_LIMITS } from '../warband.js';
 import { mendWound } from './advance.js';
 import type { RunState, RunUnit } from './types.js';
 import { WILD_UNITS } from './wild.js';
@@ -39,6 +40,21 @@ export function enlist(s: RunState, unit: WarbandUnit): RunUnit {
   };
   s.roster.push(recruit);
   return recruit;
+}
+
+/**
+ * Give `unitId` the player's own name (mutates `s`), still drawn as before.
+ * Throws on a blank name, one too long, or one another roster unit has.
+ */
+export function renameUnit(s: RunState, unitId: string, name: string): void {
+  const u = rosterUnit(s, unitId);
+  const next = name.trim().replace(/\s+/g, ' ');
+  if (next === '') throw new Error('a name cannot be blank');
+  if (next.length > NAME_LIMITS.unit) throw new Error(`a name is at most ${NAME_LIMITS.unit} characters`);
+  if (s.roster.some((x) => x !== u && x.unit.name === next)) throw new Error(`another unit is already called ${next}`);
+  if (next === u.unit.name) return;
+  u.unit = { ...u.unit, name: next, look: u.unit.look ?? u.unit.name };
+  for (const line of s.aftermath?.units ?? []) if (line.unitId === unitId) line.name = next;
 }
 
 /** The roster unit with this id; throws if there is none. */
