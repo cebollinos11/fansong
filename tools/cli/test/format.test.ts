@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, type GameConfig } from '@fansong/engine';
-import { renderBoard } from '../src/format.js';
+import { createGame, reduce, type GameConfig } from '@fansong/engine';
+import { formatEvent, renderBoard, renderRoster } from '../src/format.js';
 
 function game(board: GameConfig['board']) {
   return createGame({
@@ -57,5 +57,28 @@ describe('renderBoard', () => {
         '',
       ].join('\n'),
     );
+  });
+});
+
+describe('formatEvent', () => {
+  it('prints a retreat: the call, a unit leaving, and how the game ended', () => {
+    const state = createGame({
+      seed: 1,
+      board: { width: 8, height: 6 },
+      warbands: [
+        [{ name: 'Chief', quality: 2, combat: 3, leader: true, pos: { x: 2, y: 2 } }],
+        [{ name: 'Brute', quality: 4, combat: 3, pos: { x: 7, y: 2 } }],
+      ],
+      retreatZones: [[{ x: 0, y: 2 }], []],
+    });
+    const acting = { ...state, phase: 'acting' as const, activeUnitId: 'p0u0', actionsRemaining: 3 };
+    const called = reduce(acting, { type: 'Retreat', unitId: 'p0u0' });
+    expect(called.events.map((e) => formatEvent(called.state, e))).toEqual(['  ⚑ Chief[p0u0] sounds the retreat: the flag goes up at (0,2)']);
+    const left = reduce(called.state, { type: 'Move', unitId: 'p0u0', to: { x: 0, y: 2 } });
+    expect(left.events.slice(1).map((e) => formatEvent(left.state, e))).toEqual([
+      '    ⚑ Chief[p0u0] leaves the field by the retreat flag',
+      '### GAME OVER — P1 wins (retreat) ###',
+    ]);
+    expect(renderRoster(left.state)).toBe('P0: Chief⚑\nP1: Brute');
   });
 });
