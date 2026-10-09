@@ -90,6 +90,10 @@ export const RUN_TUNING = {
   },
   /** The d6 a fallen unit rolls: up to `dead` it dies, up to `wound` it takes a lasting wound, up to `sitsOut` it misses the next battle, above that it recovers. */
   injury: { dead: 1, wound: 2, sitsOut: 3 },
+  /** The same d6 for a unit left behind when the player retreats: two more faces of death. */
+  leftBehind: { dead: 3, wound: 4, sitsOut: 5 },
+  /** Retreat banners: a run starts with `start`, gains `perBoss` for each boss beaten, and never holds more than `max`. */
+  banners: { start: 1, max: 3, perBoss: 1 },
   gold: {
     perWin: 6,
     /** Times the round just won. */

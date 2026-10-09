@@ -116,8 +116,12 @@ export interface RunRival {
   warband: Warband;
 }
 
-/** How a fielded unit ended a battle. */
-export type UnitFate = 'survived' | 'fell' | 'fled' | 'turned';
+/**
+ * How a fielded unit ended a battle. `retreated`: it left by the retreat flag.
+ * `leftBehind`: it was still on the field when a battle the player retreated
+ * from ended.
+ */
+export type UnitFate = 'survived' | 'fell' | 'fled' | 'turned' | 'retreated' | 'leftBehind';
 
 export interface UnitReport {
   kills: number;
@@ -136,6 +140,8 @@ export interface BattleReport {
   enemyPoints: number;
   /** Points of the enemy's own units killed or run off the field. */
   enemyPointsKilled: number;
+  /** The player's Leader sounded the retreat in it (whoever then won). */
+  retreated: boolean;
 }
 
 /** What became of a fallen unit. */
@@ -148,7 +154,7 @@ export interface AftermathLine {
   fate: UnitFate;
   kills: number;
   xp: number;
-  /** A fallen unit: the d6 it rolled for its injury. */
+  /** A fallen unit, or one left behind in a retreat: the d6 it rolled for its injury. */
   die?: number;
   injury?: Injury;
   wound?: Wound;
@@ -160,6 +166,8 @@ export interface AftermathLine {
 export interface Aftermath {
   gold: number;
   units: AftermathLine[];
+  /** The battle was given up by a retreat: nobody earned anything. */
+  retreated?: true;
 }
 
 /** One line of the run's history. */
@@ -170,6 +178,8 @@ export interface RoundSummary {
   enemy: string;
   boss: boolean;
   won: boolean;
+  /** Lost, but by a retreat: the run went on, at the same round. */
+  retreated?: true;
   kills: number;
   /** Roster units lost for good: dead of their injuries, or turned. */
   losses: number;
@@ -188,11 +198,15 @@ export interface RunState {
   rolls: number;
   /** Number the next roster unit's id takes. */
   nextId: number;
+  /** Retreat banners in hand: each lets one battle be given up without ending the run. */
+  banners: number;
+  /** Retreats made from this round so far, so the round's missions are rolled anew after each. */
+  retreats?: number;
   offer?: RunOffer;
   /** Levels earned and not yet spent. */
   pending?: LevelUp[];
   battle?: RunBattle;
-  /** The last won battle's results, kept until the next battle. */
+  /** The last won (or retreated-from) battle's results, kept until the next battle. */
   aftermath?: Aftermath;
   log: RoundSummary[];
   /** Past runs' warbands this run meets, by round, picked when it began. */
@@ -213,7 +227,7 @@ export type RunAction =
   | { type: 'battleResult'; replay: Replay }
   /** Aftermath: spend the first pending level of `unitId` on `choices[index]`. */
   | { type: 'advance'; unitId: string; index: number }
-  /** Aftermath: go on to the reward. */
+  /** Aftermath: go on to the reward (after a retreat, straight to the shop). */
   | { type: 'continue' }
   /** Reward: take the mission's pay; a boost or a mending names its unit. */
   | { type: 'reward'; unitId?: string }
@@ -223,7 +237,7 @@ export type RunAction =
   | { type: 'heal'; unitId: string }
   | { type: 'reroll' }
   | { type: 'sell'; unitId: string }
-  /** Shop: on to the next round's missions. */
+  /** Shop: on to the next round's missions (after a retreat, the same round's, rolled anew). */
   | { type: 'leaveShop' }
   /** Any phase but the battle: give a roster unit a name of the player's own. */
   | { type: 'rename'; unitId: string; name: string };

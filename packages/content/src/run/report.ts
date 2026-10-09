@@ -15,9 +15,13 @@ function specCost(spec: UnitSpec): number {
  * `p0u{i}` is roster unit `fielded[i]` (the ids `startBattle` recorded).
  *
  * A unit that changed sides counts as `turned` whatever became of it later; one
- * that ran off the field `fled`; one that was killed `fell`. A kill is credited
- * when the killer was on the player's side and its victim on the enemy's at
- * that moment.
+ * that ran off the field `fled`; one that was killed `fell`; one that walked off
+ * by the retreat flag `retreated`. A kill is credited when the killer was on the
+ * player's side and its victim on the enemy's at that moment.
+ *
+ * The battle is `retreated` when the player's Leader sounded the retreat in it.
+ * If it was then lost, every player unit still on the field at the end was
+ * `leftBehind`.
  */
 export function battleReport(replay: Replay, fielded: readonly string[]): BattleReport {
   const [mine, theirs] = replay.config.warbands;
@@ -58,13 +62,23 @@ export function battleReport(replay: Replay, fielded: readonly string[]): Battle
       }
       const unit = mineOf(e.unitId);
       if (unit && unit.fate !== 'turned') unit.fate = e.type === 'UnitKilled' ? 'fell' : 'fled';
+    } else if (e.type === 'UnitRetreated') {
+      const unit = mineOf(e.unitId);
+      if (unit && unit.fate !== 'turned') unit.fate = 'retreated';
     }
   }
 
+  const winner = run.final.phase === 'gameOver' ? run.final.winner : null;
+  const retreated = run.final.retreat?.owner === 0;
+  if (retreated && winner === 1) {
+    for (const unit of Object.values(units)) if (unit.fate === 'survived') unit.fate = 'leftBehind';
+  }
+
   return {
-    winner: run.final.phase === 'gameOver' ? run.final.winner : null,
+    winner,
     units,
     enemyPoints: theirs.reduce((sum, spec) => sum + specCost(spec), 0),
     enemyPointsKilled,
+    retreated,
   };
 }

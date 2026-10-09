@@ -5,8 +5,8 @@ import { configFromSetup, type MapLookup, type MatchSetup } from '../match.js';
 import type { Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
-import { generateEncounter } from './encounter.js';
-import { applyAftermath, applyReward, missionRewardOffers, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
+import { generateEncounter, isBossRound } from './encounter.js';
+import { applyAftermath, applyRetreat, applyReward, missionRewardOffers, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
 import { scheduleRivals } from './rivals.js';
 import { makeRunRandom, type RunRandom } from './rng.js';
@@ -33,7 +33,18 @@ function roll(s: RunState): RunRandom {
 
 /** A new run, at its leader pick. It meets some of `past` (warbands earlier runs ended with) again as enemies. */
 export function newRun(seed: number, past: readonly Warband[] = []): RunState {
-  const s: RunState = { version: 2, seed: Math.floor(seed), round: 1, phase: 'draft', roster: [], gold: 0, rolls: 0, nextId: 1, log: [] };
+  const s: RunState = {
+    version: 2,
+    seed: Math.floor(seed),
+    round: 1,
+    phase: 'draft',
+    roster: [],
+    gold: 0,
+    rolls: 0,
+    nextId: 1,
+    banners: RUN_TUNING.banners.start,
+    log: [],
+  };
   const rivals = scheduleRivals(s.seed, past);
   if (rivals.length > 0) s.rivals = rivals;
   s.offer = { kind: 'draft', stage: 'leader', units: leaderOffer(roll(s)) };
@@ -42,12 +53,13 @@ export function newRun(seed: number, past: readonly Warband[] = []): RunState {
 
 /**
  * Roll the round's missions and put them up for choosing (mutates `s`). The
- * enemies come from the seed and the round alone; what each pays is rolled for
- * the roster as it stands, so every reward offered can be taken.
+ * enemies come from the seed, the round and the retreats made from it alone;
+ * what each pays is rolled for the roster as it stands, so every reward offered
+ * can be taken.
  */
 function enterMission(s: RunState): void {
   const rival = s.rivals?.find((r) => r.round === s.round)?.warband;
-  const { mode, map, seed, enemies } = generateEncounter(s.seed, s.round, s.roster.length, rival);
+  const { mode, map, seed, enemies } = generateEncounter(s.seed, s.round, s.roster.length, rival, s.retreats ?? 0);
   const values = enemies.map((e) => rewardValue(s.round, e.threat));
   const rewards = missionRewardOffers(s, values, roll(s));
   const missions = enemies.map((e, i): RunMission => {
@@ -76,9 +88,16 @@ export function runMapLookup(s: RunState): MapLookup {
   return (id) => (map && id === map.id ? map : getMap(id));
 }
 
-/** The engine config of the battle phase's match. The same every time, so a battle left midway restarts as it began. */
+/**
+ * The engine config of the battle phase's match. The same every time, so a
+ * battle left midway restarts as it began. With a retreat banner in hand, the
+ * player's deploy zone is where its retreat flag may go up; the enemy never
+ * retreats. (The banner is only spent when the battle's result is handed in.)
+ */
 export function runBattleConfig(s: RunState): GameConfig {
-  return configFromSetup(runMatchSetup(s), DEFAULT_BOARD, runMapLookup(s));
+  const config = configFromSetup(runMatchSetup(s), DEFAULT_BOARD, runMapLookup(s));
+  if (s.banners > 0) config.retreatZones = [s.battle!.map.deployZones[0].map((v) => ({ x: v.x, y: v.y })), []];
+  return config;
 }
 
 /** Apply `action` to a run. Returns the next state; `state` is left untouched. Throws on an illegal action. */
@@ -163,6 +182,17 @@ export function runStep(state: RunState, action: RunAction): RunState {
         applyAftermath(s, report, roll(s));
         s.offer = { kind: 'reward', rewards: battle.rewards, value: battle.rewardValue };
         s.phase = 'aftermath';
+        // A beaten boss's banner is the player's to carry.
+        const { max, perBoss } = RUN_TUNING.banners;
+        if (isBossRound(s.round)) s.banners = Math.max(s.banners, Math.min(max, s.banners + perBoss));
+      } else if (report.retreated && s.banners > 0) {
+        // The battle is lost but the run is not: the banner is spent, and the
+        // round will be fought again against someone new.
+        applyRetreat(s, report, roll(s));
+        s.banners--;
+        s.retreats = (s.retreats ?? 0) + 1;
+        delete s.offer;
+        s.phase = s.roster.length > 0 ? 'aftermath' : 'over';
       } else {
         s.log.push({
           round: s.round,
@@ -194,6 +224,12 @@ export function runStep(state: RunState, action: RunAction): RunState {
     case 'continue': {
       need('aftermath');
       if (s.pending?.length) throw new Error('there are levels still to spend');
+      // A retreat is owed nothing: straight to the shop, to replace the lost with the gold in hand.
+      if (s.aftermath?.retreated) {
+        s.offer = shopStock(s, roll(s));
+        s.phase = 'shop';
+        break;
+      }
       if (s.offer?.kind !== 'reward') throw new Error('no reward is owed');
       // Pay the battle left nobody to take (the unit it suited died) comes as gold.
       if (!rewardsClaimable(s, s.offer.rewards)) s.offer.rewards = [{ kind: 'gold', amount: s.offer.value }];
@@ -230,8 +266,12 @@ export function runStep(state: RunState, action: RunAction): RunState {
       break;
     case 'leaveShop':
       need('shop');
-      s.round++;
-      s.rolls = 0;
+      // After a retreat the same round is fought again; only a win moves the run on.
+      if (!s.aftermath?.retreated) {
+        s.round++;
+        s.rolls = 0;
+        delete s.retreats;
+      }
       enterMission(s);
       break;
     case 'rename':

@@ -20,7 +20,8 @@ import type { Advance, RunBattle } from './types.js';
  *
  * A round's encounter comes from the run's seed and the round alone, whatever
  * the player did before it: the same seed always meets the same enemies on the
- * same ground. (Only the board's size follows the number of units on it.)
+ * same ground. (Only the board's size follows the number of units on it.) A
+ * round fought again after a retreat is rolled anew, by how many retreats it has seen.
  */
 
 /** The `faction` of a battle against a past run's warband. */
@@ -188,11 +189,12 @@ export function generateRunMap(round: number, units: number, seed: number): MapD
  * `playerUnits`: on a regular round `mission.count` enemies of different
  * factions and strengths, on a boss round the one boss. A `rival` (a past run's
  * warband) takes the first rolled enemy's place. The ground is sized for the
- * largest of them.
+ * largest of them. `retreats` counts the times the player has already retreated
+ * from this round: each meets a fresh encounter.
  */
-export function generateEncounter(seed: number, round: number, playerUnits: number, rival?: Warband): Encounter {
+export function generateEncounter(seed: number, round: number, playerUnits: number, rival?: Warband, retreats = 0): Encounter {
   const { count, threat } = RUN_TUNING.mission;
-  const rnd = makeRunRandom(seed, round, 0, RUN_STREAM.encounter);
+  const rnd = makeRunRandom(seed, round, retreats, RUN_STREAM.encounter);
   const mode = rollMode(round, rnd);
   const boss = isBossRound(round);
   const enemies = rnd

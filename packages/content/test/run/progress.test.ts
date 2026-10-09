@@ -40,7 +40,7 @@ function reportOf(s: RunState, fate: (id: string, i: number) => UnitFate, kills 
   const units = Object.fromEntries(
     s.battle!.fielded!.map((id, i) => [id, { kills, killCosts: Array.from({ length: kills }, () => 1000), fate: fate(id, i) }]),
   );
-  return { winner: 0, units, enemyPoints: 100, enemyPointsKilled: 60 };
+  return { winner: 0, units, enemyPoints: 100, enemyPointsKilled: 60, retreated: false };
 }
 
 describe('advances and wounds', () => {
@@ -177,7 +177,7 @@ describe('the aftermath', () => {
   });
 
   it('reads the injury die as the tuning table says', () => {
-    expect([1, 2, 3, 4, 5, 6].map(injuryFor)).toEqual(['dead', 'wound', 'sitsOut', 'recovered', 'recovered', 'recovered']);
+    expect([1, 2, 3, 4, 5, 6].map((die) => injuryFor(die))).toEqual(['dead', 'wound', 'sitsOut', 'recovered', 'recovered', 'recovered']);
   });
 
   it('lets a unit that sat out fight again', () => {

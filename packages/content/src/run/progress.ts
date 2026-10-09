@@ -18,10 +18,11 @@ import type {
   Injury,
   RewardOption,
   RunState,
+  RunUnit,
   UnitReport,
 } from './types.js';
 
-/** What a mission pays, and what follows a won battle: XP and levels, injuries, gold, then that pay. */
+/** What a mission pays, and what follows a battle: after a win XP and levels, injuries, gold, then that pay; after a retreat, only the injuries. */
 
 /** The level `xp` has earned: how many of the thresholds it has reached. */
 export function levelFor(xp: number): number {
@@ -40,10 +41,45 @@ export function goldFor(round: number, report: BattleReport): number {
   return perWin + perRound * round + Math.floor(killShare * report.enemyPointsKilled);
 }
 
-/** What a fallen unit's d6 means. */
-export function injuryFor(die: number): Injury {
-  const { dead, wound, sitsOut } = RUN_TUNING.injury;
+/** The faces of the injury d6: up to `dead` it dies, up to `wound` it is wounded, up to `sitsOut` it sits out. */
+export interface InjuryTable {
+  dead: number;
+  wound: number;
+  sitsOut: number;
+}
+
+/** What a fallen unit's d6 means; `table` is the harsher one for a unit left behind in a retreat. */
+export function injuryFor(die: number, table: InjuryTable = RUN_TUNING.injury): Injury {
+  const { dead, wound, sitsOut } = table;
   return die <= dead ? 'dead' : die <= wound ? 'wound' : die <= sitsOut ? 'sitsOut' : 'recovered';
+}
+
+/**
+ * Throw `u`'s injury die on `table` and apply it (mutates `u` and `line`): a
+ * wound with nothing left to wound becomes sitting out. Returns whether it died.
+ */
+function sufferInjury(u: RunUnit, line: AftermathLine, rnd: RunRandom, table: InjuryTable): boolean {
+  line.die = rnd.d6();
+  let injury = injuryFor(line.die, table);
+  if (injury === 'wound') {
+    const wounds = availableWounds(u.unit);
+    if (wounds.length === 0) injury = 'sitsOut';
+    else {
+      line.wound = rnd.pick(wounds);
+      u.unit = applyWound(u.unit, line.wound);
+      u.wounds = [...(u.wounds ?? []), line.wound];
+    }
+  }
+  if (injury === 'sitsOut') u.sitsOut = true;
+  line.injury = injury;
+  return injury === 'dead';
+}
+
+/** A fielded unit's line of the aftermath, before anything has happened to it. */
+function aftermathLine(u: RunUnit, r: UnitReport): AftermathLine {
+  const line: AftermathLine = { unitId: u.id, name: u.unit.name, fate: r.fate, kills: r.kills, xp: 0, look: u.unit.look ?? u.unit.name };
+  if (u.unit.tint) line.tint = u.unit.tint;
+  return line;
 }
 
 /**
@@ -79,8 +115,7 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
   for (const unitId of battle.fielded!) {
     const u = rosterUnit(s, unitId);
     const r = report.units[unitId]!;
-    const line: AftermathLine = { unitId, name: u.unit.name, fate: r.fate, kills: r.kills, xp: 0, look: u.unit.look ?? u.unit.name };
-    if (u.unit.tint) line.tint = u.unit.tint;
+    const line = aftermathLine(u, r);
     lines.push(line);
     const lose = () => {
       s.roster = s.roster.filter((x) => x !== u);
@@ -94,21 +129,7 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
     u.xp += line.xp;
     u.kills += r.kills;
     if (r.fate !== 'fell') continue;
-
-    line.die = rnd.d6();
-    let injury = injuryFor(line.die);
-    if (injury === 'wound') {
-      const wounds = availableWounds(u.unit);
-      if (wounds.length === 0) injury = 'sitsOut';
-      else {
-        line.wound = rnd.pick(wounds);
-        u.unit = applyWound(u.unit, line.wound);
-        u.wounds = [...(u.wounds ?? []), line.wound];
-      }
-    }
-    if (injury === 'dead') lose();
-    if (injury === 'sitsOut') u.sitsOut = true;
-    line.injury = injury;
+    if (sufferInjury(u, line, rnd, RUN_TUNING.injury)) lose();
   }
 
   const gold = goldFor(s.round, report);
@@ -125,6 +146,46 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
     gold,
   });
   rollLevelUps(s, rnd);
+}
+
+/**
+ * Settle a battle the player retreated from (mutates `s`): nobody earns XP or
+ * gold. A unit that walked off by the flag, or fled the field, is untouched; a
+ * turncoat is gone; one that fell rolls for injury as ever; one left behind
+ * rolls on the harsher `leftBehind` table. The round is logged as lost by
+ * retreat. Units that sat the battle out are fit again.
+ */
+export function applyRetreat(s: RunState, report: BattleReport, rnd: RunRandom): void {
+  const battle = s.battle!;
+  for (const u of s.roster) delete u.sitsOut;
+
+  const lines: AftermathLine[] = [];
+  let losses = 0;
+  for (const unitId of battle.fielded!) {
+    const u = rosterUnit(s, unitId);
+    const r = report.units[unitId]!;
+    const line = aftermathLine(u, r);
+    lines.push(line);
+    u.kills += r.kills;
+    const table = r.fate === 'fell' ? RUN_TUNING.injury : r.fate === 'leftBehind' ? RUN_TUNING.leftBehind : undefined;
+    if (r.fate === 'turned' || (table && sufferInjury(u, line, rnd, table))) {
+      s.roster = s.roster.filter((x) => x !== u);
+      losses++;
+    }
+  }
+
+  s.aftermath = { gold: 0, units: lines, retreated: true };
+  s.log.push({
+    round: s.round,
+    mode: battle.mode,
+    enemy: battle.enemy.name,
+    boss: isBossRound(s.round),
+    won: false,
+    retreated: true,
+    kills: lines.reduce((sum, l) => sum + l.kills, 0),
+    losses,
+    gold: 0,
+  });
 }
 
 /** Every advance at least one roster unit could take. */
