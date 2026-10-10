@@ -426,6 +426,9 @@ const DODGE_RECOVER_MS = 190; // time to come back to its feet afterwards
 const RIPOSTE_GAP_MS = 180; // beat between a parried swing and the counter-blow
 const DEATH_FADE_MS = 600; // fade after a death clip (or instead of one)
 const ROUT_MS = 700; // a routed unit flees toward its own board edge while fading
+const RETREAT_CALL_MS = 900; // a Leader sounds the retreat: its horn and verdict before the camera turns to the flag
+const RETREAT_FLAG_MS = 1100; // the flag goes up and is looked at this long before play goes on
+const RETREAT_LEAVE_MS = 500; // a unit on the flag is seen there this long before it steps off the field
 const MAX_QUEUE_MS = 4000; // most a new batch waits behind the previous one's animations
 const NERVE_LEAD_MS = 900; // pause between a killing blow (its verdict) and the nerve checks it causes
 const WAR_CRY_MS = 1100; // a Leader's war cry: its rallying clip and verdict before play goes on
@@ -898,6 +901,8 @@ interface UnitObj {
   holdUntil: number;
   /** Set by a UnitRouted event: leave by fleeing, not by dying. */
   routed: boolean;
+  /** Set by a UnitRetreated event, or for a unit left behind as a retreat ends: it walks off the field, unhurt. */
+  retreated: boolean;
   /**
    * Board times the fade-out starts / ends, while dying or fleeing. `drop` is
    * the push that shoved it off the table (it slides that way, topples by
@@ -1151,6 +1156,10 @@ export class BoardView {
   private reachKey = '';
   private overlays: HexOverlay[] | undefined;
   private readonly markerGroup = new THREE.Group();
+  /** The marker standing on each hex, by `vecKey`. */
+  private readonly markerAt = new Map<string, THREE.Sprite>();
+  /** The hex whose marker (a retreat flag just called for) is not shown yet: it goes up once the camera is there. */
+  private hiddenMarker: string | null = null;
   private markingsKey: string | undefined;
   private readonly badgeTextures = new Map<string, THREE.Texture>();
   private crosshairMat: THREE.SpriteMaterial | null = null;
@@ -1842,6 +1851,18 @@ export class BoardView {
       } else if (e.type === 'WarCry') {
         t = this.warCry(e.unitId, e.inspired, t);
         lastHit = settle = t;
+      } else if (e.type === 'RetreatCalled') {
+        t = this.retreatCalled(e.unitId, e.hex, Math.max(t, settle));
+        lastHit = settle = t;
+      } else if (e.type === 'UnitRetreated') {
+        // Seen standing on the flag, then off it goes: no death, no body.
+        const at = Math.max(t, settle);
+        const obj = this.units.get(e.unitId);
+        if (obj) obj.retreated = true;
+        hold(e.unitId, at + RETREAT_LEAVE_MS);
+        this.at(at + RETREAT_LEAVE_MS, () => this.sound('unit-retreats'));
+        t = at + RETREAT_LEAVE_MS + ROUT_MS;
+        lastHit = settle = t;
       } else if (e.type === 'SpellCast') {
         const spell = this.castSpell(e, Math.max(t, settle));
         // The caster holds its charge until the spell leaves it.
@@ -2040,6 +2061,17 @@ export class BoardView {
       } else if (e.type === 'GameOver') {
         // A defeat only for someone playing one side of it: two at one screen, or a watcher, hear the winner's fanfare.
         const lost = this.localSeats?.length === 1 && !this.localSeats.includes(e.winner);
+        // A retreat's stragglers make for their edge as the battle ends. Only a
+        // picture: what became of them is settled afterwards, off the field.
+        if (e.reason === 'retreat') {
+          this.at(t + 400, () => {
+            for (const obj of this.units.values()) {
+              if (obj.owner === e.winner || obj.state.dead || obj.fade) continue;
+              obj.retreated = true;
+              this.startLeaving(obj);
+            }
+          });
+        }
         this.at(t + 400, () => {
           this.sound(lost ? 'defeat' : 'victory');
           for (const obj of this.units.values()) {
@@ -2579,6 +2611,46 @@ export class BoardView {
     return Math.max(at + WAR_CRY_MS, end + INSPIRE_HOLD_MS);
   }
 
+  /**
+   * A Leader sounds the retreat, starting `at` ms from now: frame the Leader as
+   * its horn sounds, then turn the camera to the hex its side's flag goes up on.
+   * The flag is already in the state, so it is held back until the camera is
+   * there to see it planted. Returns when the beat is over.
+   */
+  private retreatCalled(leaderId: string, hex: Vec, at: number): number {
+    const key = vecKey(hex);
+    this.hiddenMarker = key;
+    const standing = this.markerAt.get(key);
+    if (standing) standing.visible = false;
+
+    let t = at + this.pause(this.frameUnits([leaderId], at));
+    const leader = this.units.get(leaderId);
+    this.at(t, () => {
+      if (leader?.anims.leading) leader.animator.play(leader.anims.leading);
+      if (leader) this.flashUnit(leader.id, 0.4);
+      this.sound('retreat-horn');
+      this.rolls.addVerdict({ text: 'Retreat!', detail: 'reach the flag to leave the field', on: [leaderId], tone: 'kill' }, this.now);
+    });
+    t += RETREAT_CALL_MS;
+
+    const ground = this.unitWorld(hex).setY(this.surfaceAt(hex));
+    t += this.pause(this.frameZone([ground], t));
+    this.at(t, () => {
+      this.showHiddenMarker();
+      this.dust(ground, 12, 0.9);
+      this.effects.ring(ground, leader ? OWNER_COLORS[leader.owner] : INSPIRED_GLOW, 0.2, HEX_SIZE * 2.4, { life: 0.9, opacity: 0.8, additive: true });
+    });
+    return t + RETREAT_FLAG_MS;
+  }
+
+  /** Let the marker {@link retreatCalled} was holding back be seen. */
+  private showHiddenMarker(): void {
+    if (this.hiddenMarker === null) return;
+    const flag = this.markerAt.get(this.hiddenMarker);
+    if (flag) flag.visible = true;
+    this.hiddenMarker = null;
+  }
+
   /** A war cry leaves the Leader: gold rings roll out over the ground from its feet. */
   private shoutFx(obj: UnitObj): void {
     this.flashUnit(obj.id, 0.4);
@@ -3043,6 +3115,7 @@ export class BoardView {
   /** Cut short every pending animation step and dice card (a replay jump). */
   clearAnimations(): void {
     this.timeline.length = 0;
+    this.showHiddenMarker();
     this.cam = null;
     this.planned = null;
     this.busyUntil = this.now;
@@ -3280,6 +3353,7 @@ export class BoardView {
       shown: flags(),
       holdUntil: 0,
       routed: false,
+      retreated: false,
       fade: null,
       pushedOff: null,
       thrown: null,
@@ -3760,7 +3834,8 @@ export class BoardView {
     obj.ring.visible = false;
     let fadeIn = 0;
     let flee: THREE.Vector3 | null = null;
-    if (obj.routed) {
+    if (obj.routed || obj.retreated) {
+      // Running for its edge or stepping off by the flag: either way it goes on its feet.
       flee = new THREE.Vector3(obj.owner === 0 ? -1 : 1, 0, 0);
       this.setHeading(obj, flee.clone());
       obj.animator.moveFor(ROUT_MS);
@@ -3825,6 +3900,7 @@ export class BoardView {
   private revive(obj: UnitObj): void {
     obj.fade = null;
     obj.routed = false;
+    obj.retreated = false;
     obj.pushedOff = null;
     obj.thrown = null;
     obj.intoLava = null;
@@ -4572,6 +4648,7 @@ export class BoardView {
     this.markingsKey = vm.markingsKey;
     for (const child of this.markerGroup.children) ((child as THREE.Sprite).material as THREE.Material).dispose();
     this.markerGroup.clear();
+    this.markerAt.clear();
     for (const m of vm.markers ?? []) {
       const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({ map: this.badgeTexture(m.owner === 0 ? 'flag-0' : 'flag-1'), transparent: true }),
@@ -4579,6 +4656,8 @@ export class BoardView {
       sprite.scale.set(BADGE_SIZE * 1.4, BADGE_SIZE * 1.4, 1);
       const w = this.cellToWorld(m.cell);
       sprite.position.set(w.x + HEX_SIZE * 0.3, this.surfaceAt(m.cell) + BADGE_SIZE * 0.7, w.z - HEX_SIZE * 0.2);
+      sprite.visible = vecKey(m.cell) !== this.hiddenMarker;
+      this.markerAt.set(vecKey(m.cell), sprite);
       this.markerGroup.add(sprite);
     }
     for (const [id, obj] of this.units) {

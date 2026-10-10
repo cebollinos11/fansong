@@ -84,6 +84,8 @@ const BASE = [
   { name: 'war-cry', tier: 2, group: 'Traits', when: 'A Leader rallies', idea: 'long "RAAAAH!"', takes: 1 },
   { name: 'inspire', tier: 2, group: 'Traits', when: 'Each friend the war cry reaches takes heart', idea: 'sparkle "tinggg"', takes: 1, gain: 0.7 },
   { name: 'leader-falls', tier: 2, group: 'Traits', when: 'A Leader is killed', idea: 'dramatic "NOOOO"', takes: 1 },
+  { name: 'retreat-horn', tier: 2, group: 'Traits', when: 'A Leader sounds the retreat', idea: 'falling two-note horn "baaa-roooo"', takes: 1, fallback: 'war-cry' },
+  { name: 'unit-retreats', tier: 2, group: 'Traits', when: 'A unit reaches the retreat flag and leaves the field', idea: 'hurried feet and a relieved "phew"', takes: 1, gain: 0.8, fallback: 'flag-return' },
   { name: 'guard-set', tier: 2, group: 'Traits', when: 'A unit goes on guard', idea: '"shink" of blades crossing', takes: 1 },
   { name: 'riposte', tier: 2, group: 'Traits', when: "A guard's first strike stops the attack", idea: '"ha-HA!"', takes: 1 },
   { name: 'armor-clang', tier: 2, group: 'Traits', when: 'Armored: the blow glances off', idea: 'dull "dongg"', takes: 1 },

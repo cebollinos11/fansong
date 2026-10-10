@@ -108,6 +108,31 @@ export const SPELL_TURN_HELP = `A spell turn: the dice buy no actions. Their suc
 export const WAR_CRY_HELP =
   'Press C — one action: every friend still to activate within 5 hexes and in sight is inspired, its first activation die a sure 6 (two failures among its other dice still turn it over)';
 
+/** The retreat button's tooltip. */
+export const RETREAT_HELP =
+  'Press B — one action, once a battle: give the battle up. A flag goes up in your deploy zone, and every unit of yours that ends a move on it leaves the field unhurt';
+
+/** What to ask before the retreat is sounded: there is no taking it back. */
+export const RETREAT_PROMPT = {
+  title: 'Sound the retreat?',
+  detail:
+    'This battle is lost. Units that reach the flag leave unhurt; any still on the field when your Leader leaves may not come back.',
+} as const;
+
+/**
+ * How a finished game is summed up: for the one side playing at this screen,
+ * won, lost, or given up by its own retreat. With two at one screen (or a
+ * watcher) nobody here won or lost alone, so it is only named when the loser
+ * retreated; otherwise `null`.
+ */
+export function outcomeWord(state: GameState, controlledSeats: readonly Owner[]): 'Victory!' | 'Defeat.' | 'Retreated.' | null {
+  if (state.winner === null) return null;
+  const retreated = state.retreat !== undefined && state.retreat.owner !== state.winner;
+  if (controlledSeats.length !== 1) return retreated ? 'Retreated.' : null;
+  if (state.winner === controlledSeats[0]) return 'Victory!';
+  return retreated ? 'Retreated.' : 'Defeat.';
+}
+
 /** What each trait does, for the inspector's tooltips. */
 export const TRAIT_HELP = {
   slow: `Moves ${BASE_MOVE - SPEED_STEP} hexes per Move action instead of ${BASE_MOVE}`,

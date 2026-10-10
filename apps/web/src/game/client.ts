@@ -51,7 +51,8 @@ export function humanSeats(setup: MatchSetup): Owner[] {
  *
  * `lookup` resolves `setup.mapId` (pass one that knows custom maps). The config
  * is built once, so the replay stays correct even if a custom map is later
- * edited or deleted.
+ * edited or deleted. A caller whose match is more than its setup says (a run's
+ * battle, with its retreat zones) passes that `config` itself.
  */
 export class LocalMatchClient implements MatchClient {
   readonly setup: MatchSetup;
@@ -63,9 +64,9 @@ export class LocalMatchClient implements MatchClient {
   private readonly recorded: Command[] = [];
   private readonly unrecord: () => void;
 
-  constructor(setup: MatchSetup, lookup: MapLookup = getMap) {
+  constructor(setup: MatchSetup, lookup: MapLookup = getMap, config?: GameConfig) {
     this.setup = setup;
-    this.config = configFromSetup(setup, DEFAULT_BOARD, lookup);
+    this.config = config ?? configFromSetup(setup, DEFAULT_BOARD, lookup);
     this.controller = new MatchController(createGame(this.config));
     this.controlledSeats = humanSeats(setup);
     // Record every applied command (human and AI alike) for replay.

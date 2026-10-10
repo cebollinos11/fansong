@@ -123,6 +123,7 @@ function actorOf(step: Command): string | null {
     case 'Move':
     case 'Guard':
     case 'WarCry':
+    case 'Retreat':
       return step.unitId;
     case 'Attack':
     case 'Shoot':

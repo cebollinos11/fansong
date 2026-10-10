@@ -12,6 +12,7 @@ import {
   DEFAULT_BOARD,
   DEFAULT_SETUP,
   newRun,
+  runBattleConfig,
   runMapLookup,
   runMatchSetup,
   runStep,
@@ -199,7 +200,7 @@ function RunBattle({ run, onStep, onExit }: { run: RunState; onStep: (action: Ru
 
   // Built once per battle: the run doesn't change while it is being fought.
   useEffect(() => {
-    const c = new LocalMatchClient(runMatchSetup(run), runMapLookup(run));
+    const c = new LocalMatchClient(runMatchSetup(run), runMapLookup(run), runBattleConfig(run));
     setClient(c);
     return () => c.dispose();
   }, []);

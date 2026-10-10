@@ -7,10 +7,11 @@ import { injuryChecks, injuryFaces, renameError, standingUnits, type InjuryCheck
 
 /**
  * The run's two moments that stop the screen: naming a unit (as it joins, or
- * any time from its card) and, after a won battle, the tending of the
- * wounded, where each fallen unit's injury die is thrown one at a time. The
- * die only shows what the run already rolled: its fate is settled, the
- * throwing is the drama.
+ * any time from its card) and, after a battle, the tending of the wounded,
+ * where each fallen unit's injury die is thrown one at a time (after a retreat,
+ * so is the die of each unit left behind, on its harsher table). The die only
+ * shows what the run already rolled: its fate is settled, the throwing is the
+ * drama.
  */
 
 /** A face of the die as pips on a 3×3 grid. */
@@ -32,8 +33,12 @@ const FLICKER_MS = 75;
 
 const OUTCOME_SOUND = { ok: 'tend-ok', hurt: 'tend-hurt', lost: 'tend-dead' } as const;
 
-/** The key under which this round's tending is remembered as seen, so a reload doesn't throw the dice again. */
-const tendedKey = (run: RunState): string => `${run.seed}:${run.round}`;
+/**
+ * The key under which this battle's tending is remembered as seen, so a reload
+ * doesn't throw the dice again. By battles fought, not by round: a round
+ * retreated from is fought twice.
+ */
+const tendedKey = (run: RunState): string => `${run.seed}:${run.round}:${run.log.length}`;
 const TENDED_STORE = 'fansong.run.tended';
 
 export function wasTended(run: RunState): boolean {
@@ -53,14 +58,15 @@ function markTended(run: RunState): void {
 }
 
 /**
- * After a won battle: an opening card with the fallen and the standing, then
- * one card per fallen unit with its odds and a die to throw, then back to the
- * aftermath. Skippable at any point.
+ * After a battle: an opening card with the fallen and the standing, then one
+ * card per fallen unit with its odds and a die to throw, then back to the
+ * aftermath. After a retreat the units left behind are tended too, and those
+ * who reached the flag stand with the unhurt. Skippable at any point.
  */
 export function TendWounded({ run, onDone }: { run: RunState; onDone: () => void }): JSX.Element | null {
   const checks = injuryChecks(run);
   const standing = standingUnits(run);
-  const faces = injuryFaces();
+  const retreated = run.aftermath?.retreated === true;
   // -1: the opening card; then the index of the unit whose die is up.
   const [step, setStep] = useState(-1);
   const [stage, setStage] = useState<'ready' | 'rolling' | 'landed'>('ready');
@@ -74,6 +80,7 @@ export function TendWounded({ run, onDone }: { run: RunState; onDone: () => void
     onDone();
   };
   const check: InjuryCheck | undefined = checks[step];
+  const faces = injuryFaces(check?.leftBehind);
 
   const throwDie = (): void => {
     if (!check || stage !== 'ready') return;
@@ -102,6 +109,12 @@ export function TendWounded({ run, onDone }: { run: RunState; onDone: () => void
 
   if (checks.length === 0) return null;
   const fallen = checks.length === 1 ? '1 unit' : `${checks.length} units`;
+  const behind = checks.filter((c) => c.leftBehind).length;
+  const lead = !retreated
+    ? `The battle is won, but ${fallen} fell. Roll for each to see who pulls through.`
+    : behind === 0
+      ? `The retreat is made, but ${fallen} fell on the way. Roll for each to see who pulls through.`
+      : `The retreat is made, but ${fallen} did not reach the flag. Roll for each: those left behind on the field fare worse than those who fell.`;
   return (
     <div className="tend-layer" role="dialog" aria-modal="true" aria-label="Tending the wounded">
       <div className={`tend-card${check && stage === 'landed' ? ` tone-${check.tone}` : ''}`}>
@@ -119,9 +132,7 @@ export function TendWounded({ run, onDone }: { run: RunState; onDone: () => void
 
         {!check ? (
           <div className="tend-open">
-            <p className="tend-lead">
-              The battle is won, but {fallen} fell. Roll for each to see who pulls through.
-            </p>
+            <p className="tend-lead">{lead}</p>
             <div className="tend-row lost">
               {checks.map((c) => (
                 <figure key={c.unitId}>
@@ -132,7 +143,7 @@ export function TendWounded({ run, onDone }: { run: RunState; onDone: () => void
             </div>
             {standing.length > 0 ? (
               <>
-                <p className="tend-sub">Came through standing</p>
+                <p className="tend-sub">{retreated ? 'Got away' : 'Came through standing'}</p>
                 <div className="tend-row">
                   {standing.map((u, i) => (
                     <figure key={i}>
@@ -151,7 +162,7 @@ export function TendWounded({ run, onDone }: { run: RunState; onDone: () => void
           <div className="tend-unit" key={check.unitId}>
             <LookSprite look={check.look} tint={check.tint} className={`unit-sprite tend-sprite ${stage === 'landed' ? check.tone : 'fallen'}`} />
             <strong className="tend-name">{check.name}</strong>
-            <p className="tend-sub">fell in battle</p>
+            <p className="tend-sub">{check.leftBehind ? 'was left behind' : 'fell in battle'}</p>
 
             <ol className="tend-odds" aria-label="What each roll does">
               {faces.map((f) => (

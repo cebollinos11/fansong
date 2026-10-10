@@ -1895,7 +1895,13 @@ button.ghost {
   white-space: nowrap;
 }
 
-/* --- Leaving a battle (the "New match" question) --- */
+/* Giving the battle up is no everyday order: it reads as the danger it is. */
+.play-actions button.retreat {
+  color: var(--p1);
+  border-color: var(--p1);
+}
+
+/* --- Leaving a battle (the "New match" question), and sounding the retreat --- */
 .leave-confirm {
   position: absolute;
   inset: 0;
@@ -5747,6 +5753,25 @@ button.trait-add[aria-expanded='true'] {
 
 .run-seed {
   user-select: all;
+}
+
+/* Retreat banners in hand: the flag's own blue, greyed out once none is left. */
+.run-status .run-banners dd,
+.run-banner-count {
+  color: var(--p0);
+  font-weight: 700;
+}
+
+.run-status .run-banners.none dd {
+  color: var(--muted);
+}
+
+.run-retreat-note {
+  margin: 10px 0 4px;
+}
+
+.run-retreat-note.none {
+  color: var(--p1);
 }
 
 .run-status .run-won {

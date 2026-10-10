@@ -153,7 +153,7 @@ const GAME_OVER_REASONS: Record<GameOverReason, string> = {
   flag: 'flag captured',
   pig: 'the golden Pig has fallen',
   extracted: 'the golden Pig reached the enemy camp',
-  retreat: 'the losing side retreated',
+  retreat: 'the retreat was sounded',
 };
 
 /** A line flattened to text (the HUD callout, tooltips, tests), naming the sides by `names`. */
@@ -662,6 +662,26 @@ export function appendEvents(prev: BattleLog, state: GameState, events: readonly
         });
         break;
       }
+      case 'RetreatCalled':
+        add({
+          icon: '🏳',
+          parts: [unit(ref(state, e.unitId)), ' sounds the retreat: the flag goes up'],
+          brief: ['🏳 retreat'],
+          tone: 'objective',
+          category: 'objective',
+          unitIds: [e.unitId],
+        });
+        break;
+      case 'UnitRetreated':
+        add({
+          icon: '🏳',
+          parts: [unit(ref(state, e.unitId)), ' reaches the flag and leaves the field'],
+          brief: ['🏳 ', unit(ref(state, e.unitId)), ' gets away'],
+          tone: 'objective',
+          category: 'objective',
+          unitIds: [e.unitId],
+        });
+        break;
       case 'LeaderFallen':
         add({
           icon: '☠',

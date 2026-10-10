@@ -34,6 +34,8 @@ export interface Interaction {
   canGuard: boolean;
   /** Whether the active unit (a Leader) may war cry right now. */
   canWarCry: boolean;
+  /** Whether the active unit (a Leader) may sound the retreat right now. */
+  canRetreat: boolean;
 }
 
 export function deriveInteraction(legal: Command[]): Interaction {
@@ -51,6 +53,7 @@ export function deriveInteraction(legal: Command[]): Interaction {
   let canEndActivation = false;
   let canGuard = false;
   let canWarCry = false;
+  let canRetreat = false;
 
   for (const c of legal) {
     switch (c.type) {
@@ -83,6 +86,9 @@ export function deriveInteraction(legal: Command[]): Interaction {
       case 'WarCry':
         canWarCry = true;
         break;
+      case 'Retreat':
+        canRetreat = true;
+        break;
     }
   }
 
@@ -101,5 +107,6 @@ export function deriveInteraction(legal: Command[]): Interaction {
     canEndActivation,
     canGuard,
     canWarCry,
+    canRetreat,
   };
 }

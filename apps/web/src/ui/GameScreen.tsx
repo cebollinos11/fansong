@@ -16,7 +16,7 @@ import { fightScores, oddsLine } from './hexInfo.js';
 import { Hud, type ExitWording } from './Hud.js';
 import { SoundCuePanel } from './SoundCuePanel.js';
 import { devTools } from '../devTools.js';
-import { seatLabel, turnPhrase } from './hudView.js';
+import { outcomeWord, seatLabel, turnPhrase } from './hudView.js';
 import { sideNames } from './sides.js';
 import type { LogFocus } from './BattleLogView.js';
 import { appendEvents, emptyLog, type BattleLog } from './log.js';
@@ -81,6 +81,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
   const [status, setStatus] = useState<ClientStatus>(client.status());
   // Open when a target was clicked with two actions in hand: attack, or press it?
   const [attackChoice, setAttackChoice] = useState<AttackChoice | null>(null);
+  // Open while the Retreat button waits on its answer: nothing is sent until it is confirmed.
+  const [retreatAsked, setRetreatAsked] = useState(false);
   // True from the click that commits a plan until its last command has played.
   const [planning, setPlanning] = useState(false);
   // Set from a `RoundEnded` event once it has finished animating, cleared on its
@@ -438,7 +440,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
 
       if (state.phase === 'acting') {
         // The attack menu is a question waiting on an answer; let it have the keyboard.
-        if (attackChoice) return;
+        // So is the retreat's, which must never be answered by a stray key.
+        if (attackChoice || retreatAsked) return;
         if (e.key.toLowerCase() === 'e' && interaction.canEndActivation) {
           e.preventDefault();
           client.send({ type: 'EndActivation' });
@@ -448,6 +451,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
         } else if (e.key.toLowerCase() === 'c' && interaction.canWarCry && state.activeUnitId) {
           e.preventDefault();
           client.send({ type: 'WarCry', unitId: state.activeUnitId });
+        } else if (e.key.toLowerCase() === 'b' && interaction.canRetreat && state.activeUnitId) {
+          e.preventDefault();
+          setRetreatAsked(true);
         }
         return;
       }
@@ -478,7 +484,7 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, client, cycleUnit, groupIds]);
+  }, [myTurn, planning, state.phase, selectedUnitId, interaction, attackChoice, retreatAsked, client, cycleUnit, groupIds]);
 
   // Picking a unit to activate brings the inspector back to it.
   useEffect(() => {
@@ -489,6 +495,11 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
   useEffect(() => {
     if (!myTurn || state.phase !== 'acting') setAttackChoice(null);
   }, [myTurn, state.phase]);
+
+  // Nor has the retreat's question, once the retreat can no longer be sounded.
+  useEffect(() => {
+    if (!myTurn || !interaction.canRetreat) setRetreatAsked(false);
+  }, [myTurn, interaction.canRetreat]);
 
   const handleEndActivation = (): void => {
     setAttackChoice(null);
@@ -506,6 +517,17 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
     setAttackChoice(null);
     if (!myTurn || !state.activeUnitId) return;
     client.send({ type: 'WarCry', unitId: state.activeUnitId });
+  };
+
+  const handleAskRetreat = (): void => {
+    setAttackChoice(null);
+    if (myTurn && interaction.canRetreat) setRetreatAsked(true);
+  };
+
+  const handleRetreat = (sound: boolean): void => {
+    setRetreatAsked(false);
+    if (!sound || !myTurn || !interaction.canRetreat || !state.activeUnitId) return;
+    client.send({ type: 'Retreat', unitId: state.activeUnitId });
   };
 
   const announcement = roundAnnounce
@@ -586,6 +608,9 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
         onEndActivation={handleEndActivation}
         onGuard={handleGuard}
         onWarCry={handleWarCry}
+        retreatAsked={retreatAsked}
+        onAskRetreat={handleAskRetreat}
+        onRetreat={handleRetreat}
         onExit={onExit}
         exit={exit}
       />
@@ -594,14 +619,14 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
       ) : null}
       {over && replay && onFinished ? (
         <div className="gameover-actions">
-          <span>{state.winner === 0 ? 'Victory!' : 'Defeat.'}</span>
+          <span>{outcomeWord(state, client.controlledSeats) ?? 'Game over.'}</span>
           <button className="primary" onClick={() => onFinished(replay, state.winner as Owner)}>
             Continue
           </button>
         </div>
       ) : over && (replay || onRematch) ? (
         <div className="gameover-actions">
-          <span>Game over.</span>
+          <span>{outcomeWord(state, client.controlledSeats) === 'Retreated.' ? 'Retreated.' : 'Game over.'}</span>
           {onRematch ? (
             <button className="primary" onClick={onRematch}>
               Rematch

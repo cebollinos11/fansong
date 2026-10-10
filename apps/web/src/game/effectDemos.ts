@@ -543,6 +543,42 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     shows: (ev) => has(ev, 'LeaderFallen') && !blow(ev)?.gruesome && has(ev, 'NerveCheck'),
   },
   {
+    id: 'retreat',
+    group: 'Traits',
+    label: 'Leader: sounds the retreat',
+    hint: 'The Leader blows the retreat, and the camera turns to the hex its flag goes up on: the one of its retreat zone farthest from the enemy.',
+    stage: (s) => {
+      s.spawn(0, { name: 'Death Knight', quality: 3, combat: 3, leader: true }, s.target);
+      s.spawn(0, ELF, s.side);
+      s.spawn(1, BONES, s.beyond);
+      s.act('p0u0');
+      // The corner hexes stand in for a deploy zone.
+      s.edit((state) => {
+        state.retreatZones = [s.corner.map((v) => ({ ...v })), []];
+      });
+      return { type: 'Retreat', unitId: 'p0u0' };
+    },
+    shows: (ev) => has(ev, 'RetreatCalled'),
+  },
+  {
+    id: 'retreatLeave',
+    group: 'Traits',
+    label: 'Retreat: a unit leaves',
+    hint: 'With the retreat sounded, a unit that ends its move on the flag steps off the field, unhurt.',
+    stage: (s) => {
+      s.spawn(0, { name: 'Death Knight', quality: 3, combat: 3, leader: true }, s.target);
+      s.spawn(0, ELF, s.attacker);
+      s.spawn(1, BONES, s.beyond);
+      s.act('p0u1');
+      s.edit((state) => {
+        state.retreatZones = [[{ ...s.behind }], []];
+        state.retreat = { owner: 0, hex: { ...s.behind } };
+      });
+      return { type: 'Move', unitId: 'p0u1', to: { ...s.behind } };
+    },
+    shows: (ev) => has(ev, 'UnitRetreated') && !has(ev, 'GameOver'),
+  },
+  {
     id: 'shieldwall',
     group: 'Traits',
     label: 'Shieldwall',
@@ -789,6 +825,8 @@ export function stageScene(state: GameState, demo: Pick<EffectDemo, 'label' | 's
   delete s.rushed;
   delete s.group;
   delete s.spell;
+  delete s.retreat;
+  delete s.retreatZones;
 
   const scene: Scene = {
     ...spots,

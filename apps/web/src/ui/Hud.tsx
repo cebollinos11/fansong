@@ -3,7 +3,7 @@ import { airborne, spellRange, unitById, unitMove, type GameState, type Owner } 
 import type { Interaction } from '../game/interaction.js';
 import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { BROKEN_HELP, INSPIRED_HELP, TRANSFIXED_HELP, WAR_CRY_HELP, breaksAtHelp, leavePrompt, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, RETREAT_HELP, RETREAT_PROMPT, TRANSFIXED_HELP, WAR_CRY_HELP, breaksAtHelp, leavePrompt, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import { itemText, type BattleLog } from './log.js';
 import { sideNames } from './sides.js';
@@ -36,6 +36,12 @@ interface Props {
   onEndActivation: () => void;
   onGuard: () => void;
   onWarCry: () => void;
+  /** Set while the retreat is waiting on its answer (see {@link Confirm}). */
+  retreatAsked: boolean;
+  /** The Retreat button: ask before anything is sent. */
+  onAskRetreat: () => void;
+  /** The question's answer: `true` sounds the retreat. */
+  onRetreat: (sound: boolean) => void;
   onExit: () => void;
   /** A run's battle: the way out is named and explained in its own words. */
   exit?: ExitWording;
@@ -101,6 +107,21 @@ function LeaveConfirm({ state, detail, onCancel, onConfirm }: {
   onConfirm: () => void;
 }): JSX.Element {
   const prompt = leavePrompt(state);
+  return <Confirm title={prompt.title} detail={detail ?? prompt.detail} keep="Keep playing" go="Leave the battle" onCancel={onCancel} onConfirm={onConfirm} />;
+}
+
+/**
+ * A question over the whole HUD with a safe answer (`keep`) and one there is no
+ * taking back (`go`): leaving a battle, sounding the retreat.
+ */
+function Confirm({ title, detail, keep, go, onCancel, onConfirm }: {
+  title: string;
+  detail: string;
+  keep: string;
+  go: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}): JSX.Element {
   const keepPlaying = useRef<HTMLButtonElement>(null);
 
   // Keep the keyboard here while the question is up: Escape answers it, and
@@ -122,15 +143,15 @@ function LeaveConfirm({ state, detail, onCancel, onConfirm }: {
 
   return (
     <div className="leave-confirm" onPointerDown={(e) => { if (e.target === e.currentTarget) onCancel(); }}>
-      <div className="leave-confirm-card" role="dialog" aria-modal="true" aria-label={prompt.title}>
-        <h2>{prompt.title}</h2>
-        <p>{detail ?? prompt.detail}</p>
+      <div className="leave-confirm-card" role="dialog" aria-modal="true" aria-label={title}>
+        <h2>{title}</h2>
+        <p>{detail}</p>
         <div className="leave-confirm-actions">
           <button ref={keepPlaying} type="button" className="primary" onClick={onCancel}>
-            Keep playing
+            {keep}
           </button>
           <button type="button" className="ghost danger" onClick={onConfirm}>
-            Leave the battle
+            {go}
           </button>
         </div>
       </div>
@@ -334,6 +355,11 @@ export function Hud(props: Props): JSX.Element {
                   War cry <kbd>C</kbd>
                 </button>
               ) : null}
+              {interaction.canRetreat ? (
+                <button className="retreat" title={RETREAT_HELP} onClick={props.onAskRetreat}>
+                  Retreat <kbd>B</kbd>
+                </button>
+              ) : null}
               {interaction.canGuard ? (
                 <button
                   title="Press G — stand ready to riposte the next melee attacker, until this unit next activates"
@@ -359,6 +385,16 @@ export function Hud(props: Props): JSX.Element {
             setLeaving(false);
             props.onExit();
           }}
+        />
+      ) : null}
+      {props.retreatAsked && !leaving ? (
+        <Confirm
+          title={RETREAT_PROMPT.title}
+          detail={RETREAT_PROMPT.detail}
+          keep="Fight on"
+          go="Sound the retreat"
+          onCancel={() => props.onRetreat(false)}
+          onConfirm={() => props.onRetreat(true)}
         />
       ) : null}
     </aside>

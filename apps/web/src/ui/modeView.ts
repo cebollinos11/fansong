@@ -162,8 +162,12 @@ export function zoneScore(state: GameState, tally: ZoneTally, names: readonly [s
  */
 export function modeOverlays(state: GameState): HexOverlay[] {
   const m = state.mode;
-  if (!m) return [];
   const out: HexOverlay[] = [];
+  // The retreat flag's hex, in any mode: lit in its side's colour, so the way out is plain.
+  if (state.retreat) {
+    out.push({ cells: [{ ...state.retreat.hex }], color: ZONE_COLORS.deploy[state.retreat.owner]!, opacity: 0.75, scale: 0.92 });
+  }
+  if (!m) return out;
   // Under the zones' own tint, so it shows as a rim around each hex.
   for (const tally of zoneTallies(state)) {
     if (tally.holder === undefined) continue;
@@ -189,14 +193,17 @@ export function modeOverlays(state: GameState): HexOverlay[] {
 /** The tint of the golden Pig's goal zone. */
 export const PIG_GOAL_COLOR = 0xffd700;
 
-/** Flags lying on a hex (at base or dropped); a carried flag is a badge on its carrier instead. */
+/**
+ * Flags standing on a hex: capture-the-flag's (at base or dropped; a carried
+ * flag is a badge on its carrier instead), and the flag of a retreat that has
+ * been sounded, in its side's colour.
+ */
 export function modeMarkers(state: GameState): BoardMarker[] {
-  const flags = state.mode?.flags;
-  if (!flags) return [];
   const out: BoardMarker[] = [];
-  flags.forEach((flag, p) => {
+  state.mode?.flags?.forEach((flag, p) => {
     if (flag.carrier === null) out.push({ kind: 'flag', owner: p as Owner, cell: { ...flag.at } });
   });
+  if (state.retreat) out.push({ kind: 'flag', owner: state.retreat.owner, cell: { ...state.retreat.hex } });
   return out;
 }
 
@@ -248,12 +255,14 @@ export function modeMarkingsKey(state: GameState): string {
     .filter((u) => u.inspired && !u.dead)
     .map((u) => u.id)
     .join(',');
-  if (!m) return `${gameMode(state)};${guards};${inspired}`;
+  // Appended only once a retreat is sounded, so every other key is unchanged.
+  const retreat = state.retreat ? `;retreat:${state.retreat.owner}:${state.retreat.hex.x},${state.retreat.hex.y}` : '';
+  if (!m) return `${gameMode(state)};${guards};${inspired}${retreat}`;
   const cell = (v: Vec) => `${v.x},${v.y}`;
   const flags = m.flags?.map((f) => `${cell(f.at)}:${f.carrier ?? ''}`).join('|') ?? '';
   const kings = m.kings?.map((id) => `${id}:${unitById(state, id)?.dead ? 1 : 0}`).join('|') ?? '';
   const holders = zoneTallies(state).map((z) => z.holder ?? '-').join('');
   // Appended only in its own mode, so the other modes' keys are unchanged.
   const pig = m.pig ? `;pig:${m.pig.unitId}:${unitById(state, m.pig.unitId)?.dead ? 1 : 0}` : '';
-  return `${m.mode};${flags};${kings};${holders};${guards};${inspired}${pig}`;
+  return `${m.mode};${flags};${kings};${holders};${guards};${inspired}${pig}${retreat}`;
 }

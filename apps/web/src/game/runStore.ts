@@ -3,6 +3,7 @@ import {
   parseMap,
   parseWarband,
   runBattleConfig,
+  RUN_TUNING,
   runVictorious,
   type RunPhase,
   type RunState,
@@ -43,6 +44,8 @@ export interface RunRecord {
   roster: string[];
   /** The warband it ended with, to meet again in later runs (absent from records older than that). */
   units?: WarbandUnit[];
+  /** Battles it retreated from (absent when none, and from records older than retreats). */
+  retreats?: number;
 }
 
 const PHASES: readonly RunPhase[] = ['draft', 'mission', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'over'];
@@ -115,6 +118,9 @@ export function parseRun(raw: unknown): RunState {
   count(raw.gold, 'it has no gold');
   count(raw.rolls, 'it has no roll count');
   count(raw.nextId, 'it has no next id');
+  // A run saved before retreat banners existed starts with the ones a new run gets.
+  const banners = raw.banners === undefined ? RUN_TUNING.banners.start : count(raw.banners, 'it has no banner count');
+  if (raw.retreats !== undefined) count(raw.retreats, 'bad retreat count');
 
   const ids = new Set<string>();
   const roster = list(raw.roster, 'it has no roster').map((entry) => {
@@ -128,10 +134,11 @@ export function parseRun(raw: unknown): RunState {
   });
   if (phase !== 'draft' && roster.length === 0) fail('its roster is empty');
 
-  const next: Record<string, unknown> = { ...raw, roster };
+  const next: Record<string, unknown> = { ...raw, roster, banners };
 
   for (const line of list(raw.log, 'it has no history')) {
     if (!isRecord(line) || typeof line.mode !== 'string' || typeof line.enemy !== 'string' || typeof line.won !== 'boolean') fail('bad history');
+    if (line.retreated !== undefined && line.retreated !== true) fail('bad history');
     count(line.round, 'bad history');
     count(line.kills, 'bad history');
   }
@@ -156,7 +163,12 @@ export function parseRun(raw: unknown): RunState {
   }
   const offerKind = isRecord(next.offer) ? next.offer.kind : undefined;
   const owed: Partial<Record<RunPhase, string>> = { draft: 'draft', mission: 'missions', aftermath: 'reward', reward: 'reward', shop: 'shop' };
-  if (owed[phase] !== undefined && offerKind !== owed[phase]) fail(`its ${phase} has nothing on offer`);
+  // A retreat's aftermath is owed nothing: it leads straight to the shop.
+  const retreated = isRecord(raw.aftermath) && raw.aftermath.retreated === true;
+  if (isRecord(raw.aftermath) && raw.aftermath.retreated !== undefined && !retreated) fail('bad aftermath');
+  if (phase === 'aftermath' && retreated) {
+    if (offerKind !== undefined) fail('its retreat has something on offer');
+  } else if (owed[phase] !== undefined && offerKind !== owed[phase]) fail(`its ${phase} has nothing on offer`);
 
   if (raw.pending !== undefined) {
     for (const p of list(raw.pending, 'bad level-ups')) {
@@ -245,6 +257,7 @@ export function runRecord(run: RunState, end: RunRecord['end'], now: number = Da
     at: now,
     roster: run.roster.map((u) => u.unit.name),
     units: run.roster.map((u) => ({ ...u.unit })),
+    ...(run.log.some((r) => r.retreated) ? { retreats: run.log.filter((r) => r.retreated).length } : {}),
   };
 }
 
@@ -270,7 +283,7 @@ export function loadRunRecords(storage: MapStorage | null): RunRecord[] {
   const records: RunRecord[] = [];
   for (const entry of raw) {
     if (!isRecord(entry)) continue;
-    const { seed, wins, round, kills, end, victorious, at, roster, units } = entry;
+    const { seed, wins, round, kills, end, victorious, at, roster, units, retreats } = entry;
     const whole = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v);
     if (!whole(seed) || !whole(wins) || !whole(round) || !whole(kills) || !whole(at)) continue;
     if (end !== 'lost' && end !== 'abandoned') continue;
@@ -290,6 +303,7 @@ export function loadRunRecords(storage: MapStorage | null): RunRecord[] {
       at,
       roster: Array.isArray(roster) ? roster.filter((n): n is string => typeof n === 'string') : [],
       ...(warband ? { units: warband } : {}),
+      ...(whole(retreats) && retreats > 0 ? { retreats } : {}),
     });
   }
   return records.sort(byDepth);

@@ -184,6 +184,8 @@ const SCENES: Record<string, SoundScene> = {
   'war-cry': demo('warCry'),
   inspire: demo('warCry'),
   'leader-falls': demo('leaderFalls'),
+  'retreat-horn': demo('retreat'),
+  'unit-retreats': demo('retreatLeave'),
   'guard-set': {
     label: 'A unit goes on guard',
     stage: (s) => {

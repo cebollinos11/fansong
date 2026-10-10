@@ -6,6 +6,7 @@ import { LookSprite, MapThumb, UnitSprite, unitLine } from './Picker.js';
 import { NameUnit, TendWounded, wasTended } from './RunCeremony.js';
 import {
   aftermathView,
+  BANNER_HELP,
   briefingView,
   draftView,
   historyLines,
@@ -101,6 +102,10 @@ export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: P
           <div>
             <dt>Warband</dt>
             <dd>{header.roster}</dd>
+          </div>
+          <div className={header.banners > 0 ? 'run-banners' : 'run-banners none'} title={BANNER_HELP}>
+            <dt>Banners</dt>
+            <dd>⚑ {header.banners}</dd>
           </div>
           {header.victorious ? (
             <div className="run-won" title="This run has beaten its last boss. It goes on until a battle is lost">
@@ -426,6 +431,7 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
             </UnitCard>
           ))}
         </ul>
+        <p className={view.retreat.banners > 0 ? 'muster-meta run-retreat-note' : 'muster-meta run-retreat-note none'}>⚑ {view.retreat.note}</p>
         <Go choice={view.start} act={act} className="run-go run-go-big">
           To battle
         </Go>
@@ -446,17 +452,27 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
         </section>
       ) : null}
       <section className="run-panel">
-        <h2 className="muster-label">After the battle</h2>
-        <p className="muster-meta">
-          The win pays <span className="run-gold">{view.gold} gold</span>, and the mission's reward is yours to claim.
-        </p>
-        <Rewards rewards={view.rewards} />
+        <h2 className="muster-label">{view.retreat ? 'After the retreat' : 'After the battle'}</h2>
+        {view.retreat ? (
+          <p className="muster-meta">
+            The battle is given up: no gold, no experience, no reward. The banner is spent (
+            <span className="run-banner-count">⚑ {view.retreat.left} left</span>), and round {view.retreat.round} will be fought again, against someone
+            new.
+          </p>
+        ) : (
+          <>
+            <p className="muster-meta">
+              The win pays <span className="run-gold">{view.gold} gold</span>, and the mission's reward is yours to claim.
+            </p>
+            <Rewards rewards={view.rewards} />
+          </>
+        )}
         <table className="run-table">
           <thead>
             <tr>
               <th>Unit</th>
               <th>Kills</th>
-              <th>XP</th>
+              {view.retreat ? null : <th>XP</th>}
               <th>Fate</th>
             </tr>
           </thead>
@@ -465,7 +481,7 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
               <tr key={line.unitId} className={`fate-${line.tone}`}>
                 <td>{line.name}</td>
                 <td>{line.kills}</td>
-                <td>{line.xp > 0 ? `+${line.xp}` : '—'}</td>
+                {view.retreat ? null : <td>{line.xp > 0 ? `+${line.xp}` : '—'}</td>}
                 <td>{line.text}</td>
               </tr>
             ))}
@@ -492,7 +508,7 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
       ) : null}
 
       <Go choice={view.next} act={act} className="run-go run-go-big">
-        {view.levelUps.length > 0 ? 'Spend the levels first' : 'Claim the reward'}
+        {view.levelUps.length > 0 ? 'Spend the levels first' : view.retreat ? 'Back to camp' : 'Claim the reward'}
       </Go>
       <Roster run={run} />
     </>
@@ -629,8 +645,8 @@ function Over({ run, records, onExit, onNewRun }: { run: RunState; records: read
         <h2 className="run-headline">{view.headline}</h2>
         <p className="muster-meta">{view.summary}</p>
         <ol className="run-history">
-          {history.map((line) => (
-            <li key={line.round} className={line.won ? 'won' : 'lost'}>
+          {history.map((line, i) => (
+            <li key={i} className={line.won ? 'won' : 'lost'}>
               <span>Round {line.round}</span> {line.text}
             </li>
           ))}

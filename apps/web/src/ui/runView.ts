@@ -145,8 +145,20 @@ export interface RunHeader {
   boss: boolean;
   /** The roster's size, cap and points, e.g. "5/12 units · 118 pts". */
   roster: string;
+  /** Retreat banners in hand. */
+  banners: number;
   /** Whether the run has beaten its victory round: from there it only goes on. */
   victorious: boolean;
+}
+
+/** What a retreat banner is, for the header's tooltip. */
+export const BANNER_HELP = `A retreat banner lets your Leader give a battle up without ending the run: the banner is spent, and the round is fought again against someone new. Each boss beaten adds one, up to ${RUN_TUNING.banners.max}`;
+
+/** The briefing's word on the way out of the battle ahead, by the banners in hand. */
+export function retreatNote(banners: number): string {
+  return banners > 0
+    ? `${banners} retreat ${banners === 1 ? 'banner' : 'banners'} in hand: if the battle turns, your Leader can sound the retreat (one action). Units that reach the flag leave unhurt, the banner is spent, and the round is fought again.`
+    : 'No retreat banner left: lose this battle and the run is over.';
 }
 
 const TITLES: Record<RunState['phase'], string> = {
@@ -172,12 +184,19 @@ function justWon(s: RunState): boolean {
 export function runHeader(s: RunState): RunHeader {
   const boss = (s.phase === 'mission' || s.phase === 'briefing' || s.phase === 'battle') && isBossRound(s.round);
   return {
-    title: boss ? 'Boss battle' : s.phase === 'aftermath' && justWon(s) ? 'The run is won' : TITLES[s.phase],
+    title: boss
+      ? 'Boss battle'
+      : s.phase === 'aftermath' && s.aftermath?.retreated
+        ? 'Retreat'
+        : s.phase === 'aftermath' && justWon(s)
+          ? 'The run is won'
+          : TITLES[s.phase],
     round: s.round,
     gold: s.gold,
     seed: s.seed,
     boss,
     roster: `${s.roster.length}/${RUN_TUNING.rosterCap} units · ${rosterCost(s)} pts`,
+    banners: s.banners,
     victorious: runVictorious(s),
   };
 }
@@ -344,6 +363,8 @@ export interface BriefingView {
   units: BriefingUnit[];
   /** "5 units · 118 pts take the field". */
   fielded: string;
+  /** Whether this battle can be retreated from, and what that costs (see {@link retreatNote}). */
+  retreat: { banners: number; note: string };
   start: Choice;
 }
 
@@ -373,6 +394,7 @@ export function briefingView(s: RunState): BriefingView | null {
       };
     }),
     fielded: `${fielded.length} ${fielded.length === 1 ? 'unit' : 'units'} · ${warband.units.reduce((sum, u) => sum + unitCost(u), 0)} pts take the field`,
+    retreat: { banners: s.banners, note: retreatNote(s.banners) },
     start: choice(s, { type: 'startBattle' }),
   };
 }
@@ -382,6 +404,19 @@ export function fateText(line: AftermathLine): { text: string; tone: 'ok' | 'hur
   if (line.fate === 'turned') return { text: 'Changed sides, and is gone', tone: 'lost' };
   if (line.fate === 'fled') return { text: 'Fled the field, and came back unhurt', tone: 'ok' };
   if (line.fate === 'survived') return { text: 'Came through standing', tone: 'ok' };
+  if (line.fate === 'retreated') return { text: 'Reached the flag, and left unhurt', tone: 'ok' };
+  if (line.fate === 'leftBehind') {
+    switch (line.injury) {
+      case 'dead':
+        return { text: 'Left behind, and never came back', tone: 'lost' };
+      case 'wound':
+        return { text: `Left behind, and came back with a lasting wound${line.wound ? `: ${woundInfo(line.wound).label}` : ''}`, tone: 'hurt' };
+      case 'sitsOut':
+        return { text: 'Left behind, and came back hurt: sits out the next battle', tone: 'hurt' };
+      default:
+        return { text: 'Left behind, but slipped away unhurt', tone: 'ok' };
+    }
+  }
   switch (line.injury) {
     case 'dead':
       return { text: 'Fell, and died of its wounds', tone: 'lost' };
@@ -401,9 +436,12 @@ export interface InjuryFace {
   tone: 'ok' | 'hurt' | 'lost';
 }
 
-/** The six faces of the injury die, from {@link RUN_TUNING}'s odds. */
-export function injuryFaces(): InjuryFace[] {
-  const { dead, wound, sitsOut } = RUN_TUNING.injury;
+/**
+ * The six faces of the injury die, from {@link RUN_TUNING}'s odds: a fallen
+ * unit's, or the harsher ones of a unit `leftBehind` in a retreat.
+ */
+export function injuryFaces(leftBehind = false): InjuryFace[] {
+  const { dead, wound, sitsOut } = leftBehind ? RUN_TUNING.leftBehind : RUN_TUNING.injury;
   return [1, 2, 3, 4, 5, 6].map((die) =>
     die <= dead
       ? { die, label: 'Dies', tone: 'lost' }
@@ -422,6 +460,8 @@ export interface InjuryCheck {
   look: string;
   tint?: string;
   die: number;
+  /** Left behind in a retreat rather than fallen: its die is read on the harsher table. */
+  leftBehind: boolean;
   /** Big word stamped on the card once the die lands. */
   verdict: string;
   /** What it means, under the verdict. */
@@ -429,16 +469,25 @@ export interface InjuryCheck {
   tone: 'ok' | 'hurt' | 'lost';
 }
 
-/** The units that fell in the battle just won, in the order their dice are thrown. */
+/**
+ * The units whose fate a die decides after the battle just fought, in the order
+ * the dice are thrown: those that fell, and after a retreat those left behind.
+ */
 export function injuryChecks(s: RunState): InjuryCheck[] {
   if (s.phase !== 'aftermath' || !s.aftermath) return [];
   const checks: InjuryCheck[] = [];
   for (const line of s.aftermath.units) {
-    if (line.fate !== 'fell' || line.die === undefined) continue;
-    const base = { unitId: line.unitId, name: line.name, look: line.look ?? line.name, tint: line.tint, die: line.die };
+    if ((line.fate !== 'fell' && line.fate !== 'leftBehind') || line.die === undefined) continue;
+    const leftBehind = line.fate === 'leftBehind';
+    const base = { unitId: line.unitId, name: line.name, look: line.look ?? line.name, tint: line.tint, die: line.die, leftBehind };
     switch (line.injury) {
       case 'dead':
-        checks.push({ ...base, verdict: 'Dead', detail: 'Its wounds were too deep. It is gone for good.', tone: 'lost' });
+        checks.push({
+          ...base,
+          verdict: 'Dead',
+          detail: leftBehind ? 'It was cut down as the field was lost. It is gone for good.' : 'Its wounds were too deep. It is gone for good.',
+          tone: 'lost',
+        });
         break;
       case 'wound': {
         const w = line.wound ? woundInfo(line.wound) : null;
@@ -449,17 +498,22 @@ export function injuryChecks(s: RunState): InjuryCheck[] {
         checks.push({ ...base, verdict: 'Sits out', detail: 'It needs rest, and misses the next battle.', tone: 'hurt' });
         break;
       default:
-        checks.push({ ...base, verdict: 'Recovers', detail: 'Patched up and fit to fight.', tone: 'ok' });
+        checks.push({
+          ...base,
+          verdict: leftBehind ? 'Gets away' : 'Recovers',
+          detail: leftBehind ? 'It slipped off the field after the others, unhurt.' : 'Patched up and fit to fight.',
+          tone: 'ok',
+        });
     }
   }
   return checks;
 }
 
-/** Names of the fielded units that came through the battle standing (or fled and came back). */
+/** Names of the fielded units no die is thrown for: those that came through standing, fled and came back, or left by the retreat flag. */
 export function standingUnits(s: RunState): { name: string; look: string; tint?: string }[] {
   if (!s.aftermath) return [];
   return s.aftermath.units
-    .filter((l) => l.fate === 'survived' || l.fate === 'fled')
+    .filter((l) => l.fate === 'survived' || l.fate === 'fled' || l.fate === 'retreated')
     .map((l) => ({ name: l.name, look: l.look ?? l.name, tint: l.tint }));
 }
 
@@ -469,6 +523,11 @@ export function renameError(s: RunState, unitId: string, name: string): string |
 }
 
 export interface AftermathView {
+  /**
+   * Set after a battle the player retreated from: nothing was earned, and the
+   * round comes round again. `left` are the banners still in hand.
+   */
+  retreat: { round: number; left: number } | null;
   /** Only after the battle that wins the run: what to say about it. */
   triumph: { headline: string; detail: string } | null;
   gold: number;
@@ -496,6 +555,7 @@ export function aftermathView(s: RunState): AftermathView | null {
     });
   }
   return {
+    retreat: s.aftermath.retreated ? { round: s.round, left: s.banners } : null,
     triumph: justWon(s)
       ? {
           headline: `Round ${RUN_TUNING.victoryRound} is beaten: the run is won`,
@@ -607,7 +667,11 @@ export function historyLines(s: RunState): { round: number; won: boolean; text: 
     round: r.round,
     won: r.won,
     text: `${r.boss ? 'Boss · ' : ''}${MODE_LABELS[r.mode]} against ${r.enemy}: ${
-      r.won ? `won, ${r.kills} ${r.kills === 1 ? 'kill' : 'kills'}${r.losses > 0 ? `, ${r.losses} lost` : ''}, ${r.gold} gold` : 'lost'
+      r.won
+        ? `won, ${r.kills} ${r.kills === 1 ? 'kill' : 'kills'}${r.losses > 0 ? `, ${r.losses} lost` : ''}, ${r.gold} gold`
+        : r.retreated
+          ? `retreated${r.losses > 0 ? `, ${r.losses} lost` : ''}`
+          : 'lost'
     }`,
   }));
 }
@@ -623,9 +687,16 @@ export function overView(s: RunState): OverView {
   const wins = s.log.filter((r) => r.won).length;
   const kills = s.log.reduce((sum, r) => sum + r.kills, 0);
   const victorious = runVictorious(s);
+  const retreats = s.log.filter((r) => r.retreated).length;
+  // A retreat that nobody came back from ends the run as surely as a lost battle.
+  const nobodyLeft = s.log.at(-1)?.retreated === true;
   return {
-    headline: victorious ? `A victorious run, ended in round ${s.round}` : `Your warband fell in round ${s.round}`,
-    summary: `${wins} ${wins === 1 ? 'battle' : 'battles'} won · ${kills} ${kills === 1 ? 'kill' : 'kills'} · seed ${s.seed}`,
+    headline: victorious
+      ? `A victorious run, ended in round ${s.round}`
+      : nobodyLeft
+        ? `Nobody came back from the retreat in round ${s.round}`
+        : `Your warband fell in round ${s.round}`,
+    summary: `${wins} ${wins === 1 ? 'battle' : 'battles'} won${retreats > 0 ? ` · ${retreats} ${retreats === 1 ? 'retreat' : 'retreats'}` : ''} · ${kills} ${kills === 1 ? 'kill' : 'kills'} · seed ${s.seed}`,
     victorious,
   };
 }
@@ -633,7 +704,8 @@ export function overView(s: RunState): OverView {
 /** A remembered run in a line: "6 battles won · fell in round 7 · seed 42". */
 export function recordLine(r: RunRecord): string {
   const how = r.end === 'lost' ? `fell in round ${r.round}` : `given up in round ${r.round}`;
-  return `${r.wins} ${r.wins === 1 ? 'battle' : 'battles'} won · ${how} · seed ${r.seed}`;
+  const retreats = r.retreats ? ` · ${r.retreats} ${r.retreats === 1 ? 'retreat' : 'retreats'}` : '';
+  return `${r.wins} ${r.wins === 1 ? 'battle' : 'battles'} won${retreats} · ${how} · seed ${r.seed}`;
 }
 
 /** The menu's run button: a new run, or the one to pick back up. */
