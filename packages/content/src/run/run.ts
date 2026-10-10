@@ -6,7 +6,7 @@ import { PRESET_ROSTERS } from '../presets.js';
 import type { Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
-import { generateBattle, isBossRound, scoutEnemy } from './encounter.js';
+import { enemyCost, generateBattle, isBossRound, scoutEnemy } from './encounter.js';
 import { eventChoices, resolveEvent, rollEvent } from './events.js';
 import { applyAftermath, applyRetreat, applyReward, missionRewards, rewardKinds, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
@@ -17,7 +17,7 @@ import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, renameUnit, r
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
 import { buyBanner, makeCamp, takeTraining, trainUnit } from './stops.js';
 import { RUN_TUNING } from './tuning.js';
-import type { RouteNode, RunAction, RunState } from './types.js';
+import type { BattleReport, RouteNode, RunAction, RunState } from './types.js';
 
 /**
  * The run state machine. A run is `newRun(seed)` plus the actions taken:
@@ -231,12 +231,26 @@ export function runStep(state: RunState, action: RunAction): RunState {
       delete s.aftermath;
       break;
     }
-    case 'battleResult': {
+    case 'battleResult':
+    case 'devWin': {
       need('battle');
       const battle = s.battle!;
-      if (JSON.stringify(action.replay.config) !== JSON.stringify(runBattleConfig(s)))
-        throw new Error("the replay is not of this round's battle");
-      const report = battleReport(action.replay, battle.fielded!);
+      let report: BattleReport;
+      if (action.type === 'devWin') {
+        // A win nobody fought: the enemy is gone, and nobody was hurt or scored a kill.
+        const cost = enemyCost(battle);
+        report = {
+          winner: 0,
+          units: Object.fromEntries(battle.fielded!.map((id) => [id, { kills: 0, killCosts: [], fate: 'survived' }])),
+          enemyPoints: cost,
+          enemyPointsKilled: cost,
+          retreated: false,
+        };
+      } else {
+        if (JSON.stringify(action.replay.config) !== JSON.stringify(runBattleConfig(s)))
+          throw new Error("the replay is not of this round's battle");
+        report = battleReport(action.replay, battle.fielded!);
+      }
       if (report.winner === null) throw new Error('the battle is not over');
       // Sounding the retreat spends the banner, however the battle then went.
       const called = report.retreated && s.banners > 0;
@@ -412,7 +426,8 @@ export function runActionError(state: RunState, action: RunAction): string | nul
 
 /**
  * Every action the run allows now, for an auto-picker and the tests. The battle
- * phase lists none: its one action, `battleResult`, needs the played match.
+ * phase lists none: its one action, `battleResult`, needs the played match
+ * (and `devWin` is a playtester's shortcut, not a move of the game).
  */
 export function legalRunActions(s: RunState): RunAction[] {
   const ids = s.roster.map((u) => u.id);

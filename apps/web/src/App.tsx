@@ -235,7 +235,13 @@ function RunBattle({ run, onStep, onExit }: { run: RunState; onStep: (action: Ru
       onWatchReplay={() => {}}
       onFinished={finish}
       exit={{ label: 'Leave', title: 'Back to the menu. The run is saved; this battle starts over', detail: RUN_LEAVE_DETAIL }}
-    />
+    >
+      {devTools() ? (
+        <button className="dev-win" title="Dev: win this battle now, with nobody hurt" onClick={() => onStep({ type: 'devWin' })}>
+          ⚑ Win battle
+        </button>
+      ) : null}
+    </GameScreen>
   );
 }
 

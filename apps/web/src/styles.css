@@ -4786,6 +4786,16 @@ button.trait-add[aria-expanded='true'] {
   }
 }
 
+/* --- Dev win button (?dev=1, over a run's battle), above the cue panel's corner --- */
+.dev-win {
+  position: fixed;
+  right: 10px;
+  bottom: 48px;
+  z-index: 25;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
 /* --- Dev sound cue panel (?dev=1, over a game) ------------------------- */
 .cue-panel {
   position: fixed;

@@ -289,6 +289,8 @@ export type RunAction =
   | { type: 'startBattle' }
   /** Battle: hand in the finished match. */
   | { type: 'battleResult'; replay: Replay }
+  /** Battle: win it unfought, with nobody hurt and no kills. A playtesting shortcut the web app offers only with `?dev=1`. */
+  | { type: 'devWin' }
   /** Aftermath, or a camp after drilling: spend the first pending level of `unitId` on `choices[index]`. */
   | { type: 'advance'; unitId: string; index: number }
   /** Aftermath: go on to the reward (after a retreat or an ambush, straight to the field shop). */

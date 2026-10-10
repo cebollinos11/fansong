@@ -67,4 +67,14 @@ describe('battleReport', () => {
     expect(() => runStep(s, { type: 'battleResult', replay: cut })).toThrow(/not over/);
     expect(legalRunActions(s)).toEqual([]);
   });
+
+  it('lets a playtester win the battle unfought, with nobody hurt', () => {
+    const s = inBattle(2);
+    const won = runStep(s, { type: 'devWin' });
+    expect(won.phase).toBe('aftermath');
+    expect(won.battle).toBeUndefined();
+    expect(won.roster.map((u) => u.id)).toEqual(s.roster.map((u) => u.id));
+    expect(won.log.at(-1)).toMatchObject({ won: true, losses: 0 });
+    expect(() => runStep(won, { type: 'devWin' })).toThrow();
+  });
 });
