@@ -1,9 +1,9 @@
 import {
   legalRunActions,
+  openNodes,
   parseMap,
   parseWarband,
   runBattleConfig,
-  RUN_TUNING,
   runVictorious,
   type RunPhase,
   type RunState,
@@ -31,7 +31,7 @@ export interface RunRecord {
   seed: number;
   /** Battles won. */
   wins: number;
-  /** The round it ended in. */
+  /** The step it ended at. */
   round: number;
   kills: number;
   /** Lost a battle, or given up for a new run. */
@@ -48,7 +48,9 @@ export interface RunRecord {
   retreats?: number;
 }
 
-const PHASES: readonly RunPhase[] = ['draft', 'mission', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'over'];
+const PHASES: readonly RunPhase[] = ['draft', 'map', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'over'];
+const NODE_KINDS = ['battle', 'elite', 'market', 'camp', 'training', 'mystery', 'boss'];
+const REWARD_KINDS = ['recruit', 'boost', 'gold', 'mend'];
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -84,10 +86,10 @@ function kinded(raw: unknown, kinds: readonly string[], what: string): Record<st
 
 const STEP_KINDS = ['trait', 'combat', 'quality'];
 
-/** What a mission pays: a list of rewards. */
+/** What a battle pays: a list of rewards. */
 function parseRewards(raw: unknown): unknown[] {
   return list(raw, 'bad reward').map((o) => {
-    const option = kinded(o, ['recruit', 'boost', 'gold', 'mend'], 'bad reward');
+    const option = kinded(o, REWARD_KINDS, 'bad reward');
     if (option.kind === 'recruit') return { ...option, unit: parseUnit(option.unit) };
     if (option.kind === 'boost') kinded(option.advance, STEP_KINDS, 'bad reward');
     if (option.kind === 'gold') count(option.amount, 'bad reward');
@@ -95,11 +97,43 @@ function parseRewards(raw: unknown): unknown[] {
   });
 }
 
-/** A mission, or the battle one became: who is fought, how hard it is and what it pays. */
-function parseMission(raw: unknown): Record<string, unknown> {
-  if (!isRecord(raw) || typeof raw.faction !== 'string' || typeof raw.threat !== 'number' || !(raw.threat >= 0)) fail('bad mission');
-  count(raw.rewardValue, 'bad mission');
+/** A battle: who is fought, how hard it is and what it pays. */
+function parseBattle(raw: Record<string, unknown>): Record<string, unknown> {
+  if (typeof raw.faction !== 'string' || typeof raw.threat !== 'number' || !(raw.threat >= 0)) fail('bad battle');
+  count(raw.rewardValue, 'bad battle');
   return { ...raw, enemy: parseWarband(raw.enemy), rewards: parseRewards(raw.rewards) };
+}
+
+/** The act's map: nodes that know their own place in the list and lead only to the row above, and a stand on it that names real nodes. */
+function parseRoute(raw: unknown): Record<string, unknown> {
+  const bad = 'bad route';
+  if (!isRecord(raw) || count(raw.act, bad) < 1) fail(bad);
+  const nodes = list(raw.nodes, bad);
+  if (nodes.length < 2) fail(bad);
+  const index = (v: unknown): number => {
+    if (count(v, bad) >= nodes.length) fail(bad);
+    return v as number;
+  };
+  nodes.forEach((node, id) => {
+    if (!isRecord(node) || node.id !== id || typeof node.lane !== 'number' || !(node.lane >= 0)) fail(bad);
+    if (typeof node.kind !== 'string' || !NODE_KINDS.includes(node.kind)) fail(bad);
+    const step = count(node.step, bad);
+    for (const to of list(node.next, bad)) {
+      const next = nodes[index(to)];
+      if (!isRecord(next) || next.step !== step + 1) fail(bad);
+    }
+    if (node.threat !== undefined && !(typeof node.threat === 'number' && node.threat >= 0)) fail(bad);
+    if (node.faction !== undefined && typeof node.faction !== 'string') fail(bad);
+    if (node.mode !== undefined && typeof node.mode !== 'string') fail(bad);
+    if (node.rewardKind !== undefined && !(typeof node.rewardKind === 'string' && REWARD_KINDS.includes(node.rewardKind))) fail(bad);
+    if (node.rival !== undefined && node.rival !== true) fail(bad);
+  });
+  if (raw.at !== null) index(raw.at);
+  if (raw.going !== undefined) index(raw.going);
+  list(raw.closed, bad).forEach(index);
+  const path = list(raw.path, bad).map(index);
+  if ((path.at(-1) ?? null) !== raw.at) fail(bad);
+  return raw;
 }
 
 /**
@@ -110,7 +144,7 @@ function parseMission(raw: unknown): Record<string, unknown> {
  */
 export function parseRun(raw: unknown): RunState {
   if (!isRecord(raw)) fail('it is not an object');
-  if (raw.version !== 2) fail('it is from another version');
+  if (raw.version !== 3) fail('it is from another version');
   if (typeof raw.seed !== 'number' || !Number.isSafeInteger(raw.seed)) fail('it has no seed');
   if (typeof raw.phase !== 'string' || !(PHASES as readonly string[]).includes(raw.phase)) fail('it has no phase');
   const phase = raw.phase as RunPhase;
@@ -118,8 +152,7 @@ export function parseRun(raw: unknown): RunState {
   count(raw.gold, 'it has no gold');
   count(raw.rolls, 'it has no roll count');
   count(raw.nextId, 'it has no next id');
-  // A run saved before retreat banners existed starts with the ones a new run gets.
-  const banners = raw.banners === undefined ? RUN_TUNING.banners.start : count(raw.banners, 'it has no banner count');
+  const banners = count(raw.banners, 'it has no banner count');
   if (raw.retreats !== undefined) count(raw.retreats, 'bad retreat count');
 
   const ids = new Set<string>();
@@ -144,25 +177,21 @@ export function parseRun(raw: unknown): RunState {
   }
 
   if (raw.offer !== undefined) {
-    const offer = kinded(raw.offer, ['draft', 'missions', 'reward', 'shop'], 'bad offer');
+    const offer = kinded(raw.offer, ['draft', 'reward', 'shop'], 'bad offer');
     if (offer.kind === 'draft') {
       next.offer = { ...offer, units: list(offer.units, 'bad draft offer').map(parseUnit) };
-    } else if (offer.kind === 'missions') {
-      if (typeof offer.mode !== 'string' || typeof offer.seed !== 'number') fail('bad missions');
-      const missions = list(offer.missions, 'bad missions').map(parseMission);
-      if (missions.length === 0) fail('bad missions');
-      next.offer = { ...offer, map: parseMap(offer.map), missions };
     } else if (offer.kind === 'reward') {
       count(offer.value, 'bad reward');
       next.offer = { ...offer, rewards: parseRewards(offer.rewards) };
     } else {
       count(offer.rerolls, 'bad shop');
+      if (offer.market !== undefined && offer.market !== true) fail('bad shop');
       list(offer.upgrades, 'bad shop').forEach((a) => a === null || kinded(a, STEP_KINDS, 'bad shop'));
       next.offer = { ...offer, recruits: list(offer.recruits, 'bad shop').map(parseSlot) };
     }
   }
   const offerKind = isRecord(next.offer) ? next.offer.kind : undefined;
-  const owed: Partial<Record<RunPhase, string>> = { draft: 'draft', mission: 'missions', aftermath: 'reward', reward: 'reward', shop: 'shop' };
+  const owed: Partial<Record<RunPhase, string>> = { draft: 'draft', aftermath: 'reward', reward: 'reward', shop: 'shop' };
   // A retreat's aftermath is owed nothing: it leads straight to the shop.
   const retreated = isRecord(raw.aftermath) && raw.aftermath.retreated === true;
   if (isRecord(raw.aftermath) && raw.aftermath.retreated !== undefined && !retreated) fail('bad aftermath');
@@ -194,9 +223,18 @@ export function parseRun(raw: unknown): RunState {
   if (raw.battle !== undefined) {
     const battle = raw.battle;
     if (!isRecord(battle) || typeof battle.mode !== 'string') fail('bad battle');
-    next.battle = { ...parseMission(battle), map: parseMap(battle.map) };
+    next.battle = { ...parseBattle(battle), map: parseMap(battle.map) };
   }
   if ((phase === 'briefing' || phase === 'battle') && raw.battle === undefined) fail('its battle is missing');
+
+  // The map is drawn when the draft ends. On it nothing is being played and a road is open; in a battle, something is.
+  if (raw.route !== undefined) next.route = parseRoute(raw.route);
+  if (phase !== 'draft' && raw.route === undefined) fail('it has no map');
+  if (isRecord(raw.route)) {
+    const playing = raw.route.going !== undefined;
+    if (phase === 'map' && (playing || openNodes(next.route as unknown as NonNullable<RunState['route']>).length === 0)) fail('its map leads nowhere');
+    if ((phase === 'briefing' || phase === 'battle' || phase === 'reward') && !playing) fail('its battle is nowhere on the map');
+  }
 
   if (raw.rivals !== undefined) {
     next.rivals = list(raw.rivals, 'bad rivals').map((r) => {

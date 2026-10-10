@@ -8,7 +8,11 @@ import { enlist, mendOldest, rosterUnit } from './roster.js';
 import { RUN_TUNING } from './tuning.js';
 import type { Advance, RunOffer, RunState } from './types.js';
 
-/** The gold shop between battles: recruits, upgrades, mending, a paid reroll, and selling units. */
+/**
+ * The gold shops. A market's sells recruits, upgrades and mending, rerolls its
+ * stock for a price and buys units back. The field shop after a battle is a
+ * small one: mending and a recruit, nothing more.
+ */
 
 type Shop = Extract<RunOffer, { kind: 'shop' }>;
 
@@ -16,19 +20,22 @@ type Shop = Extract<RunOffer, { kind: 'shop' }>;
 export const EAGER_CADET: WarbandUnit = { name: 'Eager Cadet', quality: 4, combat: 2, look: 'Recruit' };
 
 /**
- * Fresh stock: recruits, and upgrades at least one roster unit could take. If
- * the gold in hand buys none of the recruits, an {@link EAGER_CADET} joins them.
+ * Fresh stock, a `market`'s or the field shop's: recruits, and upgrades at
+ * least one roster unit could take. If the gold in hand buys none of the
+ * recruits, an {@link EAGER_CADET} joins them.
  */
-export function shopStock(s: RunState, rnd: RunRandom, rerolls = 0): Shop {
-  const { recruits, upgrades } = RUN_TUNING.shop;
+export function shopStock(s: RunState, rnd: RunRandom, market = false, rerolls = 0): Shop {
+  const { recruits, upgrades } = market ? RUN_TUNING.shop : RUN_TUNING.fieldShop;
   const offered: WarbandUnit[] = recruitOffer(recruits, rnd);
   if (offered.every((u) => recruitPrice(u) > s.gold)) offered.push({ ...EAGER_CADET });
-  return {
+  const shop: Shop = {
     kind: 'shop',
     recruits: offered,
     upgrades: rnd.sample(rosterAdvances(s), upgrades),
     rerolls,
   };
+  if (market) shop.market = true;
+  return shop;
 }
 
 /** A recruit costs its points in gold; the {@link EAGER_CADET} is free. */
@@ -55,6 +62,13 @@ export function sellPrice(unit: WarbandUnit): number {
 function shopOf(s: RunState): Shop {
   if (s.offer?.kind !== 'shop') throw new Error('the shop is not open');
   return s.offer;
+}
+
+/** The market's shop; throws in the field shop, which does not do `what`. */
+function marketOf(s: RunState, what: string): Shop {
+  const shop = shopOf(s);
+  if (!shop.market) throw new Error(`only a market ${what}`);
+  return shop;
 }
 
 function pay(s: RunState, price: number): void {
@@ -96,14 +110,14 @@ export function healUnit(s: RunState, unitId: string): void {
 
 /** Pay for fresh stock (mutates `s`). */
 export function rerollShop(s: RunState, rnd: RunRandom): void {
-  const shop = shopOf(s);
+  const shop = marketOf(s, 'restocks');
   pay(s, rerollPrice(shop.rerolls));
-  s.offer = shopStock(s, rnd, shop.rerolls + 1);
+  s.offer = shopStock(s, rnd, true, shop.rerolls + 1);
 }
 
 /** Sell `unitId` (mutates `s`). The last unit can't be sold. */
 export function sellUnit(s: RunState, unitId: string): void {
-  shopOf(s);
+  marketOf(s, 'buys units');
   const u = rosterUnit(s, unitId);
   if (s.roster.length <= 1) throw new Error('the last unit cannot be sold');
   s.gold += sellPrice(u.unit);

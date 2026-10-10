@@ -27,7 +27,7 @@ function inShop(seed: number, gold: number): RunState {
   delete s.battle;
   s.phase = 'shop';
   s.gold = gold;
-  s.offer = shopStock(s, makeRunRandom(seed, 1, 50));
+  s.offer = shopStock(s, makeRunRandom(seed, 1, 50), true);
   return s;
 }
 const shop = (s: RunState) => s.offer as Shop;

@@ -6652,3 +6652,201 @@ button.trait-add[aria-expanded='true'] {
     animation: none;
   }
 }
+
+/* --- The run's map (ui/RunMap.tsx) --------------------------------------- */
+
+.run-route-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 520px) minmax(240px, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+@media (max-width: 820px) {
+  .run-route-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.run-route-map {
+  width: 100%;
+  height: auto;
+  max-height: 72vh;
+  background: radial-gradient(ellipse at 50% 0%, rgba(150, 60, 50, 0.22), transparent 55%), rgba(20, 24, 40, 0.55);
+  border: 1px solid #4a4f66;
+  border-radius: 4px;
+}
+
+.run-road {
+  stroke: #5d6484;
+  stroke-width: 3;
+  stroke-dasharray: 2 7;
+  stroke-linecap: round;
+}
+
+.run-road.passed {
+  opacity: 0.3;
+}
+
+.run-road.closed {
+  stroke: #7a3b34;
+  opacity: 0.6;
+}
+
+.run-road.open {
+  stroke: var(--gold);
+  stroke-dasharray: 8 6;
+}
+
+.run-road.taken {
+  stroke: #d8dcf0;
+  stroke-dasharray: none;
+}
+
+.run-node circle {
+  fill: #232a44;
+  stroke: #7c84a8;
+  stroke-width: 2;
+}
+
+.run-node-glyph {
+  fill: #e6e9f7;
+  font-size: 22px;
+  pointer-events: none;
+}
+
+.run-node-skulls {
+  fill: #e0563f;
+  font-size: 9px;
+  pointer-events: none;
+}
+
+.run-node.elite circle {
+  stroke: #e0563f;
+}
+
+.run-node.boss circle {
+  fill: #47202a;
+  stroke: var(--gold);
+  stroke-width: 3;
+}
+
+.run-node.boss .run-node-glyph {
+  fill: var(--gold);
+  font-size: 30px;
+}
+
+.run-node.market circle,
+.run-node.camp circle,
+.run-node.training circle,
+.run-node.mystery circle {
+  fill: #1f3a3a;
+  stroke: #6fb3a6;
+}
+
+.run-node.passed {
+  opacity: 0.35;
+}
+
+.run-node.passed.visited {
+  opacity: 0.8;
+}
+
+.run-node.visited circle,
+.run-node.here circle {
+  stroke: #d8dcf0;
+}
+
+.run-node.here circle {
+  fill: #3d4a82;
+  stroke-width: 4;
+}
+
+.run-node.closed {
+  opacity: 0.55;
+}
+
+.run-node-cross {
+  stroke: #e0563f;
+  stroke-width: 4;
+  stroke-linecap: round;
+  fill: none;
+}
+
+.run-node.open {
+  cursor: pointer;
+}
+
+.run-node.open circle {
+  stroke: var(--gold);
+  stroke-width: 3;
+  animation: run-node-pulse 1.6s ease-in-out infinite;
+}
+
+.run-node.open:hover circle,
+.run-node.open:focus-visible circle,
+.run-node.lit circle {
+  fill: #4a4424;
+}
+
+.run-node:focus {
+  outline: none;
+}
+
+@keyframes run-node-pulse {
+  50% {
+    stroke-opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-node.open circle {
+    animation: none;
+  }
+}
+
+.run-route-side {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.run-node-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(43, 52, 84, 0.45);
+  border: 1px solid #4a4f66;
+  border-radius: 4px;
+}
+
+.run-node-card.lit {
+  border-color: var(--gold);
+}
+
+.run-node-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.run-node-card-head strong {
+  display: block;
+  font: 600 17px 'Cinzel', Georgia, serif;
+  letter-spacing: 1px;
+}
+
+.run-node-card-head small {
+  display: block;
+  color: var(--ink-2, #c3c8dc);
+}
+
+.run-node-card-glyph {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: none;
+  font-size: 30px;
+}

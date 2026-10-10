@@ -13,25 +13,37 @@ export const RUN_TUNING = {
   },
   /** Most units a run's roster may hold. */
   rosterCap: 12,
-  /** Beating this round is the run's "victory"; play goes on after it. */
-  victoryRound: 10,
+  /** Beating this step (the second act's boss) is the run's "victory"; play goes on after it. */
+  victoryRound: 14,
+  /** An act's map: `rows` steps of up to `lanes` nodes each, then the boss, joined by `paths` walks from the bottom row to the top. */
+  route: {
+    lanes: 5,
+    rows: 6,
+    paths: 4,
+    /** How much likelier a walk is to step onto a place no walk has passed (`fresh`), or along a new road to one that has (`fork`), than to follow a road already there. */
+    spread: { fresh: 4, fork: 3 },
+    /** Chance that two neighbouring places the walks left unjoined get a road anyway (if it crosses none). */
+    sideRoads: 0.8,
+    /** How often a battle node pays each kind of reward. */
+    rewardKinds: { recruit: 3, boost: 3, gold: 3, mend: 1 },
+  },
   enemy: {
-    /** Round 1's enemy budget, in points. */
+    /** Step 1's enemy budget, in points. */
     start: 100,
-    /** How much the budget grows each round, compounding. */
-    perRound: 0.3,
-    /** A boss every this many rounds. */
-    bossEvery: 5,
+    /** How much the budget grows each step, compounding, whether or not the step was a fight. */
+    perRound: 0.2,
+    /** A boss every this many steps: the length of an act. */
+    bossEvery: 7,
     /** Extra budget on a boss round, as a share of that round's. */
     bossBonus: 0.2,
     /** Earlier rounds meet a leaderless patrol: only from this round on does the enemy bring its leader. */
-    leaderFromRound: 3,
+    leaderFromRound: 4,
     /** Fewest units an enemy warband fields, even if its cheapest troops then cost more than the budget. */
     minUnits: 3,
     /** Most units an enemy warband fields. */
     maxUnits: 14,
     /** From this round on, points not spent on units buy veteran upgrades. */
-    veteranFromRound: 4,
+    veteranFromRound: 6,
     /** Share of the budget kept back from buying units, for veterans: this much more each round from `veteranFromRound`, up to a cap. */
     veteranShare: { perRound: 0.04, max: 0.4 },
   },
@@ -56,7 +68,7 @@ export const RUN_TUNING = {
   },
   modes: {
     /** Rounds up to this one are always annihilation. */
-    annihilationThrough: 2,
+    annihilationThrough: 3,
     /** The modes a regular round rolls between. */
     regular: ['annihilation', 'conquest', 'king-of-the-hill'] as readonly GameMode[],
     boss: 'kill-the-king' as GameMode,
@@ -66,16 +78,16 @@ export const RUN_TUNING = {
     width: { base: 14, unitsPerHex: 3, max: 26 },
     height: { base: 10, unitsPerHex: 4, max: 20 },
     /** Terrain goes from `from` to `to` over this many rounds. */
-    rampRounds: 12,
+    rampRounds: 17,
     hills: { from: 0.9, to: 1 },
     forest: { from: 0.14, to: 0.22 },
     rock: { from: 0.06, to: 0.1 },
     building: { from: 0.03, to: 0.05 },
     lava: { from: 0.01, to: 0.04 },
     /** Rounds before this one have no lava. */
-    lavaFromRound: 4,
+    lavaFromRound: 6,
     /** From this round on, maps are no longer mirrored. */
-    asymmetricFromRound: 6,
+    asymmetricFromRound: 8,
   },
   xp: {
     /** For taking part in a won battle. */
@@ -101,11 +113,9 @@ export const RUN_TUNING = {
     /** Share of the enemy points destroyed. */
     killShare: 0.05,
   },
-  /** The missions a round offers, and what they pay. */
+  /** The battles on the route, and what they pay. */
   mission: {
-    /** Missions to choose between on a regular round (a boss round has one). */
-    count: 3,
-    /** Each mission's enemy is bought with the round's budget times a roll between these. */
+    /** Each battle's enemy is bought with the step's budget times a roll between these. */
     threat: { min: 0.75, max: 1.3 },
     /** Skulls a mission at `threat.max` or over shows; one at `threat.min` or under shows 1. */
     skulls: 5,
@@ -123,6 +133,9 @@ export const RUN_TUNING = {
       spareGold: 3,
     },
   },
+  /** The small shop in the field after a battle: mending and a recruit, no reroll, no selling. */
+  fieldShop: { recruits: 1, upgrades: 0 },
+  /** A market's shop. */
   shop: {
     recruits: 3,
     upgrades: 2,

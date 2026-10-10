@@ -2,6 +2,7 @@ import { chooseCommand } from '@fansong/ai';
 import {
   advanceCost,
   enemyPoints,
+  isFight,
   isWounded,
   legalRunActions,
   mendWound,
@@ -16,6 +17,8 @@ import {
   unitCost,
   upgradePrice,
   warbandCost,
+  type NodeKind,
+  type RouteNode,
   type RunAction,
   type RunState,
   type RunUnit,
@@ -26,9 +29,9 @@ import { CliError } from './options.js';
 /**
  * The run-mode calibration sim (`pnpm play run`): the AI plays the player's
  * seat as well as the enemy's, a greedy picker makes every choice between
- * battles (but for the mission, which `--mission` sets), and the report says
- * how deep runs get. It is how `RUN_TUNING` is
- * set: an AI-piloted run should usually die around rounds 4–7, which a human
+ * battles (but for the way up the map, which `--route` sets), and the report
+ * says how deep runs get. It is how `RUN_TUNING` is
+ * set: an AI-piloted run should usually die around steps 5–8, which a human
  * should beat.
  *
  * The AI never retreats, so by default nobody does and a banner changes
@@ -36,9 +39,13 @@ import { CliError } from './options.js';
  * badly behind (see {@link retreatPilot}), to measure what the banners are worth.
  */
 
-/** Which of a round's missions the sim's player takes: the easiest, the middle one or the hardest. */
-export type MissionPolicy = 'easy' | 'middle' | 'hard';
-const MISSION_POLICIES: readonly MissionPolicy[] = ['easy', 'middle', 'hard'];
+/**
+ * Which way up the map the sim's player goes: `safe` takes a stop where there
+ * is one and else the weakest enemy, `greedy` the strongest enemy (an elite
+ * before anyone), `balanced` the enemy nearest the step's usual strength.
+ */
+export type RoutePolicy = 'safe' | 'balanced' | 'greedy';
+const ROUTE_POLICIES: readonly RoutePolicy[] = ['safe', 'balanced', 'greedy'];
 
 /** When the sim's player retreats: never (as the AI plays), or once the battle is being lost. */
 export type RetreatPolicy = 'never' | 'losing';
@@ -55,9 +62,9 @@ export interface RunSimOptions {
   seeds: number;
   /** Seed of the first run; the rest count up from it. */
   seed: number;
-  /** Stop a run that is still alive after this many rounds. */
+  /** Stop a run that is still alive after this many steps. */
   maxRounds: number;
-  mission: MissionPolicy;
+  route: RoutePolicy;
   retreat: RetreatPolicy;
   /** `--retreat losing`: the share of the enemy's living points under which the retreat is sounded. */
   retreatShare: number;
@@ -81,7 +88,7 @@ export function parseRunArgs(argv: string[]): RunSimOptions {
     seeds: 20,
     seed: 1,
     maxRounds: 30,
-    mission: 'easy',
+    route: 'balanced',
     retreat: 'never',
     retreatShare: DEFAULT_RETREAT_SHARE,
     verbose: false,
@@ -92,10 +99,10 @@ export function parseRunArgs(argv: string[]): RunSimOptions {
     if (arg === '--seeds') opts.seeds = numberArg(arg, argv[++i], 1);
     else if (arg === '--seed') opts.seed = numberArg(arg, argv[++i], 0);
     else if (arg === '--max-rounds') opts.maxRounds = numberArg(arg, argv[++i], 1);
-    else if (arg === '--mission') {
-      const policy = argv[++i] as MissionPolicy;
-      if (!MISSION_POLICIES.includes(policy)) throw new CliError(`--mission needs one of ${MISSION_POLICIES.join(', ')}`);
-      opts.mission = policy;
+    else if (arg === '--route') {
+      const policy = argv[++i] as RoutePolicy;
+      if (!ROUTE_POLICIES.includes(policy)) throw new CliError(`--route needs one of ${ROUTE_POLICIES.join(', ')}`);
+      opts.route = policy;
     } else if (arg === '--retreat') {
       const policy = argv[++i] as RetreatPolicy;
       if (!RETREAT_POLICIES.includes(policy)) throw new CliError(`--retreat needs one of ${RETREAT_POLICIES.join(', ')}`);
@@ -122,9 +129,10 @@ Usage: pnpm play run [options]
 Options:
   --seeds <n>       Runs to play (default 20)
   --seed <n>        Seed of the first run; the rest count up (default 1)
-  --max-rounds <n>  Stop a surviving run after this many rounds (default 30)
-  --mission <which> Which of a round's missions to fight: easy, middle or hard
-                    (default easy)
+  --max-rounds <n>  Stop a surviving run after this many steps (default 30)
+  --route <which>   The way up the map: safe (stops, and the weakest enemies),
+                    balanced (enemies of the usual strength) or greedy (elites,
+                    and the strongest enemies) (default balanced)
   --retreat <when>  When the player retreats, banner in hand: never, or losing
                     (its living points under a share of the enemy's; then every
                     unit walks for the flag) (default never)
@@ -179,18 +187,31 @@ function worth(s: RunState, action: RunAction): { points: number; price: number 
   }
 }
 
+/** How dangerous a node looks from the map: a fight's threat, nothing for a stop. */
+function danger(node: RouteNode): number {
+  return isFight(node.kind) ? (node.threat ?? 1) : 0;
+}
+
+/** Which of the open `nodes` a policy travels to. Ties go to the first listed. */
+export function routePick(nodes: readonly RouteNode[], policy: RoutePolicy): RouteNode {
+  const score = (n: RouteNode) => (policy === 'safe' ? -danger(n) : policy === 'greedy' ? danger(n) : -Math.abs(danger(n) - 1));
+  return nodes.reduce((best, n) => (score(n) > score(best) ? n : best));
+}
+
 /**
  * The greedy picker: of the legal actions, the one worth the most points — in
  * the shop, the most points per gold, buying until nothing worth its price is
- * left. It fields everyone, never rerolls and never sells, and takes the
- * mission `mission` names. Deterministic: ties go to the first action listed.
+ * left. It fields everyone, never rerolls and never sells, and goes up the map
+ * as `route` says. Deterministic: ties go to the first action listed.
  */
-export function autoPick(s: RunState, mission: MissionPolicy = 'easy'): RunAction {
+export function autoPick(s: RunState, route: RoutePolicy = 'balanced'): RunAction {
   const legal = legalRunActions(s);
   const only = (type: RunAction['type']) => legal.find((a) => a.type === type);
   if (s.phase === 'briefing') return only('startBattle')!;
-  // Missions are listed easiest first.
-  if (s.phase === 'mission') return legal[mission === 'easy' ? 0 : mission === 'hard' ? legal.length - 1 : Math.floor(legal.length / 2)]!;
+  if (s.phase === 'map') {
+    const open = legal.flatMap((a) => (a.type === 'travel' ? [s.route!.nodes[a.nodeId]!] : []));
+    return { type: 'travel', nodeId: routePick(open, route).id };
+  }
 
   let best: RunAction | undefined;
   let bestScore = 0;
@@ -272,7 +293,10 @@ export function retreatPilot(share: number = DEFAULT_RETREAT_SHARE): (state: Gam
 
 /** One battle of a simulated run. */
 export interface BattleStat {
+  /** The step it was fought at. */
   round: number;
+  /** The kind of node it was fought at. */
+  node: NodeKind;
   mode: GameMode;
   enemy: string;
   boss: boolean;
@@ -281,9 +305,9 @@ export interface BattleStat {
   playerPoints: number;
   enemyUnits: number;
   enemyPoints: number;
-  /** The mission's threat: the enemy's cost over the round's budget. */
+  /** The battle's threat: the enemy's cost over the step's budget. */
   threat: number;
-  /** What the mission paid, or would have, in gold's worth. */
+  /** What the battle paid, or would have, in gold's worth. */
   reward: number;
   /** Lasting wounds the fielded units carried in. */
   wounds: number;
@@ -299,9 +323,11 @@ export interface RunResult {
   seed: number;
   /** Battles won. */
   wins: number;
-  /** How the run ended: lost a battle, hit the round cap still alive, or a battle never finished. */
+  /** How the run ended: lost a battle, hit the step cap still alive, or a battle never finished. */
   end: 'lost' | 'capped' | 'stalled';
   battles: BattleStat[];
+  /** The kind of every node travelled to, in order. */
+  visits: NodeKind[];
   final: RunState;
 }
 
@@ -312,12 +338,13 @@ export interface RunResult {
 export function simulateRun(
   seed: number,
   maxRounds: number,
-  mission: MissionPolicy = 'easy',
+  route: RoutePolicy = 'balanced',
   retreat: RetreatPolicy = 'never',
   retreatShare: number = DEFAULT_RETREAT_SHARE,
 ): RunResult {
   let s = newRun(seed);
   const battles: BattleStat[] = [];
+  const visits: NodeKind[] = [];
   let end: RunResult['end'] = 'capped';
   for (let step = 0; s.round <= maxRounds; step++) {
     if (step > 100_000) throw new Error(`run ${seed} never ends`);
@@ -326,10 +353,13 @@ export function simulateRun(
       break;
     }
     if (s.phase !== 'battle') {
-      s = runStep(s, autoPick(s, mission));
+      const action = autoPick(s, route);
+      if (action.type === 'travel') visits.push(s.route!.nodes[action.nodeId]!.kind);
+      s = runStep(s, action);
       continue;
     }
     const battle = s.battle!;
+    const node = s.route!.nodes[s.route!.going!]!.kind;
     const fielded = playerWarband(s);
     const replay = recordReplay(runBattleConfig(s), retreat === 'losing' ? retreatPilot(retreatShare) : chooseCommand, BATTLE_STEP_CAP);
     if (replay.commands.length >= BATTLE_STEP_CAP) {
@@ -344,6 +374,7 @@ export function simulateRun(
     const behind = fates.filter((l) => l.fate === 'leftBehind');
     battles.push({
       round,
+      node,
       mode: battle.mode,
       enemy: battle.enemy.name,
       boss: battle.enemyKing !== undefined,
@@ -361,7 +392,7 @@ export function simulateRun(
       leftDead: behind.filter((l) => l.injury === 'dead').length,
     });
   }
-  return { seed, wins: battles.filter((b) => b.won).length, end, battles, final: s };
+  return { seed, wins: battles.filter((b) => b.won).length, end, battles, visits, final: s };
 }
 
 /** One line for a battle, for `--verbose`. */
@@ -369,24 +400,32 @@ export function battleLine(seed: number, b: BattleStat): string {
   const versus = `${b.playerUnits}u/${b.playerPoints}pt vs ${b.enemyUnits}u/${b.enemyPoints}pt`;
   const result = b.won ? 'WON ' : b.retreated ? 'FLED' : 'LOST';
   const flight = b.retreated ? ` · ${b.gotAway} got away, ${b.leftBehind} left behind (${b.leftDead} died)` : '';
-  return `seed ${seed} round ${String(b.round).padStart(2)} ${result} ${versus.padEnd(26)} ${b.mode}${b.boss ? ' (boss)' : ''} · ${b.enemy}${flight}`;
+  const kind = b.node === 'battle' || b.node === 'boss' ? '' : ` (${b.node})`;
+  return `seed ${seed} step ${String(b.round).padStart(2)} ${result} ${versus.padEnd(26)} ${b.mode}${b.boss ? ' (boss)' : ''}${kind} · ${b.enemy}${flight}`;
 }
 
 const pct = (n: number, of: number) => (of === 0 ? '  -' : `${Math.round((100 * n) / of)}%`.padStart(4));
 const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 
-/** The report: how deep the runs got, and how each round and mode went. */
+/** The report: how deep the runs got, and how each step, node kind and mode went. */
 export function summarize(results: RunResult[]): string {
   const lines: string[] = [];
-  const depth = results.map((r) => r.wins + 1).sort((a, b) => a - b);
+  // The step a run died at, or stood at when the cap stopped it.
+  const depth = results.map((r) => r.final.round).sort((a, b) => a - b);
   const lost = results.filter((r) => r.end === 'lost');
-  lines.push(`${results.length} runs · reached round: mean ${mean(depth).toFixed(1)}, median ${depth[Math.floor(depth.length / 2)]}, best ${depth.at(-1)}`);
+  const bossEvery = RUN_TUNING.enemy.bossEvery;
+  lines.push(`${results.length} runs · reached step: mean ${mean(depth).toFixed(1)}, median ${depth[Math.floor(depth.length / 2)]}, best ${depth.at(-1)}`);
   lines.push(
     `ended: ${lost.length} lost, ${results.filter((r) => r.end === 'capped').length} still alive at the cap, ${results.filter((r) => r.end === 'stalled').length} stalled · ` +
-      `beat round ${RUN_TUNING.victoryRound}: ${pct(results.filter((r) => runVictorious(r.final)).length, results.length).trim()}`,
+      `beat the first boss (step ${bossEvery}): ${pct(results.filter((r) => r.battles.some((b) => b.won && b.round === bossEvery)).length, results.length).trim()} · ` +
+      `beat step ${RUN_TUNING.victoryRound}: ${pct(results.filter((r) => runVictorious(r.final)).length, results.length).trim()}`,
   );
 
   const battles = results.flatMap((r) => r.battles);
+  lines.push(`battles: ${battles.length} fought, ${pct(battles.filter((b) => b.won).length, battles.length).trim()} won`);
+  const visits = results.flatMap((r) => r.visits);
+  const kinds = [...new Set(visits)].sort();
+  lines.push(`visits a run: ${kinds.map((k) => `${k} ${(visits.filter((v) => v === k).length / results.length).toFixed(1)}`).join(', ')}`);
   // Only said when somebody retreated, so a sim in which nobody does reads as it always has.
   const retreats = battles.filter((b) => b.retreated);
   if (retreats.length > 0) {
@@ -399,7 +438,7 @@ export function summarize(results: RunResult[]): string {
     );
   }
   const last = Math.max(0, ...battles.map((b) => b.round));
-  lines.push('', 'round  fought   won  died here  player pts  enemy pts (budget)  threat  reward  units');
+  lines.push('', ' step  fought   won  died here  player pts  enemy pts (budget)  threat  reward  units');
   for (let round = 1; round <= last; round++) {
     const here = battles.filter((b) => b.round === round);
     if (here.length === 0) continue;
@@ -429,6 +468,7 @@ export function summarize(results: RunResult[]): string {
       lines.push(`${k.padEnd(20)} ${String(here.length).padStart(6)} ${pct(here.filter((b) => b.won).length, here.length).padStart(5)}`);
     }
   };
+  by('node', (b) => b.node);
   by('mode', (b) => b.mode);
   by('enemy', (b) => b.enemy);
   return lines.join('\n');
@@ -444,7 +484,7 @@ export function runSimMain(argv: string[], print: (line: string) => void = conso
   const started = Date.now();
   const results: RunResult[] = [];
   for (let i = 0; i < opts.seeds; i++) {
-    const result = simulateRun(opts.seed + i, opts.maxRounds, opts.mission, opts.retreat, opts.retreatShare);
+    const result = simulateRun(opts.seed + i, opts.maxRounds, opts.route, opts.retreat, opts.retreatShare);
     results.push(result);
     if (opts.verbose) for (const b of result.battles) print(battleLine(result.seed, b));
   }

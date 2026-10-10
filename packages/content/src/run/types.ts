@@ -46,7 +46,8 @@ export interface RunUnit {
   wounds?: Wound[];
 }
 
-export type RunPhase = 'draft' | 'mission' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
+/** `map`: choosing where on the act's route to go next. */
+export type RunPhase = 'draft' | 'map' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
 
 /** One thing a won mission pays. */
 export type RewardOption =
@@ -57,29 +58,53 @@ export type RewardOption =
   /** Mends the oldest lasting wound of a unit of the player's choice. */
   | { kind: 'mend' };
 
-/** One of the battles a round offers: who is fought, and what winning pays. */
-export interface RunMission {
-  /** The preset roster the enemy was built from, or `RIVAL_FACTION` for a past run's warband. */
-  faction: string;
-  enemy: Warband;
-  /** Boss rounds: index into `enemy.units` of the enemy King. */
-  enemyKing?: number;
-  /** How hard it is: the enemy's cost over the round's budget. */
-  threat: number;
-  /** What winning pays, all of it. At most one part needs a unit to go to. */
-  rewards: RewardOption[];
-  /** What `rewards` are worth in gold: paid instead if they can no longer be taken. */
-  rewardValue: number;
+/** What a place on the route is. A `battle`, an `elite` and the act's `boss` are fights; the rest are stops. */
+export type NodeKind = 'battle' | 'elite' | 'market' | 'camp' | 'training' | 'mystery' | 'boss';
+
+/** One place on an act's route. A fight shows who waits there, how hard they are and what winning pays. */
+export interface RouteNode {
+  /** Its index in `Route.nodes`. */
+  id: number;
+  /** The step of the run it is reached at: the `round` it is played in. */
+  step: number;
+  /** Where it sits across the map, from 0. */
+  lane: number;
+  kind: NodeKind;
+  /** The nodes of the next step it leads to. */
+  next: number[];
+  /** Fights: the enemy's budget, as a share of the step's usual. */
+  threat?: number;
+  /** Fights: the preset roster the enemy is built from, or `RIVAL_FACTION`. */
+  faction?: string;
+  mode?: GameMode;
+  /** Fights: the kind of thing winning pays, if the roster can take it by then. */
+  rewardKind?: RewardOption['kind'];
+  /** A past run's warband waits here. */
+  rival?: true;
+}
+
+/** An act's map: its nodes, bottom row first and the boss last, and where on it the run stands. */
+export interface Route {
+  /** 1 for the first act. */
+  act: number;
+  nodes: RouteNode[];
+  /** The node last finished; `null` before the act's first. */
+  at: number | null;
+  /** Every node finished in this act, in order: the road taken. */
+  path: number[];
+  /** The node being played, from the moment it is travelled to until it is finished or fled. */
+  going?: number;
+  /** Nodes retreated from: they can't be entered again. */
+  closed: number[];
 }
 
 /** What the player is choosing from, or is owed, right now. A shop slot is `null` once bought. */
 export type RunOffer =
   | { kind: 'draft'; stage: 'leader' | 'troop'; units: WarbandUnit[] }
-  /** The round's missions, easiest first, all in the same mode on the same ground. */
-  | { kind: 'missions'; mode: GameMode; map: MapDef; seed: number; missions: RunMission[] }
-  /** The won mission's pay, held from the win until it is claimed. */
+  /** The won battle's pay, held from the win until it is claimed. */
   | { kind: 'reward'; rewards: RewardOption[]; value: number }
-  | { kind: 'shop'; recruits: (WarbandUnit | null)[]; upgrades: (Advance | null)[]; rerolls: number };
+  /** A shop: the small one in the field after a battle, or (`market`) a market's full one, which also rerolls its stock and buys units back. */
+  | { kind: 'shop'; recruits: (WarbandUnit | null)[]; upgrades: (Advance | null)[]; rerolls: number; market?: true };
 
 /** A level a unit has earned and not yet spent: pick one of `choices`. */
 export interface LevelUp {
@@ -87,7 +112,7 @@ export interface LevelUp {
   choices: Advance[];
 }
 
-/** The round's battle: the mission the player picked, kept as is if the battle restarts. */
+/** The battle of the node travelled to, kept as is if the battle restarts. */
 export interface RunBattle {
   mode: GameMode;
   /** The preset roster the enemy was built from, or `RIVAL_FACTION` for a past run's warband. */
@@ -98,9 +123,11 @@ export interface RunBattle {
   map: MapDef;
   /** The match's RNG seed. */
   seed: number;
-  /** The mission's difficulty and pay: see {@link RunMission}. */
+  /** How hard it is: the enemy's cost over the step's budget. */
   threat: number;
+  /** What winning pays, all of it. At most one part needs a unit to go to. */
   rewards: RewardOption[];
+  /** What `rewards` are worth in gold: paid instead if they can no longer be taken. */
   rewardValue: number;
   /** Boss rounds: the roster unit the player made King (default: the costliest fielded). */
   playerKing?: string;
@@ -187,9 +214,9 @@ export interface RoundSummary {
 }
 
 export interface RunState {
-  version: 2;
+  version: 3;
   seed: number;
-  /** The battle about to be, or being, fought. Starts at 1. */
+  /** The step along the route about to be, or being, played. Starts at 1; every node finished, fight or stop, moves it on. */
   round: number;
   phase: RunPhase;
   roster: RunUnit[];
@@ -200,8 +227,10 @@ export interface RunState {
   nextId: number;
   /** Retreat banners in hand: each lets the retreat be sounded in one battle, so that losing it does not end the run. */
   banners: number;
-  /** Retreats made from this round so far, so the round's missions are rolled anew after each. */
+  /** Retreats made at this step so far, so a battle met after one is rolled anew. */
   retreats?: number;
+  /** The act's map. Absent only during the draft. */
+  route?: Route;
   offer?: RunOffer;
   /** Levels earned and not yet spent. */
   pending?: LevelUp[];
@@ -216,8 +245,8 @@ export interface RunState {
 export type RunAction =
   /** Draft: take `offer.units[index]`. */
   | { type: 'draftPick'; index: number }
-  /** Mission: fight `offer.missions[index]`. */
-  | { type: 'pickMission'; index: number }
+  /** Map: go to an open node of the route. */
+  | { type: 'travel'; nodeId: number }
   /** Briefing: leave a unit out of the battle, or put it back. */
   | { type: 'bench'; unitId: string; benched: boolean }
   /** Briefing of a boss round: make a unit the King. */
@@ -237,7 +266,7 @@ export type RunAction =
   | { type: 'heal'; unitId: string }
   | { type: 'reroll' }
   | { type: 'sell'; unitId: string }
-  /** Shop: on to the next round's missions (after a retreat, the same round's, rolled anew). */
+  /** Shop: back to the map, a step on (after a retreat, at the same step, with the fled node closed). */
   | { type: 'leaveShop' }
   /** Any phase but the battle: give a roster unit a name of the player's own. */
   | { type: 'rename'; unitId: string; name: string };

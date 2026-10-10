@@ -181,7 +181,17 @@ function RunHost({ initial, onExit }: { initial: RunState; onExit: () => void })
     }
   };
 
-  if (run.phase === 'battle') return <RunBattle key={run.round} run={run} onStep={step} onExit={onExit} />;
+  // Devtools access outside the battle too: `fansongRun.state()`, `fansongRun.step(action)`.
+  useEffect(() => {
+    if (!devTools() || run.phase === 'battle') return;
+    const w = window as unknown as { fansongRun?: unknown };
+    w.fansongRun = { state: () => run, step };
+    return () => {
+      delete w.fansongRun;
+    };
+  });
+
+  if (run.phase === 'battle') return <RunBattle key={`${run.round}:${run.retreats ?? 0}`} run={run} onStep={step} onExit={onExit} />;
   return (
     <RunScreen
       run={run}

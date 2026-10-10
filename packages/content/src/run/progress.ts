@@ -252,13 +252,6 @@ export function missionRewards(s: RunState, kind: RewardOption['kind'], value: n
   return spare >= RUN_TUNING.mission.reward.spareGold ? [main, { kind: 'gold', amount: spare }] : [main];
 }
 
-/** The pay of missions worth `values`, one each: of different kinds where the roster can take that many. */
-export function missionRewardOffers(s: RunState, values: readonly number[], rnd: RunRandom): RewardOption[][] {
-  const kinds = rewardKinds(s);
-  const picked = rnd.sample(kinds, values.length);
-  while (picked.length < values.length) picked.push(rnd.pick(kinds));
-  return values.map((value, i) => missionRewards(s, picked[i]!, value, rnd));
-}
 
 /** Whether a reward needs a unit to go to. */
 export function rewardNeedsUnit(option: RewardOption): boolean {

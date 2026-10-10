@@ -5,15 +5,16 @@ import { configFromSetup, type MapLookup, type MatchSetup } from '../match.js';
 import type { Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
-import { generateEncounter, isBossRound } from './encounter.js';
-import { applyAftermath, applyRetreat, applyReward, missionRewardOffers, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
+import { generateBattle, isBossRound } from './encounter.js';
+import { applyAftermath, applyRetreat, applyReward, missionRewards, rewardKinds, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
 import { scheduleRivals } from './rivals.js';
 import { makeRunRandom, type RunRandom } from './rng.js';
+import { actOf, generateRoute, openNodes } from './route.js';
 import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, renameUnit, rosterCost, rosterUnit } from './roster.js';
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
 import { RUN_TUNING } from './tuning.js';
-import type { RunAction, RunMission, RunState } from './types.js';
+import type { RouteNode, RunAction, RunState } from './types.js';
 
 /**
  * The run state machine. A run is `newRun(seed)` plus the actions taken:
@@ -34,7 +35,7 @@ function roll(s: RunState): RunRandom {
 /** A new run, at its leader pick. It meets some of `past` (warbands earlier runs ended with) again as enemies. */
 export function newRun(seed: number, past: readonly Warband[] = []): RunState {
   const s: RunState = {
-    version: 2,
+    version: 3,
     seed: Math.floor(seed),
     round: 1,
     phase: 'draft',
@@ -51,24 +52,56 @@ export function newRun(seed: number, past: readonly Warband[] = []): RunState {
   return s;
 }
 
+/** Open the map (mutates `s`), drawing the act's route if the run has just come into the act. */
+function enterMap(s: RunState): void {
+  const act = actOf(s.round);
+  if (s.route?.act !== act) s.route = generateRoute(s.seed, act, s.rivals ?? []);
+  s.phase = 'map';
+  delete s.offer;
+}
+
 /**
- * Roll the round's missions and put them up for choosing (mutates `s`). The
- * enemies come from the seed, the round and the retreats made from it alone;
- * what each pays is rolled for the roster as it stands, so every reward offered
- * can be taken.
+ * Finish the node being played and go back to the map, a step on (mutates
+ * `s`). After a retreat there is no such node: the run stays at its step, the
+ * fled node closed.
  */
-function enterMission(s: RunState): void {
-  const rival = s.rivals?.find((r) => r.round === s.round)?.warband;
-  const { mode, map, seed, enemies } = generateEncounter(s.seed, s.round, s.roster.length, rival, s.retreats ?? 0);
-  const values = enemies.map((e) => rewardValue(s.round, e.threat));
-  const rewards = missionRewardOffers(s, values, roll(s));
-  const missions = enemies.map((e, i): RunMission => {
-    const mission: RunMission = { faction: e.faction, enemy: e.warband, threat: e.threat, rewards: rewards[i]!, rewardValue: values[i]! };
-    if (e.king !== undefined) mission.enemyKing = e.king;
-    return mission;
-  });
-  s.phase = 'mission';
-  s.offer = { kind: 'missions', mode, map, seed, missions };
+function leaveNode(s: RunState): void {
+  const route = s.route!;
+  if (route.going !== undefined) {
+    route.at = route.going;
+    route.path.push(route.going);
+    delete route.going;
+    s.round++;
+    s.rolls = 0;
+    delete s.retreats;
+  }
+  enterMap(s);
+}
+
+/**
+ * Meet the battle waiting at `node` (mutates `s`). The enemy comes from the
+ * seed, the step, the node and the retreats made at the step alone; what
+ * winning pays is rolled for the roster as it stands, so it can be taken.
+ */
+function enterBattle(s: RunState, node: RouteNode): void {
+  const retreats = s.retreats ?? 0;
+  // A rival the player has fled does not wait around: someone new holds the place.
+  const rival = node.rival && retreats === 0 ? s.rivals?.find((r) => r.round === s.round)?.warband : undefined;
+  const { mode, map, seed, enemy } = generateBattle(s.seed, s.round, node, s.roster.length, rival, retreats);
+  const value = rewardValue(s.round, enemy.threat);
+  const kind = node.rewardKind !== undefined && rewardKinds(s).includes(node.rewardKind) ? node.rewardKind : 'gold';
+  s.battle = { mode, faction: enemy.faction, enemy: enemy.warband, map, seed, threat: enemy.threat, rewards: missionRewards(s, kind, value, roll(s)), rewardValue: value };
+  if (enemy.king !== undefined) s.battle.enemyKing = enemy.king;
+  s.phase = 'briefing';
+  delete s.offer;
+  // A bench that would leave nobody to fight is cleared.
+  if (fitUnits(s).every((u) => u.benched)) for (const u of s.roster) delete u.benched;
+}
+
+/** The small shop every battle ends at (mutates `s`). */
+function enterFieldShop(s: RunState): void {
+  s.offer = shopStock(s, roll(s));
+  s.phase = 'shop';
 }
 
 /** Whether the run has beaten its victory round (it may still be going). */
@@ -117,21 +150,17 @@ export function runStep(state: RunState, action: RunAction): RunState {
       const left = RUN_TUNING.draft.budget - rosterCost(s);
       const units = s.roster.length < RUN_TUNING.rosterCap ? troopOffer(left, roll(s)) : [];
       if (units.length > 0) s.offer = { kind: 'draft', stage: 'troop', units };
-      else enterMission(s);
+      else enterMap(s);
       break;
     }
-    case 'pickMission': {
-      need('mission');
-      const offer = s.offer?.kind === 'missions' ? s.offer : undefined;
-      const mission = offer?.missions[action.index];
-      if (!offer || !mission) throw new Error(`no mission ${action.index}`);
-      const { faction, enemy, enemyKing, threat, rewards, rewardValue: value } = mission;
-      s.battle = { mode: offer.mode, faction, enemy, map: offer.map, seed: offer.seed, threat, rewards, rewardValue: value };
-      if (enemyKing !== undefined) s.battle.enemyKing = enemyKing;
-      s.phase = 'briefing';
-      delete s.offer;
-      // A bench that would leave nobody to fight is cleared.
-      if (fitUnits(s).every((u) => u.benched)) for (const u of s.roster) delete u.benched;
+    case 'travel': {
+      need('map');
+      const route = s.route!;
+      const node = route.nodes[action.nodeId];
+      if (!node || !openNodes(route).includes(node.id)) throw new Error(`the road does not lead to node ${action.nodeId}`);
+      route.going = node.id;
+      delete s.aftermath;
+      enterBattle(s, node);
       break;
     }
     case 'bench': {
@@ -190,10 +219,17 @@ export function runStep(state: RunState, action: RunAction): RunState {
         const { max, perBoss } = RUN_TUNING.banners;
         if (isBossRound(s.round)) s.banners = Math.max(s.banners, Math.min(max, s.banners + perBoss));
       } else if (called) {
-        // The battle is lost but the run is not: the round will be fought
-        // again against someone new.
+        // The battle is lost but the run is not: it falls back to the map, and
+        // the node it fled is closed if another road is left (never the boss's).
         applyRetreat(s, report, roll(s));
         s.retreats = (s.retreats ?? 0) + 1;
+        const route = s.route!;
+        const fled = route.going!;
+        delete route.going;
+        if (route.nodes[fled]!.kind !== 'boss') {
+          route.closed.push(fled);
+          if (openNodes(route).length === 0) route.closed.pop();
+        }
         delete s.offer;
         s.phase = s.roster.length > 0 ? 'aftermath' : 'over';
       } else {
@@ -227,10 +263,9 @@ export function runStep(state: RunState, action: RunAction): RunState {
     case 'continue': {
       need('aftermath');
       if (s.pending?.length) throw new Error('there are levels still to spend');
-      // A retreat is owed nothing: straight to the shop, to replace the lost with the gold in hand.
+      // A retreat is owed nothing: straight to the field shop, to replace the lost with the gold in hand.
       if (s.aftermath?.retreated) {
-        s.offer = shopStock(s, roll(s));
-        s.phase = 'shop';
+        enterFieldShop(s);
         break;
       }
       if (s.offer?.kind !== 'reward') throw new Error('no reward is owed');
@@ -243,8 +278,7 @@ export function runStep(state: RunState, action: RunAction): RunState {
       need('reward');
       if (s.offer?.kind !== 'reward') throw new Error('no reward is owed');
       for (const option of s.offer.rewards) applyReward(s, option, rewardNeedsUnit(option) ? action.unitId : undefined);
-      s.offer = shopStock(s, roll(s));
-      s.phase = 'shop';
+      enterFieldShop(s);
       break;
     }
     case 'buyRecruit':
@@ -269,13 +303,7 @@ export function runStep(state: RunState, action: RunAction): RunState {
       break;
     case 'leaveShop':
       need('shop');
-      // After a retreat the same round is fought again; only a win moves the run on.
-      if (!s.aftermath?.retreated) {
-        s.round++;
-        s.rolls = 0;
-        delete s.retreats;
-      }
-      enterMission(s);
+      leaveNode(s);
       break;
     case 'rename':
       if (s.phase === 'battle' || s.phase === 'over') throw new Error('units cannot be renamed now');
@@ -308,8 +336,8 @@ export function legalRunActions(s: RunState): RunAction[] {
     case 'draft':
       if (s.offer?.kind === 'draft') s.offer.units.forEach((_, index) => candidates.push({ type: 'draftPick', index }));
       break;
-    case 'mission':
-      if (s.offer?.kind === 'missions') s.offer.missions.forEach((_, index) => candidates.push({ type: 'pickMission', index }));
+    case 'map':
+      for (const nodeId of s.route ? openNodes(s.route) : []) candidates.push({ type: 'travel', nodeId });
       break;
     case 'briefing':
       candidates.push({ type: 'startBattle' });
@@ -335,8 +363,10 @@ export function legalRunActions(s: RunState): RunAction[] {
         });
       }
       for (const u of s.roster) if (isWounded(u)) candidates.push({ type: 'heal', unitId: u.id });
-      candidates.push({ type: 'reroll' });
-      for (const unitId of ids) candidates.push({ type: 'sell', unitId });
+      if (s.offer?.kind === 'shop' && s.offer.market) {
+        candidates.push({ type: 'reroll' });
+        for (const unitId of ids) candidates.push({ type: 'sell', unitId });
+      }
       break;
     case 'battle':
     case 'over':

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  actOf,
   enemyPoints,
-  generateEncounter,
+  generateRoute,
   isBossRound,
   newRun,
   presetUnit,
@@ -12,7 +13,7 @@ import {
   warbandCost,
   type Warband,
 } from '../../src/index.js';
-import { autoUntil } from './helpers.js';
+import { atStep } from './helpers.js';
 
 /** A past warband of `count` copies of a preset unit. */
 function past(name: string, unit: string, count: number): Warband {
@@ -45,29 +46,28 @@ describe('scheduleRivals', () => {
 });
 
 describe('a run with rivals', () => {
-  it('offers a past warband as one of its round\'s missions, in the mode and match seed that round would have had', () => {
-    const s = newRun(5, PAST);
-    const rival = s.rivals![0]!;
-    // Walk the run to the rival's round, losing nothing: jump the round counter at the shop.
-    let at = autoUntil(s, 'briefing');
-    at = { ...at, phase: 'shop', round: rival.round - 1, offer: { kind: 'shop', recruits: [], upgrades: [], rerolls: 0 } };
-    at = runStep(at, { type: 'leaveShop' });
-    const offer = at.offer!;
-    if (offer.kind !== 'missions') throw new Error('no missions on offer');
-    const index = offer.missions.findIndex((m) => m.faction === RIVAL_FACTION);
-    expect(offer.missions.filter((m) => m.faction === RIVAL_FACTION)).toHaveLength(1);
-    expect(offer.missions).toHaveLength(RUN_TUNING.mission.count);
-    expect(offer.missions[index]!.enemy).toEqual(rival.warband);
-    expect(offer.missions[index]!.threat).toBeCloseTo(warbandCost(rival.warband) / enemyPoints(rival.round), 10);
-    const plain = generateEncounter(5, rival.round, at.roster.length);
-    expect(offer.seed).toBe(plain.seed);
-    expect(offer.mode).toBe(plain.mode);
-    // The other missions are the ones the round would have had anyway.
-    const others = offer.missions.filter((m) => m.faction !== RIVAL_FACTION).map((m) => m.enemy);
-    for (const enemy of others) expect(plain.enemies.map((e) => e.warband)).toContainEqual(enemy);
-    at = runStep(at, { type: 'pickMission', index });
-    expect(at.battle!.faction).toBe(RIVAL_FACTION);
-    expect(at.battle!.enemy).toEqual(rival.warband);
+  it("marks a battle node of its step for a past warband, and fields it there in the node's own mode", () => {
+    let met = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      const rivals = newRun(seed, PAST).rivals!;
+      for (const rival of rivals) {
+        const route = generateRoute(seed, actOf(rival.round), rivals);
+        const marked = route.nodes.filter((n) => n.rival && n.step === rival.round);
+        // A step with no plain battle on it has nowhere for a rival to wait.
+        expect(marked.length).toBe(route.nodes.some((n) => n.step === rival.round && (n.kind === 'battle' || n.rival)) ? 1 : 0);
+        const node = marked[0];
+        if (!node) continue;
+        met++;
+        expect(node).toMatchObject({ kind: 'battle', faction: RIVAL_FACTION, threat: warbandCost(rival.warband) / enemyPoints(rival.round) });
+        // Take the mark away and the map is the one the run would have had anyway.
+        const plain = generateRoute(seed, actOf(rival.round)).nodes[node.id]!;
+        expect({ ...node, rival: undefined, faction: plain.faction, threat: plain.threat }).toEqual({ ...plain, rival: undefined });
+
+        const there = runStep(atStep(seed, rival.round, { past: PAST, node: node.id }), { type: 'travel', nodeId: node.id });
+        expect(there.battle).toMatchObject({ faction: RIVAL_FACTION, enemy: rival.warband, mode: node.mode, threat: node.threat });
+      }
+    }
+    expect(met).toBeGreaterThan(5);
   });
 
   it('is the same run as one without rivals up to then', () => {

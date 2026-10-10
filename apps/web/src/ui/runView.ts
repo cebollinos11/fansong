@@ -1,12 +1,16 @@
 import type { GameMode } from '@fansong/engine';
 import {
+  actOf,
   applyAdvance,
   canAdvance,
   defaultKing,
   fieldedUnits,
   isBossRound,
+  isFight,
   isWounded,
   missionSkulls,
+  openNodes,
+  PRESET_ROSTERS,
   rewardNeedsUnit,
   RIVAL_FACTION,
   playerWarband,
@@ -22,9 +26,11 @@ import {
   type Advance,
   type AftermathLine,
   type MapDef,
+  type NodeKind,
   type RewardOption,
+  type RouteNode,
   type RunAction,
-  type RunMission,
+  type RunBattle,
   type RunState,
   type RunUnit,
   type WarbandUnit,
@@ -139,7 +145,10 @@ export function levelLine(v: UnitView): string {
 /** The strip along the top of every run screen. */
 export interface RunHeader {
   title: string;
+  /** The step of the run, counted from its start. */
   round: number;
+  /** Where that is on the map: "Act 1 · step 3 of 7". */
+  place: string;
   gold: number;
   seed: number;
   boss: boolean;
@@ -152,23 +161,23 @@ export interface RunHeader {
 }
 
 /** What a retreat banner is, for the header's tooltip. */
-export const BANNER_HELP = `A retreat banner lets your Leader sound the retreat in a battle: the banner is spent on the call, and if the battle is then lost the run goes on, the round fought again against someone new. Each boss beaten adds one, up to ${RUN_TUNING.banners.max}`;
+export const BANNER_HELP = `A retreat banner lets your Leader sound the retreat in a battle: the banner is spent on the call, and if the battle is then lost the run goes on: it falls back to the map, and the place it fled is closed while another road is open. Each boss beaten adds one, up to ${RUN_TUNING.banners.max}`;
 
 /** The briefing's word on the way out of the battle ahead, by the banners in hand. */
 export function retreatNote(banners: number): string {
   return banners > 0
-    ? `${banners} retreat ${banners === 1 ? 'banner' : 'banners'} in hand: if the battle turns, your Leader can sound the retreat (one action), which spends it. Units that reach the flag leave unhurt, and if the battle is lost the round is fought again.`
+    ? `${banners} retreat ${banners === 1 ? 'banner' : 'banners'} in hand: if the battle turns, your Leader can sound the retreat (one action), which spends it. Units that reach the flag leave unhurt, and if the battle is lost the run falls back to the map.`
     : 'No retreat banner left: lose this battle and the run is over.';
 }
 
 const TITLES: Record<RunState['phase'], string> = {
   draft: 'Draft your warband',
-  mission: 'Choose your battle',
+  map: 'Choose your road',
   briefing: 'Briefing',
   battle: 'Battle',
   aftermath: 'Victory',
   reward: 'Spoils',
-  shop: 'Camp',
+  shop: 'After the battle',
   over: 'The run is over',
 };
 
@@ -181,8 +190,14 @@ function justWon(s: RunState): boolean {
   return s.phase !== 'over' && !!last?.won && last.round === s.round && last.round === RUN_TUNING.victoryRound;
 }
 
+/** Where a step is on its act's map: "Act 1 · step 3 of 7". */
+export function placeLine(round: number): string {
+  const steps = RUN_TUNING.enemy.bossEvery;
+  return `Act ${actOf(round)} · step ${((round - 1) % steps) + 1} of ${steps}`;
+}
+
 export function runHeader(s: RunState): RunHeader {
-  const boss = (s.phase === 'mission' || s.phase === 'briefing' || s.phase === 'battle') && isBossRound(s.round);
+  const boss = (s.phase === 'briefing' || s.phase === 'battle') && isBossRound(s.round);
   return {
     title: boss
       ? 'Boss battle'
@@ -190,8 +205,11 @@ export function runHeader(s: RunState): RunHeader {
         ? 'Retreat'
         : s.phase === 'aftermath' && justWon(s)
           ? 'The run is won'
-          : TITLES[s.phase],
+          : s.phase === 'shop' && s.offer?.kind === 'shop' && s.offer.market
+            ? 'Market'
+            : TITLES[s.phase],
     round: s.round,
+    place: placeLine(s.round),
     gold: s.gold,
     seed: s.seed,
     boss,
@@ -252,7 +270,7 @@ function battlefield(map: MapDef, mode: GameMode): MapDef {
   return { ...map, objectives: {} };
 }
 
-/** One thing a mission pays, as its card lists it. */
+/** One thing a battle pays, as its card lists it. */
 export interface RewardLine {
   title: string;
   detail: string;
@@ -263,7 +281,7 @@ export interface RewardLine {
 export function rewardLine(option: RewardOption): RewardLine {
   switch (option.kind) {
     case 'gold':
-      return { title: `${option.amount} gold`, detail: 'A purse to spend in camp' };
+      return { title: `${option.amount} gold`, detail: 'A purse to spend at the next shop' };
     case 'recruit':
       return { title: option.unit.name, detail: 'Joins your warband', recruit: offerView(option.unit) };
     case 'mend':
@@ -292,7 +310,7 @@ export interface EnemyShadow {
   rival: boolean;
 }
 
-function enemyShadow(m: Pick<RunMission, 'enemy' | 'enemyKing' | 'threat' | 'faction'>): EnemyShadow {
+function enemyShadow(m: Pick<RunBattle, 'enemy' | 'enemyKing' | 'threat' | 'faction'>): EnemyShadow {
   const maxSkulls = RUN_TUNING.mission.skulls;
   // A boss is the round's whole budget and a champion: every skull, whatever its threat says.
   const boss = m.enemyKing !== undefined;
@@ -313,27 +331,135 @@ export function threatLabel(skulls: number, maxSkulls: number = RUN_TUNING.missi
   return names[Math.round(((skulls - 1) / Math.max(1, maxSkulls - 1)) * (names.length - 1))]!;
 }
 
-export interface MissionsView {
-  mode: string;
-  goal: string;
-  boss: boolean;
-  /** The battlefield every mission of the round is fought on, with this mode's objectives only. */
-  map: MapDef;
-  lava: boolean;
-  missions: { enemy: EnemyShadow; rewards: RewardLine[]; pick: Choice }[];
+/** What each kind of place on the map is called, the sign it is drawn with, and what waits there. */
+export const NODE_INFO: Record<NodeKind, { label: string; glyph: string; help: string }> = {
+  battle: { label: 'Battle', glyph: '⚔', help: 'A warband bars the road. Beat it for experience, gold and its reward.' },
+  elite: { label: 'Elite', glyph: '☠', help: 'A picked warband under its leader, veterans all: far harder than the road around it, and it pays to match.' },
+  market: { label: 'Market', glyph: '⚖', help: 'A full shop: recruits, training, mending, fresh stock for a price, and a buyer for your units.' },
+  camp: { label: 'Camp', glyph: '⛺', help: 'A safe night: rest the warband, or drill it.' },
+  training: { label: 'Training ground', glyph: '⚒', help: 'One unit learns something new, for nothing.' },
+  mystery: { label: 'Unknown', glyph: '?', help: 'Something on the road. There is no telling what until you are there.' },
+  boss: { label: 'Boss', glyph: '♛', help: "The act's champion and its escort, in a fight to kill the King. There is no way round." },
+};
+
+const REWARD_KINDS: Record<RewardOption['kind'], string> = {
+  recruit: 'a recruit',
+  boost: 'training for one unit',
+  gold: 'a purse of gold',
+  mend: 'a healer',
+};
+
+/**
+ * Where a place stands for the run: `here` it stands now, `open` it may go
+ * next, `closed` it fled, `passed` lies behind it, `ahead` is still to come.
+ */
+export type NodeState = 'here' | 'open' | 'closed' | 'passed' | 'ahead';
+
+/** A place on the map, as it is drawn and described. */
+export interface RouteNodeView {
+  id: number;
+  kind: NodeKind;
+  label: string;
+  glyph: string;
+  /** Its centre on the map, in the map's own units; the boss is at the top. */
+  x: number;
+  y: number;
+  state: NodeState;
+  /** Whether the run came through it. */
+  visited: boolean;
+  /** A fight's difficulty in skulls; none for a stop. */
+  skulls?: number;
+  /** A fight's faction, as a unit to draw in shadow; none for a rival. */
+  look?: string;
+  /** What is known of it from here, a line each: its danger, mode, enemy and pay, or what the stop offers. */
+  lines: string[];
+  /** Go there; `null` unless it is open. */
+  travel: Choice | null;
 }
 
-export function missionsView(s: RunState): MissionsView | null {
-  if (s.phase !== 'mission' || s.offer?.kind !== 'missions') return null;
-  const { mode, map, missions } = s.offer;
-  return {
-    mode: MODE_LABELS[mode],
-    goal: MODE_GOALS[mode] ?? ANNIHILATION_GOAL,
-    boss: isBossRound(s.round),
-    map: battlefield(map, mode),
-    lava: map.hexes.some((hex) => hex.feature === 'lava'),
-    missions: missions.map((m, index) => ({ enemy: enemyShadow(m), rewards: m.rewards.map(rewardLine), pick: choice(s, { type: 'pickMission', index }) })),
-  };
+export interface RouteView {
+  act: number;
+  /** "Act 1 · step 3 of 7". */
+  place: string;
+  width: number;
+  height: number;
+  nodes: RouteNodeView[];
+  /** The roads, each from a node up to one of the next row. `taken`: the run came along it; `open`: it may go along it now. */
+  edges: { from: number; to: number; x1: number; y1: number; x2: number; y2: number; state: 'taken' | 'open' | 'closed' | 'ahead' | 'passed' }[];
+  /** The nodes the run may travel to now, left to right. */
+  choices: RouteNodeView[];
+}
+
+/** The size of one lane and one row of the map, in the map's own units. */
+export const ROUTE_CELL = { width: 96, height: 76 };
+
+function nodeLines(node: RouteNode): string[] {
+  if (!isFight(node.kind)) return [NODE_INFO[node.kind].help];
+  const maxSkulls = RUN_TUNING.mission.skulls;
+  const skulls = node.kind === 'battle' ? missionSkulls(node.threat ?? 1) : maxSkulls;
+  const lines = [`${'☠'.repeat(skulls)} ${node.kind === 'boss' ? 'Boss' : node.kind === 'elite' ? 'Elite' : threatLabel(skulls, maxSkulls)}`];
+  if (node.mode) lines.push(MODE_LABELS[node.mode]);
+  lines.push(node.rival ? 'The warband a past run of yours ended with' : `Against ${PRESET_ROSTERS[node.faction ?? '']?.name ?? 'an unknown warband'}`);
+  if (node.rewardKind) lines.push(`Pays ${REWARD_KINDS[node.rewardKind]}`);
+  if (node.kind === 'boss') lines.push('Pays a prize, and a retreat banner');
+  return lines;
+}
+
+/** The act's map: every node and road, where the run stands, and where it may go. */
+export function routeView(s: RunState): RouteView | null {
+  const route = s.route;
+  if (!route) return null;
+  const { lanes, rows } = RUN_TUNING.route;
+  const base = (route.act - 1) * RUN_TUNING.enemy.bossEvery;
+  const width = lanes * ROUTE_CELL.width;
+  const height = (rows + 1) * ROUTE_CELL.height;
+  const open = s.phase === 'map' ? openNodes(route) : [];
+  // While a node is played the run stands on it; on the map, on the last one finished.
+  const here = route.going ?? route.at;
+  // The step the run has reached on this map: rows below it are behind.
+  const reached = here === null ? base : route.nodes[here]!.step;
+
+  const nodes = route.nodes.map((node): RouteNodeView => {
+    const row = node.step - base - 1;
+    const info = NODE_INFO[node.kind];
+    const state: NodeState =
+      node.id === here ? 'here' : open.includes(node.id) ? 'open' : route.closed.includes(node.id) ? 'closed' : node.step <= reached ? 'passed' : 'ahead';
+    const view: RouteNodeView = {
+      id: node.id,
+      kind: node.kind,
+      label: info.label,
+      glyph: info.glyph,
+      x: (node.lane + 0.5) * ROUTE_CELL.width,
+      y: height - (row + 0.5) * ROUTE_CELL.height,
+      state,
+      visited: route.path.includes(node.id),
+      lines: nodeLines(node),
+      travel: state === 'open' ? choice(s, { type: 'travel', nodeId: node.id }) : null,
+    };
+    if (isFight(node.kind)) view.skulls = node.kind === 'battle' ? missionSkulls(node.threat ?? 1) : RUN_TUNING.mission.skulls;
+    const lead = PRESET_ROSTERS[node.faction ?? '']?.units[0]?.unit;
+    if (lead && !node.rival) view.look = lead;
+    return view;
+  });
+
+  const edges = route.nodes.flatMap((node) =>
+    node.next.map((to) => {
+      const [a, b] = [nodes[node.id]!, nodes[to]!];
+      const taken = route.path.includes(node.id) && (route.path.includes(to) || route.going === to);
+      const state = taken
+        ? ('taken' as const)
+        : node.id === here && b.state === 'open'
+          ? ('open' as const)
+          : b.state === 'closed'
+            ? ('closed' as const)
+            : a.state === 'passed' || b.state === 'passed' || (a.state === 'here' && s.phase !== 'map')
+              ? ('passed' as const)
+              : ('ahead' as const);
+      return { from: node.id, to, x1: a.x, y1: a.y, x2: b.x, y2: b.y, state };
+    }),
+  );
+
+  return { act: route.act, place: placeLine(s.round), width, height, nodes, edges, choices: nodes.filter((n) => n.state === 'open') };
 }
 
 export interface BriefingUnit {
@@ -532,7 +658,7 @@ export interface AftermathView {
   triumph: { headline: string; detail: string } | null;
   gold: number;
   lines: { unitId: string; name: string; kills: number; xp: number; text: string; tone: 'ok' | 'hurt' | 'lost' }[];
-  /** What the mission pays, claimed next. */
+  /** What the battle pays, claimed next. */
   rewards: RewardLine[];
   /** Levels waiting to be spent: one choice of advances per unit at a time. */
   levelUps: { view: UnitView; options: { info: Info; change: string; take: Choice }[] }[];
@@ -558,7 +684,7 @@ export function aftermathView(s: RunState): AftermathView | null {
     retreat: s.aftermath.retreated ? { round: s.round, left: s.banners } : null,
     triumph: justWon(s)
       ? {
-          headline: `Round ${RUN_TUNING.victoryRound} is beaten: the run is won`,
+          headline: 'The last boss is beaten: the run is won',
           detail: 'From here it goes on for as long as the warband lasts, against an enemy that keeps growing.',
         }
       : null,
@@ -607,16 +733,20 @@ export function rewardView(s: RunState): RewardView | null {
 }
 
 export interface ShopView {
+  /** A market's full shop, not the small one in the field after a battle. */
+  market: boolean;
   gold: number;
   /** Recruits on the shelf; `null` where one was bought. */
   recruits: ((OfferView & { price: number; buy: Choice }) | null)[];
   /** Upgrades on the shelf, each with the units that can take it and what it costs them. */
   upgrades: ({ info: Info; targets: Target[] } | null)[];
-  reroll: { price: number; buy: Choice };
+  /** Markets only: fresh stock for a price. */
+  reroll: { price: number; buy: Choice } | null;
   healPrice: number;
   units: {
     view: UnitView;
-    sell: { price: number; sell: Choice };
+    /** Markets only. */
+    sell: { price: number; sell: Choice } | null;
     /** Only for a unit with a lasting wound. */
     heal: Choice | null;
   }[];
@@ -628,7 +758,9 @@ export interface ShopView {
 export function shopView(s: RunState): ShopView | null {
   if (s.phase !== 'shop' || s.offer?.kind !== 'shop') return null;
   const shop = s.offer;
+  const market = shop.market === true;
   return {
+    market,
     gold: s.gold,
     recruits: shop.recruits.map((unit, index) =>
       unit ? { ...offerView(unit), price: recruitPrice(unit), buy: choice(s, { type: 'buyRecruit', index }) } : null,
@@ -649,11 +781,11 @@ export function shopView(s: RunState): ShopView | null {
           }
         : null,
     ),
-    reroll: { price: rerollPrice(shop.rerolls), buy: choice(s, { type: 'reroll' }) },
+    reroll: market ? { price: rerollPrice(shop.rerolls), buy: choice(s, { type: 'reroll' }) } : null,
     healPrice: RUN_TUNING.shop.heal,
     units: s.roster.map((u) => ({
       view: unitView(u),
-      sell: { price: sellPrice(u.unit), sell: choice(s, { type: 'sell', unitId: u.id }) },
+      sell: market ? { price: sellPrice(u.unit), sell: choice(s, { type: 'sell', unitId: u.id }) } : null,
       heal: isWounded(u) ? choice(s, { type: 'heal', unitId: u.id }) : null,
     })),
     full: s.roster.length >= RUN_TUNING.rosterCap,
@@ -661,7 +793,7 @@ export function shopView(s: RunState): ShopView | null {
   };
 }
 
-/** The run's history, a line a round, newest last. */
+/** The run's history, a line a battle, newest last. */
 export function historyLines(s: RunState): { round: number; won: boolean; text: string }[] {
   return s.log.map((r) => ({
     round: r.round,
@@ -692,18 +824,18 @@ export function overView(s: RunState): OverView {
   const nobodyLeft = s.log.at(-1)?.retreated === true;
   return {
     headline: victorious
-      ? `A victorious run, ended in round ${s.round}`
+      ? `A victorious run, ended at step ${s.round}`
       : nobodyLeft
-        ? `Nobody came back from the retreat in round ${s.round}`
-        : `Your warband fell in round ${s.round}`,
+        ? `Nobody came back from the retreat at step ${s.round}`
+        : `Your warband fell at step ${s.round}`,
     summary: `${wins} ${wins === 1 ? 'battle' : 'battles'} won${retreats > 0 ? ` · ${retreats} ${retreats === 1 ? 'retreat' : 'retreats'}` : ''} · ${kills} ${kills === 1 ? 'kill' : 'kills'} · seed ${s.seed}`,
     victorious,
   };
 }
 
-/** A remembered run in a line: "6 battles won · fell in round 7 · seed 42". */
+/** A remembered run in a line: "6 battles won · fell at step 7 · seed 42". */
 export function recordLine(r: RunRecord): string {
-  const how = r.end === 'lost' ? `fell in round ${r.round}` : `given up in round ${r.round}`;
+  const how = r.end === 'lost' ? `fell at step ${r.round}` : `given up at step ${r.round}`;
   const retreats = r.retreats ? ` · ${r.retreats} ${r.retreats === 1 ? 'retreat' : 'retreats'}` : '';
   return `${r.wins} ${r.wins === 1 ? 'battle' : 'battles'} won${retreats} · ${how} · seed ${r.seed}`;
 }
@@ -711,7 +843,7 @@ export function recordLine(r: RunRecord): string {
 /** The menu's run button: a new run, or the one to pick back up. */
 export function runMenuItem(saved: RunState | null): { title: string; detail: string } {
   return saved
-    ? { title: 'Continue run', detail: `Round ${saved.round} · seed ${saved.seed}${runVictorious(saved) ? ' · ♛ won' : ''}` }
+    ? { title: 'Continue run', detail: `${placeLine(saved.round)} · seed ${saved.seed}${runVictorious(saved) ? ' · ♛ won' : ''}` }
     : { title: 'Run', detail: 'Draft a warband, fight until it falls' };
 }
 

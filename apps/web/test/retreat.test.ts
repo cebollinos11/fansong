@@ -33,6 +33,7 @@ import {
   overView,
   recordLine,
   retreatNote,
+  routeView,
   runHeader,
   standingUnits,
 } from '../src/ui/runView.js';
@@ -262,7 +263,7 @@ describe('retreat in a run', () => {
     expect(injuryFaces().filter((f) => f.label === 'Dies')).toHaveLength(1);
   });
 
-  it('saves and loads a retreat at its aftermath and its shop, and reads a save from before banners', () => {
+  it('saves and loads a retreat at its aftermath, its shop and back on the map', () => {
     const storage = memoryStorage();
     const shop = runStep(after, { type: 'continue' });
     for (const s of [after, shop, runStep(shop, { type: 'leaveShop' })]) {
@@ -270,24 +271,30 @@ describe('retreat in a run', () => {
       expect(loadRun(storage)).toEqual(s);
     }
     const { banners: _banners, ...old } = battle;
-    expect(parseRun(JSON.parse(JSON.stringify(old))).banners).toBe(RUN_TUNING.banners.start);
+    expect(() => parseRun(JSON.parse(JSON.stringify(old)))).toThrow(/banner/);
     expect(() => parseRun({ ...JSON.parse(JSON.stringify(after)), banners: -1 })).toThrow();
     expect(() => parseRun({ ...JSON.parse(JSON.stringify(after)), offer: shop.offer })).toThrow(/retreat/);
     // An ordinary aftermath is still owed its reward.
     expect(() => parseRun({ ...JSON.parse(JSON.stringify(after)), aftermath: { ...after.aftermath, retreated: undefined } })).toThrow();
   });
 
-  it('keeps the round, and records the retreat in the history and the records', () => {
+  it('keeps the step, shuts the node it fled, and records the retreat in the history and the records', () => {
     const again = runStep(runStep(after, { type: 'continue' }), { type: 'leaveShop' });
-    expect([again.phase, again.round]).toEqual(['mission', 1]);
+    expect([again.phase, again.round]).toEqual(['map', 1]);
+    const fled = battle.route!.going!;
+    const map = routeView(again)!;
+    expect(map.nodes[fled]).toMatchObject({ state: 'closed', travel: null });
+    expect(map.choices.length).toBeGreaterThan(0);
+    expect(map.choices.map((n) => n.id)).not.toContain(fled);
+    expect(map.edges.every((e) => e.to !== fled || e.state === 'closed')).toBe(true);
     expect(historyLines(after).map((l) => [l.round, l.won])).toEqual([[1, false]]);
     expect(historyLines(after)[0]!.text).toMatch(/: retreated/);
     const over: RunState = { ...after, phase: 'over' };
     expect(overView(over).summary).toMatch(/0 battles won · 1 retreat · /);
-    expect(overView({ ...over, roster: [] }).headline).toBe('Nobody came back from the retreat in round 1');
+    expect(overView({ ...over, roster: [] }).headline).toBe('Nobody came back from the retreat at step 1');
     const record = runRecord(over, 'lost', 1);
     expect(record.retreats).toBe(1);
-    expect(recordLine(record)).toMatch(/0 battles won · 1 retreat · fell in round 1/);
+    expect(recordLine(record)).toMatch(/0 battles won · 1 retreat · fell at step 1/);
     expect(runRecord(battle, 'abandoned', 1).retreats).toBeUndefined();
   });
 });
@@ -295,7 +302,7 @@ describe('retreat in a run', () => {
 function toBriefing(s: RunState): RunState {
   for (let i = 0; i < 50 && s.phase !== 'briefing'; i++) {
     const legal = legalRunActions(s);
-    s = runStep(s, legal.find((a) => ['continue', 'leaveShop', 'pickMission'].includes(a.type)) ?? legal[0]!);
+    s = runStep(s, legal.find((a) => ['continue', 'leaveShop', 'travel'].includes(a.type)) ?? legal[0]!);
   }
   return s;
 }

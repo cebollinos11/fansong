@@ -6,6 +6,7 @@ export * from './wild.js';
 export * from './roster.js';
 export * from './draft.js';
 export * from './encounter.js';
+export * from './route.js';
 export * from './rivals.js';
 export * from './report.js';
 export * from './progress.js';

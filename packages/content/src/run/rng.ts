@@ -22,8 +22,8 @@ export interface RunRandom {
   sample<T>(items: readonly T[], count: number): T[];
 }
 
-/** Which of a round's streams to open: its numbered rolls, or its encounter (or, before round 1, the run's rivals). */
-export const RUN_STREAM = { rolls: 0, encounter: 1, rivals: 2 } as const;
+/** Which of a round's streams to open: its numbered rolls, or its encounter (or, before round 1, the run's rivals; or, keyed by act rather than round, the act's route). */
+export const RUN_STREAM = { rolls: 0, encounter: 1, rivals: 2, route: 3 } as const;
 
 /** A 32-bit seed mixed from the run's seed and where in the run a stream opens. */
 export function runSeed(seed: number, round: number, rolls: number, stream: number = RUN_STREAM.rolls): number {

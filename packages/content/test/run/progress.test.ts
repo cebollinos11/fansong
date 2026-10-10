@@ -14,7 +14,6 @@ import {
   PRESET_UNITS,
   presetUnit,
   isBossRound,
-  missionRewardOffers,
   missionRewards,
   rewardKinds,
   rewardsClaimable,
@@ -202,7 +201,7 @@ describe('the reward', () => {
     expect(rewardValue(round, 1)).toBe((base + perRound * round) * boss);
   });
 
-  it('offers pay that can be taken, of different kinds where the roster allows', () => {
+  it('offers pay that can be taken, of each kind the roster allows', () => {
     for (let seed = 0; seed < 40; seed++) {
       const s = inBattle(seed);
       if (seed % 2) {
@@ -215,7 +214,7 @@ describe('the reward', () => {
       expect(kinds.includes('recruit')).toBe(s.roster.length < RUN_TUNING.rosterCap);
       expect(kinds.includes('mend')).toBe(seed % 2 === 1);
       const values = [8 + seed, 20 + seed, 45 + seed];
-      const offers = missionRewardOffers(s, values, makeRunRandom(seed, 1, 0));
+      const offers = values.map((value, i) => missionRewards(s, kinds[(seed + i) % kinds.length]!, value, makeRunRandom(seed, 1, i)));
       expect(offers).toHaveLength(values.length);
       offers.forEach((rewards, i) => {
         expect(rewardsClaimable(s, rewards), JSON.stringify(rewards)).toBe(true);

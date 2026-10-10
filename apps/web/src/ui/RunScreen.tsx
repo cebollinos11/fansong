@@ -4,6 +4,7 @@ import type { RunRecord } from '../game/runStore.js';
 import { TRAIT_INFO, traitTitle, type TraitKey } from './armyView.js';
 import { LookSprite, MapThumb, UnitSprite, unitLine } from './Picker.js';
 import { NameUnit, TendWounded, wasTended } from './RunCeremony.js';
+import { RunMap } from './RunMap.js';
 import {
   aftermathView,
   BANNER_HELP,
@@ -11,7 +12,6 @@ import {
   draftView,
   historyLines,
   levelLine,
-  missionsView,
   overView,
   recordLine,
   rewardView,
@@ -23,7 +23,6 @@ import {
   type Choice,
   type DraftView,
   type EnemyShadow,
-  type MissionsView,
   type OfferView,
   repeatGuard,
   type RewardLine,
@@ -53,9 +52,9 @@ type Act = (action: RunAction) => void;
 const RenameContext = createContext<((unitId: string) => void) | null>(null);
 
 /**
- * Everything of a run that isn't the battle itself: the draft, the choice of
- * mission and the briefing before each battle, and what follows a win — the
- * aftermath, the mission's reward and the camp's shop — down to the screen that ends it. It only draws
+ * Everything of a run that isn't the battle itself: the draft, the map and
+ * the briefing before each battle, and what follows a win — the
+ * aftermath, the battle's reward and the field shop — down to the screen that ends it. It only draws
  * {@link runView.ts}'s view of the run and hands the chosen action back.
  */
 export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: Props): JSX.Element {
@@ -91,9 +90,9 @@ export function RunScreen({ run, records, error, onAction, onExit, onNewRun }: P
         </button>
         <h1>{header.title}</h1>
         <dl className="run-status">
-          <div>
-            <dt>Round</dt>
-            <dd>{header.round}</dd>
+          <div title={`Step ${header.round} of the run. The enemy grows with every step, fought or not`}>
+            <dt>Road</dt>
+            <dd>{header.place}</dd>
           </div>
           <div>
             <dt>Gold</dt>
@@ -144,7 +143,7 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
   const view = useMemo(
     () => ({
       draft: draftView(run),
-      missions: missionsView(run),
+
       briefing: briefingView(run),
       aftermath: aftermathView(run),
       reward: rewardView(run),
@@ -153,7 +152,7 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
     [run],
   );
   if (view.draft) return <Draft run={run} view={view.draft} act={onAction} />;
-  if (view.missions) return <Missions run={run} view={view.missions} act={onAction} />;
+  if (run.phase === 'map') return <RunMap run={run} act={onAction} roster={<Roster run={run} />} />;
   if (view.briefing) return <Briefing view={view.briefing} act={onAction} />;
   if (view.aftermath) return <Aftermath run={run} view={view.aftermath} act={onAction} />;
   if (view.reward) return <Reward run={run} view={view.reward} act={onAction} />;
@@ -344,7 +343,7 @@ function Rewards({ rewards }: { rewards: readonly RewardLine[] }): JSX.Element {
 }
 
 /** The battlefield of a round, and how the battle on it is won. */
-function Field({ view }: { view: Pick<MissionsView, 'mode' | 'goal' | 'map' | 'lava'> }): JSX.Element {
+function Field({ view }: { view: Pick<BriefingView, 'mode' | 'goal' | 'map' | 'lava'> }): JSX.Element {
   return (
     <section className="run-panel run-field">
       <h2 className="muster-label">{view.mode}</h2>
@@ -358,35 +357,6 @@ function Field({ view }: { view: Pick<MissionsView, 'mode' | 'goal' | 'map' | 'l
   );
 }
 
-function Missions({ run, view, act }: { run: RunState; view: MissionsView; act: Act }): JSX.Element {
-  return (
-    <>
-      <section className="run-panel">
-        <h2 className="muster-label">{view.boss ? 'The boss bars the way' : 'Pick a fight'}</h2>
-        <p className="muster-meta">
-          {view.boss
-            ? 'There is no way round this one. Its warband stays in shadow until the battle.'
-            : 'Each enemy stays in shadow until the battle. The harder the fight, the better it pays, and only a win pays at all.'}
-        </p>
-        <div className="run-offers run-missions">
-          {view.missions.map((m, i) => (
-            <div key={i} className="run-offer run-mission">
-              <Threat enemy={m.enemy} />
-              <Shadows enemy={m.enemy} />
-              <h3 className="run-mission-pay">Winning pays</h3>
-              <Rewards rewards={m.rewards} />
-              <Go choice={m.pick} act={act} className="run-go">
-                {view.boss ? 'Face the boss' : 'Take this fight'}
-              </Go>
-            </div>
-          ))}
-        </div>
-      </section>
-      <Field view={view} />
-      <Roster run={run} />
-    </>
-  );
-}
 
 function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element {
   return (
@@ -462,7 +432,7 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
         ) : (
           <>
             <p className="muster-meta">
-              The win pays <span className="run-gold">{view.gold} gold</span>, and the mission's reward is yours to claim.
+              The win pays <span className="run-gold">{view.gold} gold</span>, and the battle's reward is yours to claim.
             </p>
             <Rewards rewards={view.rewards} />
           </>
@@ -540,7 +510,7 @@ function Reward({ run, view, act }: { run: RunState; view: RewardView; act: Act 
   return (
     <>
       <section className="run-panel">
-        <h2 className="muster-label">The mission's reward</h2>
+        <h2 className="muster-label">The battle's reward</h2>
         <Rewards rewards={view.rewards} />
         {view.take ? (
           <Go choice={view.take} act={act} className="run-go run-go-big">
@@ -566,7 +536,8 @@ function Shop({ view, act }: { view: ShopView; act: Act }): JSX.Element {
     <>
       <section className="run-panel">
         <h2 className="muster-label">Recruits</h2>
-        {view.full ? <p className="muster-note">The warband is full: sell a unit to make room.</p> : null}
+        {view.market ? null : <p className="muster-meta">A few hands by the roadside, and a healer. A market sells more, and buys.</p>}
+        {view.full ? <p className="muster-note">The warband is full{view.market ? ': sell a unit to make room' : ''}.</p> : null}
         <div className="run-offers">
           {view.recruits.map((r, i) =>
             r ? (
@@ -584,7 +555,7 @@ function Shop({ view, act }: { view: ShopView; act: Act }): JSX.Element {
         </div>
       </section>
 
-      <section className="run-panel">
+      <section className="run-panel" hidden={!view.market}>
         <h2 className="muster-label">Training</h2>
         <div className="run-offers">
           {view.upgrades.map((u, i) =>
@@ -602,9 +573,11 @@ function Shop({ view, act }: { view: ShopView; act: Act }): JSX.Element {
           )}
           {view.upgrades.length === 0 ? <p className="muster-note">Nothing left to teach this warband.</p> : null}
         </div>
-        <Go choice={view.reroll.buy} act={act} title="Swap the recruits and the training for new ones">
-          New stock · {view.reroll.price} gold
-        </Go>
+        {view.reroll ? (
+          <Go choice={view.reroll.buy} act={act} title="Swap the recruits and the training for new ones">
+            New stock · {view.reroll.price} gold
+          </Go>
+        ) : null}
       </section>
 
       <section className="run-panel">
@@ -617,19 +590,21 @@ function Shop({ view, act }: { view: ShopView; act: Act }): JSX.Element {
                   Heal · {view.healPrice} gold
                 </Go>
               ) : null}
-              <button
-                type="button"
-                disabled={u.sell.sell.error !== null}
-                title={u.sell.sell.error ?? 'Sell this unit'}
-                onClick={() => sell(u.view.unit, u.sell.price, u.sell.sell.action)}
-              >
-                Sell · +{u.sell.price}
-              </button>
+              {u.sell ? (
+                <button
+                  type="button"
+                  disabled={u.sell.sell.error !== null}
+                  title={u.sell.sell.error ?? 'Sell this unit'}
+                  onClick={() => sell(u.view.unit, u.sell!.price, u.sell!.sell.action)}
+                >
+                  Sell · +{u.sell.price}
+                </button>
+              ) : null}
             </UnitCard>
           ))}
         </ul>
         <Go choice={view.leave} act={act} className="run-go run-go-big">
-          Break camp
+          Back to the map
         </Go>
       </section>
     </>

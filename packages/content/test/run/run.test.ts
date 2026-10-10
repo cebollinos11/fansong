@@ -1,12 +1,13 @@
 import { createGame } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
-  enemyPoints,
   fieldedUnits,
-  generateEncounter,
+  generateBattle,
   legalRunActions,
   newRun,
+  openNodes,
   playerWarband,
+  rewardValue,
   RUN_TUNING,
   runActionError,
   runBattleConfig,
@@ -14,37 +15,14 @@ import {
   runMatchSetup,
   runStep,
   runVictorious,
-  validateArmy,
-  validateMap,
-  warbandCost,
   type RunAction,
   type RunState,
 } from '../../src/index.js';
-import { autoUntil, drafted, inBattle, playBattle } from './helpers.js';
-
-/** Invariants of any run state. */
-function checkState(s: RunState): void {
-  expect(JSON.parse(JSON.stringify(s))).toEqual(s);
-  expect(s.gold).toBeGreaterThanOrEqual(0);
-  expect(s.roster.length).toBeLessThanOrEqual(RUN_TUNING.rosterCap);
-  expect(new Set(s.roster.map((u) => u.id)).size).toBe(s.roster.length);
-  if (s.phase !== 'draft' && s.phase !== 'over') expect(validateArmy(playerWarband(s)).errors).toEqual([]);
-  for (const u of s.roster) expect(u.level).toBeLessThanOrEqual(RUN_TUNING.xp.levels.length);
-  if (s.battle) {
-    expect(validateArmy(s.battle.enemy).errors).toEqual([]);
-    expect(s.battle.enemy.units.length).toBeGreaterThanOrEqual(RUN_TUNING.enemy.minUnits);
-    if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits)
-      expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round, RUN_TUNING.mission.threat.max));
-    expect(validateMap(s.battle.map, s.battle.mode).errors).toEqual([]);
-  }
-  expect(Boolean(s.battle)).toBe(s.phase === 'briefing' || s.phase === 'battle');
-  const owed = { draft: 'draft', mission: 'missions', aftermath: 'reward', reward: 'reward', shop: 'shop' } as Record<string, string>;
-  expect(s.offer?.kind).toBe(owed[s.phase]);
-}
+import { atStep, autoUntil, checkState, drafted, inBattle, onMap, playBattle } from './helpers.js';
 
 /**
  * Play a run with the AI in both seats, taking legal action `pick` of those on
- * offer, until it is lost or `rounds` are won. Returns every state passed through.
+ * offer, until it is lost or `rounds` steps are behind it. Returns every state passed through.
  */
 function playRun(seed: number, rounds: number, pick: (actions: RunAction[], step: number) => RunAction): RunState[] {
   let s = newRun(seed);
@@ -75,7 +53,7 @@ describe('a run', () => {
   it('holds its invariants through every phase', () => {
     const seen = new Set<string>();
     let won = 0;
-    for (let seed = 20; seed < 28; seed++) {
+    for (let seed = 20; seed < 32; seed++) {
       const states = playRun(seed, 3, seed % 2 ? first : varied);
       for (const s of states) {
         checkState(s);
@@ -83,7 +61,9 @@ describe('a run', () => {
       }
       const last = states.at(-1)!;
       won += last.log.filter((r) => r.won).length;
-      expect(last.log.map((r) => r.round)).toEqual(last.log.map((_, i) => i + 1));
+      // A step is logged once, when its battle is settled; the run only goes up.
+      const steps = last.log.map((r) => r.round);
+      expect(steps).toEqual([...new Set(steps)].sort((a, b) => a - b));
       if (last.phase === 'over') {
         expect(last.log.at(-1)!.won).toBe(false);
         expect(legalRunActions(last)).toEqual([]);
@@ -92,20 +72,19 @@ describe('a run', () => {
       if (!last.log.some((r) => r.won)) expect(last.gold).toBe(0);
     }
     expect(won).toBeGreaterThan(0);
-    expect([...seen].sort()).toEqual(['aftermath', 'battle', 'briefing', 'draft', 'mission', 'over', 'reward', 'shop']);
+    expect([...seen].sort()).toEqual(['aftermath', 'battle', 'briefing', 'draft', 'map', 'over', 'reward', 'shop']);
   });
 
   it("meets the same enemies whatever the player's choices", () => {
-    for (const round of [1, 2, 5]) {
-      const a = generateEncounter(77, round, 4);
-      const b = generateEncounter(77, round, 4);
-      expect(a).toEqual(b);
+    const map = onMap(77);
+    for (const nodeId of openNodes(map.route!)) {
+      const s = runStep(map, { type: 'travel', nodeId });
+      const node = s.route!.nodes[nodeId]!;
+      const { enemy, ...ground } = generateBattle(77, 1, node, s.roster.length);
+      expect(s.battle).toMatchObject({ ...ground, enemy: enemy.warband, faction: node.faction, threat: enemy.threat });
+      // A bigger roster changes the size of the field, not who stands on it.
+      expect(generateBattle(77, 1, node, s.roster.length + 5).enemy).toEqual(enemy);
     }
-    const s = autoUntil(newRun(77), 'mission');
-    const { enemies, ...ground } = generateEncounter(77, 1, s.roster.length);
-    expect(s.offer).toMatchObject({ kind: 'missions', ...ground });
-    if (s.offer?.kind !== 'missions') throw new Error('no missions on offer');
-    expect(s.offer.missions.map((m) => m.enemy)).toEqual(enemies.map((e) => e.warband));
     expect(drafted(77)).toEqual(drafted(77));
   });
 
@@ -143,10 +122,19 @@ describe('a run', () => {
         expect(next.aftermath!.gold).toBe(next.gold);
         // A replay of some other battle is turned away.
         expect(() => runStep(inBattle(seed + 100), { type: 'battleResult', replay })).toThrow(/not of this round/);
+        // The field shop is a small one, and leads back to the map, a step on.
         const shop = autoUntil(next, 'shop');
-        const round2 = runStep(shop, { type: 'leaveShop' });
-        expect([round2.round, round2.phase, round2.rolls]).toEqual([2, 'mission', 1]);
-        expect(round2.offer).toMatchObject({ kind: 'missions', map: generateEncounter(seed, 2, round2.roster.length).map });
+        if (shop.offer?.kind !== 'shop') throw new Error('no shop');
+        expect(shop.offer.market).toBeUndefined();
+        expect(shop.offer.upgrades).toHaveLength(RUN_TUNING.fieldShop.upgrades);
+        expect(shop.offer.recruits.filter((u) => u && u.name !== 'Eager Cadet')).toHaveLength(RUN_TUNING.fieldShop.recruits);
+        expect(legalRunActions(shop).some((a) => a.type === 'reroll' || a.type === 'sell')).toBe(false);
+        expect(runActionError(shop, { type: 'reroll' })).toMatch(/only a market/);
+        expect(runActionError(shop, { type: 'sell', unitId: shop.roster[0]!.id })).toMatch(/only a market/);
+        const step2 = runStep(shop, { type: 'leaveShop' });
+        expect([step2.round, step2.phase, step2.rolls, step2.offer]).toEqual([2, 'map', 0, undefined]);
+        expect(step2.route).toMatchObject({ at: s.route!.going, path: [s.route!.going] });
+        expect(openNodes(step2.route!)).toEqual(s.route!.nodes[s.route!.going!]!.next);
       }
     }
     expect([lost > 0, won > 0]).toEqual([true, true]);
@@ -161,41 +149,58 @@ describe('a run', () => {
   });
 });
 
-describe('the missions', () => {
-  it('fights the one picked, for the pay it showed', () => {
-    const s = autoUntil(newRun(8), 'mission');
-    if (s.offer?.kind !== 'missions') throw new Error('no missions on offer');
-    const { missions, mode, map, seed } = s.offer;
-    expect(missions).toHaveLength(RUN_TUNING.mission.count);
-    expect(legalRunActions(s)).toEqual(missions.map((_, index) => ({ type: 'pickMission', index })));
-    expect(runActionError(s, { type: 'pickMission', index: missions.length })).toMatch(/no mission/);
+describe('the map', () => {
+  it('lets the run travel to an open node only, and meets the battle that node showed', () => {
+    const s = onMap(8);
+    const route = s.route!;
+    const open = openNodes(route);
+    expect(open.length).toBeGreaterThanOrEqual(2);
+    expect(legalRunActions(s)).toEqual(open.map((nodeId) => ({ type: 'travel', nodeId })));
+    const boss = route.nodes.at(-1)!;
+    expect(runActionError(s, { type: 'travel', nodeId: boss.id })).toMatch(/road does not lead/);
+    expect(runActionError(s, { type: 'travel', nodeId: 99 })).toMatch(/road does not lead/);
     expect(runActionError(s, { type: 'startBattle' })).not.toBeNull();
-    missions.forEach((m, index) => {
-      const picked = runStep(s, { type: 'pickMission', index });
-      expect(picked.phase).toBe('briefing');
-      expect(picked.offer).toBeUndefined();
-      expect(picked.battle).toEqual({ mode, map, seed, faction: m.faction, enemy: m.enemy, threat: m.threat, rewards: m.rewards, rewardValue: m.rewardValue });
-    });
-  });
-
-  it('pays more for a harder one', () => {
-    for (let seed = 1; seed <= 20; seed++) {
-      const s = autoUntil(newRun(seed), 'mission');
-      if (s.offer?.kind !== 'missions') throw new Error('no missions on offer');
-      const values = s.offer.missions.map((m) => m.rewardValue);
-      expect(values).toEqual([...values].sort((a, b) => a - b));
+    for (const nodeId of open) {
+      const node = route.nodes[nodeId]!;
+      const there = runStep(s, { type: 'travel', nodeId });
+      expect(there.phase).toBe('briefing');
+      expect(there.offer).toBeUndefined();
+      expect(there.route).toEqual({ ...route, going: nodeId });
+      expect(there.battle).toMatchObject({ faction: node.faction, mode: node.mode });
+      expect(there.battle!.rewardValue).toBe(rewardValue(1, there.battle!.threat));
+      // The kind of pay the map showed, when the roster can take it.
+      const kinds = there.battle!.rewards.map((r) => r.kind);
+      if (node.rewardKind !== 'mend') expect(kinds.includes(node.rewardKind!) || kinds.every((k) => k === 'gold')).toBe(true);
+      // Nowhere else to go until this is done.
+      expect(runActionError(there, { type: 'travel', nodeId: open[0]! })).not.toBeNull();
     }
   });
 
-  it('pays what it showed once the battle is won, or its worth in gold if nobody is left to take it', () => {
+  it('draws a new map once the boss is beaten', () => {
+    const boss = RUN_TUNING.enemy.bossEvery;
+    const s = atStep(8, boss);
+    const there = runStep(s, legalRunActions(s)[0]!);
+    // As if the boss were beaten and paid: the field shop after it.
+    const shop: RunState = { ...there, phase: 'shop', offer: { kind: 'shop', recruits: [], upgrades: [], rerolls: 0 } };
+    delete shop.battle;
+    const act2 = runStep(shop, { type: 'leaveShop' });
+    expect([act2.round, act2.phase]).toEqual([boss + 1, 'map']);
+    expect(act2.route).toMatchObject({ act: 2, at: null, path: [], closed: [] });
+    expect(act2.route!.nodes).not.toEqual(s.route!.nodes);
+    for (const id of openNodes(act2.route!)) expect(act2.route!.nodes[id]!.step).toBe(boss + 1);
+  });
+});
+
+describe('the reward', () => {
+  it('pays what the battle showed once it is won, or its worth in gold if nobody is left to take it', () => {
     let checked = 0;
     for (let seed = 40; seed < 60 && checked < 3; seed++) {
       const s = inBattle(seed);
-      const { rewards, rewardValue } = s.battle!;
+      const { rewards, rewardValue: value } = s.battle!;
       const won = runStep(s, { type: 'battleResult', replay: playBattle(s) });
       if (won.phase !== 'aftermath') continue;
       checked++;
-      expect(won.offer).toEqual({ kind: 'reward', rewards, value: rewardValue });
+      expect(won.offer).toEqual({ kind: 'reward', rewards, value });
       const owed = autoUntil(won, 'reward');
       const gold = owed.gold;
       const size = owed.roster.length;
@@ -240,16 +245,17 @@ describe('the briefing', () => {
     expect(fieldedUnits(s)).toHaveLength(s.roster.length);
   });
 
-  it('lets the player choose a King on a boss round only', () => {
+  it('lets the player choose a King at the boss only', () => {
     const regular = drafted(8);
     expect(runActionError(regular, { type: 'setKing', unitId: regular.roster[0]!.id })).toMatch(/no King/);
 
-    const shop = { ...drafted(8), phase: 'shop', round: RUN_TUNING.enemy.bossEvery - 1, offer: { kind: 'shop', recruits: [], upgrades: [], rerolls: 0 } } as RunState;
-    delete shop.battle;
-    const boss = runStep(shop, { type: 'leaveShop' });
-    expect(legalRunActions(boss)).toEqual([{ type: 'pickMission', index: 0 }]);
-    let s = runStep(boss, { type: 'pickMission', index: 0 });
+    const boss = atStep(8, RUN_TUNING.enemy.bossEvery);
+    const node = boss.route!.nodes.at(-1)!;
+    expect(node.kind).toBe('boss');
+    expect(legalRunActions(boss)).toEqual([{ type: 'travel', nodeId: node.id }]);
+    let s = runStep(boss, { type: 'travel', nodeId: node.id });
     expect(s.battle!.mode).toBe('kill-the-king');
+    expect(s.battle!.faction).toBe(node.faction);
     expect(s.battle!.rewardValue).toBeGreaterThan(0);
     const last = s.roster.at(-1)!;
     expect(runActionError(s, { type: 'setKing', unitId: 'nobody' })).not.toBeNull();
@@ -298,7 +304,7 @@ describe('runStep', () => {
       { type: 'draftPick', index: 0 },
       { type: 'continue' },
       { type: 'reward' },
-      { type: 'pickMission', index: 0 },
+      { type: 'travel', nodeId: 0 },
       { type: 'leaveShop' },
       { type: 'reroll' },
       { type: 'advance', unitId: s.roster[0]!.id, index: 0 },

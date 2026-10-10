@@ -1,16 +1,15 @@
 import { chooseCommand } from '@fansong/ai';
-import { createGame, getLegalCommands, makeHexGrid, recordReplay, runReplay, type Command, type GameState, type Replay } from '@fansong/engine';
+import { createGame, getLegalCommands, recordReplay, runReplay, type Command, type GameState, type Replay } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
   applyRetreat,
   applyWound,
   battleReport,
-  generateEncounter,
   injuryFor,
   isBossRound,
   legalRunActions,
   makeRunRandom,
-  newRun,
+  openNodes,
   RUN_TUNING,
   runBattleConfig,
   runStep,
@@ -18,40 +17,9 @@ import {
   type RunState,
   type UnitFate,
 } from '../../src/index.js';
-import { autoUntil, inBattle, playBattle } from './helpers.js';
+import { atStep, autoUntil, inBattle, playBattle, retreating } from './helpers.js';
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
-
-/**
- * The AI in both seats, but the player gives the battle up: its Leader sounds
- * the retreat the first time it can, and from then on every player unit walks
- * for the flag (`runFor`: all of them, or only the Leader).
- */
-function retreating(runFor: 'all' | 'leader' = 'all') {
-  return (state: GameState): Command => {
-    if (state.active !== 0) return chooseCommand(state);
-    const legal = getLegalCommands(state);
-    const call = legal.find((c) => c.type === 'Retreat');
-    if (call) return call;
-    if (state.phase === 'awaitingActivation') {
-      const leader = state.units.find((u) => u.owner === 0 && u.traits.leader && !u.dead && !u.activatedThisRound);
-      const pick = leader && legal.filter((c) => c.type === 'ChooseActivation' && c.unitId === leader.id && !c.group && !c.spell).at(-1);
-      return pick ?? chooseCommand(state);
-    }
-    const unit = state.units.find((u) => u.id === state.activeUnitId)!;
-    const flag = state.retreat?.hex;
-    if (!flag || (runFor === 'leader' && !unit.traits.leader)) return chooseCommand(state);
-    const board = makeHexGrid(state.board);
-    let best: Command = { type: 'EndActivation' };
-    let bestGap = board.distance(unit.pos, flag);
-    for (const c of legal) {
-      if (c.type !== 'Move') continue;
-      const gap = board.distance(c.to, flag);
-      if (gap < bestGap) [best, bestGap] = [c, gap];
-    }
-    return best;
-  };
-}
 
 function playRetreat(s: RunState, runFor: 'all' | 'leader' = 'all'): Replay {
   return recordReplay(runBattleConfig(s), retreating(runFor));
@@ -117,7 +85,7 @@ describe('retreat banners', () => {
     expect(Object.values(report.units).some((u) => u.fate === 'survived')).toBe(false);
   });
 
-  it('spends the banner, pays nothing, and fights the same round again against new missions', () => {
+  it('spends the banner, pays nothing, and falls back to the map with the fled node closed', () => {
     const { s, replay, report } = retreatedBattle();
     const next = runStep(s, { type: 'battleResult', replay });
     expect([next.phase, next.banners, next.retreats, next.round]).toEqual(['aftermath', 0, 1, s.round]);
@@ -135,22 +103,49 @@ describe('retreat banners', () => {
       expect(next.aftermath!.units.find((l) => l.unitId === id)!.die).toBeUndefined();
     }
 
-    // No reward: the aftermath leads straight to the shop, and the shop back to round 1.
+    // The node it fled is closed at once, and nothing is being played.
+    const fled = s.route!.going!;
+    expect(next.route).toEqual({ ...s.route!, going: undefined, closed: [fled] });
+
+    // No reward: the aftermath leads straight to the field shop, and the shop back to the map at step 1.
     expect(legalRunActions(next)).toEqual([{ type: 'continue' }]);
     const shop = runStep(next, { type: 'continue' });
     expect([shop.phase, shop.offer?.kind]).toEqual(['shop', 'shop']);
     const again = runStep(shop, { type: 'leaveShop' });
-    expect([again.phase, again.round, again.retreats]).toEqual(['mission', 1, 1]);
-    const first = generateEncounter(s.seed, 1, again.roster.length);
-    const second = generateEncounter(s.seed, 1, again.roster.length, undefined, 1);
-    expect(again.offer).toMatchObject({ kind: 'missions', seed: second.seed, map: second.map });
-    expect(second.enemies).not.toEqual(first.enemies);
-    expect(second.seed).not.toBe(first.seed);
+    expect([again.phase, again.round, again.retreats]).toEqual(['map', 1, 1]);
+    expect(again.route).toEqual(next.route);
+    const open = openNodes(again.route!);
+    expect(open).not.toContain(fled);
+    expect(open.length).toBeGreaterThan(0);
+    expect(legalRunActions(again)).toEqual(open.map((nodeId) => ({ type: 'travel', nodeId })));
+    expect(runStep(again, { type: 'rename', unitId: again.roster[0]!.id, name: 'Still Here' }).phase).toBe('map');
 
     // With no banner left the next battle has no retreat zone, and losing it ends the run.
     const battle = autoUntil(again, 'battle');
+    expect(battle.route!.going).not.toBe(fled);
     expect(runBattleConfig(battle).retreatZones).toBeUndefined();
     expect(playRetreat(battle).commands.some((c) => c.type === 'Retreat')).toBe(false);
+  });
+
+  it('opens the fled node again, against someone new, when no other road is left or it is the boss', () => {
+    const { s, replay } = retreatedBattle();
+    const fled = s.route!.going!;
+    const others = s.route!.nodes.filter((n) => n.step === 1 && n.id !== fled).map((n) => n.id);
+
+    // Every other way already closed: the node stays open.
+    const cornered = clone(s);
+    cornered.route!.closed = others;
+    const back = autoUntil(runStep(cornered, { type: 'battleResult', replay }), 'map');
+    expect(back.route!.closed).toEqual(others);
+    expect(legalRunActions(back)).toEqual([{ type: 'travel', nodeId: fled }]);
+    const again = runStep(back, { type: 'travel', nodeId: fled });
+    expect(again.battle!.seed).not.toBe(s.battle!.seed);
+    expect(again.battle!.faction).toBe(s.battle!.faction);
+
+    // The boss is never closed, whatever else is open.
+    const boss = clone(s);
+    boss.route!.nodes[fled]!.kind = 'boss';
+    expect(runStep(boss, { type: 'battleResult', replay }).route!.closed).toEqual([]);
   });
 
   it('spends the banner on the call, even when the battle is then won', () => {
@@ -181,7 +176,8 @@ describe('retreat banners', () => {
       if (run.phase === 'over') break;
       const shop = autoUntil(run, 'shop');
       const next = runStep(shop, { type: 'leaveShop' });
-      expect([next.round, next.retreats, next.rolls]).toEqual([2, undefined, 1]);
+      expect([next.round, next.retreats, next.rolls, next.phase]).toEqual([2, undefined, 0, 'map']);
+      expect(next.route!.closed).toHaveLength(1);
       expect(next.log.map((r) => [r.round, r.won])).toEqual([
         [1, false],
         [1, true],
@@ -261,10 +257,8 @@ describe('retreat banners', () => {
     const wins: Record<string, number[]> = { boss: [], regular: [] };
     for (let seed = 1; seed < 60 && (wins.boss!.length < 2 || wins.regular!.length < 1); seed++) {
       for (const [kind, round, banners] of [['boss', bossRound, 0], ['boss', bossRound, max], ['regular', 1, 0]] as const) {
-        // A drafted run, set down at the round under test: the encounter is the seed's own.
-        let s: RunState = { ...autoUntil(newRun(seed), 'mission'), round, banners };
-        s = runStep({ ...s, offer: undefined, phase: 'shop', round: round - 1, aftermath: undefined }, { type: 'leaveShop' });
-        s = autoUntil(s, 'battle');
+        // A drafted run, set down at the step under test: the encounter is the seed's own.
+        const s = autoUntil({ ...atStep(seed, round), banners }, 'battle');
         const next = runStep(s, { type: 'battleResult', replay: playBattle(s) });
         if (next.phase !== 'aftermath') continue;
         wins[kind]!.push(next.banners - banners);
