@@ -420,8 +420,9 @@ absent when unused.
 
 A single-player **run** (the menu's **Run** button): draft a small warband,
 fight the AI in battle after battle against a growing enemy, and improve the
-warband between wins. One lost battle ends the run. [RUN_MODE.md](RUN_MODE.md)
-holds the design.
+warband between wins. One lost battle ends the run, unless you retreat from
+it with a banner in hand. [RUN_MODE.md](RUN_MODE.md) holds the design, and
+[RETREAT_PLAN.md](RETREAT_PLAN.md) that of the retreat.
 
 - **Draft** — pick a leader from three offers, then troops one pick at a time
   until 120 points are spent. Each unit that joins, here or later, can be
@@ -437,6 +438,24 @@ holds the design.
   own). Who the enemy really is shows only on the field.
 - **Battle** — an ordinary match against the AI. Leaving midway keeps the run
   but not the battle: it starts over from its first move, on the same dice.
+- **Retreat** — a run starts with one **retreat banner** (shown on every run
+  screen). While you hold one, your Leader, on its feet, may spend an action to
+  **sound the retreat** (the **Retreat** button, key B, which asks first): once
+  a battle, and there is no taking it back. A flag goes up on the free hex of
+  your deploy zone farthest from the enemy, and from then on any unit of yours
+  that ends a Move on it leaves the field unhurt. Nothing else changes: your
+  units may still fight, so a rearguard can cover the rest. When your Leader
+  leaves, the battle ends at once, lost, and whoever is still on the field is
+  **left behind**. If the Leader dies first the flag stays, and the battle ends
+  by its usual rules. A battle lost after the retreat was sounded spends the
+  banner but not the run: nobody earns XP, gold or the mission's reward; units
+  that reached the flag are untouched; the fallen roll for injury as after a
+  win; and each unit left behind rolls the same die with two more faces of
+  death (1–3 dead, 4 a lasting wound, 5 sits out, 6 recovers). Then camp, to
+  replace the lost with the gold in hand, and **the same round again** against
+  three new missions. Each boss beaten adds a banner, up to three. With none
+  left, or with no Leader to call it, a lost battle ends the run as before.
+  The enemy never retreats.
 - **After a win** — every unit that fought earns XP (more for kills, more again
   for killing something costlier) and levels up at 6 / 14 / 24 / 36 XP, choosing
   one of two advances: a trait it lacks, Combat +1 or Quality −1. Then the
@@ -480,3 +499,12 @@ object; the web app only draws it and saves it. `pnpm play run --seeds 200`
 plays whole runs with the AI in both seats and a greedy picker, and reports how
 deep they get — the tool the difficulty was tuned with. `--mission easy`,
 `middle` or `hard` sets which of each round's missions its player takes.
+`--retreat losing` has that player sound the retreat once its living points
+fall under a share of the enemy's (`--retreat-share`, 0.75 by default) and walk
+everyone to the flag; the default, `never`, plays as the AI does.
+
+The retreat is the one part of run mode that lives in the engine, as optional
+state: a `GameConfig` may name `retreatZones` (the hexes each side's flag may
+be planted on), and only then is the `Retreat` command ever legal. A game
+without them, every old replay and the golden fixture are unchanged, and the AI
+never chooses it.

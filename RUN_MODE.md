@@ -9,7 +9,7 @@ FanSong has one-off matches only (vs AI, hotseat, online). The goal is a single-
 | Difficulty | Bigger enemy point budget, tougher generated rosters, more hostile maps/modes. **No AI changes.** |
 | Enemies | Generated from the preset factions' unit pools, bought up to a round budget |
 | Growth | All three, layered after every win: unit XP → the mission's reward → gold shop |
-| Unit growth | Existing engine traits and Quality/Combat steps only. **No engine changes.** |
+| Unit growth | Existing engine traits and Quality/Combat steps only. **No engine changes** (the one since: the retreat, see [RETREAT_PLAN.md](RETREAT_PLAN.md)). |
 | Attrition | Injury roll for each fallen unit |
 | Start | Draft a warband from random offers |
 | Structure | Each round a choice of 3 missions (harder pays more; enemies shown as silhouettes). Boss every 5th round (kill-the-king vs a champion, no choice). Beating round 10 = "victory", then endless |
@@ -18,7 +18,7 @@ FanSong has one-off matches only (vs AI, hotseat, online). The goal is a single-
 
 ## Shape
 
-**All run rules are a pure, seeded state machine in `packages/content/src/run/`** — same spirit as the engine: `RunState` + a step function, no DOM, tested in Node. The web app only renders it and stores it. The engine, protocol, worker and golden replay are untouched.
+**All run rules are a pure, seeded state machine in `packages/content/src/run/`** — same spirit as the engine: `RunState` + a step function, no DOM, tested in Node. The web app only renders it and stores it. The worker and the golden replay are untouched. The engine and protocol were too until retreat banners ([RETREAT_PLAN.md](RETREAT_PLAN.md)), which added one optional piece of engine state: a config may name retreat zones, and only then is the `Retreat` command legal.
 
 ### Run state (`run/types.ts`)
 
@@ -45,6 +45,8 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 5. **Aftermath** (win only) — XP, level-ups, injury rolls.
 6. **Reward** — claim what the mission promised (a boost or mending asks which unit). If nobody can take it any more, it is paid as gold of the same worth.
 7. **Shop** — spend gold, then next round. Loss at step 4 → `over`, record saved.
+
+**Retreat** (added later; rules in [RETREAT_PLAN.md](RETREAT_PLAN.md)): a run holds retreat banners (1 at the start, +1 per boss beaten, at most 3). With one in hand the battle's config carries the player's deploy zone as its retreat zone, and the Leader may sound the retreat. A battle lost after that call spends the banner instead of ending the run: step 5 is an aftermath with no XP or gold (units left behind roll the harsher `leftBehind` table), step 6 is skipped, and after the shop the **same round** is fought again against missions rolled anew (`RunState.retreats` keys the encounter stream).
 
 ### Difficulty (`run/encounter.ts`)
 
@@ -85,12 +87,12 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 ## Verification
 
 - `pnpm test` and `pnpm typecheck`; golden replay must stay unchanged (no engine edits).
-- `pnpm play run --seeds 200`: no crashes, depth distribution sane, same seed → same result.
+- `pnpm play run --seeds 200`: no crashes, depth distribution sane, same seed → same result. With `--retreat never` (the default) the numbers are those from before retreat banners.
 - Live (Playwright, per CLAUDE.md): start a run with a fixed seed, draft, win round 1 (drive via `window.fansong` or play), check aftermath → reward → shop → round 2; reload mid-shop (resumes) and mid-battle (restarts same battle); lose and see the record.
 
 ## Open risks
 
-- **Battles are swingy, and one loss ends the run.** Measured with the AI in both seats: a 2:1 points edge wins only about 85% of battles (a mirror match is ~45% from the player's seat), so even an easy round kills about one run in ten. First-pass sim (100 seeds): median death in round 5, a quarter of AI-piloted runs beat round 10, the first boss kills one run in six. If that feels unfair in play, the fix is a rule (a second life, a retreat), not more tuning.
+- **Battles are swingy, and one loss ends the run.** Measured with the AI in both seats: a 2:1 points edge wins only about 85% of battles (a mirror match is ~45% from the player's seat), so even an easy round kills about one run in ten. First-pass sim (100 seeds): median death in round 5, a quarter of AI-piloted runs beat round 10, the first boss kills one run in six. If that feels unfair in play, the fix is a rule (a second life, a retreat), not more tuning. **That rule is now in: retreat banners** ([RETREAT_PLAN.md](RETREAT_PLAN.md)). Measured with `--retreat losing` over 200 seeds, though, one banner barely helps an AI pilot: sounding the retreat under 75% of the enemy's living points, 31% of runs used a banner and 28 of those 62 went on to win the round they fled, but the median run still dies in round 3 (mean 3.3 → 3.4) and round 1 still kills one run in five; at 100% it is 56% of runs, mean 3.6, median still 3. Round 10 stays rare (1% or less). The pilot cannot call it once its Leader is dead or down, re-fights the round a unit or two short, and often loses it again. Whether a human, who picks the moment, gets more out of a banner is for playtests; `banners.start` was left at 1.
 - Kill-the-king bosses put the player's King at risk too; AI already plays that mode, but balance needs the sim. Second pass (200 seeds): every boss loss in the sim is the pilot's own King dying, and neither dropping the boss bonus nor a Quality 3 champion moves the first boss's win rate out of the noise (70% → 73% / 75%). The sim measures how the AI guards a King, not how hard the boss is, so the boss numbers were left alone pending human playtests.
 - Battle-restart lets a player retry by closing the tab (accepted trade-off; same seed means same dice for the same moves).
 - Shipping a new save key: `version` field so a later format change can drop old runs cleanly.

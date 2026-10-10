@@ -316,6 +316,16 @@ no rules — remove three.js and the game still runs in the CLI.
       from the replay, XP and advances, injuries, rewards and the shop. Every
       number sits in `RUN_TUNING`. No engine, protocol or worker changes; the
       golden replay is untouched.
+    - **Retreat banners** — ✅ added after the first playtests
+      ([RETREAT_PLAN.md](RETREAT_PLAN.md)): a run starts with one banner; with
+      one in hand its Leader may sound the retreat, units that reach the flag
+      leave unhurt, and a battle lost that way spends the banner and replays
+      the round instead of ending the run. This is the one engine change run
+      mode made, and it is optional state (`GameConfig.retreatZones`, the
+      `Retreat` command, `GameState.retreat`, `Unit.retreated`, the `'retreat'`
+      win reason): without zones nothing is offered, so the golden replay was
+      not re-blessed and `REPLAY_VERSION` is still 2. The AI never retreats.
+      `pnpm play run --retreat losing` measures what a banner is worth.
     - **Battles** are ordinary local matches: the client plays
       `runBattleConfig` and hands the replay back as the `battleResult` action.
     - **Sim** — `pnpm play run` pilots whole runs with the AI in both seats and

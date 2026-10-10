@@ -1,16 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { legalRunActions, newRun, runStep, RUN_TUNING, type RunState } from '@fansong/content';
 import { CliError } from '../src/options.js';
-import { autoPick, battleLine, parseRunArgs, runHelpText, runSimMain, simulateRun, summarize } from '../src/runSim.js';
+import { autoPick, battleLine, DEFAULT_RETREAT_SHARE, parseRunArgs, runHelpText, runSimMain, simulateRun, summarize } from '../src/runSim.js';
 
 describe('parseRunArgs', () => {
   it('has defaults and reads every flag', () => {
-    expect(parseRunArgs([])).toEqual({ seeds: 20, seed: 1, maxRounds: 30, mission: 'easy', verbose: false, help: false });
-    expect(parseRunArgs(['--seeds', '200', '--seed', '7', '--max-rounds', '12', '--mission', 'hard', '-v'])).toEqual({
+    expect(parseRunArgs([])).toEqual({
+      seeds: 20,
+      seed: 1,
+      maxRounds: 30,
+      mission: 'easy',
+      retreat: 'never',
+      retreatShare: DEFAULT_RETREAT_SHARE,
+      verbose: false,
+      help: false,
+    });
+    expect(
+      parseRunArgs(['--seeds', '200', '--seed', '7', '--max-rounds', '12', '--mission', 'hard', '--retreat', 'losing', '--retreat-share', '0.8', '-v']),
+    ).toEqual({
       seeds: 200,
       seed: 7,
       maxRounds: 12,
       mission: 'hard',
+      retreat: 'losing',
+      retreatShare: 0.8,
       verbose: true,
       help: false,
     });
@@ -24,6 +37,8 @@ describe('parseRunArgs', () => {
     expect(() => parseRunArgs(['--seeds', '2.5'])).toThrow(CliError);
     expect(() => parseRunArgs(['--bogus'])).toThrow(/Unknown option/);
     expect(() => parseRunArgs(['--mission', 'reckless'])).toThrow(/easy, middle, hard/);
+    expect(() => parseRunArgs(['--retreat', 'always'])).toThrow(/never, losing/);
+    expect(() => parseRunArgs(['--retreat-share', '0'])).toThrow(CliError);
   });
 });
 
@@ -79,6 +94,40 @@ describe('simulateRun', () => {
       expect(run.battles.length).toBeLessThanOrEqual(2);
       expect(run.end === 'lost').toBe(!run.battles.at(-1)!.won);
     }
+  });
+});
+
+describe('the retreat policy', () => {
+  it('changes nothing by default: nobody retreats, and the report says nothing of it', () => {
+    const plain = simulateRun(5, 3);
+    expect(simulateRun(5, 3, 'easy', 'never')).toEqual(plain);
+    expect(plain.battles.some((b) => b.retreated)).toBe(false);
+    expect(summarize([plain])).not.toMatch(/retreats:/);
+  });
+
+  it('gives up a losing battle once, spends the banner, and fights the round again', () => {
+    let seen = 0;
+    for (let seed = 1; seed <= 12 && seen < 2; seed++) {
+      const run = simulateRun(seed, 4, 'easy', 'losing', 1);
+      expect(simulateRun(seed, 4, 'easy', 'losing', 1)).toEqual(run);
+      const fled = run.battles.filter((b) => b.retreated);
+      // One banner, and no boss within four rounds to win another.
+      expect(fled.length).toBeLessThanOrEqual(RUN_TUNING.banners.start);
+      for (const b of fled) {
+        seen++;
+        expect(b.won).toBe(false);
+        expect(b.leftDead).toBeLessThanOrEqual(b.leftBehind);
+        const at = run.battles.indexOf(b);
+        const next = run.battles[at + 1];
+        // Unless nobody came back, the same round is fought again.
+        if (next) expect(next.round).toBe(b.round);
+        else expect(run.end === 'lost' || run.end === 'capped').toBe(true);
+        expect(battleLine(seed, b)).toMatch(/ FLED .* got away, \d+ left behind/);
+      }
+      expect(run.wins).toBe(run.battles.filter((b) => b.won).length);
+      if (fled.length > 0) expect(summarize([run])).toMatch(/retreats: 1 in 1 runs/);
+    }
+    expect(seen).toBeGreaterThan(0);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   runStep,
   RUN_TUNING,
   runVictorious,
+  shooterForRange,
   unitCost,
   upgradePrice,
   warbandCost,
@@ -19,7 +20,7 @@ import {
   type RunState,
   type RunUnit,
 } from '@fansong/content';
-import { recordReplay, type GameMode } from '@fansong/engine';
+import { getLegalCommands, makeHexGrid, recordReplay, type Command, type GameMode, type GameState, type Unit } from '@fansong/engine';
 import { CliError } from './options.js';
 
 /**
@@ -29,11 +30,25 @@ import { CliError } from './options.js';
  * how deep runs get. It is how `RUN_TUNING` is
  * set: an AI-piloted run should usually die around rounds 4–7, which a human
  * should beat.
+ *
+ * The AI never retreats, so by default nobody does and a banner changes
+ * nothing. `--retreat losing` has the player's seat give a battle up once it is
+ * badly behind (see {@link retreatPilot}), to measure what the banners are worth.
  */
 
 /** Which of a round's missions the sim's player takes: the easiest, the middle one or the hardest. */
 export type MissionPolicy = 'easy' | 'middle' | 'hard';
 const MISSION_POLICIES: readonly MissionPolicy[] = ['easy', 'middle', 'hard'];
+
+/** When the sim's player retreats: never (as the AI plays), or once the battle is being lost. */
+export type RetreatPolicy = 'never' | 'losing';
+const RETREAT_POLICIES: readonly RetreatPolicy[] = ['never', 'losing'];
+
+/** `--retreat losing` sounds the retreat when the player's living points fall under this share of the enemy's. */
+export const DEFAULT_RETREAT_SHARE = 0.75;
+
+/** Rounds the Leader of a retreating warband waits by the flag for its troops before it leaves without them. */
+const RETREAT_WAIT_ROUNDS = 3;
 
 export interface RunSimOptions {
   /** How many runs to play. */
@@ -43,6 +58,9 @@ export interface RunSimOptions {
   /** Stop a run that is still alive after this many rounds. */
   maxRounds: number;
   mission: MissionPolicy;
+  retreat: RetreatPolicy;
+  /** `--retreat losing`: the share of the enemy's living points under which the retreat is sounded. */
+  retreatShare: number;
   /** Print a line per battle. */
   verbose: boolean;
   help: boolean;
@@ -59,7 +77,16 @@ function numberArg(flag: string, value: string | undefined, min: number): number
 
 /** Parse the arguments after `run`. Throws {@link CliError} on a malformed flag. */
 export function parseRunArgs(argv: string[]): RunSimOptions {
-  const opts: RunSimOptions = { seeds: 20, seed: 1, maxRounds: 30, mission: 'easy', verbose: false, help: false };
+  const opts: RunSimOptions = {
+    seeds: 20,
+    seed: 1,
+    maxRounds: 30,
+    mission: 'easy',
+    retreat: 'never',
+    retreatShare: DEFAULT_RETREAT_SHARE,
+    verbose: false,
+    help: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--seeds') opts.seeds = numberArg(arg, argv[++i], 1);
@@ -69,6 +96,14 @@ export function parseRunArgs(argv: string[]): RunSimOptions {
       const policy = argv[++i] as MissionPolicy;
       if (!MISSION_POLICIES.includes(policy)) throw new CliError(`--mission needs one of ${MISSION_POLICIES.join(', ')}`);
       opts.mission = policy;
+    } else if (arg === '--retreat') {
+      const policy = argv[++i] as RetreatPolicy;
+      if (!RETREAT_POLICIES.includes(policy)) throw new CliError(`--retreat needs one of ${RETREAT_POLICIES.join(', ')}`);
+      opts.retreat = policy;
+    } else if (arg === '--retreat-share') {
+      const share = Number(argv[++i]);
+      if (!(share > 0 && share <= 2)) throw new CliError('--retreat-share needs a number over 0, up to 2');
+      opts.retreatShare = share;
     } else if (arg === '--verbose' || arg === '-v') opts.verbose = true;
     else if (arg === '--help' || arg === '-h') opts.help = true;
     else throw new CliError(`Unknown option "${arg}". Try run --help.`);
@@ -90,6 +125,10 @@ Options:
   --max-rounds <n>  Stop a surviving run after this many rounds (default 30)
   --mission <which> Which of a round's missions to fight: easy, middle or hard
                     (default easy)
+  --retreat <when>  When the player retreats, banner in hand: never, or losing
+                    (its living points under a share of the enemy's; then every
+                    unit walks for the flag) (default never)
+  --retreat-share <n>  That share, for --retreat losing (default ${DEFAULT_RETREAT_SHARE})
   --verbose, -v     Print a line per battle
   --help, -h        Show this help
 `;
@@ -166,6 +205,71 @@ export function autoPick(s: RunState, mission: MissionPolicy = 'easy'): RunActio
   return fallback;
 }
 
+/** Point cost of a unit on the field, read back from its engine profile. */
+function fieldCost(u: Unit): number {
+  return unitCost({ ...u.traits, quality: u.quality, combat: u.combat, shooter: shooterForRange(u.traits.ranged) });
+}
+
+const livingPoints = (state: GameState, owner: 0 | 1): number =>
+  state.units.reduce((sum, u) => (u.owner === owner && !u.dead ? sum + fieldCost(u) : sum), 0);
+
+/**
+ * The player's seat for `--retreat losing`: the AI, until its side's living
+ * points fall under `share` of the enemy's. Then its Leader sounds the retreat
+ * the next time it acts (it is activated first, on all its dice, to do so),
+ * and from there every unit only walks for the flag: the troops first, and the
+ * Leader onto it once they are off, down, or {@link RETREAT_WAIT_ROUNDS} rounds
+ * have gone by. One pilot plays one battle. Deterministic.
+ */
+export function retreatPilot(share: number = DEFAULT_RETREAT_SHARE): (state: GameState) => Command {
+  let calledIn: number | null = null;
+  return (state) => {
+    if (state.active !== 0) return chooseCommand(state);
+    const legal = getLegalCommands(state);
+    const called = state.retreat?.owner === 0;
+    const losing = livingPoints(state, 0) < share * livingPoints(state, 1);
+    const leader = state.units.find((u) => u.owner === 0 && u.traits.leader && !u.dead);
+
+    if (!called) {
+      if (!losing || !state.retreatZones || !leader) return chooseCommand(state);
+      const call = legal.find((c) => c.type === 'Retreat');
+      if (call) {
+        calledIn = state.round;
+        return call;
+      }
+      // Get the Leader acting, on every die it may roll, so it can call.
+      const rouse = legal.filter((c) => c.type === 'ChooseActivation' && c.unitId === leader.id && !c.group && !c.spell).at(-1);
+      return state.phase === 'awaitingActivation' && rouse ? rouse : chooseCommand(state);
+    }
+
+    const solo = legal.filter((c) => c.type === 'ChooseActivation' && !c.group && !c.spell);
+    if (state.phase === 'awaitingActivation') {
+      // Troops go first, the Leader last; each on all the dice it may roll.
+      const troop = solo.filter((c) => c.type === 'ChooseActivation' && c.unitId !== leader?.id);
+      const unitId = (troop.at(-1) ?? solo.at(-1) ?? legal[0]!) as Extract<Command, { type: 'ChooseActivation' }>;
+      return solo.filter((c) => c.type === 'ChooseActivation' && c.unitId === unitId.unitId).at(-1) ?? legal[0]!;
+    }
+
+    const unit = state.units.find((u) => u.id === state.activeUnitId);
+    const flag = state.retreat!.hex;
+    if (!unit) return chooseCommand(state);
+    const board = makeHexGrid(state.board);
+    // The Leader holds off stepping onto the flag while a troop on its feet could still make it.
+    const waiting =
+      unit.traits.leader &&
+      state.round < (calledIn ?? state.round) + RETREAT_WAIT_ROUNDS &&
+      state.units.some((u) => u.owner === 0 && !u.dead && u.id !== unit.id);
+    let best: Command = { type: 'EndActivation' };
+    let gap = board.distance(unit.pos, flag);
+    for (const c of legal) {
+      if (c.type !== 'Move') continue;
+      const d = board.distance(c.to, flag);
+      if (d < gap && !(waiting && d === 0)) [best, gap] = [c, d];
+    }
+    return best;
+  };
+}
+
 /** One battle of a simulated run. */
 export interface BattleStat {
   round: number;
@@ -183,6 +287,12 @@ export interface BattleStat {
   reward: number;
   /** Lasting wounds the fielded units carried in. */
   wounds: number;
+  /** Lost, but by a retreat that spent a banner: the run went on. */
+  retreated: boolean;
+  /** After a retreat: units that left by the flag, units left behind on the field, and how many of those died of it. */
+  gotAway: number;
+  leftBehind: number;
+  leftDead: number;
 }
 
 export interface RunResult {
@@ -195,8 +305,17 @@ export interface RunResult {
   final: RunState;
 }
 
-/** Play one whole run with the AI in both seats and {@link autoPick} choosing. */
-export function simulateRun(seed: number, maxRounds: number, mission: MissionPolicy = 'easy'): RunResult {
+/**
+ * Play one whole run with the AI in both seats and {@link autoPick} choosing.
+ * With `retreat` `'losing'` the player's seat is a {@link retreatPilot} instead.
+ */
+export function simulateRun(
+  seed: number,
+  maxRounds: number,
+  mission: MissionPolicy = 'easy',
+  retreat: RetreatPolicy = 'never',
+  retreatShare: number = DEFAULT_RETREAT_SHARE,
+): RunResult {
   let s = newRun(seed);
   const battles: BattleStat[] = [];
   let end: RunResult['end'] = 'capped';
@@ -212,7 +331,7 @@ export function simulateRun(seed: number, maxRounds: number, mission: MissionPol
     }
     const battle = s.battle!;
     const fielded = playerWarband(s);
-    const replay = recordReplay(runBattleConfig(s), chooseCommand, BATTLE_STEP_CAP);
+    const replay = recordReplay(runBattleConfig(s), retreat === 'losing' ? retreatPilot(retreatShare) : chooseCommand, BATTLE_STEP_CAP);
     if (replay.commands.length >= BATTLE_STEP_CAP) {
       end = 'stalled';
       break;
@@ -220,12 +339,15 @@ export function simulateRun(seed: number, maxRounds: number, mission: MissionPol
     const round = s.round;
     const wounds = s.roster.filter((u) => battle.fielded!.includes(u.id) && isWounded(u)).length;
     s = runStep(s, { type: 'battleResult', replay });
+    const logged = s.log.at(-1)!;
+    const fates = logged.retreated ? (s.aftermath?.units ?? []) : [];
+    const behind = fates.filter((l) => l.fate === 'leftBehind');
     battles.push({
       round,
       mode: battle.mode,
       enemy: battle.enemy.name,
       boss: battle.enemyKing !== undefined,
-      won: s.phase !== 'over',
+      won: logged.won,
       playerUnits: fielded.units.length,
       playerPoints: warbandCost(fielded),
       enemyUnits: battle.enemy.units.length,
@@ -233,6 +355,10 @@ export function simulateRun(seed: number, maxRounds: number, mission: MissionPol
       threat: battle.threat,
       reward: battle.rewardValue,
       wounds,
+      retreated: logged.retreated === true,
+      gotAway: fates.filter((l) => l.fate === 'retreated').length,
+      leftBehind: behind.length,
+      leftDead: behind.filter((l) => l.injury === 'dead').length,
     });
   }
   return { seed, wins: battles.filter((b) => b.won).length, end, battles, final: s };
@@ -241,7 +367,9 @@ export function simulateRun(seed: number, maxRounds: number, mission: MissionPol
 /** One line for a battle, for `--verbose`. */
 export function battleLine(seed: number, b: BattleStat): string {
   const versus = `${b.playerUnits}u/${b.playerPoints}pt vs ${b.enemyUnits}u/${b.enemyPoints}pt`;
-  return `seed ${seed} round ${String(b.round).padStart(2)} ${b.won ? 'WON ' : 'LOST'} ${versus.padEnd(26)} ${b.mode}${b.boss ? ' (boss)' : ''} · ${b.enemy}`;
+  const result = b.won ? 'WON ' : b.retreated ? 'FLED' : 'LOST';
+  const flight = b.retreated ? ` · ${b.gotAway} got away, ${b.leftBehind} left behind (${b.leftDead} died)` : '';
+  return `seed ${seed} round ${String(b.round).padStart(2)} ${result} ${versus.padEnd(26)} ${b.mode}${b.boss ? ' (boss)' : ''} · ${b.enemy}${flight}`;
 }
 
 const pct = (n: number, of: number) => (of === 0 ? '  -' : `${Math.round((100 * n) / of)}%`.padStart(4));
@@ -259,18 +387,31 @@ export function summarize(results: RunResult[]): string {
   );
 
   const battles = results.flatMap((r) => r.battles);
+  // Only said when somebody retreated, so a sim in which nobody does reads as it always has.
+  const retreats = battles.filter((b) => b.retreated);
+  if (retreats.length > 0) {
+    const saved = results.filter((r) => r.battles.some((b) => b.retreated));
+    const further = saved.filter((r) => r.battles.some((b) => b.won && b.round >= Math.min(...r.battles.filter((x) => x.retreated).map((x) => x.round))));
+    const sum = (key: 'gotAway' | 'leftBehind' | 'leftDead') => retreats.reduce((n, b) => n + b[key], 0);
+    lines.push(
+      `retreats: ${retreats.length} in ${saved.length} runs (${pct(saved.length, results.length).trim()}); ${further.length} of those runs then won the round they fled · ` +
+        `${sum('gotAway')} units got away, ${sum('leftBehind')} were left behind, ${sum('leftDead')} of them died`,
+    );
+  }
   const last = Math.max(0, ...battles.map((b) => b.round));
   lines.push('', 'round  fought   won  died here  player pts  enemy pts (budget)  threat  reward  units');
   for (let round = 1; round <= last; round++) {
     const here = battles.filter((b) => b.round === round);
     if (here.length === 0) continue;
     const won = here.filter((b) => b.won).length;
+    // A battle lost is a run ended, unless it was retreated from.
+    const died = here.filter((b) => !b.won && !b.retreated).length;
     lines.push(
       [
         String(round).padStart(5),
         String(here.length).padStart(7),
         pct(won, here.length).padStart(5),
-        pct(here.length - won, results.length).padStart(10),
+        pct(died, results.length).padStart(10),
         mean(here.map((b) => b.playerPoints)).toFixed(0).padStart(11),
         `${mean(here.map((b) => b.enemyPoints)).toFixed(0)} (${enemyPoints(round)})`.padStart(19),
         mean(here.map((b) => b.threat)).toFixed(2).padStart(7),
@@ -303,7 +444,7 @@ export function runSimMain(argv: string[], print: (line: string) => void = conso
   const started = Date.now();
   const results: RunResult[] = [];
   for (let i = 0; i < opts.seeds; i++) {
-    const result = simulateRun(opts.seed + i, opts.maxRounds, opts.mission);
+    const result = simulateRun(opts.seed + i, opts.maxRounds, opts.mission, opts.retreat, opts.retreatShare);
     results.push(result);
     if (opts.verbose) for (const b of result.battles) print(battleLine(result.seed, b));
   }

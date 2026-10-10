@@ -17,6 +17,7 @@ pnpm vitest run -t "turnover"               # tests whose name matches
 pnpm typecheck                              # tsc --noEmit in every package
 pnpm play --help                            # headless AI-vs-AI runner (tools/cli)
 pnpm play run --seeds 100                   # run-mode calibration sim: how deep AI-piloted runs get (tunes RUN_TUNING)
+pnpm play run --seeds 100 --retreat losing  # the same, with a player who retreats when losing (default: never)
 pnpm --filter @fansong/cli gen:golden       # re-bless the golden replay fixture
 pnpm --filter @fansong/web dev              # web UI at http://localhost:5173
 pnpm --filter @fansong/worker dev           # local Worker at http://localhost:8787
@@ -31,7 +32,7 @@ Tests live in each package's `test/` directory (`**/test/**/*.test.ts`) and run 
 - `getLegalCommands(state)` lists every legal action. The AI, the tests, the CLI and the UI all choose from this list, so no client ever reimplements legality.
 - The seeded RNG lives *in* `GameState`, so a game is fully determined by `seed + command list`. A `Replay` is `GameConfig + commands`. `runReplay` + `hashGameState` + a committed golden fixture catch accidental rule changes. If a rule change is intended, re-bless the fixture with `gen:golden`; bump the `Replay` version when old replays can no longer load.
 - All geometry (distance, adjacency, range, line of sight) goes through the `Board` interface in `board.ts`, on a flat-top hex grid.
-- Terrain, maps and game modes are optional state: the default flat annihilation game is unchanged when they're absent.
+- Terrain, maps, game modes and retreat zones are optional state: the default flat annihilation game is unchanged when they're absent.
 
 **Everything else is a client of the engine:**
 - `packages/ai`: `chooseCommand`, a deterministic heuristic that is both the vs-AI opponent and the test bot.
