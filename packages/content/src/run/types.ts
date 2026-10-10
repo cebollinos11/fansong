@@ -46,8 +46,8 @@ export interface RunUnit {
   wounds?: Wound[];
 }
 
-/** `map`: choosing where on the act's route to go next. */
-export type RunPhase = 'draft' | 'map' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'over';
+/** `map`: choosing where on the act's route to go next. `stop`: at a camp or a training ground. */
+export type RunPhase = 'draft' | 'map' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'stop' | 'over';
 
 /** One thing a won mission pays. */
 export type RewardOption =
@@ -104,7 +104,15 @@ export type RunOffer =
   /** The won battle's pay, held from the win until it is claimed. */
   | { kind: 'reward'; rewards: RewardOption[]; value: number }
   /** A shop: the small one in the field after a battle, or (`market`) a market's full one, which also rerolls its stock and buys units back. */
-  | { kind: 'shop'; recruits: (WarbandUnit | null)[]; upgrades: (Advance | null)[]; rerolls: number; market?: true };
+  | { kind: 'shop'; recruits: (WarbandUnit | null)[]; upgrades: (Advance | null)[]; rerolls: number; market?: true }
+  /** A camp: `taken` once the night is spent, resting or drilling. */
+  | { kind: 'camp'; taken?: 'rest' | 'drill' }
+  /**
+   * A training ground: once a unit is named, the advances it chooses between.
+   * `then: 'shop'`: it is the training an elite's defeat pays, and the field
+   * shop follows it.
+   */
+  | { kind: 'training'; unitId?: string; choices?: Advance[]; then?: 'shop' };
 
 /** A level a unit has earned and not yet spent: pick one of `choices`. */
 export interface LevelUp {
@@ -120,6 +128,8 @@ export interface RunBattle {
   enemy: Warband;
   /** Boss rounds: index into `enemy.units` of the enemy King. */
   enemyKing?: number;
+  /** An elite's warband: beating it pays a free training on top of its reward. */
+  elite?: true;
   map: MapDef;
   /** The match's RNG seed. */
   seed: number;
@@ -254,7 +264,7 @@ export type RunAction =
   | { type: 'startBattle' }
   /** Battle: hand in the finished match. */
   | { type: 'battleResult'; replay: Replay }
-  /** Aftermath: spend the first pending level of `unitId` on `choices[index]`. */
+  /** Aftermath, or a camp after drilling: spend the first pending level of `unitId` on `choices[index]`. */
   | { type: 'advance'; unitId: string; index: number }
   /** Aftermath: go on to the reward (after a retreat, straight to the shop). */
   | { type: 'continue' }
@@ -268,5 +278,15 @@ export type RunAction =
   | { type: 'sell'; unitId: string }
   /** Shop: back to the map, a step on (after a retreat, at the same step, with the fled node closed). */
   | { type: 'leaveShop' }
+  /** Market: buy a retreat banner. */
+  | { type: 'buyBanner' }
+  /** Camp: rest (mend every wound, bring back whoever sits out) or drill (XP for every unit). */
+  | { type: 'camp'; choice: 'rest' | 'drill' }
+  /** Training: name the unit that trains. Final. */
+  | { type: 'train'; unitId: string }
+  /** Training: take `choices[index]` for the unit named. */
+  | { type: 'trainPick'; index: number }
+  /** Camp or training: move on (from a camp, once the night is spent and its levels too; from a training ground, only before a unit is named). */
+  | { type: 'leaveStop' }
   /** Any phase but the battle: give a roster unit a name of the player's own. */
   | { type: 'rename'; unitId: string; name: string };

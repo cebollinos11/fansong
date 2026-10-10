@@ -13,6 +13,7 @@ import { makeRunRandom, type RunRandom } from './rng.js';
 import { actOf, generateRoute, openNodes } from './route.js';
 import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, renameUnit, rosterCost, rosterUnit } from './roster.js';
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
+import { buyBanner, makeCamp, takeTraining, trainUnit } from './stops.js';
 import { RUN_TUNING } from './tuning.js';
 import type { RouteNode, RunAction, RunState } from './types.js';
 
@@ -92,10 +93,17 @@ function enterBattle(s: RunState, node: RouteNode): void {
   const kind = node.rewardKind !== undefined && rewardKinds(s).includes(node.rewardKind) ? node.rewardKind : 'gold';
   s.battle = { mode, faction: enemy.faction, enemy: enemy.warband, map, seed, threat: enemy.threat, rewards: missionRewards(s, kind, value, roll(s)), rewardValue: value };
   if (enemy.king !== undefined) s.battle.enemyKing = enemy.king;
+  if (node.kind === 'elite') s.battle.elite = true;
   s.phase = 'briefing';
   delete s.offer;
   // A bench that would leave nobody to fight is cleared.
   if (fitUnits(s).every((u) => u.benched)) for (const u of s.roster) delete u.benched;
+}
+
+/** Move on from a training ground (mutates `s`): to the field shop if it was an elite's pay, else back to the map. */
+function afterTraining(s: RunState): void {
+  if (s.offer?.kind === 'training' && s.offer.then === 'shop') enterFieldShop(s);
+  else leaveNode(s);
 }
 
 /** The small shop every battle ends at (mutates `s`). */
@@ -160,7 +168,24 @@ export function runStep(state: RunState, action: RunAction): RunState {
       if (!node || !openNodes(route).includes(node.id)) throw new Error(`the road does not lead to node ${action.nodeId}`);
       route.going = node.id;
       delete s.aftermath;
-      enterBattle(s, node);
+      switch (node.kind) {
+        case 'battle':
+        case 'elite':
+        case 'boss':
+          enterBattle(s, node);
+          break;
+        case 'market':
+          s.offer = shopStock(s, roll(s), true);
+          s.phase = 'shop';
+          break;
+        case 'camp':
+        case 'training':
+          s.offer = { kind: node.kind };
+          s.phase = 'stop';
+          break;
+        case 'mystery':
+          throw new Error('nothing is known of this place yet');
+      }
       break;
     }
     case 'bench': {
@@ -249,7 +274,7 @@ export function runStep(state: RunState, action: RunAction): RunState {
       break;
     }
     case 'advance': {
-      need('aftermath');
+      need('aftermath', 'stop');
       const at = (s.pending ?? []).findIndex((p) => p.unitId === action.unitId);
       const advance = s.pending?.[at]?.choices[action.index];
       if (!advance) throw new Error(`no advance ${action.index} pending for "${action.unitId}"`);
@@ -278,7 +303,11 @@ export function runStep(state: RunState, action: RunAction): RunState {
       need('reward');
       if (s.offer?.kind !== 'reward') throw new Error('no reward is owed');
       for (const option of s.offer.rewards) applyReward(s, option, rewardNeedsUnit(option) ? action.unitId : undefined);
-      enterFieldShop(s);
+      // An elite's defeat also pays a free training, before the field shop.
+      if (s.route!.nodes[s.route!.going!]!.kind === 'elite') {
+        s.offer = { kind: 'training', then: 'shop' };
+        s.phase = 'stop';
+      } else enterFieldShop(s);
       break;
     }
     case 'buyRecruit':
@@ -305,6 +334,35 @@ export function runStep(state: RunState, action: RunAction): RunState {
       need('shop');
       leaveNode(s);
       break;
+    case 'buyBanner':
+      need('shop');
+      buyBanner(s);
+      break;
+    case 'camp':
+      need('stop');
+      makeCamp(s, action.choice, roll(s));
+      break;
+    case 'train':
+      need('stop');
+      trainUnit(s, action.unitId, roll(s));
+      break;
+    case 'trainPick':
+      need('stop');
+      takeTraining(s, action.index);
+      afterTraining(s);
+      break;
+    case 'leaveStop': {
+      need('stop');
+      if (s.pending?.length) throw new Error('there are levels still to spend');
+      if (s.offer?.kind === 'camp') {
+        if (!s.offer.taken) throw new Error('the night is still to be spent: rest or drill');
+        leaveNode(s);
+      } else if (s.offer?.kind === 'training') {
+        if (s.offer.unitId !== undefined) throw new Error('the unit training has yet to choose');
+        afterTraining(s);
+      } else throw new Error('there is nothing to leave');
+      break;
+    }
     case 'rename':
       if (s.phase === 'battle' || s.phase === 'over') throw new Error('units cannot be renamed now');
       renameUnit(s, action.unitId, action.name);
@@ -365,7 +423,17 @@ export function legalRunActions(s: RunState): RunAction[] {
       for (const u of s.roster) if (isWounded(u)) candidates.push({ type: 'heal', unitId: u.id });
       if (s.offer?.kind === 'shop' && s.offer.market) {
         candidates.push({ type: 'reroll' });
+        candidates.push({ type: 'buyBanner' });
         for (const unitId of ids) candidates.push({ type: 'sell', unitId });
+      }
+      break;
+    case 'stop':
+      candidates.push({ type: 'leaveStop' });
+      for (const p of s.pending ?? []) p.choices.forEach((_, index) => candidates.push({ type: 'advance', unitId: p.unitId, index }));
+      if (s.offer?.kind === 'camp') for (const choice of ['rest', 'drill'] as const) candidates.push({ type: 'camp', choice });
+      if (s.offer?.kind === 'training') {
+        for (const unitId of ids) candidates.push({ type: 'train', unitId });
+        (s.offer.choices ?? []).forEach((_, index) => candidates.push({ type: 'trainPick', index }));
       }
       break;
     case 'battle':

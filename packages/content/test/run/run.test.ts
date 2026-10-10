@@ -72,7 +72,7 @@ describe('a run', () => {
       if (!last.log.some((r) => r.won)) expect(last.gold).toBe(0);
     }
     expect(won).toBeGreaterThan(0);
-    expect([...seen].sort()).toEqual(['aftermath', 'battle', 'briefing', 'draft', 'map', 'over', 'reward', 'shop']);
+    expect([...seen]).toEqual(expect.arrayContaining(['aftermath', 'battle', 'briefing', 'draft', 'map', 'over', 'reward', 'shop']));
   });
 
   it("meets the same enemies whatever the player's choices", () => {

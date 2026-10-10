@@ -39,6 +39,7 @@ import {
   advanceInfo,
   aftermathView,
   briefingView,
+  campView,
   draftView,
   fateText,
   historyLines,
@@ -59,6 +60,7 @@ import {
   runMenuItem,
   runSeedFrom,
   shopView,
+  trainingView,
   threatLabel,
   unitView,
   woundInfo,
@@ -631,6 +633,116 @@ describe('the run screens', () => {
     expect(runSeedFrom('abc', 77)).toBeNull();
     expect(runSeedFrom('1.5', 77)).toBeNull();
     expect(runSeedFrom('-3', 77)).toBeNull();
+  });
+});
+
+describe('the stops', () => {
+  /** The won run back on the map, set down at a stop of `offer`'s kind as if it had travelled there. */
+  const stopped = (offer: NonNullable<RunState['offer']>, phase: RunPhase = 'stop'): RunState => {
+    const map = playTo(WON, 'map');
+    return { ...map, phase, offer, route: { ...map.route!, going: openNodes(map.route!)[0]! } };
+  };
+
+  it('names every kind of place, with a sign and a line on what waits there', () => {
+    const kinds = ['battle', 'elite', 'market', 'camp', 'training', 'mystery', 'boss'] as const;
+    expect(Object.keys(NODE_INFO).sort()).toEqual([...kinds].sort());
+    expect(new Set(kinds.map((k) => NODE_INFO[k].glyph)).size).toBe(kinds.length);
+    // A stop on the map says what it offers, and shows no skulls and no enemy.
+    const map = playTo(WON, 'map');
+    const id = openNodes(map.route!)[0]!;
+    for (const kind of ['market', 'camp', 'training', 'mystery'] as const) {
+      const route = { ...map.route!, nodes: map.route!.nodes.map((n) => (n.id === id ? { id: n.id, step: n.step, lane: n.lane, next: n.next, kind } : n)) };
+      const node = routeView({ ...map, route })!.nodes[id]!;
+      expect(node).toMatchObject({ kind, label: NODE_INFO[kind].label, glyph: NODE_INFO[kind].glyph, lines: [NODE_INFO[kind].help], state: 'open' });
+      expect([node.skulls, node.look]).toEqual([undefined, undefined]);
+    }
+    const elite = { ...map.route!, nodes: map.route!.nodes.map((n) => (n.id === id ? { ...n, kind: 'elite' as const, threat: 1.5 } : n)) };
+    const node = routeView({ ...map, route: elite })!.nodes[id]!;
+    expect(node.skulls).toBe(RUN_TUNING.mission.skulls);
+    expect(node.lines[0]).toBe('☠☠☠☠☠ Elite');
+  });
+
+  it('offers a camp its one choice, and says whether a rest would help', () => {
+    // Nobody hurt, whatever the battle before did.
+    const fit = stopped({ kind: 'camp' });
+    const s: RunState = { ...fit, roster: fit.roster.map(({ sitsOut: _sitsOut, wounds: _wounds, ...u }) => u) };
+    const view = campView(s)!;
+    expect(runHeader(s).title).toBe('Camp');
+    expect(view.taken).toBeNull();
+    expect(view.rest).toMatchObject({ helps: false, detail: 'Nobody is hurt: a rest would change nothing.' });
+    expect(view.rest.choose.error).toBeNull();
+    expect(view.drill).toMatchObject({ xp: RUN_TUNING.camp.drillXp });
+    expect(view.leave.error).toMatch(/rest or drill/);
+    expect([shopView(s), trainingView(s), aftermathView(s)]).toEqual([null, null, null]);
+
+    const hurt: RunState = { ...s, roster: s.roster.map((u, i) => (i === 0 ? { ...u, sitsOut: true, unit: { ...u.unit, slow: true as const }, wounds: [{ kind: 'trait', trait: 'slow' }] } : u)) };
+    expect(campView(hurt)!.rest).toMatchObject({ helps: true });
+    expect(campView(hurt)!.rest.detail).toMatch(/^1 unit carries a lasting wound, and 1 sits out the next battle/);
+    const rested = taken(hurt, campView(hurt)!.rest.choose);
+    expect(campView(rested)).toMatchObject({ taken: 'rest', levelUps: [] });
+    expect(campView(rested)!.rest.choose.error).toMatch(/already spent/);
+    expect(taken(rested, campView(rested)!.leave)).toMatchObject({ phase: 'map', round: s.round + 1 });
+
+    // A drill that brings a level has it spent in camp, before the road goes on.
+    const near: RunState = { ...s, roster: s.roster.map((u) => ({ ...u, level: 0, xp: RUN_TUNING.xp.levels[0]! - 1 })) };
+    const drilled = taken(near, campView(near)!.drill.choose);
+    const ups = campView(drilled)!;
+    expect(ups.taken).toBe('drill');
+    expect(ups.levelUps.length).toBeGreaterThan(0);
+    expect(ups.leave.error).toBe('there are levels still to spend');
+    expect(taken(drilled, ups.levelUps[0]!.options[0]!.take).roster.find((u) => u.id === ups.levelUps[0]!.view.id)!.level).toBe(1);
+
+    for (const state of [s, rested, drilled]) expect(parseRun(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...s, offer: { kind: 'camp', taken: 'feast' } })))).toThrow();
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...s, offer: undefined })))).toThrow(/nothing on offer/);
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...s, route: { ...s.route!, going: undefined } })))).toThrow(/nowhere on the map/);
+  });
+
+  it('trains one unit: who may train, then what it may learn', () => {
+    const s = stopped({ kind: 'training' });
+    const view = trainingView(s)!;
+    expect(runHeader(s).title).toBe('Training ground');
+    expect(view).toMatchObject({ prize: false, trainee: null });
+    expect(view.units!.map((u) => u.view.id)).toEqual(s.roster.map((u) => u.id));
+    expect(view.units!.every((u) => u.train.error === null)).toBe(true);
+    expect(view.leave.error).toBeNull();
+    expect(taken(s, view.leave).phase).toBe('map');
+    expect(campView(s)).toBeNull();
+
+    const named = taken(s, view.units![0]!.train);
+    const choosing = trainingView(named)!;
+    expect(choosing.units).toBeNull();
+    expect(choosing.trainee!.view.id).toBe(s.roster[0]!.id);
+    expect(choosing.trainee!.options.length).toBeGreaterThan(0);
+    expect(choosing.trainee!.options.length).toBeLessThanOrEqual(RUN_TUNING.training.choices);
+    expect(choosing.trainee!.options.every((o) => o.take.error === null && o.change.length > 0)).toBe(true);
+    expect(choosing.leave.error).toMatch(/yet to choose/);
+    const done = taken(named, choosing.trainee!.options[0]!.take);
+    expect(done).toMatchObject({ phase: 'map', round: s.round + 1 });
+    expect(unitCost(done.roster[0]!.unit)).toBeGreaterThanOrEqual(unitCost(s.roster[0]!.unit));
+    expect(done.roster[0]!.level).toBe(s.roster[0]!.level);
+
+    // An elite's prize is the same training, with the field shop after it.
+    const prize = stopped({ kind: 'training', then: 'shop' });
+    expect(trainingView(prize)!.prize).toBe(true);
+    expect(taken(prize, trainingView(prize)!.leave).phase).toBe('shop');
+
+    for (const state of [s, named, prize]) expect(parseRun(JSON.parse(JSON.stringify(state)))).toEqual(state);
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...named, offer: { ...named.offer, unitId: 'nobody' } })))).toThrow();
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...named, offer: { kind: 'training', unitId: s.roster[0]!.id } })))).toThrow();
+  });
+
+  it('sells a retreat banner at a market only', () => {
+    const field = playTo(WON, 'shop');
+    expect(shopView(field)!.banner).toBeNull();
+    const s: RunState = { ...field, gold: 100, banners: 1, offer: shopStock(field, makeRunRandom(1, 1, 1), true) };
+    const { banner } = shopView(s)!;
+    expect(banner).toMatchObject({ price: RUN_TUNING.market.banner, held: 1, max: RUN_TUNING.banners.max });
+    const bought = taken(s, banner!.buy);
+    expect([bought.banners, bought.gold]).toEqual([2, 100 - RUN_TUNING.market.banner]);
+    expect(runHeader(bought).banners).toBe(2);
+    expect(shopView({ ...s, gold: 0 })!.banner!.buy.error).toMatch(/costs/);
+    expect(shopView({ ...s, banners: RUN_TUNING.banners.max })!.banner!.buy.error).toMatch(/at most/);
   });
 });
 

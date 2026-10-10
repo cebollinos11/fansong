@@ -2,6 +2,7 @@ import type { GameMode } from '@fansong/engine';
 import {
   actOf,
   applyAdvance,
+  bannerPrice,
   canAdvance,
   defaultKing,
   fieldedUnits,
@@ -16,6 +17,7 @@ import {
   playerWarband,
   recruitPrice,
   rerollPrice,
+  restHelps,
   rosterCost,
   runActionError,
   RUN_TUNING,
@@ -161,7 +163,7 @@ export interface RunHeader {
 }
 
 /** What a retreat banner is, for the header's tooltip. */
-export const BANNER_HELP = `A retreat banner lets your Leader sound the retreat in a battle: the banner is spent on the call, and if the battle is then lost the run goes on: it falls back to the map, and the place it fled is closed while another road is open. Each boss beaten adds one, up to ${RUN_TUNING.banners.max}`;
+export const BANNER_HELP = `A retreat banner lets your Leader sound the retreat in a battle: the banner is spent on the call, and if the battle is then lost the run goes on: it falls back to the map, and the place it fled is closed while another road is open. Each boss beaten adds one, and a market sells them, up to ${RUN_TUNING.banners.max}`;
 
 /** The briefing's word on the way out of the battle ahead, by the banners in hand. */
 export function retreatNote(banners: number): string {
@@ -178,6 +180,7 @@ const TITLES: Record<RunState['phase'], string> = {
   aftermath: 'Victory',
   reward: 'Spoils',
   shop: 'After the battle',
+  stop: 'Camp',
   over: 'The run is over',
 };
 
@@ -207,7 +210,9 @@ export function runHeader(s: RunState): RunHeader {
           ? 'The run is won'
           : s.phase === 'shop' && s.offer?.kind === 'shop' && s.offer.market
             ? 'Market'
-            : TITLES[s.phase],
+            : s.phase === 'stop' && s.offer?.kind === 'training'
+              ? 'Training ground'
+              : TITLES[s.phase],
     round: s.round,
     place: placeLine(s.round),
     gold: s.gold,
@@ -661,25 +666,12 @@ export interface AftermathView {
   /** What the battle pays, claimed next. */
   rewards: RewardLine[];
   /** Levels waiting to be spent: one choice of advances per unit at a time. */
-  levelUps: { view: UnitView; options: { info: Info; change: string; take: Choice }[] }[];
+  levelUps: LevelUpView[];
   next: Choice;
 }
 
 export function aftermathView(s: RunState): AftermathView | null {
   if (s.phase !== 'aftermath' || !s.aftermath) return null;
-  const levelUps: AftermathView['levelUps'] = [];
-  for (const p of s.pending ?? []) {
-    const u = s.roster.find((x) => x.id === p.unitId);
-    if (!u) continue;
-    levelUps.push({
-      view: unitView(u),
-      options: p.choices.map((advance, index) => ({
-        info: advanceInfo(advance),
-        change: advanceChange(u.unit, advance),
-        take: choice(s, { type: 'advance', unitId: u.id, index }),
-      })),
-    });
-  }
   return {
     retreat: s.aftermath.retreated ? { round: s.round, left: s.banners } : null,
     triumph: justWon(s)
@@ -691,7 +683,7 @@ export function aftermathView(s: RunState): AftermathView | null {
     gold: s.aftermath.gold,
     rewards: s.offer?.kind === 'reward' ? s.offer.rewards.map(rewardLine) : [],
     lines: s.aftermath.units.map((line) => ({ unitId: line.unitId, name: line.name, kills: line.kills, xp: line.xp, ...fateText(line) })),
-    levelUps,
+    levelUps: levelUps(s),
     next: choice(s, { type: 'continue' }),
   };
 }
@@ -742,6 +734,8 @@ export interface ShopView {
   upgrades: ({ info: Info; targets: Target[] } | null)[];
   /** Markets only: fresh stock for a price. */
   reroll: { price: number; buy: Choice } | null;
+  /** Markets only: a retreat banner. `held` and `max` are the banners in hand and the most a warband carries. */
+  banner: { price: number; held: number; max: number; buy: Choice } | null;
   healPrice: number;
   units: {
     view: UnitView;
@@ -782,6 +776,7 @@ export function shopView(s: RunState): ShopView | null {
         : null,
     ),
     reroll: market ? { price: rerollPrice(shop.rerolls), buy: choice(s, { type: 'reroll' }) } : null,
+    banner: market ? { price: bannerPrice(), held: s.banners, max: RUN_TUNING.banners.max, buy: choice(s, { type: 'buyBanner' }) } : null,
     healPrice: RUN_TUNING.shop.heal,
     units: s.roster.map((u) => ({
       view: unitView(u),
@@ -790,6 +785,99 @@ export function shopView(s: RunState): ShopView | null {
     })),
     full: s.roster.length >= RUN_TUNING.rosterCap,
     leave: choice(s, { type: 'leaveShop' }),
+  };
+}
+
+/** Levels waiting to be spent, one choice of advances per unit at a time: after a battle, or after a camp's drill. */
+export interface LevelUpView {
+  view: UnitView;
+  options: { info: Info; change: string; take: Choice }[];
+}
+
+function levelUps(s: RunState): LevelUpView[] {
+  const ups: LevelUpView[] = [];
+  for (const p of s.pending ?? []) {
+    const u = s.roster.find((x) => x.id === p.unitId);
+    if (!u) continue;
+    ups.push({
+      view: unitView(u),
+      options: p.choices.map((advance, index) => ({
+        info: advanceInfo(advance),
+        change: advanceChange(u.unit, advance),
+        take: choice(s, { type: 'advance', unitId: u.id, index }),
+      })),
+    });
+  }
+  return ups;
+}
+
+export interface CampView {
+  /** How the night was spent; `null` while it is still to be chosen. */
+  taken: 'rest' | 'drill' | null;
+  /** Rest: mend every wound, bring back whoever sits out. `helps` is whether anyone needs it; `detail` says who. */
+  rest: { choose: Choice; helps: boolean; detail: string };
+  /** Drill: XP for every unit. */
+  drill: { choose: Choice; xp: number; detail: string };
+  /** Levels the drill brought, to spend before moving on. */
+  levelUps: LevelUpView[];
+  leave: Choice;
+}
+
+export function campView(s: RunState): CampView | null {
+  if (s.phase !== 'stop' || s.offer?.kind !== 'camp') return null;
+  const wounded = s.roster.filter(isWounded).length;
+  const sitting = s.roster.filter((u) => u.sitsOut).length;
+  const { drillXp } = RUN_TUNING.camp;
+  const needs = [
+    wounded > 0 ? `${wounded} ${wounded === 1 ? 'unit carries' : 'units carry'} a lasting wound` : '',
+    sitting > 0 ? `${sitting} ${sitting === 1 ? 'sits' : 'sit'} out the next battle` : '',
+  ].filter(Boolean);
+  return {
+    taken: s.offer.taken ?? null,
+    rest: {
+      choose: choice(s, { type: 'camp', choice: 'rest' }),
+      helps: restHelps(s),
+      detail: needs.length > 0 ? `${needs.join(', and ')}: a rest mends every wound and puts everyone back on their feet.` : 'Nobody is hurt: a rest would change nothing.',
+    },
+    drill: {
+      choose: choice(s, { type: 'camp', choice: 'drill' }),
+      xp: drillXp,
+      detail: `Every unit earns ${drillXp} XP. A level it brings is spent here.`,
+    },
+    levelUps: levelUps(s),
+    leave: choice(s, { type: 'leaveStop' }),
+  };
+}
+
+export interface TrainingView {
+  /** Whether it is the training an elite's defeat pays (the field shop follows), not a training ground on the road. */
+  prize: boolean;
+  /** Before a unit is named: who may train. A unit with nothing left to learn has an error on its choice. */
+  units: { view: UnitView; train: Choice }[] | null;
+  /** Once a unit is named: that unit, and the advances it chooses between. */
+  trainee: { view: UnitView; options: { info: Info; change: string; take: Choice }[] } | null;
+  /** Pass the training by; an error once a unit is named. */
+  leave: Choice;
+}
+
+export function trainingView(s: RunState): TrainingView | null {
+  if (s.phase !== 'stop' || s.offer?.kind !== 'training') return null;
+  const offer = s.offer;
+  const u = s.roster.find((x) => x.id === offer.unitId);
+  return {
+    prize: offer.then === 'shop',
+    units: u ? null : s.roster.map((x) => ({ view: unitView(x), train: choice(s, { type: 'train', unitId: x.id }) })),
+    trainee: u
+      ? {
+          view: unitView(u),
+          options: (offer.choices ?? []).map((advance, index) => ({
+            info: advanceInfo(advance),
+            change: advanceChange(u.unit, advance),
+            take: choice(s, { type: 'trainPick', index }),
+          })),
+        }
+      : null,
+    leave: choice(s, { type: 'leaveStop' }),
   };
 }
 

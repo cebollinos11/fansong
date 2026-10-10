@@ -102,8 +102,9 @@ function champion(leader: WarbandUnit, round: number, budget: number, rnd: RunRa
  * and whatever else is left over buy advances for random units. On a
  * boss round the leader is a {@link champion} and the rest is its escort.
  * `threat` scales the budget; `faction` names the roster instead of rolling it.
+ * An `elite` warband brings its leader and veterans however early it is met.
  */
-export function generateEnemy(round: number, rnd: RunRandom, options: { threat?: number; faction?: string } = {}): Enemy {
+export function generateEnemy(round: number, rnd: RunRandom, options: { threat?: number; faction?: string; elite?: boolean } = {}): Enemy {
   const { minUnits, maxUnits, leaderFromRound, veteranFromRound, veteranShare } = RUN_TUNING.enemy;
   const faction = options.faction ?? rnd.pick(Object.keys(PRESET_ROSTERS));
   const budget = enemyPoints(round, options.threat ?? 1);
@@ -113,12 +114,14 @@ export function generateEnemy(round: number, rnd: RunRandom, options: { threat?:
   const boss = isBossRound(round);
 
   // The first rounds meet a patrol out without its leader (or, for a faction that has none, its costliest unit).
-  const led = boss || round >= leaderFromRound;
+  const led = boss || options.elite || round >= leaderFromRound;
+  // An elite's veterans are those of the first step that has any, at least.
+  const seasoned = options.elite ? Math.max(round, veteranFromRound) : round;
   const units: WarbandUnit[] = led ? [boss ? champion(lead.unit, round, budget, rnd) : { ...lead.unit }] : [];
   let left = budget - units.reduce((sum, u) => sum + unitCost(u), 0);
 
   // Later rounds keep some of the budget back, so it buys better units rather than only more of them.
-  const kept = round < veteranFromRound ? 0 : Math.min(veteranShare.max, veteranShare.perRound * (round - veteranFromRound + 1));
+  const kept = seasoned < veteranFromRound ? 0 : Math.min(veteranShare.max, veteranShare.perRound * (seasoned - veteranFromRound + 1));
   const reserve = Math.floor(budget * kept);
   const troops = slots.filter((s) => s !== lead);
   const cheapest = Math.min(...troops.map((s) => unitCost(s.unit)));
@@ -136,7 +139,7 @@ export function generateEnemy(round: number, rnd: RunRandom, options: { threat?:
     left -= unitCost(unit);
   }
 
-  if (round >= veteranFromRound) {
+  if (seasoned >= veteranFromRound) {
     for (;;) {
       const steps: { index: number; advance: Advance; cost: number }[] = [];
       units.forEach((unit, index) => {
@@ -201,7 +204,7 @@ const NODE_KEYS = 64;
 export function generateBattle(
   seed: number,
   round: number,
-  node: Pick<RouteNode, 'id'> & Partial<Pick<RouteNode, 'threat' | 'faction' | 'mode'>>,
+  node: Pick<RouteNode, 'id'> & Partial<Pick<RouteNode, 'kind' | 'threat' | 'faction' | 'mode'>>,
   playerUnits: number,
   rival?: Warband,
   retreats = 0,
@@ -211,7 +214,7 @@ export function generateBattle(
   const faction = node.faction !== undefined && node.faction in PRESET_ROSTERS ? node.faction : undefined;
   const enemy: Enemy = rival
     ? { faction: RIVAL_FACTION, warband: rival, threat: warbandCost(rival) / enemyPoints(round) }
-    : generateEnemy(round, rnd, { threat: isBossRound(round) ? 1 : (node.threat ?? 1), faction });
+    : generateEnemy(round, rnd, { threat: isBossRound(round) ? 1 : (node.threat ?? 1), faction, elite: node.kind === 'elite' });
   const mapSeed = rnd.int(0, 2 ** 31 - 1);
   return { mode, map: generateRunMap(round, playerUnits + enemy.warband.units.length, mapSeed), seed: rnd.int(0, 2 ** 31 - 1), enemy };
 }

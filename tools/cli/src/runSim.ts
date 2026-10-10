@@ -9,6 +9,7 @@ import {
   newRun,
   playerWarband,
   recruitPrice,
+  restHelps,
   runBattleConfig,
   runStep,
   RUN_TUNING,
@@ -182,6 +183,17 @@ function worth(s: RunState, action: RunAction): { points: number; price: number 
     }
     case 'heal':
       return { points: mendGain(unit(action.unitId)), price: RUN_TUNING.shop.heal };
+    // A camp rests if anyone is hurt, and drills if not.
+    case 'camp':
+      return { points: action.choice === 'rest' ? (restHelps(s) ? 2 : 0) : 1, price: 0 };
+    // A training ground takes the costliest unit, which then takes the dearest advance.
+    case 'train':
+      return { points: unitCost(unit(action.unitId).unit), price: 0 };
+    case 'trainPick': {
+      const training = s.offer?.kind === 'training' ? s.offer : undefined;
+      const advance = training?.choices?.[action.index];
+      return { points: advance ? Math.max(1, advanceCost(unit(training!.unitId).unit, advance)) : 0, price: 0 };
+    }
     default:
       return { points: 0, price: 0 };
   }
@@ -202,9 +214,12 @@ export function routePick(nodes: readonly RouteNode[], policy: RoutePolicy): Rou
  * The greedy picker: of the legal actions, the one worth the most points — in
  * the shop, the most points per gold, buying until nothing worth its price is
  * left. It fields everyone, never rerolls and never sells, and goes up the map
- * as `route` says. Deterministic: ties go to the first action listed.
+ * as `route` says. At a camp it rests if anyone is hurt and drills if not; at
+ * a training ground its costliest unit takes the dearest advance. It buys a
+ * retreat banner only when it means to use one (`retreat` `'losing'`) and has
+ * none. Deterministic: ties go to the first action listed.
  */
-export function autoPick(s: RunState, route: RoutePolicy = 'balanced'): RunAction {
+export function autoPick(s: RunState, route: RoutePolicy = 'balanced', retreat: RetreatPolicy = 'never'): RunAction {
   const legal = legalRunActions(s);
   const only = (type: RunAction['type']) => legal.find((a) => a.type === type);
   if (s.phase === 'briefing') return only('startBattle')!;
@@ -221,7 +236,8 @@ export function autoPick(s: RunState, route: RoutePolicy = 'balanced'): RunActio
     if (score > bestScore) [best, bestScore] = [action, score];
   }
   if (best) return best;
-  const fallback = only('continue') ?? only('leaveShop') ?? legal[0];
+  const banner = retreat === 'losing' && s.banners === 0 ? only('buyBanner') : undefined;
+  const fallback = banner ?? only('continue') ?? only('leaveShop') ?? only('leaveStop') ?? legal[0];
   if (!fallback) throw new Error(`nothing to do in the ${s.phase} phase`);
   return fallback;
 }
@@ -353,7 +369,7 @@ export function simulateRun(
       break;
     }
     if (s.phase !== 'battle') {
-      const action = autoPick(s, route);
+      const action = autoPick(s, route, retreat);
       if (action.type === 'travel') visits.push(s.route!.nodes[action.nodeId]!.kind);
       s = runStep(s, action);
       continue;

@@ -21,9 +21,42 @@ export function isFight(kind: NodeKind): boolean {
   return kind === 'battle' || kind === 'elite' || kind === 'boss';
 }
 
-/** What each node below the boss is, by id. */
-function rollKinds(nodes: readonly RouteNode[], _rnd: RunRandom): NodeKind[] {
-  return nodes.map(() => 'battle');
+/** Whether a node of this kind is a stop: somewhere safe, with no battle to fight (unless a mystery turns out to be one). */
+export function isStop(kind: NodeKind): boolean {
+  return !isFight(kind);
+}
+
+/**
+ * What each node below the boss is, by id; `nodes` are in row order, `first`
+ * the step of the bottom row. The bottom row is all battles. The top row is
+ * camps and markets, one of each if it has two nodes. In between the kinds
+ * are rolled by weight, but an elite waits no lower than `eliteFromRow`, no
+ * stop comes straight after a stop (so the row under the top one is all
+ * fights), and the act is given an elite and a market if the rolls left it
+ * without.
+ */
+function rollKinds(nodes: readonly RouteNode[], first: number, rnd: RunRandom): NodeKind[] {
+  const { rows, kinds: weights, eliteFromRow } = RUN_TUNING.route;
+  const kinds: NodeKind[] = nodes.map(() => 'battle');
+  const rowOf = (n: RouteNode) => n.step - first + 1;
+  const rolled = Object.keys(weights) as (keyof typeof weights)[];
+
+  for (const node of nodes) {
+    const row = rowOf(node);
+    if (row === 1 || row === rows) continue;
+    const afterStop = nodes.some((p) => p.next.includes(node.id) && isStop(kinds[p.id]!));
+    const allowed = rolled.filter((k) => (isStop(k) ? !afterStop && row < rows - 1 : k !== 'elite' || row >= eliteFromRow));
+    kinds[node.id] = rnd.weighted(allowed, (k) => weights[k]);
+  }
+
+  const top = rnd.sample(nodes.filter((n) => rowOf(n) === rows), nodes.length);
+  top.forEach((node, i) => (kinds[node.id] = i === 0 ? 'camp' : i === 1 ? 'market' : rnd.pick(['camp', 'market'] as const)));
+  if (!kinds.includes('market')) kinds[top[0]!.id] = 'market';
+  if (!kinds.includes('elite')) {
+    const plain = nodes.filter((n) => kinds[n.id] === 'battle' && rowOf(n) >= eliteFromRow);
+    if (plain.length > 0) kinds[rnd.pick(plain).id] = 'elite';
+  }
+  return kinds;
 }
 
 /**
@@ -84,14 +117,14 @@ export function generateRoute(seed: number, act: number, rivals: readonly RunRiv
     node.next = r === rows - 1 ? [bossId] : [...links[r]![node.lane]!].sort((a, b) => a - b).map((lane) => idAt.get(`${r + 1}:${lane}`)!);
   }
 
-  rollKinds(nodes, rnd).forEach((kind, id) => (nodes[id]!.kind = kind));
+  rollKinds(nodes, base + 1, rnd).forEach((kind, id) => (nodes[id]!.kind = kind));
   nodes.push({ id: bossId, step: base + rows + 1, lane: (lanes - 1) / 2, kind: 'boss', next: [] });
 
   const factions = Object.keys(PRESET_ROSTERS);
   const kinds = Object.keys(rewardKinds) as RewardOption['kind'][];
-  const { min, max } = RUN_TUNING.mission.threat;
   for (const node of nodes) {
     if (!isFight(node.kind)) continue;
+    const { min, max } = node.kind === 'elite' ? RUN_TUNING.elite.threat : RUN_TUNING.mission.threat;
     node.faction = rnd.pick(factions);
     node.mode = rollMode(node.step, rnd);
     node.threat = node.kind === 'boss' ? 1 : min + rnd.next() * (max - min);

@@ -77,13 +77,16 @@ export function checkState(s: RunState): void {
   if (s.battle) {
     expect(validateArmy(s.battle.enemy).errors).toEqual([]);
     expect(s.battle.enemy.units.length).toBeGreaterThanOrEqual(RUN_TUNING.enemy.minUnits);
-    if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits)
-      expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round, RUN_TUNING.mission.threat.max));
+    const hardest = s.battle.elite ? RUN_TUNING.elite.threat.max : RUN_TUNING.mission.threat.max;
+    if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits) expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round, hardest));
     expect(validateMap(s.battle.map, s.battle.mode).errors).toEqual([]);
   }
   expect(Boolean(s.battle)).toBe(s.phase === 'briefing' || s.phase === 'battle');
-  const owed = { draft: 'draft', aftermath: 'reward', reward: 'reward', shop: 'shop' } as Record<string, string>;
-  if (!(s.phase === 'aftermath' && s.aftermath?.retreated)) expect(s.offer?.kind).toBe(owed[s.phase]);
+  const owed = { draft: ['draft'], aftermath: ['reward'], reward: ['reward'], shop: ['shop'], stop: ['camp', 'training'] } as Record<string, string[]>;
+  if (!(s.phase === 'aftermath' && s.aftermath?.retreated)) expect(owed[s.phase] ?? [undefined]).toContain(s.offer?.kind);
+  // Levels are only ever waiting where they can be spent.
+  if (s.pending?.length) expect(['aftermath', 'stop']).toContain(s.phase);
+  expect(s.banners).toBeLessThanOrEqual(RUN_TUNING.banners.max);
 
   // The route: drawn once the draft is done, for the act the run is in; a node is being played in every phase but the map.
   expect(Boolean(s.route)).toBe(s.phase !== 'draft');

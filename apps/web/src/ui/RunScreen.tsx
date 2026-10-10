@@ -9,6 +9,7 @@ import {
   aftermathView,
   BANNER_HELP,
   briefingView,
+  campView,
   draftView,
   historyLines,
   levelLine,
@@ -17,10 +18,14 @@ import {
   rewardView,
   runHeader,
   shopView,
+  trainingView,
   unitView,
   type AftermathView,
   type BriefingView,
+  type CampView,
   type Choice,
+  type LevelUpView,
+  type TrainingView,
   type DraftView,
   type EnemyShadow,
   type OfferView,
@@ -148,6 +153,8 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
       aftermath: aftermathView(run),
       reward: rewardView(run),
       shop: shopView(run),
+      camp: campView(run),
+      training: trainingView(run),
     }),
     [run],
   );
@@ -157,6 +164,8 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
   if (view.aftermath) return <Aftermath run={run} view={view.aftermath} act={onAction} />;
   if (view.reward) return <Reward run={run} view={view.reward} act={onAction} />;
   if (view.shop) return <Shop view={view.shop} act={onAction} />;
+  if (view.camp) return <Camp run={run} view={view.camp} act={onAction} />;
+  if (view.training) return <Training view={view.training} act={onAction} />;
   if (run.phase === 'over') return <Over run={run} records={records} onExit={onExit} onNewRun={onNewRun} />;
   return null;
 }
@@ -426,8 +435,8 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
         {view.retreat ? (
           <p className="muster-meta">
             The battle is given up: no gold, no experience, no reward. The banner is spent (
-            <span className="run-banner-count">⚑ {view.retreat.left} left</span>), and round {view.retreat.round} will be fought again, against someone
-            new.
+            <span className="run-banner-count">⚑ {view.retreat.left} left</span>), and the warband falls back to the map: the place it fled is
+            shut while another road is open.
           </p>
         ) : (
           <>
@@ -459,29 +468,118 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
         </table>
       </section>
 
-      {view.levelUps.length > 0 ? (
-        <section className="run-panel">
-          <h2 className="muster-label">Level up</h2>
-          <ul className="run-units">
-            {view.levelUps.map((up) => (
-              <UnitCard key={up.view.id} view={up.view}>
-                {up.options.map((option, i) => (
-                  <Go key={i} choice={option.take} act={act} className="run-pick" title={option.info.help}>
-                    <strong>{option.info.label}</strong>
-                    <span>{option.change}</span>
-                  </Go>
-                ))}
-              </UnitCard>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <LevelUps levelUps={view.levelUps} act={act} />
 
       <Go choice={view.next} act={act} className="run-go run-go-big">
-        {view.levelUps.length > 0 ? 'Spend the levels first' : view.retreat ? 'Back to camp' : 'Claim the reward'}
+        {view.levelUps.length > 0 ? 'Spend the levels first' : view.retreat ? 'Fall back' : 'Claim the reward'}
       </Go>
       <Roster run={run} />
     </>
+  );
+}
+
+/** Levels waiting to be spent: each unit's choice of advances. */
+function LevelUps({ levelUps, act }: { levelUps: readonly LevelUpView[]; act: Act }): JSX.Element | null {
+  if (levelUps.length === 0) return null;
+  return (
+    <section className="run-panel">
+      <h2 className="muster-label">Level up</h2>
+      <ul className="run-units">
+        {levelUps.map((up) => (
+          <UnitCard key={up.view.id} view={up.view}>
+            {up.options.map((option, i) => (
+              <Go key={i} choice={option.take} act={act} className="run-pick" title={option.info.help}>
+                <strong>{option.info.label}</strong>
+                <span>{option.change}</span>
+              </Go>
+            ))}
+          </UnitCard>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** A camp: one night, spent resting or drilling. */
+function Camp({ run, view, act }: { run: RunState; view: CampView; act: Act }): JSX.Element {
+  return (
+    <>
+      <section className="run-panel run-stop" data-stop="camp">
+        <h2 className="muster-label">A night in camp</h2>
+        {view.taken ? (
+          <p className="muster-meta">
+            {view.taken === 'rest' ? 'The warband rested: its wounds are mended, and everyone is fit to fight.' : `The warband drilled: every unit earned ${view.drill.xp} XP.`}
+          </p>
+        ) : (
+          <>
+            <p className="muster-meta">No enemy here, and no pay. The night is spent one way or the other.</p>
+            <div className="run-offers">
+              <div className="run-offer">
+                <strong className="run-offer-name">Rest</strong>
+                <p className="muster-note">{view.rest.detail}</p>
+                <Go choice={view.rest.choose} act={act} className="run-go">
+                  Rest
+                </Go>
+              </div>
+              <div className="run-offer">
+                <strong className="run-offer-name">Drill</strong>
+                <p className="muster-note">{view.drill.detail}</p>
+                <Go choice={view.drill.choose} act={act} className="run-go">
+                  Drill
+                </Go>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
+      <LevelUps levelUps={view.levelUps} act={act} />
+      {view.taken ? (
+        <Go choice={view.leave} act={act} className="run-go run-go-big">
+          {view.levelUps.length > 0 ? 'Spend the levels first' : 'Break camp'}
+        </Go>
+      ) : null}
+      <Roster run={run} />
+    </>
+  );
+}
+
+/** A training ground, or the training an elite's defeat pays: one unit, then one of its advances. */
+function Training({ view, act }: { view: TrainingView; act: Act }): JSX.Element {
+  return (
+    <section className="run-panel run-stop" data-stop="training">
+      <h2 className="muster-label">{view.prize ? 'The spoils of an elite: a free training' : 'The training ground'}</h2>
+      {view.trainee ? (
+        <>
+          <p className="muster-meta">{view.trainee.view.unit.name} trains. What does it learn?</p>
+          <ul className="run-units">
+            <UnitCard view={view.trainee.view}>
+              {view.trainee.options.map((option, i) => (
+                <Go key={i} choice={option.take} act={act} className="run-pick" title={option.info.help}>
+                  <strong>{option.info.label}</strong>
+                  <span>{option.change}</span>
+                </Go>
+              ))}
+            </UnitCard>
+          </ul>
+        </>
+      ) : (
+        <>
+          <p className="muster-meta">One unit learns something new, for nothing. Name it, and it is shown what it may learn: the choice of unit is final.</p>
+          <ul className="run-units">
+            {(view.units ?? []).map((u) => (
+              <UnitCard key={u.view.id} view={u.view}>
+                <Go choice={u.train} act={act}>
+                  Train
+                </Go>
+              </UnitCard>
+            ))}
+          </ul>
+          <Go choice={view.leave} act={act} title="Leave without training anyone">
+            Pass it by
+          </Go>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -579,6 +677,18 @@ function Shop({ view, act }: { view: ShopView; act: Act }): JSX.Element {
           </Go>
         ) : null}
       </section>
+
+      {view.banner ? (
+        <section className="run-panel">
+          <h2 className="muster-label">Retreat banner</h2>
+          <p className="muster-meta">
+            {BANNER_HELP}. You carry <span className="run-banner-count">⚑ {view.banner.held}</span> of {view.banner.max}.
+          </p>
+          <Go choice={view.banner.buy} act={act}>
+            ⚑ Buy a banner · {view.banner.price} gold
+          </Go>
+        </section>
+      ) : null}
 
       <section className="run-panel">
         <h2 className="muster-label">Your warband</h2>

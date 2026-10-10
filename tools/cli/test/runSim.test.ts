@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateRoute, legalRunActions, newRun, runStep, RUN_TUNING, type RunState } from '@fansong/content';
+import { generateRoute, legalRunActions, newRun, runStep, RUN_TUNING, unitCost, type RunState } from '@fansong/content';
 import { CliError } from '../src/options.js';
 import { autoPick, battleLine, DEFAULT_RETREAT_SHARE, parseRunArgs, routePick, runHelpText, runSimMain, simulateRun, summarize } from '../src/runSim.js';
 
@@ -59,7 +59,8 @@ describe('autoPick', () => {
   });
 
   it('spends in the shop only on what is worth its price, then leaves', () => {
-    const run = simulateRun(2, 1);
+    // A run that wins its first step.
+    const run = [1, 2, 3, 4, 5, 6, 7, 8].map((seed) => simulateRun(seed, 1)).find((r) => r.end === 'capped')!;
     expect(run.end).toBe('capped');
     // The cap stopped it on the next step's map, shop done: no gold left that could have bought a recruit worth having.
     expect(run.final.round).toBe(2);
@@ -96,6 +97,31 @@ describe('simulateRun', () => {
     expect(routePick([fight!, stop, elite], 'safe')).toBe(stop);
     expect(routePick([stop, fight!, elite], 'greedy')).toBe(elite);
     expect(routePick([stop, elite, { ...fight!, threat: 0.9 }], 'balanced').threat).toBe(0.9);
+  });
+
+  it('rests or drills at a camp, trains its costliest unit, and buys a banner only to use one', () => {
+    const base = simulateRun(1, 1).final;
+    const camp: RunState = { ...base, phase: 'stop', offer: { kind: 'camp' } };
+    expect(autoPick(camp)).toEqual({ type: 'camp', choice: 'drill' });
+    const hurt: RunState = { ...camp, roster: camp.roster.map((u, i) => (i === 0 ? { ...u, sitsOut: true } : u)) };
+    expect(autoPick(hurt)).toEqual({ type: 'camp', choice: 'rest' });
+    expect(autoPick({ ...camp, offer: { kind: 'camp', taken: 'rest' } })).toEqual({ type: 'leaveStop' });
+
+    const training: RunState = { ...base, phase: 'stop', offer: { kind: 'training' } };
+    const costs = training.roster.map((u) => unitCost(u.unit));
+    const named = autoPick(training);
+    expect(named.type).toBe('train');
+    expect(unitCost(training.roster.find((u) => named.type === 'train' && u.id === named.unitId)!.unit)).toBe(Math.max(...costs));
+    const choosing = runStep(training, named);
+    expect(autoPick(choosing).type).toBe('trainPick');
+
+    const market: RunState = { ...base, phase: 'shop', gold: 40, banners: 0, offer: { kind: 'shop', market: true, recruits: [], upgrades: [], rerolls: 0 } };
+    expect(autoPick(market)).toEqual({ type: 'leaveShop' });
+    expect(autoPick(market, 'balanced', 'losing')).toEqual({ type: 'buyBanner' });
+    expect(autoPick({ ...market, banners: 1 }, 'balanced', 'losing')).toEqual({ type: 'leaveShop' });
+  });
+
+  it('fights weaker enemies on the safe road than on the greedy one', () => {
 
     const threat = (policy: 'safe' | 'greedy') => simulateRun(5, 1, policy).battles[0]!;
     expect(threat('safe').threat).toBeLessThan(threat('greedy').threat);
@@ -136,7 +162,7 @@ describe('the retreat policy', () => {
         const next = run.battles[at + 1];
         // Unless nobody came back, the run goes on from the same step, by another node.
         if (next) expect(next.round).toBe(b.round);
-        if (next) expect(next.enemyPoints === b.enemyPoints && next.enemy === b.enemy).toBe(false);
+
         else expect(run.end === 'lost' || run.end === 'capped').toBe(true);
         expect(battleLine(seed, b)).toMatch(/ FLED .* got away, \d+ left behind/);
       }

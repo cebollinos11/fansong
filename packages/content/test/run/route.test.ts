@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   generateRoute,
   isFight,
+  isStop,
   legalRunActions,
   makeRunRandom,
   openNodes,
@@ -125,6 +126,70 @@ describe('generateRoute', () => {
   });
 });
 
+describe('the kinds of node', () => {
+  it('follow the rules of the map over 500 seeds', () => {
+    const seen: Record<string, number> = {};
+    let middle = 0;
+    for (const seed of SEEDS)
+      for (const act of [1, 2]) {
+        const route = generateRoute(seed, act);
+        const at = `seed ${seed} act ${act}`;
+        const kinds = route.nodes.map((n) => n.kind);
+        for (const n of route.nodes) {
+          const row = rowOf(route, n.id) + 1;
+          seen[n.kind] = (seen[n.kind] ?? 0) + 1;
+          // The first row is all battles; the last is camps and markets; the boss is alone above.
+          if (row === 1) expect(n.kind, at).toBe('battle');
+          else if (row === rows) expect(['camp', 'market'], at).toContain(n.kind);
+          else if (row === rows + 1) expect(n.kind).toBe('boss');
+          else {
+            middle++;
+            expect(n.kind).not.toBe('boss');
+          }
+          // An elite waits no lower than its row.
+          if (n.kind === 'elite') expect(row, at).toBeGreaterThanOrEqual(RUN_TUNING.route.eliteFromRow);
+          // No stop straight after a stop.
+          if (isStop(n.kind)) for (const id of n.next) expect(isStop(route.nodes[id]!.kind), at).toBe(false);
+          expect(isStop(n.kind)).toBe(!isFight(n.kind));
+        }
+        // One of each on a last row of two or more.
+        const last = route.nodes.filter((n) => rowOf(route, n.id) + 1 === rows).map((n) => n.kind);
+        if (last.length >= 2) expect([...new Set(last)].sort(), at).toEqual(['camp', 'market']);
+        // Every act has an elite and a market.
+        expect(kinds, at).toContain('elite');
+        expect(kinds, at).toContain('market');
+      }
+    // Between the first row and the last, the kinds turn up about as often as their weights say (stops less: none may follow a stop).
+    const { kinds: weights } = RUN_TUNING.route;
+    for (const kind of Object.keys(weights) as (keyof typeof weights)[]) {
+      if (weights[kind] === 0) expect(seen[kind] ?? 0, kind).toBe(0);
+      else expect(seen[kind], kind).toBeGreaterThan(0);
+    }
+    expect(seen.battle! / middle).toBeGreaterThan(0.45);
+    expect(seen.training! / middle).toBeLessThan(0.1);
+  });
+
+  it('leaves a road with as few as three fights below the boss, and one that is all fights but its last step', () => {
+    let safest = Infinity;
+    let hardest = 0;
+    for (const seed of SEEDS.slice(0, 200)) {
+      const route = generateRoute(seed, 1);
+      // Fewest and most fights on any road from the bottom row to the boss.
+      const fights = (id: number, pick: (...n: number[]) => number): number => {
+        const node = route.nodes[id]!;
+        if (node.kind === 'boss') return 0;
+        return (isFight(node.kind) ? 1 : 0) + pick(...node.next.map((to) => fights(to, pick)));
+      };
+      const starts = openNodes(route);
+      safest = Math.min(safest, ...starts.map((id) => fights(id, Math.min)));
+      hardest = Math.max(hardest, ...starts.map((id) => fights(id, Math.max)));
+      for (const id of starts) expect(fights(id, Math.min)).toBeGreaterThanOrEqual(3);
+    }
+    expect(safest).toBe(3);
+    expect(hardest).toBe(rows - 1);
+  });
+});
+
 describe('openNodes', () => {
   it('is the bottom row at first, then what the last node leads to, less the closed; nothing while a node is played', () => {
     const route = generateRoute(3, 1);
@@ -182,8 +247,10 @@ describe('a random walk of the legal actions', () => {
       for (const a of w.actions) actions.add(a);
       closed = Math.max(closed, w.closed);
     }
-    expect([...phases].sort()).toEqual(['aftermath', 'battle', 'briefing', 'map', 'reward', 'shop']);
+    expect([...phases].sort()).toEqual(['aftermath', 'battle', 'briefing', 'map', 'reward', 'shop', 'stop']);
     for (const type of ['travel', 'startBattle', 'battleResult', 'continue', 'reward', 'leaveShop', 'buyRecruit', 'bench'])
+      expect([...actions], type).toContain(type);
+    for (const type of ['camp', 'train', 'trainPick', 'leaveStop', 'advance', 'buyBanner', 'buyUpgrade', 'reroll', 'sell', 'heal'])
       expect([...actions], type).toContain(type);
     expect(closed).toBeGreaterThan(0);
   }, 600_000);

@@ -26,6 +26,25 @@ export const RUN_TUNING = {
     sideRoads: 0.8,
     /** How often a battle node pays each kind of reward. */
     rewardKinds: { recruit: 3, boost: 3, gold: 3, mend: 1 },
+    /**
+     * How often a node between the first row and the last is each kind. The
+     * first row is all battles and the last all camps and markets; an elite
+     * waits no lower than row `eliteFromRow`; no stop follows a stop; and
+     * every act has at least one elite and one market.
+     */
+    kinds: { battle: 45, mystery: 0, elite: 15, market: 10, camp: 8, training: 7 },
+    eliteFromRow: 3,
+  },
+  /** An elite's warband is bought with the step's budget times a roll between these; it is always led, and has veterans from the first step. */
+  elite: { threat: { min: 1.4, max: 1.6 } },
+  /** A camp's drill gives every unit this much XP. */
+  camp: { drillXp: 3 },
+  /** A training ground offers the unit named this many advances. */
+  training: { choices: 3 },
+  /** What a market sells besides its shop. */
+  market: {
+    /** A retreat banner, in gold. */
+    banner: 40,
   },
   enemy: {
     /** Step 1's enemy budget, in points. */

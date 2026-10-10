@@ -48,7 +48,7 @@ export interface RunRecord {
   retreats?: number;
 }
 
-const PHASES: readonly RunPhase[] = ['draft', 'map', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'over'];
+const PHASES: readonly RunPhase[] = ['draft', 'map', 'briefing', 'battle', 'aftermath', 'reward', 'shop', 'stop', 'over'];
 const NODE_KINDS = ['battle', 'elite', 'market', 'camp', 'training', 'mystery', 'boss'];
 const REWARD_KINDS = ['recruit', 'boost', 'gold', 'mend'];
 
@@ -177,9 +177,16 @@ export function parseRun(raw: unknown): RunState {
   }
 
   if (raw.offer !== undefined) {
-    const offer = kinded(raw.offer, ['draft', 'reward', 'shop'], 'bad offer');
+    const offer = kinded(raw.offer, ['draft', 'reward', 'shop', 'camp', 'training'], 'bad offer');
     if (offer.kind === 'draft') {
       next.offer = { ...offer, units: list(offer.units, 'bad draft offer').map(parseUnit) };
+    } else if (offer.kind === 'camp') {
+      if (offer.taken !== undefined && offer.taken !== 'rest' && offer.taken !== 'drill') fail('bad camp');
+    } else if (offer.kind === 'training') {
+      if (offer.unitId !== undefined && (typeof offer.unitId !== 'string' || !ids.has(offer.unitId))) fail('bad training');
+      if (offer.choices !== undefined) list(offer.choices, 'bad training').forEach((a) => kinded(a, STEP_KINDS, 'bad training'));
+      if ((offer.unitId === undefined) !== (offer.choices === undefined)) fail('bad training');
+      if (offer.then !== undefined && offer.then !== 'shop') fail('bad training');
     } else if (offer.kind === 'reward') {
       count(offer.value, 'bad reward');
       next.offer = { ...offer, rewards: parseRewards(offer.rewards) };
@@ -192,6 +199,7 @@ export function parseRun(raw: unknown): RunState {
   }
   const offerKind = isRecord(next.offer) ? next.offer.kind : undefined;
   const owed: Partial<Record<RunPhase, string>> = { draft: 'draft', aftermath: 'reward', reward: 'reward', shop: 'shop' };
+  if (phase === 'stop' && offerKind !== 'camp' && offerKind !== 'training') fail('its stop has nothing on offer');
   // A retreat's aftermath is owed nothing: it leads straight to the shop.
   const retreated = isRecord(raw.aftermath) && raw.aftermath.retreated === true;
   if (isRecord(raw.aftermath) && raw.aftermath.retreated !== undefined && !retreated) fail('bad aftermath');
@@ -233,7 +241,7 @@ export function parseRun(raw: unknown): RunState {
   if (isRecord(raw.route)) {
     const playing = raw.route.going !== undefined;
     if (phase === 'map' && (playing || openNodes(next.route as unknown as NonNullable<RunState['route']>).length === 0)) fail('its map leads nowhere');
-    if ((phase === 'briefing' || phase === 'battle' || phase === 'reward') && !playing) fail('its battle is nowhere on the map');
+    if ((phase === 'briefing' || phase === 'battle' || phase === 'reward' || phase === 'stop') && !playing) fail('it is nowhere on the map');
   }
 
   if (raw.rivals !== undefined) {
