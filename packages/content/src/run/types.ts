@@ -198,7 +198,7 @@ export interface RunState {
   rolls: number;
   /** Number the next roster unit's id takes. */
   nextId: number;
-  /** Retreat banners in hand: each lets one battle be given up without ending the run. */
+  /** Retreat banners in hand: each lets the retreat be sounded in one battle, so that losing it does not end the run. */
   banners: number;
   /** Retreats made from this round so far, so the round's missions are rolled anew after each. */
   retreats?: number;

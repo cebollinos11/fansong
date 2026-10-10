@@ -6,7 +6,7 @@ Follow-up to [RUN_MODE.md](RUN_MODE.md). Today one lost battle ends a run, and b
 
 | Topic | Decision |
 |---|---|
-| Banners | A run starts with **1**. Each retreat spends one. More are gained later (see Assumptions). |
+| Banners | A run starts with **1**. Sounding the retreat spends one, even if the battle is then won. More are gained later (see Assumptions). |
 | Who calls it | The player's **Leader**, as an action of its own activation, like the war cry. Once per battle. Needs a banner in hand. |
 | Guard | A confirm panel before the command is sent. |
 | The flag | On the call, **one empty hex of the player's deploy zone** becomes the retreat hex. It shows a flag (the capture-the-flag one) and the camera pans to it. |

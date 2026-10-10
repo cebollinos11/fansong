@@ -441,14 +441,15 @@ it with a banner in hand. [RUN_MODE.md](RUN_MODE.md) holds the design, and
 - **Retreat** — a run starts with one **retreat banner** (shown on every run
   screen). While you hold one, your Leader, on its feet, may spend an action to
   **sound the retreat** (the **Retreat** button, key B, which asks first): once
-  a battle, and there is no taking it back. A flag goes up on the free hex of
+  a battle, and there is no taking it back. The call spends the banner, even if
+  the battle is then won. A flag goes up on the free hex of
   your deploy zone farthest from the enemy, and from then on any unit of yours
   that ends a Move on it leaves the field unhurt. Nothing else changes: your
   units may still fight, so a rearguard can cover the rest. When your Leader
   leaves, the battle ends at once, lost, and whoever is still on the field is
   **left behind**. If the Leader dies first the flag stays, and the battle ends
-  by its usual rules. A battle lost after the retreat was sounded spends the
-  banner but not the run: nobody earns XP, gold or the mission's reward; units
+  by its usual rules. A battle lost after the retreat was sounded does not
+  end the run: nobody earns XP, gold or the mission's reward; units
   that reached the flag are untouched; the fallen roll for injury as after a
   win; and each unit left behind rolls the same die with two more faces of
   death (1–3 dead, 4 a lasting wound, 5 sits out, 6 recovers). Then camp, to

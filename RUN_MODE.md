@@ -46,7 +46,7 @@ Every random choice draws from `seed` via the engine's `seedRng`/`rngNext` (wrap
 6. **Reward** — claim what the mission promised (a boost or mending asks which unit). If nobody can take it any more, it is paid as gold of the same worth.
 7. **Shop** — spend gold, then next round. Loss at step 4 → `over`, record saved.
 
-**Retreat** (added later; rules in [RETREAT_PLAN.md](RETREAT_PLAN.md)): a run holds retreat banners (1 at the start, +1 per boss beaten, at most 3). With one in hand the battle's config carries the player's deploy zone as its retreat zone, and the Leader may sound the retreat. A battle lost after that call spends the banner instead of ending the run: step 5 is an aftermath with no XP or gold (units left behind roll the harsher `leftBehind` table), step 6 is skipped, and after the shop the **same round** is fought again against missions rolled anew (`RunState.retreats` keys the encounter stream).
+**Retreat** (added later; rules in [RETREAT_PLAN.md](RETREAT_PLAN.md)): a run holds retreat banners (1 at the start, +1 per boss beaten, at most 3). With one in hand the battle's config carries the player's deploy zone as its retreat zone, and the Leader may sound the retreat. The call spends the banner, whoever then wins. A battle lost after it does not end the run: step 5 is an aftermath with no XP or gold (units left behind roll the harsher `leftBehind` table), step 6 is skipped, and after the shop the **same round** is fought again against missions rolled anew (`RunState.retreats` keys the encounter stream).
 
 ### Difficulty (`run/encounter.ts`)
 

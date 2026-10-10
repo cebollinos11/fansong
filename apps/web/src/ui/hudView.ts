@@ -110,13 +110,13 @@ export const WAR_CRY_HELP =
 
 /** The retreat button's tooltip. */
 export const RETREAT_HELP =
-  'Press B — one action, once a battle: give the battle up. A flag goes up in your deploy zone, and every unit of yours that ends a move on it leaves the field unhurt';
+  'Press B — one action, once a battle: spend a retreat banner. A flag goes up in your deploy zone, and every unit of yours that ends a move on it leaves the field unhurt. Lose the battle after that and the run goes on';
 
 /** What to ask before the retreat is sounded: there is no taking it back. */
 export const RETREAT_PROMPT = {
   title: 'Sound the retreat?',
   detail:
-    'This battle is lost. Units that reach the flag leave unhurt; any still on the field when your Leader leaves may not come back.',
+    'This spends a retreat banner, even if you go on to win. Units that reach the flag leave unhurt; any still on the field when your Leader leaves may not come back.',
 } as const;
 
 /**

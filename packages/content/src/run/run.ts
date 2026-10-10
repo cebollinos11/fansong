@@ -92,7 +92,8 @@ export function runMapLookup(s: RunState): MapLookup {
  * The engine config of the battle phase's match. The same every time, so a
  * battle left midway restarts as it began. With a retreat banner in hand, the
  * player's deploy zone is where its retreat flag may go up; the enemy never
- * retreats. (The banner is only spent when the battle's result is handed in.)
+ * retreats. (The banner the call spends is only taken when the battle's result
+ * is handed in.)
  */
 export function runBattleConfig(s: RunState): GameConfig {
   const config = configFromSetup(runMatchSetup(s), DEFAULT_BOARD, runMapLookup(s));
@@ -178,6 +179,9 @@ export function runStep(state: RunState, action: RunAction): RunState {
         throw new Error("the replay is not of this round's battle");
       const report = battleReport(action.replay, battle.fielded!);
       if (report.winner === null) throw new Error('the battle is not over');
+      // Sounding the retreat spends the banner, however the battle then went.
+      const called = report.retreated && s.banners > 0;
+      if (called) s.banners--;
       if (report.winner === 0) {
         applyAftermath(s, report, roll(s));
         s.offer = { kind: 'reward', rewards: battle.rewards, value: battle.rewardValue };
@@ -185,11 +189,10 @@ export function runStep(state: RunState, action: RunAction): RunState {
         // A beaten boss's banner is the player's to carry.
         const { max, perBoss } = RUN_TUNING.banners;
         if (isBossRound(s.round)) s.banners = Math.max(s.banners, Math.min(max, s.banners + perBoss));
-      } else if (report.retreated && s.banners > 0) {
-        // The battle is lost but the run is not: the banner is spent, and the
-        // round will be fought again against someone new.
+      } else if (called) {
+        // The battle is lost but the run is not: the round will be fought
+        // again against someone new.
         applyRetreat(s, report, roll(s));
-        s.banners--;
         s.retreats = (s.retreats ?? 0) + 1;
         delete s.offer;
         s.phase = s.roster.length > 0 ? 'aftermath' : 'over';

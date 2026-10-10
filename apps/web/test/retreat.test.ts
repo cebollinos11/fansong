@@ -140,7 +140,7 @@ describe('retreat in a battle', () => {
 
   it('asks before it is sounded, in the plan\'s own words', () => {
     expect(RETREAT_PROMPT.title).toBe('Sound the retreat?');
-    expect(RETREAT_PROMPT.detail).toMatch(/This battle is lost\..*leave unhurt.*may not come back/);
+    expect(RETREAT_PROMPT.detail).toMatch(/spends a retreat banner, even if you go on to win\..*leave unhurt.*may not come back/);
   });
 
   it('stands the flag on its hex, lit in its side\'s colour, from the state alone', () => {

@@ -152,12 +152,12 @@ export interface RunHeader {
 }
 
 /** What a retreat banner is, for the header's tooltip. */
-export const BANNER_HELP = `A retreat banner lets your Leader give a battle up without ending the run: the banner is spent, and the round is fought again against someone new. Each boss beaten adds one, up to ${RUN_TUNING.banners.max}`;
+export const BANNER_HELP = `A retreat banner lets your Leader sound the retreat in a battle: the banner is spent on the call, and if the battle is then lost the run goes on, the round fought again against someone new. Each boss beaten adds one, up to ${RUN_TUNING.banners.max}`;
 
 /** The briefing's word on the way out of the battle ahead, by the banners in hand. */
 export function retreatNote(banners: number): string {
   return banners > 0
-    ? `${banners} retreat ${banners === 1 ? 'banner' : 'banners'} in hand: if the battle turns, your Leader can sound the retreat (one action). Units that reach the flag leave unhurt, the banner is spent, and the round is fought again.`
+    ? `${banners} retreat ${banners === 1 ? 'banner' : 'banners'} in hand: if the battle turns, your Leader can sound the retreat (one action), which spends it. Units that reach the flag leave unhurt, and if the battle is lost the round is fought again.`
     : 'No retreat banner left: lose this battle and the run is over.';
 }
 

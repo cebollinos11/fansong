@@ -318,9 +318,9 @@ no rules — remove three.js and the game still runs in the CLI.
       golden replay is untouched.
     - **Retreat banners** — ✅ added after the first playtests
       ([RETREAT_PLAN.md](RETREAT_PLAN.md)): a run starts with one banner; with
-      one in hand its Leader may sound the retreat, units that reach the flag
-      leave unhurt, and a battle lost that way spends the banner and replays
-      the round instead of ending the run. This is the one engine change run
+      one in hand its Leader may sound the retreat, which spends it; units that
+      reach the flag leave unhurt, and a battle lost that way replays the round
+      instead of ending the run. This is the one engine change run
       mode made, and it is optional state (`GameConfig.retreatZones`, the
       `Retreat` command, `GameState.retreat`, `Unit.retreated`, the `'retreat'`
       win reason): without zones nothing is offered, so the golden replay was

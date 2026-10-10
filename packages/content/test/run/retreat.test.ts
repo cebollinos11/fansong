@@ -153,6 +153,24 @@ describe('retreat banners', () => {
     expect(playRetreat(battle).commands.some((c) => c.type === 'Retreat')).toBe(false);
   });
 
+  it('spends the banner on the call, even when the battle is then won', () => {
+    // The Leader sounds the retreat as soon as it can, and the warband fights on regardless.
+    const callThenFight = (state: GameState): Command => getLegalCommands(state).find((c) => c.type === 'Retreat') ?? chooseCommand(state);
+    for (let seed = 1; seed < 40; seed++) {
+      const s = inBattle(seed);
+      const replay = recordReplay(runBattleConfig(s), callThenFight);
+      const report = battleReport(replay, s.battle!.fielded!);
+      if (report.winner !== 0 || !report.retreated) continue;
+      const next = runStep(s, { type: 'battleResult', replay });
+      expect([next.phase, next.banners, next.retreats]).toEqual(['aftermath', RUN_TUNING.banners.start - 1, undefined]);
+      expect(next.aftermath?.retreated).toBeUndefined();
+      expect(next.offer?.kind).toBe('reward');
+      expect(next.log).toMatchObject([{ round: 1, won: true }]);
+      return;
+    }
+    throw new Error('no seed won after sounding the retreat');
+  });
+
   it('moves on, and forgets the retreats, once the round is won', () => {
     const { s, replay } = retreatedBattle();
     let run = runStep(s, { type: 'battleResult', replay });
