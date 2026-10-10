@@ -2,16 +2,17 @@ import type { GameConfig } from '@fansong/engine';
 import { DEFAULT_BOARD, defaultKing } from '../deploy.js';
 import { getMap } from '../mapRegistry.js';
 import { configFromSetup, type MapLookup, type MatchSetup } from '../match.js';
+import { PRESET_ROSTERS } from '../presets.js';
 import type { Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
-import { generateBattle, isBossRound } from './encounter.js';
+import { generateBattle, isBossRound, scoutEnemy } from './encounter.js';
 import { eventChoices, resolveEvent, rollEvent } from './events.js';
 import { applyAftermath, applyRetreat, applyReward, missionRewards, rewardKinds, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
 import { scheduleRivals } from './rivals.js';
 import { makeRunRandom, type RunRandom } from './rng.js';
-import { actOf, generateRoute, openNodes } from './route.js';
+import { actOf, generateRoute, isFight, openNodes } from './route.js';
 import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, renameUnit, rosterCost, rosterUnit } from './roster.js';
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
 import { buyBanner, makeCamp, takeTraining, trainUnit } from './stops.js';
@@ -87,8 +88,7 @@ function leaveNode(s: RunState): void {
  */
 function enterBattle(s: RunState, node: Pick<RouteNode, 'id'> & Partial<RouteNode>, plain = false): void {
   const retreats = s.retreats ?? 0;
-  // A rival the player has fled does not wait around: someone new holds the place.
-  const rival = node.rival && retreats === 0 ? s.rivals?.find((r) => r.round === s.round)?.warband : undefined;
+  const rival = node.rival ? s.rivals?.find((r) => r.round === s.round)?.warband : undefined;
   const { mode, map, seed, enemy } = generateBattle(s.seed, s.round, node, s.roster.length, rival, retreats);
   const value = plain ? 0 : rewardValue(s.round, enemy.threat);
   const kind = node.rewardKind !== undefined && rewardKinds(s).includes(node.rewardKind) ? node.rewardKind : 'gold';
@@ -259,8 +259,16 @@ export function runStep(state: RunState, action: RunAction): RunState {
         s.retreats = (s.retreats ?? 0) + 1;
         const route = s.route!;
         const fled = route.going!;
+        const node = route.nodes[fled]!;
         delete route.going;
-        if (route.nodes[fled]!.kind !== 'boss') {
+        // A rival the player has fled does not wait around: someone new holds the place.
+        if (node.rival) {
+          delete node.rival;
+          node.faction = roll(s).pick(Object.keys(PRESET_ROSTERS));
+        }
+        // Whoever is met there next is rolled anew, and the map shows how hard they are.
+        if (isFight(node.kind)) node.threat = scoutEnemy(s.seed, s.round, node, s.retreats).threat;
+        if (node.kind !== 'boss') {
           route.closed.push(fled);
           if (openNodes(route).length === 0) route.closed.pop();
         }

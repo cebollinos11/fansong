@@ -68,6 +68,22 @@ function rollKinds(nodes: readonly RouteNode[], first: number, rnd: RunRandom): 
  * A rival due at one of the act's steps takes a battle node of that step.
  */
 export function generateRoute(seed: number, act: number, rivals: readonly RunRival[] = []): Route {
+  // Scouting every fight is slow in the later acts, and the rules ask for the same route again and again.
+  const key = JSON.stringify([seed, act, rivals]);
+  let route = drawn.get(key);
+  if (!route) {
+    route = drawRoute(seed, act, rivals);
+    if (drawn.size >= DRAWN_ROUTES) drawn.delete(drawn.keys().next().value!);
+    drawn.set(key, route);
+  }
+  return JSON.parse(JSON.stringify(route)) as Route;
+}
+
+/** The routes last drawn, by seed, act and rivals. */
+const drawn = new Map<string, Route>();
+const DRAWN_ROUTES = 8;
+
+function drawRoute(seed: number, act: number, rivals: readonly RunRival[]): Route {
   const { lanes, rows, paths, rewardKinds } = RUN_TUNING.route;
   const rnd = makeRunRandom(seed, act, 0, RUN_STREAM.route);
   const base = (act - 1) * RUN_TUNING.enemy.bossEvery;

@@ -30,6 +30,8 @@ describe('scheduleRivals', () => {
       expect(new Set(rivals.map((r) => r.round)).size).toBe(rivals.length);
       for (const { round, warband } of rivals) {
         expect(round).toBeGreaterThanOrEqual(RUN_TUNING.rivals.fromRound);
+        // Never the step under a boss: it is all camps and markets.
+        expect(isBossRound(round + 1)).toBe(false);
         expect(isBossRound(round)).toBe(false);
         const ratio = warbandCost(warband) / enemyPoints(round);
         expect(ratio).toBeGreaterThanOrEqual(RUN_TUNING.rivals.band.min);
@@ -68,6 +70,14 @@ describe('a run with rivals', () => {
       }
     }
     expect(met).toBeGreaterThan(5);
+  });
+
+  it('still waits at its node after a retreat from another node of the step', () => {
+    const seed = 3;
+    const rival = newRun(seed, PAST).rivals![0]!;
+    const node = generateRoute(seed, actOf(rival.round), [rival]).nodes.find((n) => n.rival)!;
+    const fledElsewhere = { ...atStep(seed, rival.round, { past: PAST, node: node.id }), retreats: 1 };
+    expect(runStep(fledElsewhere, { type: 'travel', nodeId: node.id }).battle).toMatchObject({ faction: RIVAL_FACTION, enemy: rival.warband });
   });
 
   it('is the same run as one without rivals up to then', () => {

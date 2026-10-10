@@ -10,6 +10,8 @@ import {
   legalRunActions,
   makeRunRandom,
   openNodes,
+  PRESET_ROSTERS,
+  RIVAL_FACTION,
   RUN_TUNING,
   runBattleConfig,
   runStep,
@@ -103,9 +105,10 @@ describe('retreat banners', () => {
       expect(next.aftermath!.units.find((l) => l.unitId === id)!.die).toBeUndefined();
     }
 
-    // The node it fled is closed at once, and nothing is being played.
+    // The node it fled is closed at once, and nothing is being played. Only its threat may differ: whoever holds it now is new.
     const fled = s.route!.going!;
-    expect(next.route).toEqual({ ...s.route!, going: undefined, closed: [fled] });
+    const nodes = s.route!.nodes.map((n) => (n.id === fled ? { ...n, threat: next.route!.nodes[fled]!.threat } : n));
+    expect(next.route).toEqual({ ...s.route!, nodes, going: undefined, closed: [fled] });
 
     // No reward: the aftermath leads straight to the field shop, and the shop back to the map at step 1.
     expect(legalRunActions(next)).toEqual([{ type: 'continue' }]);
@@ -141,6 +144,17 @@ describe('retreat banners', () => {
     const again = runStep(back, { type: 'travel', nodeId: fled });
     expect(again.battle!.seed).not.toBe(s.battle!.seed);
     expect(again.battle!.faction).toBe(s.battle!.faction);
+    // The map already showed how hard the newcomers are.
+    expect(again.battle!.threat).toBe(back.route!.nodes[fled]!.threat);
+
+    // A rival that was fled is gone from the map, and the place shows who took it.
+    const rival = clone(cornered);
+    Object.assign(rival.route!.nodes[fled]!, { rival: true, faction: RIVAL_FACTION });
+    const after = autoUntil(runStep(rival, { type: 'battleResult', replay }), 'map');
+    const node = after.route!.nodes[fled]!;
+    expect(node.rival).toBeUndefined();
+    expect(Object.keys(PRESET_ROSTERS)).toContain(node.faction);
+    expect(runStep(after, { type: 'travel', nodeId: fled }).battle).toMatchObject({ faction: node.faction, threat: node.threat });
 
     // The boss is never closed, whatever else is open.
     const boss = clone(s);
