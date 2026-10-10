@@ -7,7 +7,7 @@ import type { GameMode } from '@fansong/engine';
 export const RUN_TUNING = {
   draft: {
     /** Points the starting warband is drafted to. */
-    budget: 120,
+    budget: 150,
     /** Units shown per draft pick. */
     offers: 3,
   },
@@ -61,9 +61,9 @@ export const RUN_TUNING = {
   },
   enemy: {
     /** Step 1's enemy budget, in points. */
-    start: 100,
+    start: 80,
     /** How much the budget grows each step, compounding, whether or not the step was a fight. */
-    perRound: 0.2,
+    perRound: 0.22,
     /** A boss every this many steps: the length of an act. */
     bossEvery: 7,
     /** Extra budget on a boss round, as a share of that round's. */
@@ -149,10 +149,10 @@ export const RUN_TUNING = {
   mission: {
     /** Each battle's enemy is bought with the step's budget times a roll between these. */
     threat: { min: 0.75, max: 1.3 },
-    /** Skulls a mission at `threat.max` or over shows; one at `threat.min` or under shows 1. */
+    /** Skulls a battle at `threat.max` or over shows; one at `threat.min` or under shows 1. */
     skulls: 5,
     reward: {
-      /** What a mission of threat 1 pays, in gold's worth: a base, plus this much per round. */
+      /** What a battle of threat 1 pays, in gold's worth: a base, plus this much per round. */
       base: 30,
       perRound: 4,
       /** Each 1% of threat over (under) 1 adds (takes off) this many % of that… */
@@ -161,7 +161,7 @@ export const RUN_TUNING = {
       min: 0.4,
       /** A boss pays this many times it. */
       boss: 2,
-      /** A recruit, boost or mending worth less than the mission pays is topped up in gold, if the gap is at least this. */
+      /** A recruit, boost or mending worth less than the battle pays is topped up in gold, if the gap is at least this. */
       spareGold: 3,
     },
   },
@@ -169,8 +169,8 @@ export const RUN_TUNING = {
   fieldShop: { recruits: 1, upgrades: 0 },
   /** A market's shop. */
   shop: {
-    recruits: 3,
-    upgrades: 2,
+    recruits: 5,
+    upgrades: 4,
     /** An upgrade costs its point-cost difference times this (at least `minUpgrade`). */
     upgradeMultiplier: 1.5,
     minUpgrade: 3,

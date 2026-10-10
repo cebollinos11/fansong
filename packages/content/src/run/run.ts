@@ -379,7 +379,7 @@ export function runStep(state: RunState, action: RunAction): RunState {
       need('stop');
       const outcome = resolveEvent(s, action.index, action.unitId, roll(s));
       // An ambush fought is a battle at the mystery's own node, weaker than the road's.
-      if ('battle' in outcome) enterBattle(s, { id: s.route!.going!, threat: RUN_TUNING.events.ambush.threat }, true);
+      if ('battle' in outcome) enterBattle(s, { id: s.route!.going!, budget: RUN_TUNING.events.ambush.threat }, true);
       break;
     }
     case 'rename':

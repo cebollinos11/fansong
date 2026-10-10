@@ -18,6 +18,7 @@ pnpm typecheck                              # tsc --noEmit in every package
 pnpm play --help                            # headless AI-vs-AI runner (tools/cli)
 pnpm play run --seeds 100                   # run-mode calibration sim: how deep AI-piloted runs get (tunes RUN_TUNING)
 pnpm play run --seeds 100 --retreat losing  # the same, with a player who retreats when losing (default: never)
+pnpm play run --seeds 100 --route safe      # the same, by another way up the map: safe, balanced (default) or greedy
 pnpm --filter @fansong/cli gen:golden       # re-bless the golden replay fixture
 pnpm --filter @fansong/web dev              # web UI at http://localhost:5173
 pnpm --filter @fansong/worker dev           # local Worker at http://localhost:8787

@@ -1,6 +1,7 @@
 import { createGame } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
+  defaultKing,
   fieldedUnits,
   generateBattle,
   legalRunActions,
@@ -166,7 +167,8 @@ describe('the map', () => {
       expect(there.phase).toBe('briefing');
       expect(there.offer).toBeUndefined();
       expect(there.route).toEqual({ ...route, going: nodeId });
-      expect(there.battle).toMatchObject({ faction: node.faction, mode: node.mode });
+      // What the map showed is what is met: the faction, the mode, and the threat to the point.
+      expect(there.battle).toMatchObject({ faction: node.faction, mode: node.mode, threat: node.threat });
       expect(there.battle!.rewardValue).toBe(rewardValue(1, there.battle!.threat));
       // The kind of pay the map showed, when the roster can take it.
       const kinds = there.battle!.rewards.map((r) => r.kind);
@@ -260,7 +262,7 @@ describe('the briefing', () => {
     const last = s.roster.at(-1)!;
     expect(runActionError(s, { type: 'setKing', unitId: 'nobody' })).not.toBeNull();
     const byDefault = runMatchSetup(runStep(s, { type: 'startBattle' }));
-    expect(byDefault.kings![0]).toBe(0);
+    expect(byDefault.kings![0]).toBe(defaultKing(playerWarband(s).units));
     expect(byDefault.kings![1]).toBe(s.battle!.enemyKing);
 
     s = runStep(s, { type: 'setKing', unitId: last.id });

@@ -100,7 +100,9 @@ describe('simulateRun', () => {
   });
 
   it('rests or drills at a camp, trains its costliest unit, and buys a banner only to use one', () => {
-    const base = simulateRun(1, 1).final;
+    const ended = simulateRun(1, 1).final;
+    // Nobody hurt, whatever its battle did.
+    const base: RunState = { ...ended, roster: ended.roster.map(({ sitsOut: _sitsOut, wounds: _wounds, ...u }) => u) };
     const camp: RunState = { ...base, phase: 'stop', offer: { kind: 'camp' } };
     expect(autoPick(camp)).toEqual({ type: 'camp', choice: 'drill' });
     const hurt: RunState = { ...camp, roster: camp.roster.map((u, i) => (i === 0 ? { ...u, sitsOut: true } : u)) };
@@ -147,7 +149,9 @@ describe('simulateRun', () => {
 
   it('fights weaker enemies on the safe road than on the greedy one', () => {
 
-    const threat = (policy: 'safe' | 'greedy') => simulateRun(5, 1, policy).battles[0]!;
+    // The first step of a run with a real choice of enemies.
+    const seed = [1, 2, 3, 4, 5, 6, 7, 8, 9].find((n) => new Set(generateRoute(n, 1).nodes.filter((x) => x.step === 1).map((x) => x.threat)).size > 1)!;
+    const threat = (policy: 'safe' | 'greedy') => simulateRun(seed, 1, policy).battles[0]!;
     expect(threat('safe').threat).toBeLessThan(threat('greedy').threat);
     expect(threat('safe').reward).toBeLessThan(threat('greedy').reward);
   });

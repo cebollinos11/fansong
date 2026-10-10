@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
 import {
@@ -36,6 +38,7 @@ import {
   saveRun,
   type RunRecord,
 } from '../src/game/runStore.js';
+import { NODE_IMAGES, nodeImageUrl } from '../src/ui/nodeArt.js';
 import {
   advanceChange,
   advanceInfo,
@@ -650,6 +653,15 @@ describe('the stops', () => {
     const kinds = ['battle', 'elite', 'market', 'camp', 'training', 'mystery', 'boss'] as const;
     expect(Object.keys(NODE_INFO).sort()).toEqual([...kinds].sort());
     expect(new Set(kinds.map((k) => NODE_INFO[k].glyph)).size).toBe(kinds.length);
+    // Each has a picture of its own, vendored with the sprites and credited.
+    const sprites = fileURLToPath(new URL('../public/sprites/', import.meta.url));
+    expect(Object.keys(NODE_IMAGES).sort()).toEqual([...kinds].sort());
+    expect(new Set(Object.values(NODE_IMAGES)).size).toBe(kinds.length);
+    for (const kind of kinds) {
+      expect(existsSync(sprites + NODE_IMAGES[kind]), NODE_IMAGES[kind]).toBe(true);
+      expect(nodeImageUrl(kind, '/app/')).toBe(`/app/sprites/${NODE_IMAGES[kind]}`);
+    }
+    expect(readFileSync(sprites + 'CREDITS.md', 'utf8')).toMatch(/run map's places under `items\/` and `scenery\/`/);
     // A stop on the map says what it offers, and shows no skulls and no enemy.
     const map = playTo(WON, 'map');
     const id = openNodes(map.route!)[0]!;

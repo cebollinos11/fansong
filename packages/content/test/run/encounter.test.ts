@@ -7,6 +7,7 @@ import {
   generateBattle,
   isBossRound,
   missionSkulls,
+  scoutEnemy,
   PRESET_ROSTERS,
   PRESET_UNITS,
   RUN_TUNING,
@@ -20,8 +21,8 @@ const ROUNDS = Array.from({ length: 16 }, (_, i) => i + 1);
 const SEEDS = Array.from({ length: 25 }, (_, i) => i * 7919 + 1);
 const { min: MIN, max: MAX } = RUN_TUNING.mission.threat;
 
-/** A battle node as a route might hold it: its id and threat follow from the seed, its faction and mode are left to the roll. */
-const nodeOf = (seed: number) => ({ id: seed % 7, threat: MIN + ((seed % 11) / 10) * (MAX - MIN) });
+/** A battle node as a route might hold it: its id and budget follow from the seed, its faction and mode are left to the roll. */
+const nodeOf = (seed: number) => ({ id: seed % 7, budget: MIN + ((seed % 11) / 10) * (MAX - MIN) });
 
 describe('enemyPoints', () => {
   it('starts below the draft budget and climbs, with a bump on boss rounds', () => {
@@ -34,7 +35,9 @@ describe('enemyPoints', () => {
   });
 
   it("scales with a battle's threat, which its skulls count", () => {
-    expect(enemyPoints(4, 1.25)).toBe(Math.round(enemyPoints(4) * 1.25));
+    // (Rounded once, from the unrounded curve.)
+    expect(Math.abs(enemyPoints(4, 1.25) - enemyPoints(4) * 1.25)).toBeLessThanOrEqual(1);
+    expect(enemyPoints(4, 2)).toBeGreaterThan(enemyPoints(4, 1.25));
     expect(missionSkulls(MIN)).toBe(1);
     expect(missionSkulls(MIN - 1)).toBe(1);
     expect(missionSkulls(MAX)).toBe(RUN_TUNING.mission.skulls);
@@ -45,7 +48,7 @@ describe('enemyPoints', () => {
 
 describe('generateBattle', () => {
   it('is the same for the same seed, round and node, whatever the roster size does to the board', () => {
-    const node = { id: 3, threat: 1.1 };
+    const node = { id: 3, budget: 1.1 };
     const a = generateBattle(42, 3, node, 4);
     expect(generateBattle(42, 3, node, 4)).toEqual(a);
     const b = generateBattle(42, 3, node, 11);
@@ -59,9 +62,10 @@ describe('generateBattle', () => {
     expect(generateBattle(42, 3, node, 4, undefined, 1).seed).not.toBe(a.seed);
   });
 
-  it('fights the faction, threat and mode its node shows', () => {
+  it('fights the faction, budget and mode its node rolled, and is what a scout of the node reports', () => {
     for (const faction of Object.keys(PRESET_ROSTERS)) {
-      const battle = generateBattle(7, 9, { id: 2, threat: 1.2, faction, mode: 'conquest' }, 5);
+      const battle = generateBattle(7, 9, { id: 2, budget: 1.2, faction, mode: 'conquest' }, 5);
+      expect(scoutEnemy(7, 9, { id: 2, budget: 1.2, faction, mode: 'conquest' })).toEqual(battle.enemy);
       expect(battle.enemy.faction).toBe(faction);
       expect(battle.mode).toBe('conquest');
       expect(battle.enemy.threat).toBeGreaterThan(1.05);
@@ -74,8 +78,8 @@ describe('generateBattle', () => {
 
   it('fields a past warband in the place of the rolled enemy', () => {
     const rival = generateBattle(1, 6, { id: 0 }, 5).enemy.warband;
-    const plain = generateBattle(7, 9, { id: 2, threat: 1.2 }, 5);
-    const battle = generateBattle(7, 9, { id: 2, threat: 1.2 }, 5, rival);
+    const plain = generateBattle(7, 9, { id: 2, budget: 1.2 }, 5);
+    const battle = generateBattle(7, 9, { id: 2, budget: 1.2 }, 5, rival);
     expect(battle.enemy).toEqual({ faction: 'rival', warband: rival, threat: warbandCost(rival) / enemyPoints(9) });
     expect(battle.mode).toBe(plain.mode);
   });
@@ -91,7 +95,7 @@ describe('generateBattle', () => {
         const battle = generateBattle(seed, round, node, 3 + (seed % 10));
         modes.add(battle.mode);
         const { enemy } = battle;
-        const asked = isBossRound(round) ? 1 : node.threat;
+        const asked = isBossRound(round) ? 1 : node.budget;
         expect(enemy.threat).toBeCloseTo(warbandCost(enemy.warband) / enemyPoints(round), 10);
         if (round === 12) threats.push(enemy.threat);
 

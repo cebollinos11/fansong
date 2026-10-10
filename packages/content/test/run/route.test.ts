@@ -1,6 +1,7 @@
 import { recordReplay } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
+  scoutEnemy,
   generateRoute,
   isFight,
   isStop,
@@ -15,7 +16,7 @@ import {
   type RunAction,
   type RunState,
 } from '../../src/index.js';
-import { atStep, checkState, playBattle, retreating } from './helpers.js';
+import { atStep, BATTLE_CAP, checkState, playBattle, retreating } from './helpers.js';
 
 const SEEDS = Array.from({ length: 500 }, (_, i) => i * 31 + 1);
 const { lanes, rows } = RUN_TUNING.route;
@@ -106,20 +107,26 @@ describe('generateRoute', () => {
         const route = generateRoute(seed, act);
         for (const n of route.nodes) {
           if (!isFight(n.kind)) {
-            expect([n.threat, n.faction, n.mode, n.rewardKind]).toEqual([undefined, undefined, undefined, undefined]);
+            expect([n.threat, n.budget, n.faction, n.mode, n.rewardKind]).toEqual([undefined, undefined, undefined, undefined, undefined]);
             continue;
           }
           expect(Object.keys(PRESET_ROSTERS)).toContain(n.faction);
-          if (n.kind === 'boss') expect(n).toMatchObject({ mode: 'kill-the-king', threat: 1 });
+          if (n.kind === 'boss') expect(n).toMatchObject({ mode: 'kill-the-king', budget: 1 });
           else {
             expect(RUN_TUNING.modes.regular).toContain(n.mode);
             if (n.step <= RUN_TUNING.modes.annihilationThrough) expect(n.mode).toBe('annihilation');
             kinds.add(n.rewardKind!);
           }
           if (n.kind === 'battle') {
-            expect(n.threat).toBeGreaterThanOrEqual(RUN_TUNING.mission.threat.min);
-            expect(n.threat).toBeLessThan(RUN_TUNING.mission.threat.max);
+            expect(n.budget).toBeGreaterThanOrEqual(RUN_TUNING.mission.threat.min);
+            expect(n.budget).toBeLessThan(RUN_TUNING.mission.threat.max);
           }
+          // The threat shown is that of the warband met there: its cost over the step's budget, to the point.
+          const met = scoutEnemy(seed, n.step, n);
+          expect(n.threat).toBe(met.threat);
+          expect(met.faction).toBe(n.faction);
+          // Only a warband made up to its fewest units costs more than the node's budget.
+          if (met.warband.units.length > RUN_TUNING.enemy.minUnits) expect(n.threat!).toBeLessThanOrEqual(n.budget! + 0.02);
         }
       }
     expect([...kinds].sort()).toEqual(['boost', 'gold', 'mend', 'recruit']);
@@ -222,7 +229,10 @@ function walk(seed: number, steps: number): { phases: Set<string>; actions: Set<
     if (s.phase === 'battle') {
       if (battles++ >= 1) break;
       const flee = s.banners > 0 && rnd.int(0, 1) === 0;
-      action = { type: 'battleResult', replay: flee ? recordReplay(runBattleConfig(s), retreating()) : playBattle(s) };
+      const replay = flee ? recordReplay(runBattleConfig(s), retreating(), BATTLE_CAP) : playBattle(s);
+      // A battle the AI never finishes has no result to hand in: the walk ends there.
+      if (replay.commands.length >= BATTLE_CAP) break;
+      action = { type: 'battleResult', replay };
     } else {
       const legal = legalRunActions(s);
       expect(legal.length, `seed ${seed}: stuck in the ${s.phase} phase`).toBeGreaterThan(0);

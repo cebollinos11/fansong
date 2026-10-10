@@ -6709,9 +6709,8 @@ button.trait-add[aria-expanded='true'] {
   stroke-width: 2;
 }
 
-.run-node-glyph {
-  fill: #e6e9f7;
-  font-size: 22px;
+.run-node-art {
+  image-rendering: pixelated;
   pointer-events: none;
 }
 
@@ -6731,10 +6730,6 @@ button.trait-add[aria-expanded='true'] {
   stroke-width: 3;
 }
 
-.run-node.boss .run-node-glyph {
-  fill: var(--gold);
-  font-size: 30px;
-}
 
 .run-node.market circle,
 .run-node.camp circle,
@@ -6873,11 +6868,10 @@ button.trait-add[aria-expanded='true'] {
   color: var(--ink-2, #c3c8dc);
 }
 
-.run-node-card-glyph {
-  display: grid;
-  place-items: center;
+.run-node-card-art {
   width: 52px;
   height: 52px;
   flex: none;
-  font-size: 30px;
+  object-fit: contain;
+  image-rendering: pixelated;
 }

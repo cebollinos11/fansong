@@ -191,8 +191,10 @@ describe('the ambush', () => {
       expect([briefing.phase, briefing.offer]).toEqual(['briefing', undefined]);
       expect(briefing.battle).toMatchObject({ plain: true, rewards: [], rewardValue: 0 });
       expect(briefing.battle!.elite).toBeUndefined();
-      // Weaker than anything else on the road at this step.
-      expect(warbandCost(briefing.battle!.enemy)).toBeLessThanOrEqual(Math.max(enemyPoints(s.round, TUNING.ambush.threat), 60));
+      // Bought with less than anything else on the road at this step (its fewest units may cost a little more).
+      const { enemy } = briefing.battle!;
+      if (enemy.units.length > RUN_TUNING.enemy.minUnits) expect(warbandCost(enemy)).toBeLessThanOrEqual(enemyPoints(s.round, TUNING.ambush.threat));
+      expect(briefing.battle!.threat).toBeLessThan(1);
       expect(briefing.route!.going).toBe(s.route!.going);
       checkState(briefing);
       const battle = runStep(briefing, { type: 'startBattle' });

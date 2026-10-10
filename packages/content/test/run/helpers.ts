@@ -20,9 +20,12 @@ import {
   type Warband,
 } from '../../src/index.js';
 
-/** Play the run's battle out with the AI in both seats. */
+/** Commands after which a test battle is given up: the AI in both seats can, rarely, circle for ever. */
+export const BATTLE_CAP = 20_000;
+
+/** Play the run's battle out with the AI in both seats (up to {@link BATTLE_CAP} commands). */
 export function playBattle(s: RunState): Replay {
-  return recordReplay(runBattleConfig(s), chooseCommand);
+  return recordReplay(runBattleConfig(s), chooseCommand, BATTLE_CAP);
 }
 
 /** Take the first legal action until the run reaches one of `phases`. */

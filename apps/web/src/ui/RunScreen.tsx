@@ -296,7 +296,7 @@ function Draft({ run, view, act }: { run: RunState; view: DraftView; act: Act })
   );
 }
 
-/** A mission's difficulty: skulls, and a word for them. */
+/** A battle's difficulty: skulls, and a word for them. */
 function Threat({ enemy }: { enemy: EnemyShadow }): JSX.Element {
   const label = enemy.threat;
   return (
@@ -329,7 +329,7 @@ function Shadows({ enemy }: { enemy: EnemyShadow }): JSX.Element {
   );
 }
 
-/** What a mission pays: a line per reward, a recruit with its card. */
+/** What a battle pays: a line per reward, a recruit with its card. */
 function Rewards({ rewards }: { rewards: readonly RewardLine[] }): JSX.Element {
   return (
     <ul className="run-rewards">

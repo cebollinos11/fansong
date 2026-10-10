@@ -22,7 +22,7 @@ import type {
   UnitReport,
 } from './types.js';
 
-/** What a mission pays, and what follows a battle: after a win XP and levels, injuries, gold, then that pay; after a retreat, only the injuries. */
+/** What a battle pays, and what follows it: after a win XP and levels, injuries, gold, then that pay; after a retreat, only the injuries. */
 
 /** The level `xp` has earned: how many of the thresholds it has reached. */
 export function levelFor(xp: number): number {
@@ -194,7 +194,7 @@ export function rosterAdvances(s: RunState): Advance[] {
   return all.filter((a) => s.roster.some((u) => canAdvance(u.unit, a)));
 }
 
-/** What a mission of `threat` pays in `round`, in gold's worth: more for a harder one, and a boss's is a prize. */
+/** What a battle of `threat` pays in `round`, in gold's worth: more for a harder one, and a boss's is a prize. */
 export function rewardValue(round: number, threat: number): number {
   const { base, perRound, slope, min, boss } = RUN_TUNING.mission.reward;
   const share = isBossRound(round) ? boss : Math.max(min, 1 + slope * (threat - 1));
@@ -231,7 +231,7 @@ export function rewardKinds(s: RunState): RewardOption['kind'][] {
 }
 
 /**
- * A mission's pay worth `value` in gold, of `kind` where something of that
+ * A battle's pay worth `value` in gold, of `kind` where something of that
  * kind fits: a recruit, boost or mending worth about that much, topped up with
  * gold if it falls short, or else the whole of it as a purse.
  */
@@ -258,7 +258,7 @@ export function rewardNeedsUnit(option: RewardOption): boolean {
   return option.kind === 'boost' || option.kind === 'mend';
 }
 
-/** Whether every part of a mission's pay can still be taken by this roster. */
+/** Whether every part of a battle's pay can still be taken by this roster. */
 export function rewardsClaimable(s: RunState, rewards: readonly RewardOption[]): boolean {
   return rewards.every((option) => {
     if (option.kind === 'gold') return true;

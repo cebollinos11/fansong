@@ -33,7 +33,7 @@ export function isBossRound(round: number): boolean {
   return round % RUN_TUNING.enemy.bossEvery === 0;
 }
 
-/** The enemy's point budget in `round`, for a mission `threat` times as hard as the round's usual. */
+/** The enemy's point budget in `round`, for a battle `threat` times as hard as the step's usual. */
 export function enemyPoints(round: number, threat = 1): number {
   const { start, perRound, bossBonus } = RUN_TUNING.enemy;
   const points = start * (1 + perRound) ** (round - 1);
@@ -140,17 +140,18 @@ export function generateEnemy(round: number, rnd: RunRandom, options: { threat?:
   }
 
   if (seasoned >= veteranFromRound) {
+    // What each unit could still learn, and at what cost: priced once, and again only for the unit that learns something.
+    const learnable = (unit: WarbandUnit) => availableAdvances(unit).map((advance) => ({ advance, cost: advanceCost(unit, advance) }));
+    const options = units.map(learnable);
     for (;;) {
       const steps: { index: number; advance: Advance; cost: number }[] = [];
-      units.forEach((unit, index) => {
-        for (const advance of availableAdvances(unit)) {
-          const cost = advanceCost(unit, advance);
-          if (cost > 0 && cost <= left) steps.push({ index, advance, cost });
-        }
+      options.forEach((list, index) => {
+        for (const { advance, cost } of list) if (cost > 0 && cost <= left) steps.push({ index, advance, cost });
       });
       if (steps.length === 0) break;
       const step = rnd.pick(steps);
       units[step.index] = applyAdvance(units[step.index]!, step.advance);
+      options[step.index] = learnable(units[step.index]!);
       left -= step.cost;
     }
   }
@@ -193,28 +194,39 @@ export function generateRunMap(round: number, units: number, seed: number): MapD
 /** Most nodes an act's route can hold: what keeps one node's encounter stream apart from another's. */
 const NODE_KEYS = 64;
 
-/**
- * The battle waiting at `node` in `round`, but for the player's side of it, for
- * a roster of `playerUnits`. The enemy is of the faction and threat the node
- * showed, in the node's mode (each rolled here if the node names none); a
- * `rival` (a past run's warband) fights in its place. The ground is sized for
- * the two warbands. `retreats` counts the times the player has already
- * retreated at this step: each meets a fresh encounter, even at the same node.
- */
-export function generateBattle(
-  seed: number,
-  round: number,
-  node: Pick<RouteNode, 'id'> & Partial<Pick<RouteNode, 'kind' | 'threat' | 'faction' | 'mode'>>,
-  playerUnits: number,
-  rival?: Warband,
-  retreats = 0,
-): Encounter {
+/** What a node says of the battle waiting at it: where on the route it is, and what was rolled for it when the route was drawn. */
+export type BattleNode = Pick<RouteNode, 'id'> & Partial<Pick<RouteNode, 'kind' | 'budget' | 'faction' | 'mode'>>;
+
+/** Who waits at `node`, and in what mode; `rnd` is the node's stream, left where the battlefield's rolls begin. */
+function meet(seed: number, round: number, node: BattleNode, rival: Warband | undefined, retreats: number): { rnd: RunRandom; mode: GameMode; enemy: Enemy } {
   const rnd = makeRunRandom(seed, round, retreats * NODE_KEYS + node.id, RUN_STREAM.encounter);
   const mode = node.mode ?? rollMode(round, rnd);
   const faction = node.faction !== undefined && node.faction in PRESET_ROSTERS ? node.faction : undefined;
   const enemy: Enemy = rival
     ? { faction: RIVAL_FACTION, warband: rival, threat: warbandCost(rival) / enemyPoints(round) }
-    : generateEnemy(round, rnd, { threat: isBossRound(round) ? 1 : (node.threat ?? 1), faction, elite: node.kind === 'elite' });
+    : generateEnemy(round, rnd, { threat: isBossRound(round) ? 1 : (node.budget ?? 1), faction, elite: node.kind === 'elite' });
+  return { rnd, mode, enemy };
+}
+
+/**
+ * The enemy waiting at `node` in `round`, without its battlefield: what the
+ * map can know of a fight before the run gets there, since who waits depends
+ * on the seed, the step and the node alone.
+ */
+export function scoutEnemy(seed: number, round: number, node: BattleNode, retreats = 0): Enemy {
+  return meet(seed, round, node, undefined, retreats).enemy;
+}
+
+/**
+ * The battle waiting at `node` in `round`, but for the player's side of it, for
+ * a roster of `playerUnits`. The enemy is of the faction and budget the node
+ * rolled, in the node's mode (each rolled here if the node names none); a
+ * `rival` (a past run's warband) fights in its place. The ground is sized for
+ * the two warbands. `retreats` counts the times the player has already
+ * retreated at this step: each meets a fresh encounter, even at the same node.
+ */
+export function generateBattle(seed: number, round: number, node: BattleNode, playerUnits: number, rival?: Warband, retreats = 0): Encounter {
+  const { rnd, mode, enemy } = meet(seed, round, node, rival, retreats);
   const mapSeed = rnd.int(0, 2 ** 31 - 1);
   return { mode, map: generateRunMap(round, playerUnits + enemy.warband.units.length, mapSeed), seed: rnd.int(0, 2 ** 31 - 1), enemy };
 }

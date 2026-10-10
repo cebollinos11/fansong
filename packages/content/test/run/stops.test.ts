@@ -208,7 +208,7 @@ describe('an elite', () => {
     for (let seed = 1; seed <= 40; seed++)
       for (const round of [3, 4, 5, 9]) {
         const threat = min + ((seed % 5) / 4) * (max - min);
-        const { enemy } = generateBattle(seed, round, { id: seed % 9, kind: 'elite', threat }, 5);
+        const { enemy } = generateBattle(seed, round, { id: seed % 9, kind: 'elite', budget: threat }, 5);
         const pool = PRESET_ROSTERS[enemy.faction]!.units.map((slot) => ({ name: slot.unit, ...PRESET_UNITS[slot.unit]! }));
         const dearest = Math.max(...pool.map((u) => unitCost(u)));
         const head = pool.find((u) => u.leader) ?? pool.find((u) => unitCost(u) === dearest)!;
@@ -221,7 +221,7 @@ describe('an elite', () => {
       }
     // A plain battle of the same early step is a leaderless patrol of plain troops.
     const veteran = (kind: 'elite' | 'battle') =>
-      Array.from({ length: 40 }, (_, seed) => generateBattle(seed, 3, { id: 1, kind, threat: 1.5 }, 5).enemy.warband.units)
+      Array.from({ length: 40 }, (_, seed) => generateBattle(seed, 3, { id: 1, kind, budget: 1.5 }, 5).enemy.warband.units)
         .flat()
         .filter((u) => unitCost(u) !== unitCost(PRESET_UNITS[u.name.replace(/ \d+$/, '')]!)).length;
     expect(veteran('battle')).toBe(0);
@@ -231,10 +231,10 @@ describe('an elite', () => {
   it('pays its reward and then a free training, before the field shop', () => {
     const { s, nodeId } = below('elite');
     const node = s.route!.nodes[nodeId]!;
-    expect(node.threat).toBeGreaterThanOrEqual(min);
-    expect(node.threat).toBeLessThan(max);
+    expect(node.budget).toBeGreaterThanOrEqual(min);
+    expect(node.budget).toBeLessThan(max);
     const briefing = runStep(s, { type: 'travel', nodeId });
-    expect(briefing.battle).toMatchObject({ elite: true, faction: node.faction, mode: node.mode });
+    expect(briefing.battle).toMatchObject({ elite: true, faction: node.faction, mode: node.mode, threat: node.threat });
     // By the reward formula a threat of 1.5 pays about 2.25 times a plain battle.
     const plain = RUN_TUNING.mission.reward.base + RUN_TUNING.mission.reward.perRound * s.round;
     expect(briefing.battle!.rewardValue / plain).toBeGreaterThan(1.9);

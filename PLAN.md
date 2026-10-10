@@ -305,22 +305,35 @@ no rules — remove three.js and the game still runs in the CLI.
      short, clear shots and a short-range standoff, and ganging up. The golden
      replay was regenerated. Preset balance shifted (small warbands suffer
      from outnumbering) and is not yet re-tuned.
-10. **M9 — Run mode:** ✅ a single-player roguelike run (design and build plan
-    in [RUN_MODE.md](RUN_MODE.md)): draft a warband, fight battle after battle
-    against a growing enemy, and grow the warband between wins.
+10. **M9 — Run mode:** ✅ a single-player roguelike run (design as built in
+    [RUN_MODE.md](RUN_MODE.md)): draft a warband, pick a road up a map of
+    battles and safe stops to the boss at its top against a growing enemy, and
+    grow the warband on the way.
     - **Rules** — a pure, seeded state machine in `packages/content/src/run/`
       (`RunState`, `runStep`, `legalRunActions`), in the engine's spirit: a run
       is its seed plus the actions taken, and saves as plain JSON between any
       two steps. Draft, encounter generation (budget curve, veterans, boss
       champions, generated maps that get rougher), the battle report read back
-      from the replay, XP and advances, injuries, rewards and the shop. Every
+      from the replay, XP and advances, injuries, rewards and the shops. Every
       number sits in `RUN_TUNING`. No engine, protocol or worker changes; the
       golden replay is untouched.
+    - **The map** — ✅ replaced the first version's flat list of rounds (a pick
+      of one of three missions each, a boss every fifth). A run is now acts of
+      seven steps: `run/route.ts` draws each act from the seed as six rows of
+      nodes joined by branching, never-crossing roads under one boss, and the
+      player travels a node a step. Nodes are battles, elites (a led, veteran
+      warband at about 1.5 times the budget, paying a free training on top),
+      markets (the full shop, and retreat banners), camps (rest or drill),
+      training grounds (one free advance) and mysteries (`run/events.ts`: six
+      seeded events with a choice each); the shop after a battle is a small
+      field shop. The step is the old round, so the enemy curve rises whether a
+      step was fought or not, which is what a stop costs. Still no engine
+      change. Saved runs are version 3; older ones are dropped.
     - **Retreat banners** — ✅ added after the first playtests
       ([RETREAT_PLAN.md](RETREAT_PLAN.md)): a run starts with one banner; with
       one in hand its Leader may sound the retreat, which spends it; units that
-      reach the flag leave unhurt, and a battle lost that way replays the round
-      instead of ending the run. This is the one engine change run
+      reach the flag leave unhurt, and a battle lost that way falls back to the
+      map, the fled node closed, instead of ending the run. This is the one engine change run
       mode made, and it is optional state (`GameConfig.retreatZones`, the
       `Retreat` command, `GameState.retreat`, `Unit.retreated`, the `'retreat'`
       win reason): without zones nothing is offered, so the golden replay was
@@ -329,15 +342,19 @@ no rules — remove three.js and the game still runs in the CLI.
     - **Battles** are ordinary local matches: the client plays
       `runBattleConfig` and hands the replay back as the `battleResult` action.
     - **Sim** — `pnpm play run` pilots whole runs with the AI in both seats and
-      a greedy picker. Two tuning passes: the first set the budget curve (half
-      the draft budget, ×1.25 a round, bosses +20%); the second stopped
-      leaderless factions from opening with their costliest monster, which had
-      been half of all round-1 deaths.
+      a greedy picker, up the map by `--route safe|balanced|greedy`. Two tuning
+      passes on the first version (the budget curve; leaderless factions no
+      longer opening with their costliest monster, which had been half of all
+      round-1 deaths), and one on the map: a 150-point draft against 80 enemy
+      points at step 1, 22% more a step, which puts the AI pilot's median death
+      at steps 5 to 7 on every route policy (numbers in RUN_MODE.md).
     - **Web** — `RunScreen` over the pure view-model `runView.ts` (every button
       is a `Choice` from `runActionError`, so no rules live in the app),
       `runStore.ts` for the saved run and the best-run records, and a `RunHost`
-      in `App.tsx` that shows the screens or the battle. Beating round 10 is
-      marked as the run's victory, after which it goes on endlessly.
+      in `App.tsx` that shows the screens or the battle. `RunMap.tsx` draws
+      the act's map as an SVG from the pure `routeView`, its nodes with Wesnoth
+      item and scenery art. Beating the second act's boss (step 14) is marked
+      as the run's victory, after which it goes on endlessly.
     - **Known limits** — battles are swingy and one loss ends the run; in the
       sim every boss loss is the AI pilot's own King dying, so boss numbers
       there say little about a human who guards theirs.

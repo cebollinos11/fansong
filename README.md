@@ -419,22 +419,44 @@ absent when unused.
 ## Run mode (M9)
 
 A single-player **run** (the menu's **Run** button): draft a small warband,
-fight the AI in battle after battle against a growing enemy, and improve the
-warband between wins. One lost battle ends the run, unless you retreat from
-it with a banner in hand. [RUN_MODE.md](RUN_MODE.md) holds the design, and
-[RETREAT_PLAN.md](RETREAT_PLAN.md) that of the retreat.
+pick your road up a **map** of battles and safe stops to the boss at its top,
+and improve the warband on the way. One lost battle ends the run, unless you
+retreat from it with a banner in hand. [RUN_MODE.md](RUN_MODE.md) holds the
+design as built, and [RETREAT_PLAN.md](RETREAT_PLAN.md) that of the retreat.
 
 - **Draft** — pick a leader from three offers, then troops one pick at a time
-  until 120 points are spent. Each unit that joins, here or later, can be
+  until 150 points are spent. Each unit that joins, here or later, can be
   given a name of your own (✎ on its card renames it any time outside battle).
-- **Missions** — each round offers three battles on the same battlefield, in
-  the same mode, against three different enemies. A card shows how hard its
-  enemy is (one to five skulls), the enemy's units as blacked-out shapes, and
-  exactly what winning pays: a recruit, an advance for a unit of your choice, a
-  healer or a purse, topped up with gold. The harder the fight, the more it
-  pays. The pick is final.
+- **The map** — a run is **acts of seven steps**: six rows of places joined by
+  branching roads, and the act's **boss** above them, on show from the start.
+  You travel one place a step, along a road from where you stand (click a lit
+  place on the map, or its card beside it); the choice is final. The first row
+  is all battles, the last is camps and markets, and no stop comes straight
+  after a stop, so the safest road still has three fights before the boss and
+  the hardest five. The enemy grows with **every step, fought or not**: a stop
+  is safe now, but it skips a battle's experience, gold and reward.
+  - **Battle** — the map shows its enemy's faction (in shadow), how hard it is
+    (one to five skulls), the mode, and the kind of thing winning pays: a
+    recruit, an advance for a unit of your choice, a healer or a purse. The
+    harder the fight, the more it pays.
+  - **Elite** — a picked warband on about one and a half times the step's
+    budget, under its leader and with veterans however early you meet it. It
+    pays to match (well over twice a plain battle), **plus a free training**.
+  - **Market** — the full shop: five recruits, four advances to buy, mending,
+    fresh stock for a price, a buyer for your units, and **retreat banners**
+    at 40 gold.
+  - **Camp** — one night, one choice: **rest** (every lasting wound is mended
+    and whoever was sitting out is fit again) or **drill** (3 XP for every
+    unit; a level that brings is spent there).
+  - **Training ground** — name one unit, then pick one of three advances it
+    lacks. Free, and it uses up no level.
+  - **Unknown** — something on the road, settled by one choice: a sellsword
+    going cheap, an old shrine that gives a trait and takes a wound, an ambush
+    to fight through or buy off, a buried cache to pocket or dig for on a d6,
+    a deserter to take in (Disloyal) or turn in, a fallen standard to raise
+    as a retreat banner or sell.
 - **Briefing** — the mode, a thumbnail of the battlefield, the enemy still in
-  shadow and the reward at stake. Bench units here (a hurt unit sits out on its
+  shadow and the reward in full. Bench units here (a hurt unit sits out on its
   own). Who the enemy really is shows only on the field.
 - **Battle** — an ordinary match against the AI. Leaving midway keeps the run
   but not the battle: it starts over from its first move, on the same dice.
@@ -449,63 +471,64 @@ it with a banner in hand. [RUN_MODE.md](RUN_MODE.md) holds the design, and
   leaves, the battle ends at once, lost, and whoever is still on the field is
   **left behind**. If the Leader dies first the flag stays, and the battle ends
   by its usual rules. A battle lost after the retreat was sounded does not
-  end the run: nobody earns XP, gold or the mission's reward; units
+  end the run: nobody earns XP, gold or the battle's reward; units
   that reached the flag are untouched; the fallen roll for injury as after a
   win; and each unit left behind rolls the same die with two more faces of
-  death (1–3 dead, 4 a lasting wound, 5 sits out, 6 recovers). Then camp, to
-  replace the lost with the gold in hand, and **the same round again** against
-  three new missions. Each boss beaten adds a banner, up to three. With none
-  left, or with no Leader to call it, a lost battle ends the run as before.
-  The enemy never retreats.
+  death (1–3 dead, 4 a lasting wound, 5 sits out, 6 recovers). Then the field
+  shop, to replace the lost with the gold in hand, and **back to the map at
+  the same step, with the place you fled shut**: you take another road. (If
+  none is left, or it was the boss, the place stays open, held by someone
+  new.) Each boss beaten adds a banner, a market sells them, and a fallen
+  standard is one; you carry three at most. With none left, or with no Leader
+  to call it, a lost battle ends the run as before. The enemy never retreats.
 - **After a win** — every unit that fought earns XP (more for kills, more again
   for killing something costlier) and levels up at 6 / 14 / 24 / 36 XP, choosing
   one of two advances: a trait it lacks, Combat +1 or Quality −1. Then the
   **tending of the wounded**: you throw a d6 for each fallen unit in turn, on a
   card showing its odds: on a 1 it is dead, on a 2 it takes a lasting wound, on
   a 3 it sits out the next battle, otherwise it recovers. Then **claim the
-  mission's reward** (if the battle left nobody who can take it, it comes as
-  gold instead), and spend gold in **camp**: hire recruits, buy training, heal a wound, swap
-  the stock for new, or sell a unit. If your gold can't hire any recruit on
-  offer, an Eager Cadet (Q4+, C2) signs on for free. The roster holds 12. Troops and recruits
+  battle's reward** (if the battle left nobody who can take it, it comes as
+  gold instead), and a small **field shop**: one recruit to hire and wounds to
+  heal, nothing more. If your gold can't hire the recruit on offer, an Eager
+  Cadet (Q4+, C2) signs on for free. The roster holds 12. Troops and recruits
   are not only the preset units: every other land creature the game can draw
-  turns up too, in the draft as in camp, each with a profile worked out from
-  how seasoned it is and what it does in a fight.
+  turns up too, in the draft as in the shops, each with a profile worked out
+  from how seasoned it is and what it does in a fight.
 - **The enemy** is built from the preset factions on a point budget that
-  ignores how strong you have grown: 100 points in round 1, a
-  third or so (30%) more each round. Each of a round's three missions gets its
-  own roll of 75% to 130% of that budget, and pays in step: under half the
-  round's usual reward at the bottom, about 1.75 times it at the top. It always fields at least three units, of its
-  cheapest troops if the budget is short. Rounds 1–2 are annihilation against a patrol out
-  without its leader; later rounds also roll king-of-the-hill and conquest, and
-  from round 4 part of the budget buys veterans (better units, not more).
-  Battlefields are generated, and get rougher: lava from round 4, unmirrored
-  ground from round 6.
-- **Bosses** — every 5th round is kill-the-king, on a fifth more budget, against a **champion**: the
-  faction's leader at Quality 2+ and Combat 5 or more, with extra traits that
-  grow with each boss. A boss round has no choice of mission: the boss is the
-  only way on, shown with a crown over its King's shadow, and it pays twice the
-  usual reward. In the briefing, **♛ Crown** picks your own King (the
-  costliest fielded unit by default); lose it and the run is over.
+  ignores how strong you have grown and whether you fought: 80 points at step
+  1, 22% more each step. A battle's enemy is bought with 75% to 130% of that
+  budget, and pays in step: under half the step's usual reward at the bottom,
+  about 1.75 times it at the top. It always fields at least three units, of its
+  cheapest troops if the budget is short (the skulls on the map count what it
+  really costs). Steps 1–3 are annihilation, and until step 4 a plain battle
+  meets a patrol out without its leader; later steps also roll
+  king-of-the-hill and conquest, and from step 6 part of the budget buys
+  veterans (better units, not more). Battlefields are generated, and get
+  rougher: lava from step 6, unmirrored ground from step 8.
+- **Bosses** — the seventh step of each act is kill-the-king, on a fifth more
+  budget, against a **champion**: the faction's leader at Quality 2+ and Combat
+  5 or more, with extra traits that grow with each boss. There is no way round
+  it; it is shown with a crown over its King's shadow, and it pays twice the
+  usual reward and a retreat banner. In the briefing, **♛ Crown** picks your
+  own King (the costliest fielded unit by default); lose it and the run is
+  over. Beat it and the next act's map is drawn.
 - **Rivals** — the best runs kept on the device come back: a new run meets up to
-  three of the warbands they ended with, each as one of the three missions of the
-  regular round (from round 2) whose budget is nearest its cost.
-- **Victory** — beating round 10 wins the run. It then goes on, marked ♛, for
-  as long as the warband lasts; the best runs are kept on the device.
-- **Seeds** — a run's seed fixes its offers, enemies and battlefields (rivals aside). It is
-  shown on every run screen and can be typed in when starting a run.
+  three of the warbands they ended with, each waiting at a battle place of the
+  step (from step 2) whose budget is nearest its cost, and marked on the map.
+- **Victory** — beating the second act's boss (step 14) wins the run. It then
+  goes on, marked ♛, act after act for as long as the warband lasts; the best
+  runs are kept on the device.
+- **Seeds** — a run's seed fixes its maps, offers, enemies and battlefields
+  (rivals aside). It is shown on every run screen and can be typed in when
+  starting a run.
 
 All of it is a pure, seeded state machine in `packages/content/src/run/`
 (`newRun`, `runStep`, `legalRunActions`), with every number in one `RUN_TUNING`
 object; the web app only draws it and saves it. `pnpm play run --seeds 200`
 plays whole runs with the AI in both seats and a greedy picker, and reports how
-deep they get — the tool the difficulty was tuned with. `--mission easy`,
-`middle` or `hard` sets which of each round's missions its player takes.
+deep they get — the tool the difficulty was tuned with. `--route safe`,
+`balanced` (the default) or `greedy` sets its way up the map: stops and the
+weakest enemies, enemies of the usual strength, or elites and the strongest.
 `--retreat losing` has that player sound the retreat once its living points
 fall under a share of the enemy's (`--retreat-share`, 0.75 by default) and walk
 everyone to the flag; the default, `never`, plays as the AI does.
-
-The retreat is the one part of run mode that lives in the engine, as optional
-state: a `GameConfig` may name `retreatZones` (the hexes each side's flag may
-be planted on), and only then is the `Retreat` command ever legal. A game
-without them, every old replay and the golden fixture are unchanged, and the AI
-never chooses it.

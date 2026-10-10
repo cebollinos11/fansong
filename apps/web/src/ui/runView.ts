@@ -341,7 +341,10 @@ export function threatLabel(skulls: number, maxSkulls: number = RUN_TUNING.missi
   return names[Math.round(((skulls - 1) / Math.max(1, maxSkulls - 1)) * (names.length - 1))]!;
 }
 
-/** What each kind of place on the map is called, the sign it is drawn with, and what waits there. */
+/**
+ * What each kind of place on the map is called, a plain sign for it where its
+ * picture (see `nodeArt.ts`) can't go, and what waits there.
+ */
 export const NODE_INFO: Record<NodeKind, { label: string; glyph: string; help: string }> = {
   battle: { label: 'Battle', glyph: '⚔', help: 'A warband bars the road. Beat it for experience, gold and its reward.' },
   elite: { label: 'Elite', glyph: '☠', help: 'A picked warband under its leader, veterans all: far harder than the road around it, and it pays to match.' },
@@ -708,7 +711,7 @@ export interface Target {
 }
 
 export interface RewardView {
-  /** Everything the mission pays. */
+  /** Everything the battle pays. */
   rewards: RewardLine[];
   /** Pay that goes to nobody in particular: take it as it is. */
   take?: Choice;

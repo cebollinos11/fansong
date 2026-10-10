@@ -49,7 +49,7 @@ export interface RunUnit {
 /** `map`: choosing where on the act's route to go next. `stop`: at a camp, a training ground or a mystery's event. */
 export type RunPhase = 'draft' | 'map' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'stop' | 'over';
 
-/** One thing a won mission pays. */
+/** One thing a won battle pays. */
 export type RewardOption =
   | { kind: 'recruit'; unit: WarbandUnit }
   /** An advance for a unit of the player's choice. */
@@ -72,7 +72,13 @@ export interface RouteNode {
   kind: NodeKind;
   /** The nodes of the next step it leads to. */
   next: number[];
-  /** Fights: the enemy's budget, as a share of the step's usual. */
+  /** Fights: what the enemy is bought with, as a share of the step's usual budget. */
+  budget?: number;
+  /**
+   * Fights: how hard the enemy is, which is what the map shows: its cost over
+   * the step's usual budget. That is the `budget` share or just under, but for
+   * a warband made up to its fewest units, which costs more than it was given.
+   */
   threat?: number;
   /** Fights: the preset roster the enemy is built from, or `RIVAL_FACTION`. */
   faction?: string;
@@ -287,7 +293,7 @@ export type RunAction =
   | { type: 'advance'; unitId: string; index: number }
   /** Aftermath: go on to the reward (after a retreat or an ambush, straight to the field shop). */
   | { type: 'continue' }
-  /** Reward: take the mission's pay; a boost or a mending names its unit. */
+  /** Reward: take the battle's pay; a boost or a mending names its unit. */
   | { type: 'reward'; unitId?: string }
   | { type: 'buyRecruit'; index: number }
   | { type: 'buyUpgrade'; index: number; unitId: string }

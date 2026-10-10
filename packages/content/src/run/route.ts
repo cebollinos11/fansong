@@ -1,6 +1,6 @@
 import { PRESET_ROSTERS } from '../presets.js';
 import { warbandCost } from '../warband.js';
-import { enemyPoints, RIVAL_FACTION, rollMode } from './encounter.js';
+import { enemyPoints, RIVAL_FACTION, rollMode, scoutEnemy } from './encounter.js';
 import { makeRunRandom, RUN_STREAM, type RunRandom } from './rng.js';
 import { RUN_TUNING } from './tuning.js';
 import type { NodeKind, RewardOption, Route, RouteNode, RunRival } from './types.js';
@@ -63,9 +63,9 @@ function rollKinds(nodes: readonly RouteNode[], first: number, rnd: RunRandom): 
  * The route of `act`. `paths` walks go up from the bottom row, each a step to
  * the lane left, ahead or right, never crossing one another; the nodes are the
  * places they pass, and the top row all leads to the boss. A fight node rolls
- * here what the map shows of it: its enemy's faction and threat, its mode and
- * the kind of reward. A rival due at one of the act's steps takes a battle
- * node of that step.
+ * here what the map shows of it: its enemy's faction and budget, its mode and
+ * the kind of reward; its threat is that of the warband that budget will buy.
+ * A rival due at one of the act's steps takes a battle node of that step.
  */
 export function generateRoute(seed: number, act: number, rivals: readonly RunRival[] = []): Route {
   const { lanes, rows, paths, rewardKinds } = RUN_TUNING.route;
@@ -127,8 +127,10 @@ export function generateRoute(seed: number, act: number, rivals: readonly RunRiv
     const { min, max } = node.kind === 'elite' ? RUN_TUNING.elite.threat : RUN_TUNING.mission.threat;
     node.faction = rnd.pick(factions);
     node.mode = rollMode(node.step, rnd);
-    node.threat = node.kind === 'boss' ? 1 : min + rnd.next() * (max - min);
+    node.budget = node.kind === 'boss' ? 1 : min + rnd.next() * (max - min);
     if (node.kind !== 'boss') node.rewardKind = rnd.weighted(kinds, (k) => rewardKinds[k]);
+    // The enemy that budget buys is already settled: the map shows how hard it really is.
+    node.threat = scoutEnemy(seed, node.step, node).threat;
   }
 
   for (const rival of rivals) {

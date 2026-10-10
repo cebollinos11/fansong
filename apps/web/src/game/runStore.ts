@@ -124,6 +124,7 @@ function parseRoute(raw: unknown): Record<string, unknown> {
       if (!isRecord(next) || next.step !== step + 1) fail(bad);
     }
     if (node.threat !== undefined && !(typeof node.threat === 'number' && node.threat >= 0)) fail(bad);
+    if (node.budget !== undefined && !(typeof node.budget === 'number' && node.budget >= 0)) fail(bad);
     if (node.faction !== undefined && typeof node.faction !== 'string') fail(bad);
     if (node.mode !== undefined && typeof node.mode !== 'string') fail(bad);
     if (node.rewardKind !== undefined && !(typeof node.rewardKind === 'string' && REWARD_KINDS.includes(node.rewardKind))) fail(bad);

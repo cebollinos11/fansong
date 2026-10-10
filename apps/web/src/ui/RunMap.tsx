@@ -1,7 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import type { RunAction, RunState } from '@fansong/content';
 import { LookSprite } from './Picker.js';
+import { nodeImageUrl } from './nodeArt.js';
 import { routeView, type RouteNodeView, type RouteView } from './runView.js';
+
+const BASE = import.meta.env.BASE_URL;
 
 /**
  * The act's map: the boss at the top, the roads up to it, where the run stands
@@ -72,16 +75,18 @@ export function RouteMap({
             onMouseLeave={() => onHover?.(null)}
           >
             <title>{`${n.label}\n${n.lines.join('\n')}`}</title>
-            <circle r={n.kind === 'boss' ? 30 : 22} />
-            <text className="run-node-glyph" textAnchor="middle" dominantBaseline="central">
-              {n.glyph}
-            </text>
+            <circle r={n.kind === 'boss' ? 32 : 24} />
+            {n.kind === 'boss' ? (
+              <image className="run-node-art" href={nodeImageUrl(n.kind, BASE)} x={-34} y={-38} width={68} height={68} />
+            ) : (
+              <image className="run-node-art" href={nodeImageUrl(n.kind, BASE)} x={-27} y={-28} width={54} height={54} />
+            )}
             {n.skulls !== undefined && n.kind === 'battle' ? (
               <text className="run-node-skulls" y={34} textAnchor="middle">
                 {'☠︎'.repeat(n.skulls)}
               </text>
             ) : null}
-            {n.state === 'closed' ? <path className="run-node-cross" d="M-16 -16 L16 16 M16 -16 L-16 16" /> : null}
+            {n.state === 'closed' ? <path className="run-node-cross" d="M-17 -17 L17 17 M17 -17 L-17 17" /> : null}
           </g>
         );
       })}
@@ -109,7 +114,11 @@ function NodeCard({
       onMouseLeave={() => onHover?.(null)}
     >
       <div className="run-node-card-head">
-        {node.look ? <LookSprite look={node.look} className="unit-sprite run-shadow" /> : <span className="run-node-card-glyph">{node.glyph}</span>}
+        {node.look ? (
+          <LookSprite look={node.look} className="unit-sprite run-shadow" />
+        ) : (
+          <img className="run-node-card-art" src={nodeImageUrl(node.kind, BASE)} alt="" />
+        )}
         <div>
           <strong>{node.label}</strong>
           {node.lines.map((line, i) => (

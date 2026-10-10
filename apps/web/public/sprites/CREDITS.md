@@ -1,7 +1,10 @@
 # Sprite credits
 
 The unit sprites and animation frames under `units/`, the missiles under
-`projectiles/`, and the animated lava and grass hexes under `terrain/`, are from [Battle for Wesnoth](https://www.wesnoth.org/)
+`projectiles/`, the animated lava and grass hexes under `terrain/`, and the
+signs of the run map's places under `items/` and `scenery/` (a sword, a flaming
+sword, a merchant's tent, a campfire, a training dummy, a signpost and a dragon
+statue), are from [Battle for Wesnoth](https://www.wesnoth.org/)
 (`data/core/images/` in https://github.com/wesnoth/wesnoth), by the Wesnoth
 artists, and are licensed under the GNU General Public License, version 2 or later.
 The animation timings in `src/three/unitAnimations.json` are derived from the

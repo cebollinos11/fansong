@@ -10,6 +10,7 @@
  *   - public/sprites/units/…         — every frame the manifest references
  *   - public/sprites/projectiles/…   — missiles for ranged attacks
  *   - public/sprites/terrain/…       — the animated lava texture and the meadow's grass hexes
+ *   - public/sprites/items/…, scenery/… — the signs of the run map's places
  *
  * The WML reading is in wesnoth-wml.ts, shared with the survey of every Wesnoth
  * unit (survey-wesnoth.ts). This script fails loudly on a referenced frame that
@@ -20,6 +21,7 @@ import { dirname, join, relative } from 'node:path';
 import { LAVA_FRAMES } from '../src/three/lava.js';
 import { MEADOW_TILES } from '../src/three/backdrop.js';
 import { FALLBACK_SPRITE, UNIT_SPRITES } from '../src/three/unitSprites.js';
+import { NODE_IMAGES } from '../src/ui/nodeArt.js';
 import type { Clip, SpriteAnimations } from '../src/three/unitAnimations.js';
 import { buildAnimations, CORE, IMAGES, loadUnitTypes, POSE_OF, SKIP_CLIPS, WEB } from './wesnoth-wml.js';
 
@@ -57,6 +59,8 @@ for (const sprite of sprites) {
 for (let i = 1; i <= LAVA_FRAMES; i++) files.add(`terrain/unwalkable/lava${String(i).padStart(2, '0')}.png`);
 // Grass: the hexes the meadow backdrop is scattered from (see src/three/backdrop.ts).
 for (const f of MEADOW_TILES) files.add(f);
+// The run map's places: an item or a piece of scenery each (see src/ui/nodeArt.ts).
+for (const f of Object.values(NODE_IMAGES)) files.add(f);
 
 for (const f of files) {
   const src = join(IMAGES, f);
