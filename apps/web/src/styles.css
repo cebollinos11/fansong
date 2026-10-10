@@ -6805,6 +6805,37 @@ button.trait-add[aria-expanded='true'] {
   }
 }
 
+.run-event-text {
+  max-width: 70ch;
+  margin: 6px 0 14px;
+  font-size: 17px;
+  line-height: 1.5;
+}
+
+.run-event-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  background: rgba(43, 52, 84, 0.45);
+  border: 1px solid var(--gold);
+  border-radius: 4px;
+  font-size: 17px;
+}
+
+.run-event-die {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  background: #f1ead6;
+  border-radius: 6px;
+  color: #1b1407;
+  font-weight: 800;
+}
+
 .run-route-side {
   display: flex;
   flex-direction: column;

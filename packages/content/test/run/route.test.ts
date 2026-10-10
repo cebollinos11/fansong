@@ -160,8 +160,8 @@ describe('the kinds of node', () => {
         expect(kinds, at).toContain('market');
       }
     // Between the first row and the last, the kinds turn up about as often as their weights say (stops less: none may follow a stop).
-    const { kinds: weights } = RUN_TUNING.route;
-    for (const kind of Object.keys(weights) as (keyof typeof weights)[]) {
+    const weights: Record<string, number> = RUN_TUNING.route.kinds;
+    for (const kind of Object.keys(weights)) {
       if (weights[kind] === 0) expect(seen[kind] ?? 0, kind).toBe(0);
       else expect(seen[kind], kind).toBeGreaterThan(0);
     }
@@ -250,7 +250,7 @@ describe('a random walk of the legal actions', () => {
     expect([...phases].sort()).toEqual(['aftermath', 'battle', 'briefing', 'map', 'reward', 'shop', 'stop']);
     for (const type of ['travel', 'startBattle', 'battleResult', 'continue', 'reward', 'leaveShop', 'buyRecruit', 'bench'])
       expect([...actions], type).toContain(type);
-    for (const type of ['camp', 'train', 'trainPick', 'leaveStop', 'advance', 'buyBanner', 'buyUpgrade', 'reroll', 'sell', 'heal'])
+    for (const type of ['camp', 'train', 'trainPick', 'leaveStop', 'advance', 'buyBanner', 'buyUpgrade', 'reroll', 'sell', 'heal', 'eventChoice'])
       expect([...actions], type).toContain(type);
     expect(closed).toBeGreaterThan(0);
   }, 600_000);

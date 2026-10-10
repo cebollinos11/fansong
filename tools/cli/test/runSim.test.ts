@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateRoute, legalRunActions, newRun, runStep, RUN_TUNING, unitCost, type RunState } from '@fansong/content';
+import { generateRoute, legalRunActions, makeRunRandom, newRun, RUN_EVENT_IDS, runStep, RUN_TUNING, stageEvent, unitCost, type RunState } from '@fansong/content';
 import { CliError } from '../src/options.js';
 import { autoPick, battleLine, DEFAULT_RETREAT_SHARE, parseRunArgs, routePick, runHelpText, runSimMain, simulateRun, summarize } from '../src/runSim.js';
 
@@ -119,6 +119,30 @@ describe('simulateRun', () => {
     expect(autoPick(market)).toEqual({ type: 'leaveShop' });
     expect(autoPick(market, 'balanced', 'losing')).toEqual({ type: 'buyBanner' });
     expect(autoPick({ ...market, banners: 1 }, 'balanced', 'losing')).toEqual({ type: 'leaveShop' });
+  });
+
+  it('takes every event some legal way, by a preference of its own', () => {
+    const base: RunState = { ...simulateRun(1, 1).final, phase: 'stop', gold: 200, banners: 0 };
+    const picked = (event: (typeof RUN_EVENT_IDS)[number], s: RunState = base, ...policy: Parameters<typeof autoPick> extends [unknown, ...infer P] ? P : never) => {
+      const at: RunState = { ...s, offer: stageEvent(event, s, makeRunRandom(1, 1, 9)) };
+      const action = autoPick(at, ...policy);
+      expect(legalRunActions(at)).toContainEqual(action);
+      return action;
+    };
+    expect(picked('sellsword')).toEqual({ type: 'eventChoice', index: 0 });
+    // Too poor to hire: it walks on.
+    expect(picked('sellsword', { ...base, gold: 0 })).toEqual({ type: 'eventChoice', index: 1 });
+    expect(picked('deserters')).toEqual({ type: 'eventChoice', index: 0 });
+    expect(picked('shrine')).toEqual({ type: 'eventChoice', index: 1 });
+    expect(picked('cache')).toEqual({ type: 'eventChoice', index: 1 });
+    expect(picked('ambush')).toEqual({ type: 'eventChoice', index: 0 });
+    expect(picked('ambush', base, 'safe')).toEqual({ type: 'eventChoice', index: 1 });
+    expect(picked('ambush', { ...base, gold: 0 }, 'safe')).toEqual({ type: 'eventChoice', index: 0 });
+    expect(picked('standard')).toEqual({ type: 'eventChoice', index: 1 });
+    expect(picked('standard', base, 'balanced', 'losing')).toEqual({ type: 'eventChoice', index: 0 });
+    // Settled, it moves on.
+    const settled: RunState = { ...base, offer: { kind: 'event', event: 'cache', gold: 10, result: { choice: 0, text: 'x' } } };
+    expect(autoPick(settled)).toEqual({ type: 'leaveStop' });
   });
 
   it('fights weaker enemies on the safe road than on the greedy one', () => {

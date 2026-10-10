@@ -211,6 +211,35 @@ export function routePick(nodes: readonly RouteNode[], policy: RoutePolicy): Rou
 }
 
 /**
+ * How the picker takes a mystery's event, as a preference per choice (the
+ * legal one with the highest wins): it hires the sellsword and takes the
+ * deserter in, leaves the shrine alone (a trait for a wound is a wash), digs
+ * for the cache (two times in three it triples), and raises the standard only
+ * if it means to retreat. An ambush is fought, but for a `safe` run that can
+ * pay its way past.
+ */
+function eventPreference(s: RunState, index: number, route: RoutePolicy, retreat: RetreatPolicy): number {
+  const event = s.offer?.kind === 'event' ? s.offer.event : undefined;
+  const first = index === 0 ? 2 : 1;
+  const second = index === 1 ? 2 : 1;
+  switch (event) {
+    case 'sellsword':
+    case 'deserters':
+      return first;
+    case 'shrine':
+      return second;
+    case 'cache':
+      return second;
+    case 'ambush':
+      return route === 'safe' ? second : first;
+    case 'standard':
+      return retreat === 'losing' ? first : second;
+    default:
+      return 0;
+  }
+}
+
+/**
  * The greedy picker: of the legal actions, the one worth the most points — in
  * the shop, the most points per gold, buying until nothing worth its price is
  * left. It fields everyone, never rerolls and never sells, and goes up the map
@@ -226,6 +255,10 @@ export function autoPick(s: RunState, route: RoutePolicy = 'balanced', retreat: 
   if (s.phase === 'map') {
     const open = legal.flatMap((a) => (a.type === 'travel' ? [s.route!.nodes[a.nodeId]!] : []));
     return { type: 'travel', nodeId: routePick(open, route).id };
+  }
+  if (s.offer?.kind === 'event' && !s.offer.result) {
+    const choices = legal.flatMap((a) => (a.type === 'eventChoice' ? [a] : []));
+    return choices.reduce((best, a) => (eventPreference(s, a.index, route, retreat) > eventPreference(s, best.index, route, retreat) ? a : best));
   }
 
   let best: RunAction | undefined;

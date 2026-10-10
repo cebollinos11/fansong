@@ -78,12 +78,14 @@ export function checkState(s: RunState): void {
     expect(validateArmy(s.battle.enemy).errors).toEqual([]);
     expect(s.battle.enemy.units.length).toBeGreaterThanOrEqual(RUN_TUNING.enemy.minUnits);
     const hardest = s.battle.elite ? RUN_TUNING.elite.threat.max : RUN_TUNING.mission.threat.max;
+    expect(Boolean(s.battle.plain)).toBe(s.battle.rewards.length === 0);
     if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits) expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round, hardest));
     expect(validateMap(s.battle.map, s.battle.mode).errors).toEqual([]);
   }
   expect(Boolean(s.battle)).toBe(s.phase === 'briefing' || s.phase === 'battle');
-  const owed = { draft: ['draft'], aftermath: ['reward'], reward: ['reward'], shop: ['shop'], stop: ['camp', 'training'] } as Record<string, string[]>;
-  if (!(s.phase === 'aftermath' && s.aftermath?.retreated)) expect(owed[s.phase] ?? [undefined]).toContain(s.offer?.kind);
+  const owed = { draft: ['draft'], aftermath: ['reward'], reward: ['reward'], shop: ['shop'], stop: ['camp', 'training', 'event'] } as Record<string, string[]>;
+  // A retreat is owed nothing, and neither is a fight that had no reward at stake.
+  if (!(s.phase === 'aftermath' && (s.aftermath?.retreated || s.aftermath?.plain))) expect(owed[s.phase] ?? [undefined]).toContain(s.offer?.kind);
   // Levels are only ever waiting where they can be spent.
   if (s.pending?.length) expect(['aftermath', 'stop']).toContain(s.phase);
   expect(s.banners).toBeLessThanOrEqual(RUN_TUNING.banners.max);

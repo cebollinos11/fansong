@@ -12,4 +12,5 @@ export * from './report.js';
 export * from './progress.js';
 export * from './shop.js';
 export * from './stops.js';
+export * from './events.js';
 export * from './run.js';

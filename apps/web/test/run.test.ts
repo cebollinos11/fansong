@@ -8,9 +8,11 @@ import {
   newRun,
   openNodes,
   PRESET_ROSTERS,
+  RUN_EVENT_IDS,
   runBattleConfig,
   runStep,
   shopStock,
+  stageEvent,
   RUN_TUNING,
   unitCost,
   type RewardOption,
@@ -41,6 +43,7 @@ import {
   briefingView,
   campView,
   draftView,
+  eventView,
   fateText,
   historyLines,
   injuryChecks,
@@ -730,6 +733,62 @@ describe('the stops', () => {
     for (const state of [s, named, prize]) expect(parseRun(JSON.parse(JSON.stringify(state)))).toEqual(state);
     expect(() => parseRun(JSON.parse(JSON.stringify({ ...named, offer: { ...named.offer, unitId: 'nobody' } })))).toThrow();
     expect(() => parseRun(JSON.parse(JSON.stringify({ ...named, offer: { kind: 'training', unitId: s.roster[0]!.id } })))).toThrow();
+  });
+
+  it('tells a mystery\'s event: the tale, the ways to take it, and what came of the one taken', () => {
+    for (const event of RUN_EVENT_IDS) {
+      const base = { ...stopped({ kind: 'camp' }), gold: 200, banners: 1 };
+      const s: RunState = { ...base, offer: stageEvent(event, base, makeRunRandom(3, 1, 7)) };
+      const view = eventView(s)!;
+      expect(runHeader(s).title).toBe(view.title);
+      expect(view.title).toMatch(/^The /);
+      expect(view.text.length).toBeGreaterThan(60);
+      expect(view.result).toBeNull();
+      expect(view.leave.error).toMatch(/still to be settled/);
+      expect(view.choices.length).toBeGreaterThanOrEqual(2);
+      expect([campView(s), trainingView(s), shopView(s)]).toEqual([null, null, null]);
+      expect(Boolean(view.unit)).toBe(event === 'sellsword' || event === 'deserters');
+      expect(parseRun(JSON.parse(JSON.stringify(s)))).toEqual(s);
+
+      view.choices.forEach((c, i) => {
+        // A choice is one button, or a button per unit it could be done to.
+        expect(c.take === null).toBe(c.targets !== null);
+        if (c.targets) expect(c.targets.map((t) => t.unitId)).toEqual(s.roster.map((u) => u.id));
+        const go = c.take ?? c.targets![0]!.give;
+        expect(go.error, `${event} choice ${i}`).toBeNull();
+        const after = taken(s, go);
+        if (event === 'ambush' && i === 0) {
+          // Fighting through leads to a briefing with nothing to win but the road.
+          expect(after.phase).toBe('briefing');
+          expect(briefingView(after)!.rewards).toEqual([]);
+          return;
+        }
+        const done = eventView(after)!;
+        expect(done.result!.text.length).toBeGreaterThan(10);
+        expect(done.result!.die === null).toBe(!(event === 'cache' && i === 1));
+        expect(done.leave.error).toBeNull();
+        expect(taken(after, done.leave)).toMatchObject({ phase: 'map', round: s.round + 1 });
+        expect(parseRun(JSON.parse(JSON.stringify(after)))).toEqual(after);
+      });
+    }
+    const s = stopped({ kind: 'event', event: 'cache', gold: 12 });
+    expect(eventView({ ...s, gold: 0 })!.choices.every((c) => c.take!.error === null)).toBe(true);
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...s, offer: { kind: 'event', event: 'feast' } })))).toThrow();
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...s, offer: { kind: 'event', event: 'cache', gold: -1 } })))).toThrow();
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...s, offer: { kind: 'event', event: 'sellsword', unit: { name: 'Ghost' }, price: 3 } })))).toThrow();
+  });
+
+  it('says so when a won fight had no reward at stake', () => {
+    // The won run's aftermath, had the battle been an ambush.
+    const s: RunState = { ...WON, offer: undefined, aftermath: { ...WON.aftermath!, plain: true } };
+    const view = aftermathView(s)!;
+    expect(view).toMatchObject({ plain: true, rewards: [], retreat: null });
+    expect(aftermathView(WON)!.plain).toBe(false);
+    const on = playTo(s, 'shop');
+    expect(shopView(on)!.market).toBe(false);
+    const saved = { ...s, pending: undefined };
+    expect(parseRun(JSON.parse(JSON.stringify(saved)))).toEqual(JSON.parse(JSON.stringify(saved)));
+    expect(() => parseRun(JSON.parse(JSON.stringify({ ...saved, aftermath: { ...WON.aftermath!, plain: 'yes' } })))).toThrow();
   });
 
   it('sells a retreat banner at a market only', () => {

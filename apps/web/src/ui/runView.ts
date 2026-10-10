@@ -5,6 +5,9 @@ import {
   bannerPrice,
   canAdvance,
   defaultKing,
+  eventChoices,
+  eventText,
+  eventTitle,
   fieldedUnits,
   isBossRound,
   isFight,
@@ -212,7 +215,9 @@ export function runHeader(s: RunState): RunHeader {
             ? 'Market'
             : s.phase === 'stop' && s.offer?.kind === 'training'
               ? 'Training ground'
-              : TITLES[s.phase],
+              : s.phase === 'stop' && s.offer?.kind === 'event'
+                ? eventTitle(s.offer)
+                : TITLES[s.phase],
     round: s.round,
     place: placeLine(s.round),
     gold: s.gold,
@@ -665,6 +670,8 @@ export interface AftermathView {
   lines: { unitId: string; name: string; kills: number; xp: number; text: string; tone: 'ok' | 'hurt' | 'lost' }[];
   /** What the battle pays, claimed next. */
   rewards: RewardLine[];
+  /** Whether the battle had no reward at stake (an ambush): the field shop comes next. */
+  plain: boolean;
   /** Levels waiting to be spent: one choice of advances per unit at a time. */
   levelUps: LevelUpView[];
   next: Choice;
@@ -682,6 +689,7 @@ export function aftermathView(s: RunState): AftermathView | null {
       : null,
     gold: s.aftermath.gold,
     rewards: s.offer?.kind === 'reward' ? s.offer.rewards.map(rewardLine) : [],
+    plain: s.aftermath.plain === true,
     lines: s.aftermath.units.map((line) => ({ unitId: line.unitId, name: line.name, kills: line.kills, xp: line.xp, ...fateText(line) })),
     levelUps: levelUps(s),
     next: choice(s, { type: 'continue' }),
@@ -877,6 +885,41 @@ export function trainingView(s: RunState): TrainingView | null {
           })),
         }
       : null,
+    leave: choice(s, { type: 'leaveStop' }),
+  };
+}
+
+/** A mystery's event: what the warband has come upon, the ways to take it, and, once taken, what came of it. */
+export interface EventView {
+  title: string;
+  text: string;
+  /** A unit the event offers, to draw. */
+  unit: OfferView | null;
+  /**
+   * The ways to take it. One done to a single unit lists `targets`, a button
+   * per roster unit; any other has its own `take`.
+   */
+  choices: { label: string; detail: string; take: Choice | null; targets: { unitId: string; unit: WarbandUnit; give: Choice }[] | null }[];
+  /** Once a choice is made: what came of it, and the die thrown for it, if one was. */
+  result: { text: string; die: number | null } | null;
+  /** Move on; an error until the event is settled. */
+  leave: Choice;
+}
+
+export function eventView(s: RunState): EventView | null {
+  if (s.phase !== 'stop' || s.offer?.kind !== 'event') return null;
+  const e = s.offer;
+  return {
+    title: eventTitle(e),
+    text: eventText(e),
+    unit: e.unit ? offerView(e.unit) : null,
+    choices: eventChoices(e, s).map((c, index) => ({
+      label: c.label,
+      detail: c.detail,
+      take: c.needsUnit ? null : choice(s, { type: 'eventChoice', index }),
+      targets: c.needsUnit ? s.roster.map((u) => ({ unitId: u.id, unit: u.unit, give: choice(s, { type: 'eventChoice', index, unitId: u.id }) })) : null,
+    })),
+    result: e.result ? { text: e.result.text, die: e.die ?? null } : null,
     leave: choice(s, { type: 'leaveStop' }),
   };
 }

@@ -46,7 +46,7 @@ export interface RunUnit {
   wounds?: Wound[];
 }
 
-/** `map`: choosing where on the act's route to go next. `stop`: at a camp or a training ground. */
+/** `map`: choosing where on the act's route to go next. `stop`: at a camp, a training ground or a mystery's event. */
 export type RunPhase = 'draft' | 'map' | 'briefing' | 'battle' | 'aftermath' | 'reward' | 'shop' | 'stop' | 'over';
 
 /** One thing a won mission pays. */
@@ -112,7 +112,22 @@ export type RunOffer =
    * `then: 'shop'`: it is the training an elite's defeat pays, and the field
    * shop follows it.
    */
-  | { kind: 'training'; unitId?: string; choices?: Advance[]; then?: 'shop' };
+  | { kind: 'training'; unitId?: string; choices?: Advance[]; then?: 'shop' }
+  /**
+   * What a mystery node turned out to be (see `events.ts`), with what this
+   * meeting holds: a `unit` on offer, a `price` asked, `gold` to be had. Once a
+   * choice is made, `result` says which and what came of it, and `die` what
+   * was thrown for it.
+   */
+  | {
+      kind: 'event';
+      event: 'sellsword' | 'shrine' | 'ambush' | 'cache' | 'deserters' | 'standard';
+      unit?: WarbandUnit;
+      price?: number;
+      gold?: number;
+      die?: number;
+      result?: { choice: number; text: string };
+    };
 
 /** A level a unit has earned and not yet spent: pick one of `choices`. */
 export interface LevelUp {
@@ -130,6 +145,8 @@ export interface RunBattle {
   enemyKing?: number;
   /** An elite's warband: beating it pays a free training on top of its reward. */
   elite?: true;
+  /** A fight with no reward at stake (an ambush): a win pays its XP and gold, and no more. */
+  plain?: true;
   map: MapDef;
   /** The match's RNG seed. */
   seed: number;
@@ -205,6 +222,8 @@ export interface Aftermath {
   units: AftermathLine[];
   /** The battle was given up by a retreat: nobody earned anything. */
   retreated?: true;
+  /** The battle had no reward at stake (an ambush): the field shop comes next. */
+  plain?: true;
 }
 
 /** One line of the run's history. */
@@ -266,7 +285,7 @@ export type RunAction =
   | { type: 'battleResult'; replay: Replay }
   /** Aftermath, or a camp after drilling: spend the first pending level of `unitId` on `choices[index]`. */
   | { type: 'advance'; unitId: string; index: number }
-  /** Aftermath: go on to the reward (after a retreat, straight to the shop). */
+  /** Aftermath: go on to the reward (after a retreat or an ambush, straight to the field shop). */
   | { type: 'continue' }
   /** Reward: take the mission's pay; a boost or a mending names its unit. */
   | { type: 'reward'; unitId?: string }
@@ -286,7 +305,9 @@ export type RunAction =
   | { type: 'train'; unitId: string }
   /** Training: take `choices[index]` for the unit named. */
   | { type: 'trainPick'; index: number }
-  /** Camp or training: move on (from a camp, once the night is spent and its levels too; from a training ground, only before a unit is named). */
+  /** Camp, training or event: move on (from a camp, once the night is spent and its levels too; from a training ground, only before a unit is named; from an event, once it is settled). */
   | { type: 'leaveStop' }
+  /** Event: take `eventChoices(...)[index]`; one that needs a unit names it. */
+  | { type: 'eventChoice'; index: number; unitId?: string }
   /** Any phase but the battle: give a roster unit a name of the player's own. */
   | { type: 'rename'; unitId: string; name: string };

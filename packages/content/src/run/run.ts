@@ -6,6 +6,7 @@ import type { Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
 import { generateBattle, isBossRound } from './encounter.js';
+import { eventChoices, resolveEvent, rollEvent } from './events.js';
 import { applyAftermath, applyRetreat, applyReward, missionRewards, rewardKinds, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
 import { scheduleRivals } from './rivals.js';
@@ -84,16 +85,18 @@ function leaveNode(s: RunState): void {
  * seed, the step, the node and the retreats made at the step alone; what
  * winning pays is rolled for the roster as it stands, so it can be taken.
  */
-function enterBattle(s: RunState, node: RouteNode): void {
+function enterBattle(s: RunState, node: Pick<RouteNode, 'id'> & Partial<RouteNode>, plain = false): void {
   const retreats = s.retreats ?? 0;
   // A rival the player has fled does not wait around: someone new holds the place.
   const rival = node.rival && retreats === 0 ? s.rivals?.find((r) => r.round === s.round)?.warband : undefined;
   const { mode, map, seed, enemy } = generateBattle(s.seed, s.round, node, s.roster.length, rival, retreats);
-  const value = rewardValue(s.round, enemy.threat);
+  const value = plain ? 0 : rewardValue(s.round, enemy.threat);
   const kind = node.rewardKind !== undefined && rewardKinds(s).includes(node.rewardKind) ? node.rewardKind : 'gold';
-  s.battle = { mode, faction: enemy.faction, enemy: enemy.warband, map, seed, threat: enemy.threat, rewards: missionRewards(s, kind, value, roll(s)), rewardValue: value };
+  const rewards = plain ? [] : missionRewards(s, kind, value, roll(s));
+  s.battle = { mode, faction: enemy.faction, enemy: enemy.warband, map, seed, threat: enemy.threat, rewards, rewardValue: value };
   if (enemy.king !== undefined) s.battle.enemyKing = enemy.king;
   if (node.kind === 'elite') s.battle.elite = true;
+  if (plain) s.battle.plain = true;
   s.phase = 'briefing';
   delete s.offer;
   // A bench that would leave nobody to fight is cleared.
@@ -184,7 +187,9 @@ export function runStep(state: RunState, action: RunAction): RunState {
           s.phase = 'stop';
           break;
         case 'mystery':
-          throw new Error('nothing is known of this place yet');
+          s.offer = rollEvent(s, roll(s));
+          s.phase = 'stop';
+          break;
       }
       break;
     }
@@ -238,7 +243,11 @@ export function runStep(state: RunState, action: RunAction): RunState {
       if (called) s.banners--;
       if (report.winner === 0) {
         applyAftermath(s, report, roll(s));
-        s.offer = { kind: 'reward', rewards: battle.rewards, value: battle.rewardValue };
+        // An ambush had nothing at stake but the road.
+        if (battle.plain) {
+          delete s.offer;
+          s.aftermath!.plain = true;
+        } else s.offer = { kind: 'reward', rewards: battle.rewards, value: battle.rewardValue };
         s.phase = 'aftermath';
         // A beaten boss's banner is the player's to carry.
         const { max, perBoss } = RUN_TUNING.banners;
@@ -288,8 +297,8 @@ export function runStep(state: RunState, action: RunAction): RunState {
     case 'continue': {
       need('aftermath');
       if (s.pending?.length) throw new Error('there are levels still to spend');
-      // A retreat is owed nothing: straight to the field shop, to replace the lost with the gold in hand.
-      if (s.aftermath?.retreated) {
+      // A retreat is owed nothing, and an ambush had no reward: straight to the field shop.
+      if (s.aftermath?.retreated || s.aftermath?.plain) {
         enterFieldShop(s);
         break;
       }
@@ -360,7 +369,17 @@ export function runStep(state: RunState, action: RunAction): RunState {
       } else if (s.offer?.kind === 'training') {
         if (s.offer.unitId !== undefined) throw new Error('the unit training has yet to choose');
         afterTraining(s);
+      } else if (s.offer?.kind === 'event') {
+        if (!s.offer.result) throw new Error('this is still to be settled');
+        leaveNode(s);
       } else throw new Error('there is nothing to leave');
+      break;
+    }
+    case 'eventChoice': {
+      need('stop');
+      const outcome = resolveEvent(s, action.index, action.unitId, roll(s));
+      // An ambush fought is a battle at the mystery's own node, weaker than the road's.
+      if ('battle' in outcome) enterBattle(s, { id: s.route!.going!, threat: RUN_TUNING.events.ambush.threat }, true);
       break;
     }
     case 'rename':
@@ -435,6 +454,11 @@ export function legalRunActions(s: RunState): RunAction[] {
         for (const unitId of ids) candidates.push({ type: 'train', unitId });
         (s.offer.choices ?? []).forEach((_, index) => candidates.push({ type: 'trainPick', index }));
       }
+      if (s.offer?.kind === 'event')
+        eventChoices(s.offer, s).forEach((c, index) => {
+          if (c.needsUnit) for (const unitId of ids) candidates.push({ type: 'eventChoice', index, unitId });
+          else candidates.push({ type: 'eventChoice', index });
+        });
       break;
     case 'battle':
     case 'over':

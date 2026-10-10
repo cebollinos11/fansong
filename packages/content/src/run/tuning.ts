@@ -32,7 +32,7 @@ export const RUN_TUNING = {
      * waits no lower than row `eliteFromRow`; no stop follows a stop; and
      * every act has at least one elite and one market.
      */
-    kinds: { battle: 45, mystery: 0, elite: 15, market: 10, camp: 8, training: 7 },
+    kinds: { battle: 45, mystery: 15, elite: 15, market: 10, camp: 8, training: 7 },
     eliteFromRow: 3,
   },
   /** An elite's warband is bought with the step's budget times a roll between these; it is always led, and has veterans from the first step. */
@@ -41,6 +41,19 @@ export const RUN_TUNING = {
   camp: { drillXp: 3 },
   /** A training ground offers the unit named this many advances. */
   training: { choices: 3 },
+  /** The events a mystery node may turn out to be. */
+  events: {
+    /** A recruit costing at least `minCost` points, for this share of its price. */
+    sellsword: { minCost: 45, priceShare: 0.6 },
+    /** A fight against the step's budget times `threat`, or a toll in gold to pass. */
+    ambush: { threat: 0.75, toll: { base: 10, perRound: 3 } },
+    /** Gold for the taking, or a d6: up to `collapse` a unit sits out and the gold is lost, over it `multiplier` times the gold. */
+    cache: { gold: { base: 8, perRound: 2 }, collapse: 2, multiplier: 3 },
+    /** A free Disloyal recruit costing at most `maxCost` points before the trait, or gold. */
+    deserters: { maxCost: 45, gold: { base: 6, perRound: 2 } },
+    /** A retreat banner, or this much gold. */
+    standard: { gold: 25 },
+  },
   /** What a market sells besides its shop. */
   market: {
     /** A retreat banner, in gold. */

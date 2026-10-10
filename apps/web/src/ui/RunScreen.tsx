@@ -11,6 +11,7 @@ import {
   briefingView,
   campView,
   draftView,
+  eventView,
   historyLines,
   levelLine,
   overView,
@@ -28,6 +29,7 @@ import {
   type TrainingView,
   type DraftView,
   type EnemyShadow,
+  type EventView,
   type OfferView,
   repeatGuard,
   type RewardLine,
@@ -155,6 +157,7 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
       shop: shopView(run),
       camp: campView(run),
       training: trainingView(run),
+      event: eventView(run),
     }),
     [run],
   );
@@ -166,6 +169,7 @@ function Phase({ run, records, onAction, onExit, onNewRun }: Omit<Props, 'error'
   if (view.shop) return <Shop view={view.shop} act={onAction} />;
   if (view.camp) return <Camp run={run} view={view.camp} act={onAction} />;
   if (view.training) return <Training view={view.training} act={onAction} />;
+  if (view.event) return <Event run={run} view={view.event} act={onAction} />;
   if (run.phase === 'over') return <Over run={run} records={records} onExit={onExit} onNewRun={onNewRun} />;
   return null;
 }
@@ -438,6 +442,10 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
             <span className="run-banner-count">⚑ {view.retreat.left} left</span>), and the warband falls back to the map: the place it fled is
             shut while another road is open.
           </p>
+        ) : view.plain ? (
+          <p className="muster-meta">
+            The ambush is broken. The win pays <span className="run-gold">{view.gold} gold</span>; there was no other prize to be had.
+          </p>
         ) : (
           <>
             <p className="muster-meta">
@@ -471,8 +479,63 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
       <LevelUps levelUps={view.levelUps} act={act} />
 
       <Go choice={view.next} act={act} className="run-go run-go-big">
-        {view.levelUps.length > 0 ? 'Spend the levels first' : view.retreat ? 'Fall back' : 'Claim the reward'}
+        {view.levelUps.length > 0 ? 'Spend the levels first' : view.retreat ? 'Fall back' : view.plain ? 'Move on' : 'Claim the reward'}
       </Go>
+      <Roster run={run} />
+    </>
+  );
+}
+
+/** A mystery's event: the tale, the ways to take it, and what came of the one taken. */
+function Event({ run, view, act }: { run: RunState; view: EventView; act: Act }): JSX.Element {
+  return (
+    <>
+      <section className="run-panel run-stop run-event" data-stop="event">
+        <h2 className="muster-label">{view.title}</h2>
+        <p className="run-event-text">{view.text}</p>
+        {view.unit ? (
+          <div className="run-offers">
+            <OfferCard offer={view.unit}>{null}</OfferCard>
+          </div>
+        ) : null}
+        {view.result ? (
+          <>
+            <p className="run-event-result">
+              {view.result.die !== null ? <span className="run-event-die">{view.result.die}</span> : null}
+              {view.result.text}
+            </p>
+            <Go choice={view.leave} act={act} className="run-go run-go-big">
+              Back to the map
+            </Go>
+          </>
+        ) : (
+          <div className="run-offers">
+            {view.choices.map((c, i) => (
+              <div key={i} className="run-offer">
+                <strong className="run-offer-name">{c.label}</strong>
+                <p className="muster-note">{c.detail}</p>
+                {c.take ? (
+                  <Go choice={c.take} act={act} className="run-go">
+                    Choose
+                  </Go>
+                ) : null}
+                {c.targets ? (
+                  <div className="run-targets">
+                    {c.targets.map((t) => (
+                      <Go key={t.unitId} choice={t.give} act={act} className="run-target">
+                        <UnitSprite unit={t.unit} />
+                        <span>
+                          <strong>{t.unit.name}</strong>
+                        </span>
+                      </Go>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       <Roster run={run} />
     </>
   );
