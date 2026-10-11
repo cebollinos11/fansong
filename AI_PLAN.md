@@ -111,6 +111,22 @@ Tests: a unit facing a blow at bad odds, with a flank one move away, moves; a un
 
 Done when: ≥ 54% vs the Phase 2 AI in annihilation, others not below 46%.
 
+Done: 54.9% ±1.9% in annihilation over three seeds, the other modes untouched. It was built in two steps, each benched over the same three seeds:
+
+- **3a, plans for move-then-strike only: 51.8% ±1.9%.** A move followed by a strike was weighed against the best blow or shot from where the unit stood, and went first when it was worth more; a shooter's move counted the shot it led to. Everything else stayed on the ladder. It picked another command than Phase 2 in about 3% of a unit's decisions, nearly all of them a flyer, a Slippery unit or a shooter: anyone else pays a free hack to step round a foe.
+- **3b, no ladder: 54.9% ±1.9%.** This is what is kept (`planScores`). It picks another command in about 17% of a unit's decisions. Most often it ends the activation where the ladder attacked at bad odds or stepped up into a risk; next it moves where the ladder attacked.
+
+What was built differently from the list above:
+
+- **The plans do not come from `getActionPlans`.** On `stone-crown` a call costs 1 ms with one action, 60 ms with two and 225 ms with three: it walks again from every hex of the first move and builds a path for each. So each legal Move is followed by the best strike its own hex allows with the actions then left, a blow at a foe beside it or a shot at one in range and in sight. That is every one-move-then-strike chain the engine would give, from every hex and not only the one it picks per target, at no walk beyond the one `getLegalCommands` has made. No change to the engine.
+- **Two moves and then a strike are not planned.** With three actions the first move still closes on the foe by distance, and the plan is made on the next call. Reach for the other units is still the distance bound of Phase 1, in `threat` and in `activationOrder`.
+- **The one scale** is a move's own: 1,000 points for a unit of `blowValue` (`PLAN_SCALE`, the same as `CHARGE_SCALE` and `SETUP_SCALE`), against ending the activation where the unit stands, which is 0. A blow or shot is worth its `blowValue` with the actions held. A move is worth the strike it leads to if that is worth making, plus `SETUP_SCALE × (Δthreat − EXPOSURE_WEIGHT × Δexposure)`, plus 100 a hex nearer the foe as before (`APPROACH`), less the free hacks, with the lava terms as they were. Only these values were tried.
+- **Guard is worth what the riposte spares the unit**: what the enemy can expect to do to it as it stands, less the same with it on guard. Only a unit with the Guard trait can take the stance; anyone else with nothing worth doing ends its activation.
+- **A shooter has no standoff ladder.** A hex nearer counts until the nearest foe is in range; from there its shots and its risks say where to stand. It still keeps out of contact and takes short range when it can, but with one action it now stops a hex outside the reach of foes it could not stand up to, where the ladder walked into range. A Magic User keeps the ladder: its spell is no part of threat.
+- **Left as they were**: the choice of who activates, the dice, the war cry (a quorum still goes before anything; without one it now beats ending the activation), spells, lava and the cost of leaving contact, which at 30,000 still rules out stepping away from a standing foe. Weighing a free hack by its odds would let an ordinary unit give up a bad fight for a flank; not tried.
+- **Tests.** Three scenes rested on the ladder and were changed: a Leader's blow at an equal after its war cry and a blow by a unit outnumbered two to one are no longer struck, so those foes are weaker or that unit stronger; the shooter test keeps its bounds against foes of Combat 3 and 4, and against Combat 5 holds the archer to its range with two actions and to one hex outside the foes' reach with one.
+- **Stalled games.** 5 of the 2,574 games against Phase 2 reached the cap of 5,000 commands, and 2 of 858 against itself. All five against Phase 2 are a duel of the last two units, two hexes apart: the Phase 3 unit no longer has to close on a foe it expects to lose to, and that foe does not charge it either. `blowValue` counts a lost exchange for more than a lesser hit, so between near equals a fight can look like a loss to both. Phase 2 against itself had none in 858. A person facing it just attacks; a simulation that needs an ending should keep its step cap.
+
 ## Phase 4: the other modes
 
 Zones, kings and flags override move scoring today, so Phases 1–3 only reach annihilation.
@@ -141,6 +157,7 @@ Win rate against the AI of the phase before, from `pnpm play bench --baseline �
 | Baseline | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 1.19 / 3.36 / 9.77 |
 | 1: setup value for moves | **61.9%** | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.03 / 9.51 / 39.5 |
 | 2: activation order | 52.2% (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.29 / 11.3 / 33.2 |
+| 3: one scale instead of a ladder | **54.9%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.12 / 9.51 / 26.7 |
 
 The budget that follows from the baseline: a mean of at most 3.6 ms and no decision over 100 ms, in annihilation on `stone-crown`.
 

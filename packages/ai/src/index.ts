@@ -63,15 +63,9 @@ export function chooseCommand(state: GameState): Command {
   const flags = flagPlan(state, board, state.active);
   const kings = kingPlan(state, board, state.active);
 
-  const scores = commands.map((command) => {
-    let score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
-    if (command.type === 'Move') score -= disengageCost(state, board, command.unitId);
-    if (command.type === 'Move') score += lavaMoveEdge(state, board, unitById(state, command.unitId)!, command.to);
-    if (command.type === 'Attack') {
-      score += lavaAttackEdge(state, board, unitById(state, command.attackerId)!, unitById(state, command.targetId)!);
-    }
-    return score;
-  });
+  // Annihilation only: the unit acting weighs everything it could do on the one scale.
+  const oneScale = !flags && !kings && zones.length === 0 && state.phase === 'acting' && !state.spell && !!state.activeUnitId;
+  const scores = oneScale ? planScores(state, board, commands) : commands.map((command) => ladderScore(state, board, zones, flags, kings, command));
 
   // A move scored for its setup has yet to pay for the risk it ends in (see
   // `setupEdge`). The risk only ever lowers a score, so the moves are weighed in
@@ -90,6 +84,24 @@ export function chooseCommand(state: GameState): Command {
     if (best < 0 || scores[i]! > scores[best]! || (scores[i] === scores[best] && i < best)) best = i;
   }
   return commands[best]!;
+}
+
+/** A command's score on the ladder of the other modes: its kind first, then how good a one of its kind it is. */
+function ladderScore(
+  state: GameState,
+  board: Board,
+  zones: ZoneView[],
+  flags: FlagPlan | undefined,
+  kings: KingPlan | undefined,
+  command: Command,
+): number {
+  let score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
+  if (command.type === 'Move') score -= disengageCost(state, board, command.unitId);
+  if (command.type === 'Move') score += lavaMoveEdge(state, board, unitById(state, command.unitId)!, command.to);
+  if (command.type === 'Attack') {
+    score += lavaAttackEdge(state, board, unitById(state, command.attackerId)!, unitById(state, command.targetId)!);
+  }
+  return score;
 }
 
 /**
@@ -243,6 +255,140 @@ function chargeEdge(state: GameState, board: Board, mover: Unit, to: Vec): numbe
   return best === -Infinity ? 0 : best * CHARGE_SCALE;
 }
 
+/** Whether a hex holds a living unit other than the one acting, by state: what a shot of its own has to see past. */
+const lanes = new WeakMap<GameState, (v: Vec) => boolean>();
+
+function laneOf(state: GameState): (v: Vec) => boolean {
+  let lane = lanes.get(state);
+  if (!lane) {
+    const taken = new Set<string>();
+    for (const u of state.units) if (!u.dead && u.id !== state.activeUnitId) taken.add(vecKey(u.pos));
+    lane = (v) => taken.has(vecKey(v));
+    lanes.set(state, lane);
+  }
+  return lane;
+}
+
+/**
+ * The best shot `mover` could fire from `to` with `left` actions once it has
+ * moved there, in {@link blowValue} terms: a foe in range and in sight, with no
+ * standing foe beside the hex to pin it. `undefined` with no shot from there.
+ */
+function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number): number | undefined {
+  const range = mover.traits.ranged;
+  if (range < 2 || left < 1) return undefined;
+  const enemies = enemiesOf(state, mover.owner);
+  for (const e of enemies) if (!isDown(e) && board.distance(e.pos, to) === 1) return undefined;
+  const lane = laneOf(state);
+  let best: number | undefined;
+  for (const e of enemies) {
+    const d = board.distance(e.pos, to);
+    if (d < 2 || d > range || !board.lineOfSight(to, e.pos, lane)) continue;
+    const value = blowValue(state, board, mover, e, false, true, to, left);
+    if (best === undefined || value > best) best = value;
+  }
+  return best;
+}
+
+/**
+ * The best blow `mover` could strike from `to` with `left` actions once it has
+ * moved there, in {@link blowValue} terms. `undefined` with no foe beside it.
+ */
+function blowAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number): number | undefined {
+  if (left < 1) return undefined;
+  let best: number | undefined;
+  for (const e of enemiesOf(state, mover.owner)) {
+    if (board.distance(e.pos, to) !== 1) continue;
+    const value = blowValue(state, board, mover, e, false, false, to, left);
+    if (best === undefined || value > best) best = value;
+  }
+  return best;
+}
+
+/** Score per unit of {@link blowValue} when a unit's whole activation is weighed on one scale: a move's own. */
+const PLAN_SCALE = 1_000;
+
+/** Score per hex a move brings a unit nearer the fight: what closing on the foe has always been worth to a move. */
+const APPROACH = 100;
+
+/**
+ * Every command of the unit acting on one scale, in {@link blowValue} terms
+ * times {@link PLAN_SCALE}, against ending its activation where it stands (0).
+ *
+ * A blow or a shot is worth its expected value with the actions held. A move is
+ * worth the best strike its hex allows with the actions then left, if any is
+ * worth making, plus what standing there does for the warband
+ * ({@link setupEdge}; the risk to the mover itself is taken off by
+ * `chooseCommand`), plus the hexes it closes on the foe, less the hacks it
+ * draws. Standing on guard is worth what the riposte spares the unit. So a unit
+ * strikes only when the blow is worth more than a better place to stand, and
+ * holds its ground when nothing is worth doing.
+ */
+function planScores(state: GameState, board: Board, commands: Command[]): number[] {
+  const unit = unitById(state, state.activeUnitId!)!;
+  const enemies = enemiesOf(state, unit.owner);
+  const left = state.actionsRemaining - 1;
+  const hacks = disengageCost(state, board, unit.id);
+  const here = standingScore(unit, nearestEnemyDistance(board, unit.pos, enemies));
+  const scores: number[] = [];
+  for (const command of commands) {
+    let score = 0;
+    switch (command.type) {
+      case 'Attack': {
+        const target = unitById(state, command.targetId)!;
+        score = blowValue(state, board, unit, target, command.power === true, false) * PLAN_SCALE;
+        score += lavaAttackEdge(state, board, unit, target) * (PLAN_SCALE / EV_SCALE);
+        break;
+      }
+      case 'Shoot':
+        score = blowValue(state, board, unit, unitById(state, command.targetId)!, command.aimed === true, true) * PLAN_SCALE;
+        break;
+      case 'Move': {
+        const to = command.to;
+        const strike = blowAfter(state, board, unit, to, left) ?? shotAfter(state, board, unit, to, left) ?? 0;
+        score = standingScore(unit, nearestEnemyDistance(board, to, enemies)) - here;
+        score += Math.max(0, strike) * PLAN_SCALE + setupEdge(state, board, unit, to) - hacks + lavaMoveEdge(state, board, unit, to);
+        break;
+      }
+      case 'Guard':
+        // Just above ending the activation, as ever, when the stance spares it nothing.
+        score = 1 + SETUP_SCALE * EXPOSURE_WEIGHT * setupOf(state, board, unit).guardGain();
+        break;
+      case 'WarCry':
+        score = warCryScore(state, unit);
+        break;
+      // The AI fights every battle out: it never sounds the retreat.
+      case 'Retreat':
+        score = -Infinity;
+        break;
+      // Group members act in the order the engine lines them up.
+      case 'SwitchGroupMember':
+        score = -1;
+        break;
+      default:
+        break;
+    }
+    scores.push(score);
+  }
+  return scores;
+}
+
+/**
+ * What standing `dist` hexes from the nearest foe is worth to `unit` before
+ * anything it could do from there: each hex nearer counts, down to contact for
+ * a fighter and down to its range for a shooter, whose shots and whose risks
+ * then say where in range to stand. A Magic User's spell is no part of those,
+ * so it keeps the standoff it has always kept.
+ */
+function standingScore(unit: Unit, dist: number): number {
+  if (unit.traits.ranged >= 2) return -Math.max(dist, unit.traits.ranged) * APPROACH;
+  if (unit.traits.magicUser) {
+    if (dist >= 2 && dist <= CASTER_STANDOFF) return standoffScore(CASTER_STANDOFF, dist);
+    return dist < 2 ? 40_000 : 100_000 - dist * APPROACH;
+  }
+  return -dist * APPROACH;
+}
+
 /** Score per unit of threat a move adds, in {@link blowValue} terms: as much as the charge it sets up for the mover itself. */
 const SETUP_SCALE = 1_000;
 
@@ -251,6 +397,15 @@ const EXPOSURE_WEIGHT = 1;
 
 /** The {@link MoveSetup} of the unit moving in a given state: one per decision, shared by all its moves. */
 const setups = new WeakMap<GameState, MoveSetup>();
+
+function setupOf(state: GameState, board: Board, mover: Unit): MoveSetup {
+  let setup = setups.get(state);
+  if (!setup) {
+    setup = new MoveSetup(state, board, mover);
+    setups.set(state, setup);
+  }
+  return setup;
+}
 
 /**
  * What ending a move at `to` does for the whole warband: the threat it adds —
@@ -263,12 +418,7 @@ const setups = new WeakMap<GameState, MoveSetup>();
  * takes it off the moves that could still be the best.
  */
 function setupEdge(state: GameState, board: Board, mover: Unit, to: Vec): number {
-  let setup = setups.get(state);
-  if (!setup) {
-    setup = new MoveSetup(state, board, mover);
-    setups.set(state, setup);
-  }
-  const part = setup.partial(to);
+  const part = setupOf(state, board, mover).partial(to);
   return SETUP_SCALE * (part.threat - EXPOSURE_WEIGHT * part.exposure);
 }
 
@@ -734,8 +884,7 @@ function scoreCommand(
         if (zoneScore !== undefined) return zoneScore;
       }
       if (kings) return kingMoveScore(state, board, kings, mover, command.to);
-      // Annihilation only for now: in the zone modes a unit with no zone to go to hunts as it always has.
-      const setup = zones.length === 0 ? setupEdge(state, board, mover, command.to) : 0;
+      // A unit with no zone to go to hunts as it always has; in annihilation `planScores` weighs the move instead.
       const dist = nearestEnemyDistance(board, command.to, enemies);
       // A ranged unit seeks a standoff: inside its range but out of melee, so it
       // can shoot next turn instead of being dragged into a fight. (When a shot
@@ -745,12 +894,12 @@ function scoreCommand(
       const standoff = mover.traits.ranged >= 2 ? mover.traits.ranged : mover.traits.magicUser ? CASTER_STANDOFF : 0;
       if (standoff >= 2) {
         const r = standoff;
-        if (dist >= 2 && dist <= r) return standoffScore(r, dist) + setup; // in the sweet spot — short range, else the edge of range
-        if (dist < 2) return 40_000 + setup; // stepping into melee is a last resort for a shooter
-        return 100_000 - dist * 100 + setup; // out of range: close the gap
+        if (dist >= 2 && dist <= r) return standoffScore(r, dist); // in the sweet spot — short range, else the edge of range
+        if (dist < 2) return 40_000; // stepping into melee is a last resort for a shooter
+        return 100_000 - dist * 100; // out of range: close the gap
       }
       // Melee: close the distance; always beats ending, never beats attacking.
-      return 100_000 - dist * 100 + chargeEdge(state, board, mover, command.to) + setup;
+      return 100_000 - dist * 100 + chargeEdge(state, board, mover, command.to);
     }
 
     case 'Guard': {

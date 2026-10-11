@@ -361,6 +361,8 @@ export class MoveSetup {
   /** Every unit's distance from the destination being scored. */
   private readonly fromThere: number[];
   private readonly scratch: (Blow | undefined)[] = [];
+  /** What {@link partial} gave for each destination asked for. */
+  private readonly partials = new Map<string, { threat: number; exposure: number }>();
 
   private readonly board: Board;
 
@@ -573,16 +575,35 @@ export class MoveSetup {
    * by leaving its hex, and not yet what it meets at `to`.
    */
   partial(to: Vec): { threat: number; exposure: number } {
-    this.units.forEach((u, i) => (this.fromThere[i] = this.board.distance(u.pos, to)));
-    return {
-      threat: this.shift(to, true, this.theirs),
-      exposure: this.shift(to, false, this.ours) - this.riskHere(),
-    };
+    const key = vecKey(to);
+    let part = this.partials.get(key);
+    if (!part) {
+      this.units.forEach((u, i) => (this.fromThere[i] = this.board.distance(u.pos, to)));
+      part = {
+        threat: this.shift(to, true, this.theirs),
+        exposure: this.shift(to, false, this.ours) - this.riskHere(),
+      };
+      this.partials.set(key, part);
+    }
+    return part;
   }
 
   /** What the enemy can expect to do to the mover where it stands now. */
   private riskHere(): number {
     return (this.here ??= targetValue(this.state, this.mover, this.theirs.map((a) => this.baseBlow(a, this.me))));
+  }
+
+  /**
+   * What standing on guard where it is spares the mover: what the enemy can
+   * expect to do to it as it stands, less the same with its riposte waiting for
+   * them. Never negative.
+   */
+  guardGain(): number {
+    const { mover } = this;
+    const stance: GameState = { ...this.state, units: this.state.units.map((u) => (u.id === mover.id ? { ...u, guarding: true } : u)) };
+    const braced = unitById(stance, mover.id)!;
+    const blows = this.theirs.map((a) => blowOn(stance, this.board, this.occupied, this.units[a]!, braced));
+    return Math.max(0, this.riskHere() - targetValue(stance, braced, blows));
   }
 
   /** What the enemy can expect to do to the mover standing on `to`. Never negative. */

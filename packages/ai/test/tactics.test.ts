@@ -61,8 +61,8 @@ describe('AI dice policy', () => {
 
 describe('AI combat judgement', () => {
   it('strikes the foe it can push off the edge of the map', () => {
-    // Two equal foes; the second one has the map edge at its back.
-    const s = activate(game([U('a', 1, 4)], [U('mid', 2, 4), U('edge', 0, 4)]), 'p0u0');
+    // Two equal foes; the second one has the map edge at its back. (Strong enough that a blow is worth it, outnumbered as it is.)
+    const s = activate(game([U('a', 1, 4, { combat: 5 })], [U('mid', 2, 4), U('edge', 0, 4)]), 'p0u0');
     expect(chooseCommand(s)).toMatchObject({ type: 'Attack', targetId: 'p1u1' });
   });
 
@@ -131,13 +131,23 @@ describe('AI setup moves', () => {
   });
 
   it('a shooter still keeps its standoff', () => {
-    for (const combat of [3, 5]) {
+    /** How far from the nearest of two foes of `combat` the archer ends its move. */
+    const standoff = (combat: number, actions: number): number => {
       const foes = [U('x', 11, 3, { combat }), U('y', 11, 5, { combat })];
       const s = moving(game([U('archer', 2, 4, { ranged: 6 }), U('friend', 2, 6)], foes), 'p0u0');
-      const dist = Math.min(...foes.map((f) => board.distance(moveTo(chooseCommand(s)), f.pos)));
-      expect(dist).toBeGreaterThanOrEqual(2);
-      expect(dist).toBeLessThanOrEqual(6);
+      return Math.min(...foes.map((f) => board.distance(moveTo(chooseCommand({ ...s, actionsRemaining: actions })), f.pos)));
+    };
+    // Into range and out of contact, as ever.
+    for (const combat of [3, 4]) {
+      for (const actions of [1, 2]) {
+        expect(standoff(combat, actions)).toBeGreaterThanOrEqual(2);
+        expect(standoff(combat, actions)).toBeLessThanOrEqual(6);
+      }
     }
+    // Foes it could not stand up to, whose charge reaches as far as its shot: it comes into range with a shot to
+    // follow, and with one action it stops a hex outside their reach instead.
+    expect(standoff(5, 2)).toBe(6);
+    expect(standoff(5, 1)).toBe(7);
   });
 
   it('scores a move as the whole board scored again would, for every hex it could go to', () => {
@@ -176,6 +186,43 @@ describe('AI setup moves', () => {
     expect(withUnitAt(s, 'p0u0', { x: 6, y: 4 }).units[0]!.pos).toEqual({ x: 6, y: 4 });
     chooseCommand(s);
     expect(s).toEqual(copy);
+  });
+});
+
+describe('AI whole activations', () => {
+  const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+  const foe = { x: 7, y: 4 };
+  const friend = board.neighbors(foe)[0]!;
+  /** Straight across the foe from the friend: the hex that closes the pincer. */
+  const flank = board.stepAway(friend, foe);
+  /** In contact with the foe, one step from the flank. */
+  const start = board.neighbors(foe).find((v) => board.distance(v, flank) === 1 && board.distance(v, friend) > 1)!;
+  /** Slippery, so that stepping round the foe draws no free hack. */
+  const scene = (combat: number, foeCombat: number, actions: number): GameState =>
+    activate(game([U('a', start.x, start.y, { combat, slippery: true }), U('friend', friend.x, friend.y)], [U('foe', foe.x, foe.y, { combat: foeCombat })]), 'p0u0', actions);
+
+  it('a unit facing a blow at bad odds, with a flank one move away, moves there and strikes from it', () => {
+    const s = scene(3, 5, 2);
+    expect(getLegalCommands(s)).toContainEqual({ type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const move = chooseCommand(s);
+    expect(move).toEqual({ type: 'Move', unitId: 'p0u0', to: flank });
+    expect(chooseCommand(reduce(s, move).state)).toMatchObject({ type: 'Attack', targetId: 'p1u0' });
+  });
+
+  it('with one action it takes the flank for its friend rather than strike at bad odds', () => {
+    expect(chooseCommand(scene(3, 5, 1))).toEqual({ type: 'Move', unitId: 'p0u0', to: flank });
+  });
+
+  it('a unit with a good blow still strikes, flank or no flank', () => {
+    for (const actions of [1, 2]) expect(chooseCommand(scene(5, 3, actions))).toMatchObject({ type: 'Attack', targetId: 'p1u0' });
+  });
+
+  it('a unit that cannot leave holds rather than strike a blow it would lose by', () => {
+    const s = activate(game([U('a', start.x, start.y)], [U('foe', foe.x, foe.y, { combat: 5 })]), 'p0u0');
+    expect(chooseCommand(s)).toEqual({ type: 'EndActivation' });
+    // On guard, if it knows how: its riposte is what the foe then has to get past.
+    const guard = activate(game([U('a', start.x, start.y, { guard: true })], [U('foe', foe.x, foe.y, { combat: 5 })]), 'p0u0');
+    expect(chooseCommand(guard)).toEqual({ type: 'Guard', unitId: 'p0u0' });
   });
 });
 
