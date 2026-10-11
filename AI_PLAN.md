@@ -99,6 +99,7 @@ Kept, but short of the bar: 52.2% ±1.9% in annihilation over three seeds (52.8%
 - **`gift` is worked out with `blowOn`, not `MoveSetup.partial`**: per foe in reach, only the nearest free hex beside it and the hexes that close a pincer are scored, since outnumbering is the same from any of them. A `MoveSetup` per unit would score the whole board for each. The order costs about 0.45 ms an activation decision.
 - **`own` counts a winning charge or shot**, not only a blow in contact, so such a unit joins the fighters' band of activation scores.
 - **Next to try**: let a unit chosen for its gift roll two dice (the 29%). The setters that never arrive should come right in Phase 3, which plans the move and the strike together.
+- **Tried, not kept: making the dice and the gift agree.** Against the Phase 2 AI over three seeds (±1.9%), with the gift weighed by the odds the dice deliver it (the successes for the move and no turnover, which would bench the friend): by the dice the command rolls, so a setter rolls two, 47.9%; by the dice `diceWorth` would pick, so a one-die setter goes first less often, 50.5%. The first is a loss and the second is noise, so the dice policy is right to give a setter one die: the turnover two dice risk costs more than the gift.
 
 ## Phase 3: one scale instead of a ladder
 
