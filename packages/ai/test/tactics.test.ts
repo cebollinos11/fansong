@@ -75,14 +75,15 @@ describe('AI combat judgement', () => {
 });
 
 describe('AI King safety', () => {
-  it('the King backs away from a foe without backing onto the edge of the map', () => {
+  it('the King in reach of a foe wherever it goes does not back onto the edge of the map', () => {
     const s = activate(
       game([U('k', 2, 4, { king: true }), U('guard', 6, 0)], [U('raider', 4, 4), U('k', 11, 7, { king: true })], 'kill-the-king'),
       'p0u0',
     );
-    const to = moveTo(chooseCommand(s));
+    const cmd = chooseCommand(s);
     const board = makeHexGrid(s.board);
-    expect(board.distance(to, { x: 4, y: 4 })).toBeGreaterThan(2);
+    const to = cmd.type === 'Move' ? cmd.to : { x: 2, y: 4 };
+    expect(board.distance(to, { x: 4, y: 4 })).toBeGreaterThan(1);
     expect(board.cellsWithin(to, 1).length).toBe(6);
   });
 });

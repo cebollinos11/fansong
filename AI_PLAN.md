@@ -157,7 +157,32 @@ Done when: each mode ≥ 54% vs the Phase 3 AI in that mode.
 - **Left as they were**: `assignZones`, the activation order, the dice. Not weighed, as on the hill: what the enemy could do to a hold by felling a holder.
 - **Tests.** No scene rested on the ladder: the two conquest scenes there were pass unchanged, and three were added (a lone holder at bad odds, the flanking hex of a zone, a holder that stays).
 
-Next: kings and the Pig. Flags are untouched.
+**Kill-the-king, done: 59.7% ±1.9%** over three seeds against the AI with conquest on the one scale, no timeouts, every other mode at exactly 50.0%. On `stone-crown`: 4.07 / 13.5 / 37.5 ms, inside the budget of a 6.3 ms mean and no decision over 100 ms. The unit acting goes through `planScores` as in annihilation, and the mode is on the scale mostly by what a King is worth (`worthOf`, `KING_WORTH`), with no new constant:
+
+- **Distance.** A unit counts its distance to the enemy King (`kingHuntDistance`, walking unless it flies) where an annihilation unit counts the nearest foe, at `APPROACH` a hex; a shooter counts it no nearer than its range. Our King counts none.
+- **The enemy King** is worth the game to a blow, a shot and the threat of a move, through `worthOf`: nothing was added for it.
+- **Our King's safety is exposure at `KING_WORTH`**, again through `worthOf`: what the enemy can do to it is in the exposure of every move (its own most of all, so it moves to where it has less to fear, and otherwise stays) and in the worth of its guard. For blows it is a term of its own (`kingSwing`, beside `zoneSwing` in `strikeValue`): a blow or shot at a foe is also worth what that foe's own blow adds to the King's exposure (`threatShares` in `tactics.ts`), by the odds it kills, knocks down or pushes it. As with a zone, the lesser hit is taken to clear the foe away.
+- **Two hard floors.** Our King never strikes a foe on its feet other than the enemy King (`tradesForNothing`), whatever the odds. And a blow at the enemy King counts nothing for what the striker may lose by it, unless the striker is our King: see the stalls below.
+- **Gone**: the King's safety ladder (`kingSafety`) and the ladder's branch for our King's blows. `kingMoveScore`, `kingTargetBonus` and the ladder's other King branches now serve the golden Pig only. The ladder still chooses who activates and with how many dice (`kingActivationScore`, which still orders hunters by the threats to our King).
+- **Left as they were**: `kingPlan`, the activation order, the dice, the Pig. A King left on its own still hunts like anyone, and the last-unit rule of annihilation holds here too, except for our King while it has a warband.
+
+Three variants were benched, each over the same three seeds (±1.9%):
+
+1. **Quarry by `kingHuntDistance` as it was (threats to our King first), no `kingSwing`, no floor for a blow at the enemy King: 61.3%, 1 timeout.** The game at the cap: two flyers sent to a Big, Tough foe two hexes from their King, which could not reach it over the rock; neither would strike it at those odds, and with it as their quarry neither went for the enemy King.
+2. **Quarry always the enemy King, protection by `kingSwing`: 60.6%, 2 timeouts.** Both at the cap were an Armored King on high ground that the units left could knock down about one time in twelve and never kill outright: the blow is a loss by the units' own worth, so they stood off, and the baseline's side could not reach ours either.
+3. **Variant 2, and a blow at the enemy King costs the striker nothing: 59.7%, no timeouts.** Kept: the only one with no game at the cap. The three are within the margin of each other on win rate.
+
+What differs from the plan:
+
+- **The quarry is not `kingHuntDistance` as it stood**: the threats to our King are left out of the distance (variant 1's stall). They are weighed in blows instead. A move toward a threat counts only what the engine's odds say it does for the King: outnumbering the foe beside it, or taking the hex it would charge from.
+- **The floor for a blow at the enemy King** is not on the plan's list. Without it a game can end with neither side able to make itself attack.
+- **A Magic User** keeps its standoff from the nearest foe, as in annihilation; on the ladder it walked up to its quarry here.
+- **High ground** is no longer a term of a hunter's move (the ladder gave it 30 points a level): it counts where the odds see it.
+- **Not weighed**: what a unit does for its King by standing near it with no foe in reach, and what a knocked-down foe can still do to the King.
+- **Known weakness, not fixed (the three variants were spent):** our King's safety is only what the foes in reach can do to it now. Among hexes out of every foe's reach it takes the first legal one, which can be a corner of the map, where the ladder kept it off the edge; and with a foe in reach wherever it goes, it may step toward the enemy King for the threat. A tie-break by distance from the edge is the first thing to try next.
+- **Tests.** Five scenes rested on the ladder. In `tactics.test.ts`, the King two hexes from a raider no longer has to end further from it (nowhere it can go is out of its reach); it still must not end on the edge of the map. In `kings.test.ts`: the King beside a standing foe no longer steps away at the cost of a free hack: it holds or guards. a unit no longer turns back toward a threat it cannot reach this activation: it strikes the foe beside its King over a like foe elsewhere. high ground among equally near hexes is dropped; the scene of a blow at the enemy King over a downed foe passes unchanged, but only with the floor. Added: our King steps out of a foe's charge reach, a blow at the enemy King at odds refused against anyone else, the hex that flanks the enemy King.
+
+Next: the Pig. Flags are untouched.
 
 ## Phase 5 (optional): lookahead
 
@@ -184,6 +209,7 @@ Win rate against the AI of the phase before, from `pnpm play bench --baseline �
 | 3, last-unit rule (no stalls) | 49.5% (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | not measured |
 | 4: the hill on the one scale | 50.0% | 50.0% | **56.9%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | hill: 4.22 / 13.5 / 40.4 |
 | 4: conquest on the one scale | 50.0% | 50.0% | 50.0% | **59.2%** (three seeds, ±1.9%) | 50.0% | 50.0% | conquest: 5.28 / 11.3 / 43.3 |
+| 4: kill-the-king on the one scale | 50.0% | **59.7%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | king: 4.07 / 13.5 / 37.5 |
 
 The budget that follows from the baseline: a mean of at most 3.6 ms and no decision over 100 ms, in annihilation on `stone-crown`.
 

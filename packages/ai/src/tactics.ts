@@ -171,6 +171,30 @@ export function exposure(state: GameState, board: Board, side: Owner): number {
   return threat(state, board, side === 0 ? 1 : 0);
 }
 
+/**
+ * What each foe's blow adds to what `target` is threatened with as things
+ * stand, by the foe's id: the whole of it ({@link exposure}'s share for this
+ * one unit) less the same with that foe gone. Foes with no blow on it are left out.
+ */
+export function threatShares(state: GameState, board: Board, target: Unit): Map<string, number> {
+  const occupied = occupiedBy(state);
+  const foes = enemiesOf(state, target.owner);
+  const blows: (Blow | undefined)[] = [];
+  for (const foe of foes) blows.push(blowOn(state, board, occupied, foe, target));
+  const shares = new Map<string, number>();
+  const whole = targetValue(state, target, blows);
+  if (whole <= 0) return shares;
+  for (let i = 0; i < foes.length; i++) {
+    const blow = blows[i];
+    if (!blow) continue;
+    blows[i] = undefined;
+    const share = whole - targetValue(state, target, blows);
+    blows[i] = blow;
+    if (share > 0) shares.set(foes[i]!.id, share);
+  }
+  return shares;
+}
+
 /** What activating a unit now is worth to the order of play, in {@link worthOf} terms (see {@link activationOrder}). */
 export interface Standing {
   /** The best blow it can strike itself from where it stands. */
