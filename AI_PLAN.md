@@ -137,6 +137,18 @@ Zones, kings and flags override move scoring today, so Phases 1–3 only reach a
 
 Done when: each mode ≥ 54% vs the Phase 3 AI in that mode.
 
+**King-of-the-hill, done: 56.9% ±1.9%** over three seeds against the Phase 3 AI (with its last-unit rule), every other mode at exactly 50.0%. On `stone-crown`: 4.22 / 13.5 / 40.4 ms, inside the budget of a 6.3 ms mean and no decision over 100 ms. The unit acting now goes through `planScores` as in annihilation, with the hill as terms of it:
+
+- **Distance.** A unit `assignZones` sent to the hill counts its walking distance to the hill where an annihilation unit counts its distance to the nearest foe, at the same `APPROACH` a hex. A unit not sent hunts exactly as in annihilation, setup and exposure included (alone, that measured as noise in Phase 1).
+- **Control.** The hill is ours, no one's or the enemy's by who has more standing units on it. A move that changes that is worth the step, and a step is a point a round. A point is worth its share of the game: `KING_WORTH` (30, what the game is worth where a King decides it) over the points to win (5), so 6 in `blowValue` terms. That was the first value tried and it cleared the bar, so no other was tried.
+- **Blows count the hill too** (`hillSwing`), which the plan did not list: a blow or shot that may kill, knock down or push a foe standing on the hill is worth the step that would bring, by its odds; a blow struck from the hill costs the step the unit's own fall would lose, by the odds it loses. So a lone holder does not stake the hill on an even fight, a holder with a spare beside it fights as it would anywhere, and a foe on the hill is the one to strike. A push is taken to clear the hill, which a hill several hexes deep makes too generous.
+- **One hard floor**: a unit standing on the hill it was sent to never moves off it, spare or not. Within the hill it moves as any unit does, for a blow or a flank.
+- **Left as they were**: `assignZones`, the choice of who activates and with how many dice (still the ladder's: a unit in contact goes first even when it will only hold), and conquest. The last-unit rule of annihilation is off here: the points end the game.
+- **Not weighed**: what the enemy could do to the hold on the hill by felling a holder. Exposure and the worth of a guard still count the unit's own worth only.
+- **Tests.** One scene rested on the ladder: a lone holder no longer strikes an equal beside the hill, so the test of a blow from the hill is now Combat 5 against 2.
+
+Next: conquest by the same terms, a zone a unit. Kings, the Pig and flags are untouched.
+
 ## Phase 5 (optional): lookahead
 
 Only once the evaluator is good, and only if the budget allows.
@@ -159,6 +171,8 @@ Win rate against the AI of the phase before, from `pnpm play bench --baseline �
 | 1: setup value for moves | **61.9%** | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.03 / 9.51 / 39.5 |
 | 2: activation order | 52.2% (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.29 / 11.3 / 33.2 |
 | 3: one scale instead of a ladder | **54.9%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.12 / 9.51 / 26.7 |
+| 3, last-unit rule (no stalls) | 49.5% (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | not measured |
+| 4: the hill on the one scale | 50.0% | 50.0% | **56.9%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | hill: 4.22 / 13.5 / 40.4 |
 
 The budget that follows from the baseline: a mean of at most 3.6 ms and no decision over 100 ms, in annihilation on `stone-crown`.
 

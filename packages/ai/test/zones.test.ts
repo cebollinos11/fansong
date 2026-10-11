@@ -23,18 +23,18 @@ const HILL: Vec[] = [
   { x: 6, y: 1 },
 ];
 
-const hillGame = (w0: UnitSpec[], w1: UnitSpec[]): GameState =>
+const hillGame = (w0: UnitSpec[], w1: UnitSpec[], hill: Vec[] = HILL): GameState =>
   createGame({
     seed: 3,
     board: { width: 12, height: 8 },
     warbands: [w0, w1],
     mode: 'king-of-the-hill',
-    objectives: { hill: HILL },
+    objectives: { hill },
   });
 
-/** Put `unitId` mid-activation with one action left (no dice, so no luck involved). */
-function activate(s: GameState, unitId: string): GameState {
-  return { ...s, phase: 'acting', activeUnitId: unitId, actionsRemaining: 1, activationCount: 1 };
+/** Put `unitId` mid-activation with `actions` actions left (no dice, so no luck involved). */
+function activate(s: GameState, unitId: string, actions = 1): GameState {
+  return { ...s, phase: 'acting', activeUnitId: unitId, actionsRemaining: actions, activationCount: 1 };
 }
 
 const inZone = (zone: Vec[], v: Vec) => zone.some((h) => h.x === v.x && h.y === v.y);
@@ -100,9 +100,48 @@ describe('AI in the zone modes', () => {
     expect(targets.sort()).toEqual([0, 1]);
   });
 
-  it('still attacks an adjacent enemy from the hill', () => {
-    const s = activate(hillGame([U('a', 5, 1)], [U('b', 5, 2)]), 'p0u0');
+  it('still attacks an adjacent enemy from the hill when the blow is a good one', () => {
+    const s = activate(hillGame([U('a', 5, 1, { combat: 5 })], [U('b', 5, 2, { combat: 2 })]), 'p0u0');
     expect(chooseCommand(s).type).toBe('Attack');
+  });
+
+  it('a unit holding the hill at bad odds guards or holds rather than strike', () => {
+    // Alone on the hill: a lost exchange would cost the hill as well.
+    const foe = [U('b', 5, 2, { combat: 4 }), U('far', 11, 7)];
+    const s = activate(hillGame([U('a', 5, 1, { guard: true })], foe), 'p0u0');
+    expect(chooseCommand(s)).toEqual({ type: 'Guard', unitId: 'p0u0' });
+    const plain = activate(hillGame([U('a', 5, 1)], foe), 'p0u0');
+    expect(chooseCommand(plain).type).toBe('EndActivation');
+    // Even against an equal it does not stake the hill on the exchange.
+    const equal = activate(hillGame([U('a', 5, 1)], [U('b', 5, 2), U('far', 11, 7)]), 'p0u0');
+    expect(chooseCommand(equal).type).toBe('EndActivation');
+  });
+
+  it('a unit sent to the hill takes the hex in it that flanks a foe a friend is fighting', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const foe = { x: 6, y: 4 };
+    const friend = board.neighbors(foe)[0]!;
+    /** Straight across the foe from the friend: the hex that closes the pincer. */
+    const flank = board.stepAway(friend, foe);
+    /** A hex of the hill as near the mover, out of contact with the foe. */
+    const start = { x: 3, y: 3 };
+    const quiet = board
+      .cellsWithin(start, board.distance(start, flank))
+      .find((v) => board.distance(v, foe) > 1 && board.distance(v, start) === board.distance(start, flank))!;
+    for (const hill of [
+      [flank, quiet],
+      [quiet, flank],
+    ]) {
+      const s = activate(hillGame([U('a', start.x, start.y), U('friend', friend.x, friend.y)], [U('foe', foe.x, foe.y), U('far', 11, 7)], hill), 'p0u0');
+      expect(chooseCommand(s)).toEqual({ type: 'Move', unitId: 'p0u0', to: flank });
+    }
+  });
+
+  it('a holder does not leave the hill, even for a foe it could charge from off it', () => {
+    const s = activate(hillGame([U('a', 5, 1, { combat: 5 })], [U('b', 5, 3, { combat: 1 }), U('far', 11, 7)]), 'p0u0', 2);
+    const cmd = chooseCommand(s);
+    if (cmd.type === 'Move') expect(inZone(HILL, cmd.to)).toBe(true);
+    expect(['Move', 'EndActivation', 'Guard']).toContain(cmd.type);
   });
 
   it('conquest: a unit makes for a zone its side does not already hold', () => {

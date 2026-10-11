@@ -18,7 +18,7 @@ function unitValue(u: Unit): number {
 }
 
 /** What a King is worth in kill-the-king, in {@link unitValue} terms: the game rides on it. */
-const KING_WORTH = 30;
+export const KING_WORTH = 30;
 
 /** {@link unitValue}, except that a King — or the golden Pig — is worth the game. */
 export function worthOf(state: GameState, u: Unit): number {
@@ -84,7 +84,11 @@ export function blowValue(
   actions = state.actionsRemaining,
   even = false,
 ): number {
-  const o = blowOutcome(state, board, attacker, target, pressed, ranged, from, even);
+  return outcomeValue(blowOutcome(state, board, attacker, target, pressed, ranged, from, even), pressed, actions);
+}
+
+/** What a blow or shot with the given {@link blowOutcome} is worth, struck with `actions` actions in hand (see {@link blowValue}). */
+export function outcomeValue(o: BlowOutcome, pressed: boolean, actions: number): number {
   const ev = o.kill * o.killWorth + o.hurt * o.hurtWorth - o.lose * o.lossWorth;
   return !pressed && actions >= 2 ? ev * 1.8 : ev;
 }
