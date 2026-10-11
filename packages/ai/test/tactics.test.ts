@@ -1,13 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createDemoGame,
   createGame,
+  getLegalCommands,
   makeHexGrid,
+  reduce,
+  unitById,
   type Command,
   type GameState,
   type UnitSpec,
   type Vec,
 } from '@fansong/engine';
 import { chooseCommand } from '../src/index.js';
+import { exposure, MoveSetup, threat, withUnitAt } from '../src/tactics.js';
 
 const U = (name: string, x: number, y: number, extra: Partial<UnitSpec> = {}): UnitSpec => ({
   name,
@@ -79,5 +84,97 @@ describe('AI King safety', () => {
     const board = makeHexGrid(s.board);
     expect(board.distance(to, { x: 4, y: 4 })).toBeGreaterThan(2);
     expect(board.cellsWithin(to, 1).length).toBe(6);
+  });
+});
+
+describe('AI setup moves', () => {
+  const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+  /** As {@link activate}, with the unit marked as having gone this round, as it is in play. */
+  const moving = (s: GameState, unitId: string): GameState =>
+    activate({ ...s, units: s.units.map((u) => (u.id === unitId ? { ...u, activatedThisRound: true } : u)) }, unitId);
+
+  it('steps behind the foe a friend is fighting, to give the friend the pincer', () => {
+    const foe = { x: 7, y: 4 };
+    let tried = 0;
+    // Wherever the friend stands, the hex straight across the foe from it closes the pincer.
+    for (const friend of board.neighbors(foe)) {
+      const s = moving(game([U('a', 5, 4), U('friend', friend.x, friend.y)], [U('foe', foe.x, foe.y)]), 'p0u0');
+      const across = board.stepAway(friend, foe);
+      if (!getLegalCommands(s).some((c) => c.type === 'Move' && c.to.x === across.x && c.to.y === across.y)) continue;
+      tried++;
+      // The friend's blow is what the move improves: the threat is higher there than beside the foe anywhere else.
+      const flank = threat(withUnitAt(s, 'p0u0', across), board, 0);
+      for (const beside of board.neighbors(foe)) {
+        if (beside.x === across.x && beside.y === across.y) continue;
+        if (beside.x === friend.x && beside.y === friend.y) continue;
+        expect(flank).toBeGreaterThan(threat(withUnitAt(s, 'p0u0', beside), board, 0));
+      }
+      expect(chooseCommand(s)).toEqual({ type: 'Move', unitId: 'p0u0', to: across });
+    }
+    expect(tried).toBeGreaterThanOrEqual(4);
+  });
+
+  it('does not stop alone where three foes can charge it when a hex as near is covered by friends', () => {
+    const strong = { combat: 4 };
+    const foes = [U('x', 10, 2, strong), U('y', 10, 3, strong), U('z', 10, 4, strong)];
+    const s = moving(game([U('a', 3, 3), U('f1', 8, 5), U('f2', 8, 6)], foes), 'p0u0');
+    const near = (v: Vec) => Math.min(...foes.map((f) => board.distance(v, f.pos)));
+    // Out on its own, two hexes from the foes: where the AI went before it weighed its exposure.
+    const alone = { x: 8, y: 1 };
+    expect(getLegalCommands(s)).toContainEqual({ type: 'Move', unitId: 'p0u0', to: alone });
+    expect(foes.every((f) => board.distance(alone, f.pos) <= 6)).toBe(true);
+
+    const to = moveTo(chooseCommand(s));
+    expect(near(to)).toBe(near(alone));
+    expect(board.distance(to, { x: 8, y: 5 })).toBe(1);
+    expect(exposure(withUnitAt(s, 'p0u0', to), board, 0)).toBeLessThan(exposure(withUnitAt(s, 'p0u0', alone), board, 0));
+  });
+
+  it('a shooter still keeps its standoff', () => {
+    for (const combat of [3, 5]) {
+      const foes = [U('x', 11, 3, { combat }), U('y', 11, 5, { combat })];
+      const s = moving(game([U('archer', 2, 4, { ranged: 6 }), U('friend', 2, 6)], foes), 'p0u0');
+      const dist = Math.min(...foes.map((f) => board.distance(moveTo(chooseCommand(s)), f.pos)));
+      expect(dist).toBeGreaterThanOrEqual(2);
+      expect(dist).toBeLessThanOrEqual(6);
+    }
+  });
+
+  it('scores a move as the whole board scored again would, for every hex it could go to', () => {
+    let checked = 0;
+    let changed = 0;
+    for (const seed of [1, 2, 3]) {
+      let s = createDemoGame(seed);
+      for (let step = 0; s.phase !== 'gameOver' && step < 300; step++) {
+        const moves = getLegalCommands(s).filter((c) => c.type === 'Move') as Extract<Command, { type: 'Move' }>[];
+        if (moves.length > 0 && step % 4 === 0) {
+          const grid = makeHexGrid(s.board);
+          const mover = unitById(s, s.activeUnitId!)!;
+          const setup = new MoveSetup(s, grid, mover);
+          const before = { threat: threat(s, grid, mover.owner), exposure: exposure(s, grid, mover.owner) };
+          for (const move of moves) {
+            const moved = withUnitAt(s, mover.id, move.to);
+            const delta = setup.delta(move.to);
+            expect(delta.threat).toBeCloseTo(threat(moved, grid, mover.owner) - before.threat, 9);
+            expect(delta.exposure).toBeCloseTo(exposure(moved, grid, mover.owner) - before.exposure, 9);
+            expect(setup.risk(move.to)).toBeGreaterThanOrEqual(0);
+            checked++;
+            if (Math.abs(delta.threat) > 1e-9 || Math.abs(delta.exposure) > 1e-9) changed++;
+          }
+        }
+        s = reduce(s, chooseCommand(s)).state;
+      }
+    }
+    expect(checked).toBeGreaterThan(300);
+    // Most moves in a game change what one side or the other can do: the term is not idle.
+    expect(changed).toBeGreaterThan(checked / 2);
+  });
+
+  it('leaves the state it scores untouched', () => {
+    const s = moving(game([U('a', 5, 4), U('friend', 8, 4)], [U('foe', 7, 4)]), 'p0u0');
+    const copy = structuredClone(s);
+    expect(withUnitAt(s, 'p0u0', { x: 6, y: 4 }).units[0]!.pos).toEqual({ x: 6, y: 4 });
+    chooseCommand(s);
+    expect(s).toEqual(copy);
   });
 });

@@ -1002,6 +1002,8 @@ export interface CombatOddsOptions {
   pressed?: boolean;
   /** Where the attacker strikes from (a charge's last hex); defaults to where it stands. */
   from?: Vec;
+  /** The board of `state`, for a caller that already has it and asks for many odds: saves making it again. */
+  board?: Board;
 }
 
 /**
@@ -1051,7 +1053,7 @@ function attackSetup(state: GameState, attackerId: string, targetId: string, opt
   const attacker = unitById(s, attackerId);
   const target = unitById(s, targetId);
   if (!attacker || !target) throw new Error('unknown combatant');
-  const board = makeHexGrid(s.board);
+  const board = options.board ?? makeHexGrid(s.board);
   // Striking from somewhere else is a charge: a Rusher's bonus rides on it when
   // the walk there is what brings it up against the target.
   const stands = unitById(state, attackerId)!.pos;
@@ -1129,44 +1131,67 @@ export function combatOdds(
   const targetPush = pushOutcome(s, board, target, attacker, !options.ranged);
   const pushedIn = targetPush.kind === 'lava' || (targetPush.kind === 'back' && targetPush.fatal === true);
   const fallsIn = fallsIntoLava(s, board, target);
-  let win = 0;
-  let kill = 0;
-  let hurt = 0;
-  for (let a = 1; a <= 6; a++) {
-    for (let d = 1; d <= 6; d++) {
-      const result = computeCombatResult(
-        {
-          score: attackBase + a,
-          die: a,
-          knockedDown: attacker.knockedDown,
-          canRecoil: true,
-          armored: attacker.traits.armored,
-          mastery: attackerMastery,
-        },
-        {
-          score: defenseBase + d,
-          die: d,
-          knockedDown: target.knockedDown,
-          canRecoil: canBePushed(targetPush),
-          armored: target.traits.armored,
-          mastery: targetMastery,
-          helpless: target.transfixedBy !== undefined,
-        },
-      );
-      if (result.startsWith('defender')) {
-        win++;
-        if (
-          result === 'defenderKilled' ||
-          (result === 'defenderRecoiled' && pushedIn) ||
-          (result === 'defenderKnockedDown' && fallsIn)
-        )
-          kill++;
-      } else if (result.startsWith('attacker') && !options.ranged) hurt++;
-    }
-  }
+  const rolls = rollTally(
+    attackBase,
+    defenseBase,
+    { knockedDown: attacker.knockedDown, canRecoil: true, armored: attacker.traits.armored, mastery: attackerMastery },
+    {
+      knockedDown: target.knockedDown,
+      canRecoil: canBePushed(targetPush),
+      armored: target.traits.armored,
+      mastery: targetMastery,
+      helpless: target.transfixedBy !== undefined,
+    },
+  );
+  let win = rolls.killed + rolls.recoiled + rolls.downed;
+  const kill = rolls.killed + (pushedIn ? rolls.recoiled : 0) + (fallsIn ? rolls.downed : 0);
+  const hurt = options.ranged ? 0 : rolls.hurt;
   win = slain + (through * win) / 36;
   lose += (through * hurt) / 36;
   return { win, kill: slain + (through * kill) / 36, lose, clash: Math.max(0, 1 - win - lose) };
+}
+
+/** How the 36 rolls of an opposed roll come out: how many kill the defender, push it, floor it, or hurt the attacker. */
+interface RollTally {
+  killed: number;
+  recoiled: number;
+  downed: number;
+  hurt: number;
+}
+
+/** A combatant's side of an opposed roll before the dice: everything but its score and die. */
+type RollSide = Omit<CombatSide, 'score' | 'die'>;
+
+/** {@link rollTally} results by their inputs: an AI asks for the same few match-ups thousands of times. */
+const rollTallies = new Map<string, RollTally>();
+
+/** A {@link RollSide} as one number, for the key of {@link rollTallies}. */
+function rollFlags(side: RollSide): number {
+  return (side.knockedDown ? 1 : 0) | (side.canRecoil ? 2 : 0) | (side.armored ? 4 : 0) | (side.mastery ? 8 : 0) | (side.helpless ? 16 : 0);
+}
+
+/**
+ * Every pair of dice of one opposed roll, resolved as {@link computeCombatResult}
+ * resolves them and counted by outcome. The outcome depends on nothing but the
+ * two base scores and the sides' flags, so each such match-up is counted once.
+ */
+function rollTally(attackBase: number, defenseBase: number, attack: RollSide, defense: RollSide): RollTally {
+  const key = `${attackBase},${defenseBase},${rollFlags(attack)},${rollFlags(defense)}`;
+  let tally = rollTallies.get(key);
+  if (tally) return tally;
+  tally = { killed: 0, recoiled: 0, downed: 0, hurt: 0 };
+  for (let a = 1; a <= 6; a++) {
+    for (let d = 1; d <= 6; d++) {
+      const result = computeCombatResult({ ...attack, score: attackBase + a, die: a }, { ...defense, score: defenseBase + d, die: d });
+      if (result === 'defenderKilled') tally.killed++;
+      else if (result === 'defenderRecoiled') tally.recoiled++;
+      else if (result === 'defenderKnockedDown') tally.downed++;
+      else if (result.startsWith('attacker')) tally.hurt++;
+    }
+  }
+  if (rollTallies.size >= 4096) rollTallies.clear();
+  rollTallies.set(key, tally);
+  return tally;
 }
 
 /**

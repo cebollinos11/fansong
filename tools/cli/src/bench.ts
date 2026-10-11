@@ -115,8 +115,11 @@ Options:
   --max-steps <n>    Commands before a game is called a timeout (default 5000)
   --help, -h         Show this help
 
-To freeze today's AI as the baseline (never commit it):
-  git show HEAD:packages/ai/src/index.ts > packages/ai/src/baseline.ts
+To freeze the committed AI as the baseline, in packages/ai/baseline (gitignored):
+  mkdir packages/ai/baseline
+  git archive -o packages/ai/baseline/src.tar HEAD:packages/ai/src
+  tar -xf packages/ai/baseline/src.tar -C packages/ai/baseline
+then: pnpm play bench --baseline packages/ai/baseline/index.ts
 `;
 }
 

@@ -9,13 +9,10 @@ import {
   isDown,
   spellTargets,
   warCryTargets,
-  combatOdds,
   enemiesOf,
   flyingMeleeBonus,
   flyingTargetBonus,
   flagAtBase,
-  isKing,
-  isPig,
   pigExtracted,
   pigOf,
   getLegalCommands,
@@ -45,6 +42,8 @@ import {
   type Unit,
   type Vec,
 } from '@fansong/engine';
+import { MoveSetup } from './tactics.js';
+import { binomial, blowValue, successChance, successOdds, worthOf } from './value.js';
 
 /**
  * Deterministic heuristic opponent. It speaks only `Command`, so the same code
@@ -64,21 +63,33 @@ export function chooseCommand(state: GameState): Command {
   const flags = flagPlan(state, board, state.active);
   const kings = kingPlan(state, board, state.active);
 
-  let best = commands[0]!;
-  let bestScore = -Infinity;
-  for (const command of commands) {
+  const scores = commands.map((command) => {
     let score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
     if (command.type === 'Move') score -= disengageCost(state, board, command.unitId);
     if (command.type === 'Move') score += lavaMoveEdge(state, board, unitById(state, command.unitId)!, command.to);
     if (command.type === 'Attack') {
       score += lavaAttackEdge(state, board, unitById(state, command.attackerId)!, unitById(state, command.targetId)!);
     }
-    if (score > bestScore) {
-      bestScore = score;
-      best = command;
-    }
+    return score;
+  });
+
+  // A move scored for its setup has yet to pay for the risk it ends in (see
+  // `setupEdge`). The risk only ever lowers a score, so the moves are weighed in
+  // order of their score without it, and the rest are left once none can win.
+  const setup = setups.get(state);
+  const waiting: number[] = [];
+  let best = -1;
+  commands.forEach((command, i) => {
+    if (setup && command.type === 'Move') waiting.push(i);
+    else if (best < 0 || scores[i]! > scores[best]!) best = i;
+  });
+  waiting.sort((a, b) => scores[b]! - scores[a]! || a - b);
+  for (const i of waiting) {
+    if (best >= 0 && scores[i]! < scores[best]!) break;
+    scores[i]! -= SETUP_SCALE * EXPOSURE_WEIGHT * setup!.risk((commands[i] as Extract<Command, { type: 'Move' }>).to);
+    if (best < 0 || scores[i]! > scores[best]! || (scores[i] === scores[best] && i < best)) best = i;
   }
-  return best;
+  return commands[best]!;
 }
 
 /**
@@ -210,66 +221,8 @@ function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit)
   );
 }
 
-/** Traits that make a unit worth more to keep (or to kill), each counted once. */
-const VALUED_TRAITS = [
-  'fast', 'tough', 'guard', 'big', 'flying', 'reassembling', 'opportunist',
-  'savage', 'leader', 'armored', 'sharpshooter', 'mastery',
-  'shieldwall', 'rusher', 'slippery', 'whirling', 'immovable', 'woodwise', 'trample',
-] as const;
-
-/**
- * Rough worth of a unit, after the point-buy formula: Combat and traits,
- * scaled by how reliably it activates (lower Quality is better).
- */
-function unitValue(u: Unit): number {
-  let traits = u.traits.ranged > 0 ? 1 : 0;
-  for (const t of VALUED_TRAITS) if (u.traits[t]) traits++;
-  return ((u.combat + 1 + traits * 0.6) * (7 - u.quality)) / 4;
-}
-
-/** What a King is worth in kill-the-king, in {@link unitValue} terms: the game rides on it. */
-const KING_WORTH = 30;
-
-/** {@link unitValue}, except that a King — or the golden Pig — is worth the game. */
-function worthOf(state: GameState, u: Unit): number {
-  return isKing(state, u.id) || isPig(state, u.id) ? KING_WORTH : unitValue(u);
-}
-
 /** Score per unit of {@link blowValue}: wide enough to rank targets, far below the gap to a move. */
 const EV_SCALE = 10_000;
-
-/**
- * What a blow or shot by `attacker` on `target` is worth, from the exact odds:
- * a kill is the target's whole worth (a Tough save turns it into a knockdown),
- * a lesser hit — knocked down or pushed — a share of it, and a lost melee costs
- * a share of the attacker's. A single swing with a second action behind it
- * counts that follow-up too, so it compares fairly against a pressed one.
- */
-function blowValue(
-  state: GameState,
-  board: Board,
-  attacker: Unit,
-  target: Unit,
-  pressed: boolean,
-  ranged: boolean,
-  from?: Vec,
-  actions = state.actionsRemaining,
-): number {
-  const odds = combatOdds(state, attacker.id, target.id, { pressed, ranged, from });
-  const at = from ?? attacker.pos;
-  const vt = worthOf(state, target);
-  const killWorth = target.traits.tough && !target.knockedDown ? vt * 0.5 : vt;
-  // A push off the map is a kill: about half of a lesser win or loss is a push.
-  const hurtWorth = edgeBehind(board, target.pos, at) ? (killWorth + vt * 0.3) / 2 : vt * 0.3;
-  const lossWorth = worthOf(state, attacker) * (!ranged && edgeBehind(board, at, target.pos) ? 0.7 : 0.4);
-  const ev = odds.kill * killWorth + (odds.win - odds.kill) * hurtWorth - odds.lose * lossWorth;
-  return !pressed && actions >= 2 ? ev * 1.8 : ev;
-}
-
-/** Whether a unit at `at` pushed back by a foe at `by` would go off the edge of the map. */
-function edgeBehind(board: Board, at: Vec, by: Vec): boolean {
-  return !board.inBounds(board.stepAway(by, at));
-}
 
 /** Score per unit of {@link blowValue} for the charge a move sets up: a few hexes of approach at most. */
 const CHARGE_SCALE = 1_000;
@@ -288,6 +241,35 @@ function chargeEdge(state: GameState, board: Board, mover: Unit, to: Vec): numbe
     best = Math.max(best, blowValue(state, board, mover, e, false, false, to, left));
   }
   return best === -Infinity ? 0 : best * CHARGE_SCALE;
+}
+
+/** Score per unit of threat a move adds, in {@link blowValue} terms: as much as the charge it sets up for the mover itself. */
+const SETUP_SCALE = 1_000;
+
+/** What a point of exposure costs against a point of threat. */
+const EXPOSURE_WEIGHT = 1;
+
+/** The {@link MoveSetup} of the unit moving in a given state: one per decision, shared by all its moves. */
+const setups = new WeakMap<GameState, MoveSetup>();
+
+/**
+ * What ending a move at `to` does for the whole warband: the threat it adds —
+ * a friend's better blow on a foe the mover now flanks or outnumbers, the
+ * mover's own charge next round — less the exposure it adds, such as leaving a
+ * friend to be outnumbered.
+ *
+ * All of it but the risk to the mover itself at `to`, such as standing where
+ * three foes can charge it: that is the costly part, and `chooseCommand` only
+ * takes it off the moves that could still be the best.
+ */
+function setupEdge(state: GameState, board: Board, mover: Unit, to: Vec): number {
+  let setup = setups.get(state);
+  if (!setup) {
+    setup = new MoveSetup(state, board, mover);
+    setups.set(state, setup);
+  }
+  const part = setup.partial(to);
+  return SETUP_SCALE * (part.threat - EXPOSURE_WEIGHT * part.exposure);
 }
 
 /** Activation score per unit of {@link blowValue}: orders fighters, never lifts one above a war-crying Leader. */
@@ -531,19 +513,6 @@ const MAGIC_BENCH_COST = 1.5;
 /** A spell turn worth less than this is not worth giving up the caster's ordinary activation for. */
 const MIN_SPELL_WORTH = 0.8;
 
-/** The chance a die against `quality` comes up a success. */
-const successChance = (quality: number) => Math.min(1, Math.max(0, (7 - quality) / 6));
-
-/** The chance of each number of successes on `dice` dice against `quality`, the first a sure one when `inspired`. */
-function successOdds(quality: number, dice: number, inspired: boolean): number[] {
-  const p = successChance(quality);
-  const sure = inspired ? 1 : 0;
-  const rolled = dice - sure;
-  const odds = new Array<number>(dice + 1).fill(0);
-  for (let hits = 0; hits <= rolled; hits++) odds[hits + sure] = binomial(rolled, hits) * p ** hits * (1 - p) ** (rolled - hits);
-  return odds;
-}
-
 /**
  * What casting Transfix on `target` with `power` is worth: the chance it fails
  * to resist, times a share of its worth — more when a friend still to act can
@@ -612,12 +581,6 @@ function magicActivationScore(state: GameState, board: Board, command: ChooseAct
 function activated(state: GameState, board: Board, command: ChooseActivation): Unit[] {
   const unit = unitById(state, command.unitId)!;
   return command.group ? groupFor(state, unit, board) : [unit];
-}
-
-function binomial(n: number, k: number): number {
-  let r = 1;
-  for (let i = 1; i <= k; i++) r = (r * (n - k + i)) / i;
-  return r;
 }
 
 /** How much an idle unit's actions are worth: one holding a zone, or a King with no one near, has little to do. */
@@ -737,6 +700,8 @@ function scoreCommand(
         if (zoneScore !== undefined) return zoneScore;
       }
       if (kings) return kingMoveScore(state, board, kings, mover, command.to);
+      // Annihilation only for now: in the zone modes a unit with no zone to go to hunts as it always has.
+      const setup = zones.length === 0 ? setupEdge(state, board, mover, command.to) : 0;
       const dist = nearestEnemyDistance(board, command.to, enemies);
       // A ranged unit seeks a standoff: inside its range but out of melee, so it
       // can shoot next turn instead of being dragged into a fight. (When a shot
@@ -746,12 +711,12 @@ function scoreCommand(
       const standoff = mover.traits.ranged >= 2 ? mover.traits.ranged : mover.traits.magicUser ? CASTER_STANDOFF : 0;
       if (standoff >= 2) {
         const r = standoff;
-        if (dist >= 2 && dist <= r) return standoffScore(r, dist); // in the sweet spot — short range, else the edge of range
-        if (dist < 2) return 40_000; // stepping into melee is a last resort for a shooter
-        return 100_000 - dist * 100; // out of range: close the gap
+        if (dist >= 2 && dist <= r) return standoffScore(r, dist) + setup; // in the sweet spot — short range, else the edge of range
+        if (dist < 2) return 40_000 + setup; // stepping into melee is a last resort for a shooter
+        return 100_000 - dist * 100 + setup; // out of range: close the gap
       }
       // Melee: close the distance; always beats ending, never beats attacking.
-      return 100_000 - dist * 100 + chargeEdge(state, board, mover, command.to);
+      return 100_000 - dist * 100 + chargeEdge(state, board, mover, command.to) + setup;
     }
 
     case 'Guard': {

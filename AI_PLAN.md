@@ -41,7 +41,7 @@ The bench is a throwaway script today; every later phase needs it.
 - Options: `--modes`, `--maps`, `--presets`, `--seeds`, `--jobs` (parallel processes).
 - Output per mode: games, win rate, ± margin, draws or timeouts, and decision time (mean, p95, max) for each side.
 - A `--self` check per preset (baseline vs baseline), to tell a weak warband from a weak AI. `thorn-patrol` is known to be weak.
-- Baseline file: `git show HEAD:packages/ai/src/index.ts > packages/ai/src/baseline.ts`. Add it to `.gitignore`; never commit it.
+- Baseline: the committed AI's whole source, frozen into the gitignored `packages/ai/baseline/` (the commands are in `CLAUDE.md` and `pnpm play bench --help`). Never commit it. A single `baseline.ts` copied from `index.ts` did for Phase 1, but from then on the AI is several files.
 - Presets only meet others within 20% of their points (a walkover says nothing about the AI), mirrors included: 39 pairs on 11 maps, so one seed is 858 games per mode.
 - Update "Changing the AI" in `CLAUDE.md` to name the command.
 
@@ -67,6 +67,16 @@ Tests (`packages/ai/test/tactics.test.ts`, built like the existing ones):
 - A shooter keeps its standoff (no regression).
 
 Done when: ≥ 54% vs baseline in annihilation at ~800 games (margin ±3.4%), no other mode below 46%, budget met. If it measures as noise, find out why before going on: check that `Δthreat` is non-zero in the test scenes and try a wider `SETUP_SCALE`.
+
+Done: 61.9% ±3.2% in annihilation, at `SETUP_SCALE` 1,000 (the same as `CHARGE_SCALE`) and `EXPOSURE_WEIGHT` 1, the first values tried; no sweep was run. What was built differently from the list above:
+
+- **Reach is a distance bound**, not `multiMoveReach`: a walk on `stone-crown` costs about half a millisecond, and a move decision would need one per unit. So a charge counts when a free hex beside the target lies within one Move as the crow flies; rock in the way and foes that would stop the charge are not seen. Worth another look in Phase 3, where `getActionPlans` walks for the active unit anyway.
+- **A blow its unit would lose by counts for nothing**, and a target's total is never negative. Between equal units a lone charge is such a blow, so exposure only shows where the enemy is stronger, outnumbers, or has several units in reach.
+- **Each blow is scored on its own**: a first blow that knocks the target down does not make the second one deadlier, and a unit that can reach three targets threatens all three.
+- **The active unit counts as spent**: its blows from the new hex are next round's. What it can strike with the actions it still holds stays `chargeEdge`'s business.
+- **Scoring is incremental** (`MoveSetup`): only the blows a destination can change are worked out again, and a test holds the result to `threat(withUnitAt(...)) - threat(state)` for every legal move. The risk to the mover itself, the costliest part, is only worked out for the moves that could still be the best; it is never negative, so the choice is the same as if every move had been scored in full.
+- **Two changes to the engine, for speed only**: `combatOdds` takes the caller's `board`, and counts the 36 rolls of a match-up once (`rollTally`). The first cut of this phase took 27 ms a decision; these and the incremental scoring brought it to 3.
+- **Zone modes are left out entirely**: a unit with no zone to go to still hunts as before. With the term on for those hunters, hill measured 53.1% and conquest 50.5%, both inside the margin. Phase 4 can take it up.
 
 ## Phase 2: activation order
 
@@ -118,7 +128,10 @@ Win rate against the AI of the phase before, from `pnpm play bench --baseline �
 | Phase | Annihilation | King | Hill | Conquest | Flags | Pig | ms (stone-crown) |
 |---|---|---|---|---|---|---|---|
 | Baseline | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 1.19 / 3.36 / 9.77 |
+| 1: setup value for moves | **61.9%** | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.03 / 9.51 / 39.5 |
 
 The budget that follows from the baseline: a mean of at most 3.6 ms and no decision over 100 ms, in annihilation on `stone-crown`.
+
+Phase 1 across all eleven maps, ten games at a time on a twelve-thread machine (so slower than a game alone): 3.39 / 11.3 / 76.7 ms in annihilation, against 1.16 / 3.36 / 30.7 for the baseline in the same run.
 
 Baseline decision times in the other modes on `stone-crown` (mean / p95 / max, ms): King 2.11 / 4.00 / 18.7, Hill 2.10 / 4.76 / 14.5, Conquest 3.52 / 5.66 / 25.6, Flags 18.5 / 38.1 / 46.7, Pig 2.42 / 4.76 / 17.7. Across all eleven maps the annihilation mean is 1.18 ms.

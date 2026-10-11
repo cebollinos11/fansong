@@ -4,4 +4,4 @@ dist/
 .DS_Store
 coverage/
 .wrangler/
-packages/ai/src/baseline.ts
+packages/ai/baseline/
