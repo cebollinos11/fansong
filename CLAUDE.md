@@ -19,6 +19,7 @@ pnpm play --help                            # headless AI-vs-AI runner (tools/cl
 pnpm play run --seeds 100                   # run-mode calibration sim: how deep AI-piloted runs get (tunes RUN_TUNING)
 pnpm play run --seeds 100 --retreat losing  # the same, with a player who retreats when losing (default: never)
 pnpm play run --seeds 100 --route safe      # the same, by another way up the map: safe, balanced (default) or greedy
+pnpm play bench --baseline packages/ai/src/baseline.ts   # the AI against a frozen earlier AI: win rate per mode
 pnpm --filter @fansong/cli gen:golden       # re-bless the golden replay fixture
 pnpm --filter @fansong/web dev              # web UI at http://localhost:5173
 pnpm --filter @fansong/worker dev           # local Worker at http://localhost:8787
@@ -67,11 +68,11 @@ Tests live in each package's `test/` directory (`**/test/**/*.test.ts`) and run 
 For units Wesnoth gives no `move` clip, `pnpm --filter @fansong/web walks` synthesizes walk cycles from the hand-tuned `RIGS`. Keep new art in Wesnoth's pixel-art style: vendor raw Wesnoth images and compose them at runtime rather than committing baked composites.
 
 **Changing the AI.** Measure the change by win rate against the previous AI, not by eye:
-1. Freeze the old AI in a temporary `packages/ai/src/baseline.ts` (from `git show HEAD:...`; never commit it).
-2. Play new vs baseline with a throwaway `tools/cli/src/bench.ts` via `createMatchFromPresets`, per mode across maps, presets and seeds, with both seat orders on the same seed. Identical bots then score exactly 50%.
-3. At about 800 games per mode the margin is ±3.4%, so treat differences under ~4% as noise.
+1. Freeze the old AI as the baseline: `git show HEAD:packages/ai/src/index.ts > packages/ai/src/baseline.ts` (gitignored; never commit it).
+2. Play new vs baseline with `pnpm play bench --baseline packages/ai/src/baseline.ts`. It plays every mode across maps, presets of a size and seeds, with both seat orders on the same seed, and reports the win rate, its margin and each side's decision times per mode. With no `--baseline` the AI plays itself and must score exactly 50.0%. `--modes`, `--maps`, `--presets`, `--seeds` and `--jobs` narrow or widen it; `--self` gives each preset's win rate with one AI in both seats, to tell a weak warband from a weak AI.
+3. One seed is 858 games per mode, a margin of ±3.3%, so treat differences under ~4% as noise.
 
-Also check decision time on the 40×40 `stone-crown` map.
+Also check decision time on the 40×40 `stone-crown` map (`--maps stone-crown`). [AI_PLAN.md](AI_PLAN.md) holds the plan for the AI, the budget and the results so far.
 
 **Preset exports:** when handed a `fansong-presets.json` from the dev preset editor, use the `apply-presets` skill.
 

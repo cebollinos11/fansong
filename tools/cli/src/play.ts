@@ -2,9 +2,21 @@ import { chooseCommand } from '@fansong/ai';
 import { reduce } from '@fansong/engine';
 import { formatEvent, renderBoard, renderRoster } from './format.js';
 import { CliError, helpText, listText, parseArgs, resultLine, setupMatch } from './options.js';
+import { benchMain } from './bench.js';
 import { runSimMain } from './runSim.js';
 
-function main(): void {
+async function main(): Promise<void> {
+  // `pnpm play bench …` measures the AI against a baseline AI.
+  if (process.argv[2] === 'bench') {
+    try {
+      process.exitCode = await benchMain(process.argv.slice(3));
+    } catch (err) {
+      if (!(err instanceof CliError)) throw err;
+      console.error(err.message);
+      process.exit(2);
+    }
+    return;
+  }
   // `pnpm play run …` is the run-mode calibration sim rather than a single match.
   if (process.argv[2] === 'run') {
     try {
@@ -62,4 +74,4 @@ function main(): void {
   if (state.phase !== 'gameOver') process.exitCode = 1;
 }
 
-main();
+void main();

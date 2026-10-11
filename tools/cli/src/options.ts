@@ -105,6 +105,7 @@ export function helpText(): string {
 
 Usage: pnpm play [options]
        pnpm play run [options]   run-mode calibration sim (see: pnpm play run --help)
+       pnpm play bench [options] AI against a baseline AI (see: pnpm play bench --help)
 
 Options:
   --seed <n>       RNG seed (default 42)
