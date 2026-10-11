@@ -42,7 +42,8 @@ export interface BlowOutcome {
  * The exact odds of a blow or shot by `attacker` on `target`, and the worth of
  * each outcome: a kill is the target's whole worth (a Tough save turns it into a
  * knockdown), a lesser hit — knocked down or pushed — a share of it, and a lost
- * melee costs a share of the attacker's.
+ * melee costs a share of the attacker's: a larger one than the lesser hit, for
+ * the friends it leaves exposed, unless `even` (see {@link blowValue}).
  */
 export function blowOutcome(
   state: GameState,
@@ -52,6 +53,7 @@ export function blowOutcome(
   pressed: boolean,
   ranged: boolean,
   from?: Vec,
+  even = false,
 ): BlowOutcome {
   const odds = combatOdds(state, attacker.id, target.id, { pressed, ranged, from, board });
   const at = from ?? attacker.pos;
@@ -59,7 +61,7 @@ export function blowOutcome(
   const killWorth = target.traits.tough && !target.knockedDown ? vt * 0.5 : vt;
   // A push off the map is a kill: about half of a lesser win or loss is a push.
   const hurtWorth = edgeBehind(board, target.pos, at) ? (killWorth + vt * 0.3) / 2 : vt * 0.3;
-  const lossWorth = worthOf(state, attacker) * (!ranged && edgeBehind(board, at, target.pos) ? 0.7 : 0.4);
+  const lossWorth = worthOf(state, attacker) * (!ranged && edgeBehind(board, at, target.pos) ? 0.7 : even ? 0.3 : 0.4);
   return { kill: odds.kill, hurt: odds.win - odds.kill, lose: odds.lose, killWorth, hurtWorth, lossWorth };
 }
 
@@ -67,6 +69,9 @@ export function blowOutcome(
  * What a blow or shot by `attacker` on `target` is worth, from its
  * {@link blowOutcome}. A single swing with a second action behind it counts
  * that follow-up too, so it compares fairly against a pressed one.
+ *
+ * `even` weighs a lost exchange as no more than the lesser hit it is: the view
+ * of a unit with no friend left for its fall to expose.
  */
 export function blowValue(
   state: GameState,
@@ -77,8 +82,9 @@ export function blowValue(
   ranged: boolean,
   from?: Vec,
   actions = state.actionsRemaining,
+  even = false,
 ): number {
-  const o = blowOutcome(state, board, attacker, target, pressed, ranged, from);
+  const o = blowOutcome(state, board, attacker, target, pressed, ranged, from, even);
   const ev = o.kill * o.killWorth + o.hurt * o.hurtWorth - o.lose * o.lossWorth;
   return !pressed && actions >= 2 ? ev * 1.8 : ev;
 }

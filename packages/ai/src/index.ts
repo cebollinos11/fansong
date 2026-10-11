@@ -70,7 +70,7 @@ export function chooseCommand(state: GameState): Command {
   // A move scored for its setup has yet to pay for the risk it ends in (see
   // `setupEdge`). The risk only ever lowers a score, so the moves are weighed in
   // order of their score without it, and the rest are left once none can win.
-  const setup = setups.get(state);
+  const setup = oneScale && lastStand(state) ? undefined : setups.get(state);
   const waiting: number[] = [];
   let best = -1;
   commands.forEach((command, i) => {
@@ -274,7 +274,7 @@ function laneOf(state: GameState): (v: Vec) => boolean {
  * moved there, in {@link blowValue} terms: a foe in range and in sight, with no
  * standing foe beside the hex to pin it. `undefined` with no shot from there.
  */
-function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number): number | undefined {
+function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number, even = false): number | undefined {
   const range = mover.traits.ranged;
   if (range < 2 || left < 1) return undefined;
   const enemies = enemiesOf(state, mover.owner);
@@ -284,7 +284,7 @@ function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: n
   for (const e of enemies) {
     const d = board.distance(e.pos, to);
     if (d < 2 || d > range || !board.lineOfSight(to, e.pos, lane)) continue;
-    const value = blowValue(state, board, mover, e, false, true, to, left);
+    const value = blowValue(state, board, mover, e, false, true, to, left, even);
     if (best === undefined || value > best) best = value;
   }
   return best;
@@ -294,12 +294,12 @@ function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: n
  * The best blow `mover` could strike from `to` with `left` actions once it has
  * moved there, in {@link blowValue} terms. `undefined` with no foe beside it.
  */
-function blowAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number): number | undefined {
+function blowAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number, even = false): number | undefined {
   if (left < 1) return undefined;
   let best: number | undefined;
   for (const e of enemiesOf(state, mover.owner)) {
     if (board.distance(e.pos, to) !== 1) continue;
-    const value = blowValue(state, board, mover, e, false, false, to, left);
+    const value = blowValue(state, board, mover, e, false, false, to, left, even);
     if (best === undefined || value > best) best = value;
   }
   return best;
@@ -323,6 +323,13 @@ const APPROACH = 100;
  * draws. Standing on guard is worth what the riposte spares the unit. So a unit
  * strikes only when the blow is worth more than a better place to stand, and
  * holds its ground when nothing is worth doing.
+ *
+ * With a side down to its last unit there is nothing to hold back for
+ * ({@link lastStand}): a lost exchange exposes no friend, so it counts for no
+ * more than the lesser hit it is, and what closing on the foe exposes the unit
+ * itself to is not weighed. So of two last units the one with the better of the
+ * exchange strikes, and a warband goes in after the last foe on its perch:
+ * neither waits for the other for ever.
  */
 function planScores(state: GameState, board: Board, commands: Command[]): number[] {
   const unit = unitById(state, state.activeUnitId!)!;
@@ -330,13 +337,14 @@ function planScores(state: GameState, board: Board, commands: Command[]): number
   const left = state.actionsRemaining - 1;
   const hacks = disengageCost(state, board, unit.id);
   const here = standingScore(unit, nearestEnemyDistance(board, unit.pos, enemies));
+  const last = lastStand(state);
   const scores: number[] = [];
   for (const command of commands) {
     let score = 0;
     switch (command.type) {
       case 'Attack': {
         const target = unitById(state, command.targetId)!;
-        score = blowValue(state, board, unit, target, command.power === true, false) * PLAN_SCALE;
+        score = blowValue(state, board, unit, target, command.power === true, false, undefined, undefined, last) * PLAN_SCALE;
         score += lavaAttackEdge(state, board, unit, target) * (PLAN_SCALE / EV_SCALE);
         break;
       }
@@ -345,14 +353,15 @@ function planScores(state: GameState, board: Board, commands: Command[]): number
         break;
       case 'Move': {
         const to = command.to;
-        const strike = blowAfter(state, board, unit, to, left) ?? shotAfter(state, board, unit, to, left) ?? 0;
+        const strike = blowAfter(state, board, unit, to, left, last) ?? shotAfter(state, board, unit, to, left, last) ?? 0;
+        const setup = last ? SETUP_SCALE * setupOf(state, board, unit).partial(to).threat : setupEdge(state, board, unit, to);
         score = standingScore(unit, nearestEnemyDistance(board, to, enemies)) - here;
-        score += Math.max(0, strike) * PLAN_SCALE + setupEdge(state, board, unit, to) - hacks + lavaMoveEdge(state, board, unit, to);
+        score += Math.max(0, strike) * PLAN_SCALE + setup - hacks + lavaMoveEdge(state, board, unit, to);
         break;
       }
       case 'Guard':
         // Just above ending the activation, as ever, when the stance spares it nothing.
-        score = 1 + SETUP_SCALE * EXPOSURE_WEIGHT * setupOf(state, board, unit).guardGain();
+        score = 1 + (last ? 0 : SETUP_SCALE * EXPOSURE_WEIGHT * setupOf(state, board, unit).guardGain());
         break;
       case 'WarCry':
         score = warCryScore(state, unit);
@@ -371,6 +380,15 @@ function planScores(state: GameState, board: Board, commands: Command[]): number
     scores.push(score);
   }
   return scores;
+}
+
+/**
+ * Whether either side is down to its last unit. That unit has no friend to wait
+ * for, to cover or to expose; and against it no one's fall exposes a friend to
+ * a second foe, nor does waiting bring a better fight than the one on offer.
+ */
+function lastStand(state: GameState): boolean {
+  return aliveUnits(state, 0).length === 1 || aliveUnits(state, 1).length === 1;
 }
 
 /**

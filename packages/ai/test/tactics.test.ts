@@ -268,3 +268,31 @@ describe('AI activation order', () => {
     expect(activationOrder(s, board, 0).get('p0u1')!.gift).toBe(0);
   });
 });
+
+describe('AI with a side down to its last unit', () => {
+  const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+
+  it('of two last units, equals two hexes apart, the one acting closes and strikes', () => {
+    const s = game([U('a', 4, 4)], [U('b', 6, 4)]);
+    for (const id of ['p0u0', 'p1u0']) {
+      const acting = { ...activate(s, id, 2), active: id === 'p0u0' ? 0 : 1 } as GameState;
+      const move = chooseCommand(acting);
+      expect(board.distance(moveTo(move), unitById(s, id === 'p0u0' ? 'p1u0' : 'p0u0')!.pos)).toBe(1);
+      expect(chooseCommand(reduce(acting, move).state).type).toBe('Attack');
+    }
+  });
+
+  it('of two last units in contact, the one with the worse of the exchange leaves the blow to the other', () => {
+    const s = game([U('a', 4, 4)], [U('b', 5, 4, { combat: 4 })]);
+    expect(chooseCommand(activate(s, 'p0u0')).type).toBe('EndActivation');
+    expect(chooseCommand({ ...activate(s, 'p1u0'), active: 1 }).type).toBe('Attack');
+  });
+
+  it('a warband closes on the last foe, where with more foes about it would keep out of its reach', () => {
+    const last = game([U('a', 4, 4), U('friend', 0, 0)], [U('brute', 7, 4, { combat: 5 })]);
+    expect(board.distance(moveTo(chooseCommand(activate(last, 'p0u0'))), { x: 7, y: 4 })).toBe(1);
+    const more = game([U('a', 4, 4), U('friend', 0, 0)], [U('brute', 7, 4, { combat: 5 }), U('far', 11, 7)]);
+    const cmd = chooseCommand(activate(more, 'p0u0'));
+    if (cmd.type === 'Move') expect(board.distance(cmd.to, { x: 7, y: 4 })).toBeGreaterThan(1);
+  });
+});
