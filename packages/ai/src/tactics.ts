@@ -171,6 +171,132 @@ export function exposure(state: GameState, board: Board, side: Owner): number {
   return threat(state, board, side === 0 ? 1 : 0);
 }
 
+/** What activating a unit now is worth to the order of play, in {@link worthOf} terms (see {@link activationOrder}). */
+export interface Standing {
+  /** The best blow it can strike itself from where it stands. */
+  own: number;
+  /** The most that stepping up to a foe adds to what its friends can do to that foe. */
+  gift: number;
+  /** The most its own best blow would gain if a friend still to go stepped up first. */
+  wait: number;
+}
+
+/**
+ * Who should go before whom, for every unit of `side` still to activate: the
+ * one that sets a blow up goes before the one that strikes it.
+ *
+ * A unit's `gift` is what the blows of its friends still to go gain on a foe
+ * when it comes to stand beside that foe, outnumbering it or closing a pincer;
+ * the friend whose blow gains has that much to `wait` for. A friend that has
+ * gone this round strikes next round whoever goes first now, so it is left out.
+ *
+ * Only a unit free to step into contact, a foe within its charge reach (a
+ * distance bound, as {@link chargeHex}) and the friends with a blow on that
+ * same foe are looked at, and of the hexes beside the foe only the nearest and
+ * those that close a pincer: outnumbering is the same from any of them. So a
+ * warband with no one near the enemy costs next to nothing.
+ */
+export function activationOrder(state: GameState, board: Board, side: Owner): Map<string, Standing> {
+  const taken = new Set<string>();
+  for (const u of state.units) if (!u.dead) taken.add(vecKey(u.pos));
+  // The setter's hex as it leaves it and the one it takes, for the position being scored.
+  let left = '';
+  let entered = '';
+  const occupied: Occupied = (v) => {
+    const key = vecKey(v);
+    return key === entered || (key !== left && taken.has(key));
+  };
+  const ours: Unit[] = [];
+  for (const u of aliveUnits(state, side)) if (!u.activatedThisRound) ours.push(u);
+  const theirs = enemiesOf(state, side);
+  const n = ours.length;
+  const m = theirs.length;
+  const killWorths: number[] = [];
+  for (const target of theirs) {
+    const worth = worthOf(state, target);
+    killWorths.push(target.traits.tough && !target.knockedDown ? worth * 0.5 : worth);
+  }
+  const blows = new Array<Blow | undefined>(n * m).fill(undefined);
+  /** By target, the units with a blow on it. */
+  const reach: number[][] = [];
+  const own = new Array<number>(n).fill(0);
+  const gift = new Array<number>(n).fill(0);
+  const wait = new Array<number>(n).fill(0);
+  for (let t = 0; t < m; t++) {
+    const striking: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const blow = blowOn(state, board, occupied, ours[i]!, theirs[t]!);
+      if (!blow) continue;
+      blows[i * m + t] = blow;
+      striking.push(i);
+      const value = blow.kill * killWorths[t]! + blow.rest;
+      if (value > own[i]!) own[i] = value;
+    }
+    reach.push(striking);
+  }
+
+  const scratch: (Blow | undefined)[] = [];
+  const hexes: Vec[] = [];
+  for (let i = 0; i < n; i++) {
+    const setter = ours[i]!;
+    // A shooter or a spellcaster keeps its distance: it never steps up to a foe to help a friend.
+    if (setter.transfixedBy !== undefined || setter.traits.ranged >= 2 || setter.traits.magicUser) continue;
+    // It has to get the action to move (two from the ground), and be free to: leaving a melee costs a free hack.
+    const p = actionOdds(state, setter, setter.knockedDown ? 2 : 1);
+    if (p <= 0) continue;
+    const move = unitMove(setter);
+    const flies = airborne(state, setter);
+    let pinned: boolean | undefined;
+    for (let t = 0; t < m; t++) {
+      const striking = reach[t]!;
+      if (striking.length === 0 || (striking.length === 1 && striking[0] === i)) continue;
+      const target = theirs[t]!;
+      const d = board.distance(setter.pos, target.pos);
+      if (d < 2 || d > move + 1) continue;
+      if ((pinned ??= inMelee(state, setter, board))) break;
+      left = vecKey(setter.pos);
+      entered = '';
+      // Where it would stand: the nearest free hex beside the foe, and straight across the foe from each friend in contact.
+      hexes.length = 0;
+      const nearest = chargeHex(state, board, occupied, setter, target);
+      if (nearest) hexes.push(nearest);
+      scratch.length = 0;
+      for (const j of striking) {
+        if (j === i) continue;
+        scratch.push(blows[j * m + t]);
+        const friend = ours[j]!;
+        if (board.distance(friend.pos, target.pos) !== 1) continue;
+        const across = board.stepAway(friend.pos, target.pos);
+        if (nearest && across.x === nearest.x && across.y === nearest.y) continue;
+        if (!board.inBounds(across) || board.distance(setter.pos, across) > move || occupied(across)) continue;
+        if (!flies && board.isDeadly(across)) continue;
+        hexes.push(across);
+      }
+      const before = targetValue(state, target, scratch);
+      for (const hex of hexes) {
+        entered = vecKey(hex);
+        const moved = withUnitAt(state, setter.id, hex);
+        scratch.length = 0;
+        for (const j of striking) {
+          if (j === i) continue;
+          const blow = blowOn(moved, board, occupied, ours[j]!, target);
+          scratch.push(blow);
+          if (!blow) continue;
+          const gain = p * (blow.kill * killWorths[t]! + blow.rest - own[j]!);
+          if (gain > wait[j]!) wait[j] = gain;
+        }
+        const gain = p * (targetValue(state, target, scratch) - before);
+        if (gain > gift[i]!) gift[i] = gain;
+      }
+      left = entered = '';
+    }
+  }
+
+  const order = new Map<string, Standing>();
+  for (let i = 0; i < n; i++) order.set(ours[i]!.id, { own: own[i]!, gift: gift[i]!, wait: wait[i]! });
+  return order;
+}
+
 const sameBlow = (a: Blow | undefined, b: Blow | undefined): boolean => a === b || (!!a && !!b && a.kill === b.kill && a.rest === b.rest);
 
 /** A destination as a position: the state with the mover there, the mover in it, and which hexes are taken. */

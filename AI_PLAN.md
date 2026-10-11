@@ -90,6 +90,16 @@ Tests: with B already in contact and A able to flank, A activates first; with no
 
 Done when: ≥ 54% vs the Phase 1 AI in annihilation, others not below 46%.
 
+Kept, but short of the bar: 52.2% ±1.9% in annihilation over three seeds (52.8%, 52.7%, 51.0%), a real gain and a small one. What was found, and what was built differently:
+
+- **Why it is small.** The new order picks another unit than Phase 1 in about 30% of activations, nearly all for a gift, but the setter delivers in only about half of them. About 29% of the time it rolls no action: the dice policy often gives it one die, while `gift` assumes two. About 16% of the time it does not arrive: the move scoring finds the hex too risky, or there is no legal hex because reach is a distance bound. Most often it moves in and does not strike, so the gain is only the friend's better blow this round, while that blow is put off by one enemy activation every time.
+- **The terms cannot be told apart.** Over the same three seeds, Phase 1's `own` with `gift − wait` measured 53.5%, and `own + gift` with no `wait` 53.3%: all within the margin of each other. The plan's formula is the one kept.
+- **Shooters and spellcasters give nothing**: they never step into contact, and were about 15% of the setters chosen in the first cut.
+- **Only friends still to activate count**: one that has gone strikes next round whoever goes first now.
+- **`gift` is worked out with `blowOn`, not `MoveSetup.partial`**: per foe in reach, only the nearest free hex beside it and the hexes that close a pincer are scored, since outnumbering is the same from any of them. A `MoveSetup` per unit would score the whole board for each. The order costs about 0.45 ms an activation decision.
+- **`own` counts a winning charge or shot**, not only a blow in contact, so such a unit joins the fighters' band of activation scores.
+- **Next to try**: let a unit chosen for its gift roll two dice (the 29%). The setters that never arrive should come right in Phase 3, which plans the move and the strike together.
+
 ## Phase 3: one scale instead of a ladder
 
 - Score the active unit's whole activation with the engine's `getActionPlans` (every move-then-strike it could make with the actions it holds): the plan's expected value plus the threat and exposure of the position it ends in. Play the plan's first command; plan again on the next call.
@@ -129,6 +139,7 @@ Win rate against the AI of the phase before, from `pnpm play bench --baseline �
 |---|---|---|---|---|---|---|---|
 | Baseline | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 1.19 / 3.36 / 9.77 |
 | 1: setup value for moves | **61.9%** | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.03 / 9.51 / 39.5 |
+| 2: activation order | 52.2% (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.29 / 11.3 / 33.2 |
 
 The budget that follows from the baseline: a mean of at most 3.6 ms and no decision over 100 ms, in annihilation on `stone-crown`.
 

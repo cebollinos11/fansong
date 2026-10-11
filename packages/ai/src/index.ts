@@ -42,7 +42,7 @@ import {
   type Unit,
   type Vec,
 } from '@fansong/engine';
-import { MoveSetup } from './tactics.js';
+import { activationOrder, MoveSetup, type Standing } from './tactics.js';
 import { binomial, blowValue, successChance, successOdds, worthOf } from './value.js';
 
 /**
@@ -274,6 +274,30 @@ function setupEdge(state: GameState, board: Board, mover: Unit, to: Vec): number
 
 /** Activation score per unit of {@link blowValue}: orders fighters, never lifts one above a war-crying Leader. */
 const ORDER_SCALE = 500;
+
+/** The {@link activationOrder} of the side choosing in a given state: one per decision, shared by all its activations. */
+const orders = new WeakMap<GameState, Map<string, Standing>>();
+
+/**
+ * How much `unit` should go now rather than later, in {@link blowValue} terms:
+ * the blow it can strike itself, plus what its stepping up to a foe adds to its
+ * friends' blows, less what its own blow would gain from a friend stepping up
+ * first. So the unit that closes a pincer goes before the one that strikes
+ * through it. `undefined` when it has nothing to do yet.
+ */
+function orderEdge(state: GameState, board: Board, unit: Unit): number | undefined {
+  let order = orders.get(state);
+  if (!order) {
+    order = activationOrder(state, board, unit.owner);
+    orders.set(state, order);
+  }
+  const standing = order.get(unit.id);
+  if (!standing || standing.own + standing.gift <= 0) return undefined;
+  return Math.max(-ORDER_SPAN, Math.min(ORDER_SPAN, standing.own + standing.gift - standing.wait));
+}
+
+/** The widest {@link orderEdge}: keeps the fighters' order inside their own band of activation scores. */
+const ORDER_SPAN = 15;
 
 /** The best melee blow `unit` could strike from where it stands, as if activated with two actions. */
 function bestBlowNow(state: GameState, board: Board, unit: Unit): number {
@@ -661,10 +685,20 @@ function scoreCommand(
       const canMelee = enemyDist === 1;
       const canShoot = unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged;
       const canAttack = canMelee || canShoot;
-      // Prefer the unit that can already fight — the best fight first, such as
-      // a blow at a downed foe before it stands — else the one closest to a foe.
-      const fight = canMelee ? bestBlowNow(state, board, unit) * ORDER_SCALE : 0;
-      const unitScore = leaderFirst(state, unit, canAttack ? 100_000 + fight : holding ? 1_000 : 10_000 - dist * 100);
+      let unitScore: number;
+      if (zones.length === 0) {
+        // Annihilation: whoever has the most to do now goes first, counting what
+        // it sets up for its friends, and a unit a friend could set up waits for
+        // it. With nothing to do yet, the one closest to a foe.
+        const edge = orderEdge(state, board, unit);
+        unitScore = edge !== undefined || canAttack ? 100_000 + (edge ?? 0) * ORDER_SCALE : 10_000 - dist * 100;
+      } else {
+        // Prefer the unit that can already fight — the best fight first, such as
+        // a blow at a downed foe before it stands — else the one closest to a foe.
+        const fight = canMelee ? bestBlowNow(state, board, unit) * ORDER_SCALE : 0;
+        unitScore = canAttack ? 100_000 + fight : holding ? 1_000 : 10_000 - dist * 100;
+      }
+      unitScore = leaderFirst(state, unit, unitScore);
 
       return unitScore + diceWorth(state, board, zones, kings, command);
     }

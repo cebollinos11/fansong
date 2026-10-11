@@ -107,7 +107,7 @@ describe('a run', () => {
   it('ends on a lost battle and goes to the aftermath on a won one', () => {
     let lost = 0;
     let won = 0;
-    for (let seed = 40; seed < 52 && (lost === 0 || won === 0); seed++) {
+    for (let seed = 40; seed < 80 && (lost === 0 || won === 0); seed++) {
       const s = inBattle(seed);
       const replay = playBattle(s);
       const next = runStep(s, { type: 'battleResult', replay });

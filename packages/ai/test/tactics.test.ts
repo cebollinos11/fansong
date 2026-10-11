@@ -12,7 +12,7 @@ import {
   type Vec,
 } from '@fansong/engine';
 import { chooseCommand } from '../src/index.js';
-import { exposure, MoveSetup, threat, withUnitAt } from '../src/tactics.js';
+import { activationOrder, exposure, MoveSetup, threat, withUnitAt } from '../src/tactics.js';
 
 const U = (name: string, x: number, y: number, extra: Partial<UnitSpec> = {}): UnitSpec => ({
   name,
@@ -176,5 +176,48 @@ describe('AI setup moves', () => {
     expect(withUnitAt(s, 'p0u0', { x: 6, y: 4 }).units[0]!.pos).toEqual({ x: 6, y: 4 });
     chooseCommand(s);
     expect(s).toEqual(copy);
+  });
+});
+
+describe('AI activation order', () => {
+  const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+  const who = (cmd: Command): string => {
+    expect(cmd.type).toBe('ChooseActivation');
+    return (cmd as Extract<Command, { type: 'ChooseActivation' }>).unitId;
+  };
+
+  it('the unit that can flank goes before the friend already in contact', () => {
+    // Listed first and already fighting: the friend is who went first before the order weighed a setup.
+    for (const combat of [2, 3, 4]) {
+      const s = game([U('friend', 8, 4), U('flanker', 4, 4)], [U('foe', 7, 4, { combat })]);
+      const order = activationOrder(s, board, 0);
+      const friend = order.get('p0u0')!;
+      const flanker = order.get('p0u1')!;
+      // What the flanker gives is what the friend waits for.
+      expect(flanker.gift).toBeGreaterThan(0);
+      expect(friend.wait).toBeGreaterThan(0);
+      expect(flanker.wait).toBe(0);
+      expect(friend.gift).toBe(0);
+      expect(who(chooseCommand(s))).toBe('p0u1');
+    }
+  });
+
+  it('with no setup on offer the order is as before: the unit in contact, then the nearest', () => {
+    // The far units cannot reach the foe this turn, so no one has anything to give or to wait for.
+    const s = game([U('far', 0, 0), U('near', 2, 4), U('fighter', 11, 4)], [U('foe', 10, 4, { combat: 2 })]);
+    const order = activationOrder(s, board, 0);
+    for (const standing of order.values()) {
+      expect(standing.gift).toBe(0);
+      expect(standing.wait).toBe(0);
+    }
+    expect(order.get('p0u2')!.own).toBeGreaterThan(0);
+    expect(who(chooseCommand(s))).toBe('p0u2');
+    const spent = { ...s, units: s.units.map((u) => (u.id === 'p0u2' ? { ...u, activatedThisRound: true } : u)) };
+    expect(who(chooseCommand(spent))).toBe('p0u1');
+  });
+
+  it('a unit locked in a melee of its own has nothing to give', () => {
+    const s = game([U('friend', 8, 4), U('locked', 5, 4)], [U('foe', 7, 4), U('pin', 4, 4)]);
+    expect(activationOrder(s, board, 0).get('p0u1')!.gift).toBe(0);
   });
 });
