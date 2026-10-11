@@ -32,6 +32,15 @@ const hillGame = (w0: UnitSpec[], w1: UnitSpec[], hill: Vec[] = HILL): GameState
     objectives: { hill },
   });
 
+const conquestGame = (w0: UnitSpec[], w1: UnitSpec[], zones: [Vec[], Vec[], Vec[]]): GameState =>
+  createGame({
+    seed: 3,
+    board: { width: 12, height: 8 },
+    warbands: [w0, w1],
+    mode: 'conquest',
+    objectives: { conquest: zones },
+  });
+
 /** Put `unitId` mid-activation with `actions` actions left (no dice, so no luck involved). */
 function activate(s: GameState, unitId: string, actions = 1): GameState {
   return { ...s, phase: 'acting', activeUnitId: unitId, actionsRemaining: actions, activationCount: 1 };
@@ -160,6 +169,56 @@ describe('AI in the zone modes', () => {
     const board = makeHexGrid(s.board);
     const to = (cmd as Extract<Command, { type: 'Move' }>).to;
     expect(board.distance(to, zones[1][0]!)).toBeLessThan(board.distance({ x: 2, y: 2 }, zones[1][0]!));
+  });
+
+  it('conquest: a unit holding a zone alone at bad odds guards or holds rather than strike', () => {
+    // Alone in its zone: a lost exchange would cost the zone as well.
+    const zones: [Vec[], Vec[], Vec[]] = [HILL, [{ x: 0, y: 7 }], [{ x: 11, y: 0 }]];
+    const foe = [U('b', 5, 2, { combat: 4 }), U('far', 11, 7)];
+    const s = activate(conquestGame([U('a', 5, 1, { guard: true })], foe, zones), 'p0u0');
+    expect(chooseCommand(s)).toEqual({ type: 'Guard', unitId: 'p0u0' });
+    const plain = activate(conquestGame([U('a', 5, 1)], foe, zones), 'p0u0');
+    expect(chooseCommand(plain).type).toBe('EndActivation');
+    // A good blow from the zone is still struck.
+    const strong = activate(conquestGame([U('a', 5, 1, { combat: 5 })], [U('b', 5, 2, { combat: 2 }), U('far', 11, 7)], zones), 'p0u0');
+    expect(chooseCommand(strong).type).toBe('Attack');
+  });
+
+  it('conquest: a unit sent to a zone takes the hex in it that flanks a foe a friend is fighting', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const foe = { x: 6, y: 4 };
+    const friend = board.neighbors(foe)[0]!;
+    /** Straight across the foe from the friend: the hex that closes the pincer. */
+    const flank = board.stepAway(friend, foe);
+    /** A hex of the zone as near the mover, out of contact with the foe. */
+    const start = { x: 3, y: 3 };
+    const quiet = board
+      .cellsWithin(start, board.distance(start, flank))
+      .find((v) => board.distance(v, foe) > 1 && board.distance(v, start) === board.distance(start, flank))!;
+    // The other two zones are held, so the mover is the spare for this one.
+    const held: Vec[][] = [[{ x: 0, y: 7 }], [{ x: 11, y: 0 }]];
+    for (const zone of [
+      [flank, quiet],
+      [quiet, flank],
+    ]) {
+      const s = activate(
+        conquestGame(
+          [U('a', start.x, start.y), U('friend', friend.x, friend.y), U('h1', 0, 7), U('h2', 11, 0)],
+          [U('foe', foe.x, foe.y), U('far', 11, 7)],
+          [zone, held[0]!, held[1]!],
+        ),
+        'p0u0',
+      );
+      expect(chooseCommand(s)).toEqual({ type: 'Move', unitId: 'p0u0', to: flank });
+    }
+  });
+
+  it('conquest: a holder does not leave its zone, even for a foe it could charge from outside it', () => {
+    const zones: [Vec[], Vec[], Vec[]] = [HILL, [{ x: 0, y: 7 }], [{ x: 11, y: 0 }]];
+    const s = activate(conquestGame([U('a', 5, 1, { combat: 5 })], [U('b', 5, 3, { combat: 1 }), U('far', 11, 7)], zones), 'p0u0', 2);
+    const cmd = chooseCommand(s);
+    if (cmd.type === 'Move') expect(inZone(HILL, cmd.to)).toBe(true);
+    expect(['Move', 'EndActivation', 'Guard']).toContain(cmd.type);
   });
 
   it('prefers activating a unit that has a zone to reach over one already holding', () => {

@@ -147,7 +147,17 @@ Done when: each mode ≥ 54% vs the Phase 3 AI in that mode.
 - **Not weighed**: what the enemy could do to the hold on the hill by felling a holder. Exposure and the worth of a guard still count the unit's own worth only.
 - **Tests.** One scene rested on the ladder: a lone holder no longer strikes an equal beside the hill, so the test of a blow from the hill is now Combat 5 against 2.
 
-Next: conquest by the same terms, a zone a unit. Kings, the Pig and flags are untouched.
+**Conquest, done: 59.2% ±1.9%** over three seeds against the AI with the hill on the one scale, no timeouts, every other mode at exactly 50.0%. On `stone-crown`: 5.28 / 11.3 / 43.3 ms, inside the budget of a 10.6 ms mean and no decision over 100 ms. The hill's terms were generalised to any number of zones rather than copied (`HoldView`, `zoneControl`, `zoneSwing` in place of `HillView`, `hillControl`, `hillSwing`), so the hill is the one-zone case of the same code:
+
+- **Distance.** A unit counts its walking distance to the zone `assignZones` sent it to, at `APPROACH` a hex. A unit not sent hunts as in annihilation.
+- **Control.** Each zone is ours, no one's or the enemy's by its standing units, and a move is worth the steps it changes summed over the three zones: the one it enters and the one it leaves. A step is `KING_WORTH` over the points to win (8), so 3.75. That was the first value tried and it cleared the bar, so the two others allowed were not tried.
+- **Blows** count the step they may win in the zone the target stands in and the step they may lose in the zone the attacker stands in, by the same odds as on the hill.
+- **One hard floor**: a unit standing in the zone it was sent to does not walk out of it. A unit standing in a zone it was not sent to (the zone is full) may leave, and the step that costs is weighed.
+- **Gone**: `zoneMoveScore` and the ladder's zone branches for a move and a guard, which no mode reaches any more. The ladder still chooses who activates and with how many dice, in every zone mode.
+- **Left as they were**: `assignZones`, the activation order, the dice. Not weighed, as on the hill: what the enemy could do to a hold by felling a holder.
+- **Tests.** No scene rested on the ladder: the two conquest scenes there were pass unchanged, and three were added (a lone holder at bad odds, the flanking hex of a zone, a holder that stays).
+
+Next: kings and the Pig. Flags are untouched.
 
 ## Phase 5 (optional): lookahead
 
@@ -173,6 +183,7 @@ Win rate against the AI of the phase before, from `pnpm play bench --baseline �
 | 3: one scale instead of a ladder | **54.9%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | 3.12 / 9.51 / 26.7 |
 | 3, last-unit rule (no stalls) | 49.5% (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | not measured |
 | 4: the hill on the one scale | 50.0% | 50.0% | **56.9%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | hill: 4.22 / 13.5 / 40.4 |
+| 4: conquest on the one scale | 50.0% | 50.0% | 50.0% | **59.2%** (three seeds, ±1.9%) | 50.0% | 50.0% | conquest: 5.28 / 11.3 / 43.3 |
 
 The budget that follows from the baseline: a mean of at most 3.6 ms and no decision over 100 ms, in annihilation on `stone-crown`.
 

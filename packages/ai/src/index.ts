@@ -64,15 +64,14 @@ export function chooseCommand(state: GameState): Command {
   const flags = flagPlan(state, board, state.active);
   const kings = kingPlan(state, board, state.active);
 
-  // Annihilation and king-of-the-hill: the unit acting weighs everything it could do on the one scale.
-  const hill = state.mode?.mode === 'king-of-the-hill' ? zones[0] : undefined;
-  const oneScale = !flags && !kings && (zones.length === 0 || !!hill) && state.phase === 'acting' && !state.spell && !!state.activeUnitId;
-  const scores = oneScale ? planScores(state, board, commands, hill) : commands.map((command) => ladderScore(state, board, zones, flags, kings, command));
+  // Annihilation and the zone modes: the unit acting weighs everything it could do on the one scale.
+  const oneScale = !flags && !kings && state.phase === 'acting' && !state.spell && !!state.activeUnitId;
+  const scores = oneScale ? planScores(state, board, commands, zones) : commands.map((command) => ladderScore(state, board, zones, flags, kings, command));
 
   // A move scored for its setup has yet to pay for the risk it ends in (see
   // `setupEdge`). The risk only ever lowers a score, so the moves are weighed in
   // order of their score without it, and the rest are left once none can win.
-  const setup = oneScale && !hill && lastStand(state) ? undefined : setups.get(state);
+  const setup = oneScale && zones.length === 0 && lastStand(state) ? undefined : setups.get(state);
   const waiting: number[] = [];
   let best = -1;
   commands.forEach((command, i) => {
@@ -276,7 +275,7 @@ function laneOf(state: GameState): (v: Vec) => boolean {
  * moved there, in {@link blowValue} terms: a foe in range and in sight, with no
  * standing foe beside the hex to pin it. `undefined` with no shot from there.
  */
-function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number, even = false, hill?: HillView): number | undefined {
+function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number, even = false, hold?: HoldView): number | undefined {
   const range = mover.traits.ranged;
   if (range < 2 || left < 1) return undefined;
   const enemies = enemiesOf(state, mover.owner);
@@ -286,7 +285,7 @@ function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: n
   for (const e of enemies) {
     const d = board.distance(e.pos, to);
     if (d < 2 || d > range || !board.lineOfSight(to, e.pos, lane)) continue;
-    const value = strikeValue(state, board, mover, e, false, true, to, left, even, hill);
+    const value = strikeValue(state, board, mover, e, false, true, to, left, even, hold);
     if (best === undefined || value > best) best = value;
   }
   return best;
@@ -296,73 +295,84 @@ function shotAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: n
  * The best blow `mover` could strike from `to` with `left` actions once it has
  * moved there, in {@link blowValue} terms. `undefined` with no foe beside it.
  */
-function blowAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number, even = false, hill?: HillView): number | undefined {
+function blowAfter(state: GameState, board: Board, mover: Unit, to: Vec, left: number, even = false, hold?: HoldView): number | undefined {
   if (left < 1) return undefined;
   let best: number | undefined;
   for (const e of enemiesOf(state, mover.owner)) {
     if (board.distance(e.pos, to) !== 1) continue;
-    const value = strikeValue(state, board, mover, e, false, false, to, left, even, hill);
+    const value = strikeValue(state, board, mover, e, false, false, to, left, even, hold);
     if (best === undefined || value > best) best = value;
   }
   return best;
 }
 
-/**
- * King-of-the-hill as the unit acting sees it: who stands on the hill, whether
- * the unit was sent there (see {@link assignZones}), and what the hill is worth.
- */
-interface HillView {
+/** A scoring zone as the unit acting counts it: the standing units of each side in it. */
+interface ZoneCount {
   zone: ZoneView;
-  /** The standing units of its side on the hill, itself left out. */
+  /** The standing units of its side in the zone, itself left out. */
   others: number;
   theirs: number;
-  /** Whether it was sent to the hill, to take it or to keep it. */
-  sent: boolean;
-  /** Whether it is where it was sent: on its feet on the hill. */
+}
+
+/**
+ * The zone modes as the unit acting sees them: who stands in each zone (the one
+ * hill, or conquest's three), where the unit was sent (see {@link assignZones}),
+ * and what a zone is worth.
+ */
+interface HoldView {
+  counts: ZoneCount[];
+  /** The zone it was sent to, to take it or to keep it. */
+  sent: ZoneView | undefined;
+  /** Whether it is where it was sent: on its feet in that zone. */
   holding: boolean;
   /**
    * What a step of control is worth, in {@link blowValue} terms: from the
-   * enemy's hill to no one's, or from no one's to ours, is a point a round, and
+   * enemy's zone to no one's, or from no one's to ours, is a point a round, and
    * a point is its share of the game: what a King is worth, over the points to win.
    */
   point: number;
 }
 
-function hillView(state: GameState, zone: ZoneView, unit: Unit): HillView {
-  const standing = !isDown(unit) && zone.keys.has(vecKey(unit.pos));
-  const sent = zone.claimants.has(unit.id);
-  return {
-    zone,
-    others: standingInZone(state, zone.hexes)[unit.owner] - (standing ? 1 : 0),
-    theirs: zone.theirs,
-    sent,
-    holding: sent && standing,
-    point: KING_WORTH / (targetScoreOf(state) ?? 1),
-  };
+function holdView(state: GameState, zones: ZoneView[], unit: Unit): HoldView {
+  const key = vecKey(unit.pos);
+  const up = !isDown(unit);
+  const sent = targetZone(zones, unit);
+  const counts: ZoneCount[] = [];
+  for (const zone of zones) {
+    counts.push({ zone, others: standingInZone(state, zone.hexes)[unit.owner] - (up && zone.keys.has(key) ? 1 : 0), theirs: zone.theirs });
+  }
+  return { counts, sent, holding: !!sent && up && sent.keys.has(key), point: KING_WORTH / (targetScoreOf(state) ?? 1) };
 }
 
-/** Who holds the hill with the unit acting standing on `at`: 1 for its side, -1 for the enemy, 0 for no one. */
-function hillControl(hill: HillView, at: Vec): number {
-  return Math.sign(hill.others + (hill.zone.keys.has(vecKey(at)) ? 1 : 0) - hill.theirs);
+/** Who holds the zones with the unit acting standing on `at`: per zone 1 for its side, -1 for the enemy, 0 for no one. */
+function zoneControl(hold: HoldView, at: Vec): number {
+  const key = vecKey(at);
+  let control = 0;
+  for (const c of hold.counts) control += Math.sign(c.others + (c.zone.keys.has(key) ? 1 : 0) - c.theirs);
+  return control;
 }
 
 /**
- * What a blow or shot struck from `at` does to the hold on the hill, in
- * {@link blowValue} terms: a foe standing on it that is killed, knocked down or
- * pushed counts there no longer, and nor does the unit itself if it stands on
- * the hill and loses the exchange. (A push is taken to clear the hill.)
+ * What a blow or shot struck from `at` does to the hold on the zones, in
+ * {@link blowValue} terms: a foe standing in one that is killed, knocked down or
+ * pushed counts there no longer, and nor does the unit itself if it stands in
+ * one and loses the exchange. (A push is taken to clear the zone.)
  */
-function hillSwing(hill: HillView, o: BlowOutcome, target: Unit, at: Vec, ranged: boolean): number {
-  const on = hill.zone.keys.has(vecKey(at));
-  const margin = hill.others + (on ? 1 : 0) - hill.theirs;
-  const now = Math.sign(margin);
+function zoneSwing(hold: HoldView, o: BlowOutcome, target: Unit, at: Vec, ranged: boolean): number {
+  const key = vecKey(at);
+  const targetKey = isDown(target) ? undefined : vecKey(target.pos);
   let swing = 0;
-  if (!isDown(target) && hill.zone.keys.has(vecKey(target.pos))) swing += (o.kill + o.hurt) * (Math.sign(margin + 1) - now);
-  if (on && !ranged) swing += o.lose * (Math.sign(margin - 1) - now);
-  return swing * hill.point;
+  for (const c of hold.counts) {
+    const on = c.zone.keys.has(key);
+    const margin = c.others + (on ? 1 : 0) - c.theirs;
+    const now = Math.sign(margin);
+    if (targetKey !== undefined && c.zone.keys.has(targetKey)) swing += (o.kill + o.hurt) * (Math.sign(margin + 1) - now);
+    if (on && !ranged) swing += o.lose * (Math.sign(margin - 1) - now);
+  }
+  return swing * hold.point;
 }
 
-/** {@link blowValue}, and on the hill what the blow does to the hold on it as well ({@link hillSwing}). */
+/** {@link blowValue}, and in the zone modes what the blow does to the hold on the zones as well ({@link zoneSwing}). */
 function strikeValue(
   state: GameState,
   board: Board,
@@ -373,15 +383,15 @@ function strikeValue(
   from: Vec | undefined,
   actions: number,
   even: boolean,
-  hill: HillView | undefined,
+  hold: HoldView | undefined,
 ): number {
-  if (!hill) return blowValue(state, board, attacker, target, pressed, ranged, from, actions, even);
+  if (!hold) return blowValue(state, board, attacker, target, pressed, ranged, from, actions, even);
   const o = blowOutcome(state, board, attacker, target, pressed, ranged, from, even);
-  return outcomeValue(o, pressed, actions) + hillSwing(hill, o, target, from ?? attacker.pos, ranged);
+  return outcomeValue(o, pressed, actions) + zoneSwing(hold, o, target, from ?? attacker.pos, ranged);
 }
 
-/** A holder's move off the hill it was sent to: under ending its activation whatever it would gain. */
-const LEAVE_HILL = -1_000_000;
+/** A holder's move out of the zone it was sent to: under ending its activation whatever it would gain. */
+const LEAVE_ZONE = -1_000_000;
 
 /** Score per unit of {@link blowValue} when a unit's whole activation is weighed on one scale: a move's own. */
 const PLAN_SCALE = 1_000;
@@ -409,48 +419,49 @@ const APPROACH = 100;
  * exchange strikes, and a warband goes in after the last foe on its perch:
  * neither waits for the other for ever.
  *
- * King-of-the-hill (`zone`) adds the hill to the same scale. A unit sent to it
- * counts its hexes to the hill in place of those to the foe; a move that changes
- * who holds the hill is worth that step of control, and so is a blow that may
- * clear a foe off it or cost the unit its own place on it ({@link hillSwing}).
- * So a unit on its way still takes a good blow or a flank, and one holding the
- * hill alone does not risk it on an even fight. The one thing not weighed: a
- * unit standing on the hill it was sent to never walks off it.
+ * The zone modes (`zones`: the one hill, or conquest's three) add the zones to
+ * the same scale. A unit sent to a zone counts its hexes to it in place of those
+ * to the foe; a move that changes who holds any zone is worth that step of
+ * control, and so is a blow that may clear a foe out of one or cost the unit its
+ * own place in one ({@link zoneSwing}). So a unit on its way still takes a good
+ * blow or a flank, and one holding a zone alone does not risk it on an even
+ * fight. The one thing not weighed: a unit standing in the zone it was sent to
+ * never walks out of it.
  */
-function planScores(state: GameState, board: Board, commands: Command[], zone?: ZoneView): number[] {
+function planScores(state: GameState, board: Board, commands: Command[], zones: ZoneView[]): number[] {
   const unit = unitById(state, state.activeUnitId!)!;
   const enemies = enemiesOf(state, unit.owner);
   const left = state.actionsRemaining - 1;
   const hacks = disengageCost(state, board, unit.id);
-  const hill = zone ? hillView(state, zone, unit) : undefined;
-  const sent = hill?.sent ? zone : undefined;
+  const hold = zones.length > 0 ? holdView(state, zones, unit) : undefined;
+  const sent = hold?.sent;
   const here = sent ? -zoneDistance(unit.pos, sent) * APPROACH : standingScore(unit, nearestEnemyDistance(board, unit.pos, enemies));
-  const held = hill ? hillControl(hill, unit.pos) : 0;
-  const last = !hill && lastStand(state);
+  const held = hold ? zoneControl(hold, unit.pos) : 0;
+  const last = !hold && lastStand(state);
   const scores: number[] = [];
   for (const command of commands) {
     let score = 0;
     switch (command.type) {
       case 'Attack': {
         const target = unitById(state, command.targetId)!;
-        score = strikeValue(state, board, unit, target, command.power === true, false, undefined, state.actionsRemaining, last, hill) * PLAN_SCALE;
+        score = strikeValue(state, board, unit, target, command.power === true, false, undefined, state.actionsRemaining, last, hold) * PLAN_SCALE;
         score += lavaAttackEdge(state, board, unit, target) * (PLAN_SCALE / EV_SCALE);
         break;
       }
       case 'Shoot':
-        score = strikeValue(state, board, unit, unitById(state, command.targetId)!, command.aimed === true, true, undefined, state.actionsRemaining, false, hill) * PLAN_SCALE;
+        score = strikeValue(state, board, unit, unitById(state, command.targetId)!, command.aimed === true, true, undefined, state.actionsRemaining, false, hold) * PLAN_SCALE;
         break;
       case 'Move': {
         const to = command.to;
-        if (hill?.holding && !hill.zone.keys.has(vecKey(to))) {
-          score = LEAVE_HILL;
+        if (hold?.holding && !sent!.keys.has(vecKey(to))) {
+          score = LEAVE_ZONE;
           break;
         }
-        const strike = blowAfter(state, board, unit, to, left, last, hill) ?? shotAfter(state, board, unit, to, left, last, hill) ?? 0;
+        const strike = blowAfter(state, board, unit, to, left, last, hold) ?? shotAfter(state, board, unit, to, left, last, hold) ?? 0;
         const setup = last ? SETUP_SCALE * setupOf(state, board, unit).partial(to).threat : setupEdge(state, board, unit, to);
         score = (sent ? -zoneDistance(to, sent) * APPROACH : standingScore(unit, nearestEnemyDistance(board, to, enemies))) - here;
         score += Math.max(0, strike) * PLAN_SCALE + setup - hacks + lavaMoveEdge(state, board, unit, to);
-        if (hill) score += (hillControl(hill, to) - held) * hill.point * PLAN_SCALE;
+        if (hold) score += (zoneControl(hold, to) - held) * hold.point * PLAN_SCALE;
         break;
       }
       case 'Guard':
@@ -671,11 +682,6 @@ function assignZones(state: GameState, zones: ZoneView[], player: Owner): void {
  * gets more: it is the whole game.
  */
 const ZONE_SPARES = { hill: 2, conquest: 1 };
-
-function zoneIndexAt(zones: ZoneView[], pos: Vec): number {
-  const key = vecKey(pos);
-  return zones.findIndex((z) => z.keys.has(key));
-}
 
 /** Walking distance from `from` to `zone` (`FAR` when it can't be reached on foot). */
 function zoneDistance(from: Vec, zone: ZoneView): number {
@@ -991,12 +997,8 @@ function scoreCommand(
 
     case 'Move': {
       const mover = unitById(state, command.unitId)!;
-      if (zones.length > 0) {
-        const zoneScore = zoneMoveScore(state, board, zones, mover, command.to);
-        if (zoneScore !== undefined) return zoneScore;
-      }
       if (kings) return kingMoveScore(state, board, kings, mover, command.to);
-      // A unit with no zone to go to hunts as it always has; in annihilation `planScores` weighs the move instead.
+      // Annihilation and the zone modes never come here: `planScores` weighs their moves.
       const dist = nearestEnemyDistance(board, command.to, enemies);
       // A ranged unit seeks a standoff: inside its range but out of melee, so it
       // can shoot next turn instead of being dragged into a fight. (When a shot
@@ -1016,9 +1018,7 @@ function scoreCommand(
 
     case 'Guard': {
       // A last-resort defensive stance: only when there's nothing better to do
-      // (no attack, no useful move). Kept just above ending the activation —
-      // and a zone holder's preferred way to sit tight.
-      if (zones.length > 0 && sitsInZone(zones, unitById(state, command.unitId)!)) return 10;
+      // (no attack, no useful move). Kept just above ending the activation.
       // Our King with nowhere safer to go waits on guard, ready to riposte.
       if (kings && command.unitId === kings.ourKing?.id) return 10;
       return 1;
@@ -1043,29 +1043,6 @@ function scoreCommand(
     case 'SwitchGroupMember':
       return -1;
   }
-}
-
-/**
- * Zone modes: the score of moving `mover` to `to`, or `undefined` when it
- * wasn't sent to a zone (see {@link assignZones}) and the usual enemy-seeking
- * applies. A unit already in its zone stays put — it only shifts within the
- * zone to charge a foe at good odds, and leaving scores far under ending the
- * activation. Anyone else heads for its zone: stepping in beats any ordinary
- * move (a shooter's standoff included), otherwise closer is better, and a
- * well-set charge on the way counts too.
- */
-function zoneMoveScore(state: GameState, board: Board, zones: ZoneView[], mover: Unit, to: Vec): number | undefined {
-  if (sitsInZone(zones, mover)) {
-    if (!zones[zoneIndexAt(zones, mover.pos)]!.keys.has(vecKey(to))) return -1_000;
-    // Shuffling within the zone is only worth it to take on a foe at good odds.
-    const charge = chargeEdge(state, board, mover, to);
-    return charge > 0 ? 50_000 + charge : -1;
-  }
-  const target = targetZone(zones, mover);
-  if (!target) return undefined;
-  const charge = chargeEdge(state, board, mover, to);
-  if (target.keys.has(vecKey(to))) return 130_000 + charge;
-  return 100_000 - zoneDistance(to, target) * 100 + charge;
 }
 
 /**
