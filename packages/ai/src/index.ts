@@ -591,6 +591,15 @@ function tradesForNothing(court: Court, target: Unit): boolean {
 const NO_TRADE = -1_000;
 
 /**
+ * Whether a blow at `target` is struck whatever it may cost the striker: one at
+ * the enemy King by anyone but our own, since the game rides on it. Not so a
+ * blow at the golden Pig: the clock ends that game, and it is for the Pig to come on.
+ */
+function costsNothing(court: Court, target: Unit): boolean {
+  return !court.royal && !court.plan.goal && target.id === court.plan.theirKing?.id;
+}
+
+/**
  * {@link blowValue}, and what the mode adds to it: in the zone modes what the
  * blow does to the hold on the zones ({@link zoneSwing}); in kill-the-king what
  * it spares our King ({@link kingSwing}), and the blows our King does not
@@ -614,9 +623,7 @@ function strikeValue(
   if (court && !ranged && tradesForNothing(court, target)) return NO_TRADE;
   if (!hold && !court) return blowValue(state, board, attacker, target, pressed, ranged, from, actions, even);
   const o = blowOutcome(state, board, attacker, target, pressed, ranged, from, even);
-  // A blow at the enemy King is struck whatever it may cost the striker, unless that is our King: the game rides on it.
-  // Not so a blow at the golden Pig: the clock ends that game, and it is for the Pig to come on.
-  if (court && !court.royal && !court.plan.goal && target.id === court.plan.theirKing?.id) o.lossWorth = 0;
+  if (court && costsNothing(court, target)) o.lossWorth = 0;
   if (court?.flags && target.id === court.plan.theirKing?.id) stopsCapture(state, o);
   let value = outcomeValue(o, pressed, actions);
   if (hold) value += zoneSwing(hold, o, target, from ?? attacker.pos, ranged);
@@ -915,15 +922,15 @@ const orders = new WeakMap<GameState, Map<string, Standing>>();
  * first. So the unit that closes a pincer goes before the one that strikes
  * through it. `undefined` when it has nothing to do yet.
  */
-function orderEdge(state: GameState, board: Board, unit: Unit, sitsOut?: string, hold?: HoldOrder): number | undefined {
+function orderEdge(state: GameState, board: Board, unit: Unit, sitsOut?: string, mode?: ModeOrder): number | undefined {
   let order = orders.get(state);
   if (!order) {
-    order = activationOrder(state, board, unit.owner, sitsOut, hold?.stake);
+    order = activationOrder(state, board, unit.owner, sitsOut, mode?.stake);
     orders.set(state, order);
   }
   const standing = order.get(unit.id);
-  // In the zone modes, what its activation does for the hold on the zones besides its blows.
-  const more = hold ? hold.edge(unit) : 0;
+  // What its activation does for the mode besides its blows: for the hold on the zones, or for our King.
+  const more = mode ? mode.edge(unit, standing?.own ?? 0) : 0;
   if (!standing || standing.own + standing.gift + more <= 0) return undefined;
   return Math.max(-ORDER_SPAN, Math.min(ORDER_SPAN, standing.own + standing.gift - standing.wait + more));
 }
@@ -937,11 +944,22 @@ const ORDER_SPAN = 15;
  * sets up for its friends, and a unit a friend could set up waits for it. With
  * nothing to do yet, the one with the fewest hexes (`dist`) to where it is going.
  * `sitsOut` names a unit of its side that never steps up to a foe for a friend.
- * `hold` is the zone modes' part of it ({@link HoldOrder}).
+ * `mode` is a mode's part of it ({@link ModeOrder}).
  */
-function orderScore(state: GameState, board: Board, unit: Unit, canAttack: boolean, dist: number, sitsOut?: string, hold?: HoldOrder): number {
-  const edge = orderEdge(state, board, unit, sitsOut, hold);
+function orderScore(state: GameState, board: Board, unit: Unit, canAttack: boolean, dist: number, sitsOut?: string, mode?: ModeOrder): number {
+  const edge = orderEdge(state, board, unit, sitsOut, mode);
   return edge !== undefined || canAttack ? 100_000 + (edge ?? 0) * ORDER_SCALE : 10_000 - dist * 100;
+}
+
+/**
+ * A mode's part of who goes next ({@link orderEdge}), in {@link blowValue}
+ * terms: what it adds to a blow of the side choosing ({@link BlowStake}), and
+ * what a unit's activation is worth to it besides its blows, given the best
+ * blow the unit has (`own`).
+ */
+interface ModeOrder {
+  readonly stake: BlowStake;
+  edge(unit: Unit, own: number): number;
 }
 
 /** The {@link HoldOrder} of the side choosing in a given state: one per decision, shared by all its activations. */
@@ -968,7 +986,7 @@ function holdOrderOf(state: GameState, board: Board, zones: ZoneView[]): HoldOrd
  * the step that wins ({@link edge}), by the odds it gets the actions. And a
  * unit on the ground counts what getting up spares it.
  */
-class HoldOrder {
+class HoldOrder implements ModeOrder {
   private readonly views = new Map<string, HoldView>();
   /** What a blow of the side choosing does to the hold on the zones ({@link zoneSwing}). */
   readonly stake: BlowStake;
@@ -1029,6 +1047,81 @@ class HoldOrder {
       else if (!unit.knockedDown && c.zone.keys.has(key)) step += Math.sign(margin) - Math.sign(margin + 1);
     }
     return step > 0 ? edge + actionOdds(state, unit, need) * step * hold.point : edge;
+  }
+}
+
+/** The {@link CourtOrder} of the side choosing in a given state: one per decision, shared by all its activations. */
+const courtOrders = new WeakMap<GameState, CourtOrder>();
+
+function courtOrderOf(state: GameState, board: Board, plan: KingPlan): CourtOrder {
+  let order = courtOrders.get(state);
+  if (!order) {
+    order = new CourtOrder(state, board, plan);
+    courtOrders.set(state, order);
+  }
+  return order;
+}
+
+/**
+ * Kill-the-king's part of who goes next ({@link orderEdge}): what a unit's
+ * activation does for our King and against theirs, in {@link blowValue} terms,
+ * as {@link planScores} weighs it for the unit acting.
+ *
+ * Its blows count what {@link strikeValue} adds to them ({@link stake}): a blow
+ * at a foe that threatens our King is worth what it may spare the King
+ * ({@link kingSwing}), so the unit that can strike that foe goes sooner, and so
+ * does the one that steps up to it for a friend; a blow at the enemy King costs
+ * its striker nothing ({@link costsNothing}); and the blows our King does not
+ * strike ({@link tradesForNothing}) are no reason for it to go.
+ *
+ * Our King goes by what its best plan is worth ({@link edge}): a hex with less
+ * to fear, a guard, a blow at the enemy King. With nothing to gain it goes
+ * after everyone, since its roll could only turn the round over.
+ */
+class CourtOrder implements ModeOrder {
+  readonly stake: BlowStake;
+  /** The plan with the threats to our King left out: a unit's way to the enemy King, as {@link placeScore} counts it. */
+  readonly chase: KingPlan;
+  private readonly kingId: string | undefined;
+  private turn: number | undefined;
+
+  constructor(
+    private readonly state: GameState,
+    private readonly board: Board,
+    plan: KingPlan,
+  ) {
+    const king = plan.ourKing;
+    this.kingId = king?.id;
+    const court: Court = { ...courtOf(state, board, plan, plan.theirKing ?? king ?? state.units[0]!), royal: false };
+    const royal: Court = { ...court, royal: true };
+    this.chase = court.chase;
+    this.stake = (attacker, target, o, _from, ranged) => {
+      const mine = attacker.id === this.kingId ? royal : court;
+      if (!ranged && tradesForNothing(mine, target)) return -Infinity;
+      return kingSwing(mine, o, target) + (costsNothing(mine, target) ? o.lose * o.lossWorth : 0);
+    };
+  }
+
+  /** Whether `unit` has nowhere to go: our King, or a unit held beside a standing foe. */
+  stays(unit: Unit): boolean {
+    return unit.id === this.kingId || (inMelee(this.state, unit, this.board) && !slipsAway(this.state, unit));
+  }
+
+  /**
+   * What our King gains by going now, its blows apart (`own`): what the best
+   * thing it could do with one action is worth ({@link planNow}) over standing
+   * as it is, by the odds it gets the action, and on the ground what getting up
+   * spares it. Anyone else: nothing beyond its blows.
+   */
+  edge(unit: Unit, own: number): number {
+    if (unit.id !== this.kingId || unit.transfixedBy !== undefined) return 0;
+    if (this.turn === undefined) {
+      const { now, stood } = planNow(this.state, this.board, unit);
+      // Standing on guard for nothing scores 1: that is no reason to go.
+      const plan = Math.max(0, now - 1) / PLAN_SCALE;
+      this.turn = actionOdds(this.state, unit, 1) * stood + actionOdds(this.state, unit, unit.knockedDown ? 2 : 1) * plan;
+    }
+    return Math.max(0, this.turn - own);
   }
 }
 
@@ -1554,21 +1647,24 @@ function pigCanGetHome(plan: KingPlan, pig: Unit): boolean {
 }
 
 /**
- * Kill-the-king activation order. Anyone who can fight goes first, except
- * that our King only volunteers to shoot; otherwise it goes early when enemies
- * are closing on it (to step away) and last when they aren't. The rest go by
- * closeness to their quarry.
+ * Who activates in kill-the-king. Units go as in annihilation
+ * ({@link orderScore}): by the blow each can strike, what it sets up for its
+ * friends and what a friend could set up for it, with our King and theirs
+ * counted in those blows ({@link CourtOrder}); so a foe that threatens our King
+ * is dealt with first by what that spares the King, not by a rule. Our King
+ * goes by what its best plan is worth, and is never the one to step up to a
+ * foe for a friend. With nothing to do yet, a unit goes by its hexes to the
+ * enemy King ({@link kingHuntDistance}, as {@link placeScore} counts them);
+ * one with nowhere to go, our King or a unit held beside a foe, goes after all.
  */
 function kingActivationScore(state: GameState, board: Board, plan: KingPlan, unit: Unit): number {
-  const enemies = enemiesOf(state, state.active);
-  const nearest = nearestEnemyDistance(board, unit.pos, enemies);
-  const canShoot = unit.traits.ranged >= 2 && nearest >= 2 && nearest <= unit.traits.ranged;
-  if (unit.id === plan.ourKing?.id) {
-    if (canShoot) return 100_000;
-    return nearest <= 2 ? 50_000 : 1_000;
+  const order = courtOrderOf(state, board, plan);
+  let dist = 100;
+  if (!order.stays(unit)) {
+    const range = unit.traits.ranged;
+    dist = Math.min(kingHuntDistance(board, order.chase, unit.pos, enemiesOf(state, state.active), unit.traits.flying, range >= 2 ? range : 0), 99);
   }
-  if (nearest === 1 || canShoot) return 100_000;
-  return 10_000 - Math.min(kingHuntDistance(board, plan, unit.pos, enemies, unit.traits.flying), 99) * 100;
+  return orderScore(state, board, unit, false, dist, plan.ourKing?.id, order);
 }
 
 /** The golden Pig's activation score when it waits for its escort: under any of them still to go. */
@@ -1621,15 +1717,7 @@ function pigActivationScore(state: GameState, board: Board, plan: KingPlan, unit
  * on its escort's dice. A Pig on the ground counts what standing spares it.
  */
 function pigTurn(state: GameState, board: Board, goal: Map<string, number>, pig: Unit): number {
-  let acting: GameState = { ...state, phase: 'acting', activeUnitId: pig.id, actionsRemaining: 1 };
-  let stood = 0;
-  if (pig.knockedDown) {
-    const units: Unit[] = [];
-    for (const u of state.units) units.push(u.id === pig.id ? { ...u, knockedDown: false } : u);
-    acting = { ...acting, units };
-    stood = Math.max(0, threatOn(state, board, pig) - threatOn(acting, board, unitById(acting, pig.id)!));
-  }
-  const now = bestCommand(acting, board, getLegalCommands(acting)).score;
+  const { now, stood } = planNow(state, board, pig);
   const far = walk(goal, pig.pos);
   const pace = unitMove(pig);
   let open = Math.min(pace, far) * APPROACH;
@@ -1641,6 +1729,25 @@ function pigTurn(state: GameState, board: Board, goal: Map<string, number>, pig:
     safe *= 1 - successOdds(u.quality, 2, u.inspired)[0]!;
   }
   return stood + (now - safe * open) / PLAN_SCALE;
+}
+
+/**
+ * What going now is worth to `unit`, a unit of the side choosing, as things
+ * stand: `now`, what {@link planScores} gives the best thing it could do with
+ * one action, on its feet; and `stood`, in {@link blowValue} terms, what
+ * getting up spares it when it is on the ground. A position to score, never to
+ * play: the same state with the unit acting, and no dice.
+ */
+function planNow(state: GameState, board: Board, unit: Unit): { now: number; stood: number } {
+  let acting: GameState = { ...state, phase: 'acting', activeUnitId: unit.id, actionsRemaining: 1 };
+  let stood = 0;
+  if (unit.knockedDown) {
+    const units: Unit[] = [];
+    for (const u of state.units) units.push(u.id === unit.id ? { ...u, knockedDown: false } : u);
+    acting = { ...acting, units };
+    stood = Math.max(0, threatOn(state, board, unit) - threatOn(acting, board, unitById(acting, unit.id)!));
+  }
+  return { now: bestCommand(acting, board, getLegalCommands(acting)).score, stood };
 }
 
 /** Walking distance (steps over passable hexes, never lava) from every reachable hex to the nearest of `targets`. */

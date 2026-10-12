@@ -135,6 +135,37 @@ describe('AI in kill-the-king', () => {
     expect(chooseCommand(s)).toEqual({ type: 'Move', unitId: 'p0u1', to: flank });
   });
 
+  it('the unit that can strike the foe beside its King goes before a friend with a like blow elsewhere', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const king = { x: 2, y: 4 };
+    const raider = board.neighbors(king)[0]!;
+    /** Straight across the raider from the King: the guard's hex, out of contact with anyone else. */
+    const guard = board.stepAway(king, raider);
+    // Far from the King, a like friend fights a like foe. It is listed first: who went first when anyone in contact did.
+    const s = kingGame(
+      [U('k', king.x, king.y, { king: true }), U('brawler', 9, 4), U('guard', guard.x, guard.y)],
+      [U('k', 11, 0, { king: true }), U('foe', 9, 5), U('raider', raider.x, raider.y)],
+    );
+    expect(board.distance({ x: 9, y: 4 }, { x: 9, y: 5 })).toBe(1);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
+  it('the unit that can flank goes before the friend already in contact', () => {
+    // Listed first and already fighting: the friend is who went first when anyone in contact did.
+    const s = kingGame([U('k', 0, 0, { king: true }), U('friend', 8, 4), U('flanker', 4, 4)], [U('k', 11, 0, { king: true }), U('foe', 7, 4)]);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
+  it('a King a foe could charge goes before a friend with nothing to do yet', () => {
+    // The foe is a Move and a blow from our King, and no one of ours can reach it.
+    const s = kingGame([U('k', 5, 4, { king: true }), U('a', 0, 0)], [U('b', 11, 4), U('k', 19, 7, { king: true })], { width: 20 });
+    expect(moveTo(chooseCommand(activate(s, 'p0u0')))).toBeDefined();
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u0' });
+    // With no foe in reach of it, it goes after everyone, as it always has.
+    const calm = kingGame([U('k', 5, 4, { king: true }), U('a', 0, 0)], [U('k', 19, 7, { king: true })], { width: 20 });
+    expect(chooseCommand(calm)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
   it('the King stays put and guards when enemies are far away', () => {
     const game = (king: Partial<UnitSpec>) =>
       activate(kingGame([U('k', 1, 4, { king: true, ...king }), U('a', 2, 4)], [U('b', 11, 4), U('k', 11, 7, { king: true })]), 'p0u0');
