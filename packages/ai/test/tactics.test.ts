@@ -251,8 +251,8 @@ describe('AI activation order', () => {
   });
 
   it('with no setup on offer the order is as before: the unit in contact, then the nearest', () => {
-    // The far units cannot reach the foe this turn, so no one has anything to give or to wait for.
-    const s = game([U('far', 0, 0), U('near', 2, 4), U('fighter', 11, 4)], [U('foe', 10, 4, { combat: 2 })]);
+    // The far units cannot reach the foe this turn, so no one has anything to give or to wait for. The fighter's blow is a strong one: the lookahead sends a walk of several hexes ahead of a blow worth less than it.
+    const s = game([U('far', 0, 0), U('near', 2, 4), U('fighter', 11, 4, { combat: 5 })], [U('foe', 10, 4, { combat: 2 })]);
     const order = activationOrder(s, board, 0);
     for (const standing of order.values()) {
       expect(standing.gift).toBe(0);
@@ -295,5 +295,20 @@ describe('AI with a side down to its last unit', () => {
     const more = game([U('a', 4, 4), U('friend', 0, 0)], [U('brute', 7, 4, { combat: 5 }), U('far', 11, 7)]);
     const cmd = chooseCommand(activate(more, 'p0u0'));
     if (cmd.type === 'Move') expect(board.distance(cmd.to, { x: 7, y: 4 })).toBeGreaterThan(1);
+  });
+});
+
+describe('AI lookahead over the rest of the turn', () => {
+  it('a blow on offer at a weak foe is struck before a friend steps forward', () => {
+    // a and b both stand beside the weak x; c is three hexes from y and has only a step forward to make.
+    // One command at a time, c goes first for the charge it sets up. Planning the two activations
+    // together, the blow comes first: played out 1,200 times each way, that wins 81% against 77%.
+    const s = game(
+      [U('a', 6, 2, { combat: 4 }), U('b', 6, 3, { combat: 4 }), U('c', 3, 5)],
+      [U('x', 7, 2, { combat: 2 }), U('y', 6, 5, { combat: 2 }), U('z', 8, 4, { combat: 4 })],
+    );
+    const cmd = chooseCommand({ ...s, active: 0 });
+    expect(cmd.type).toBe('ChooseActivation');
+    expect(['p0u0', 'p0u1']).toContain((cmd as Extract<Command, { type: 'ChooseActivation' }>).unitId);
   });
 });

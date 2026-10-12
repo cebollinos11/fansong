@@ -33,8 +33,9 @@ import {
   type Vec,
   type WalkRules,
 } from '@fansong/engine';
-import { actionOdds, activationOrder, MoveSetup, threatOn, threatShares, type BlowStake, type Standing } from './tactics.js';
-import { binomial, blowOutcome, blowValue, KING_WORTH, outcomeValue, ownWorth, pointWorth, successChance, successOdds, type BlowOutcome } from './value.js';
+import { actionOdds, activationOrder, exposure, MoveSetup, threat, threatOn, threatShares, type BlowStake, type Standing } from './tactics.js';
+import { lookahead, searchOf, type Plan, type Policy, type Ranked } from './search.js';
+import { binomial, blowOutcome, blowValue, KING_WORTH, outcomeValue, ownWorth, pointWorth, successChance, successOdds, worthOf, type BlowOutcome } from './value.js';
 
 /**
  * Deterministic heuristic opponent. It speaks only `Command`, so the same code
@@ -49,11 +50,20 @@ export function chooseCommand(state: GameState): Command {
   if (commands.length === 0) {
     throw new Error('chooseCommand called with no legal commands');
   }
-  return commands[bestCommand(state, makeHexGrid(state.board), commands).index]!;
+  const board = makeHexGrid(state.board);
+  // A mode with a search looks further than one command ({@link lookahead}); the rest play as ever.
+  const search = searchOf(state);
+  if (search) return commands[lookahead(state, board, commands, search, PLAIN)]!;
+  return commands[bestCommand(state, board, commands).index]!;
 }
 
-/** The best of `commands` in `state`, as {@link chooseCommand} picks it, and what it scored. */
-function bestCommand(state: GameState, board: Board, commands: Command[]): { index: number; score: number } {
+/** The best of `commands` in `state`, as {@link chooseCommand} picks it with no search, and what it scored. */
+function bestCommand(state: GameState, board: Board, commands: Command[]): Ranked {
+  return bestCommands(state, board, commands, 1)[0]!;
+}
+
+/** The best `width` of `commands` in `state`, best first, ties toward the earlier command, and what each scored. */
+function bestCommands(state: GameState, board: Board, commands: Command[], width: number): Ranked[] {
   const zones = zonePlan(state, board, state.active);
   const flags = flagPlan(state, board, state.active);
   const kings = kingPlan(state, board, state.active);
@@ -64,22 +74,122 @@ function bestCommand(state: GameState, board: Board, commands: Command[]): { ind
 
   // A move scored for its setup has yet to pay for the risk it ends in (see
   // `setupEdge`). The risk only ever lowers a score, so the moves are weighed in
-  // order of their score without it, and the rest are left once none can win.
+  // order of their score without it, and the rest are left once none can make the list.
   const setup = oneScale && nothingHeldBack(state, zones, kings) ? undefined : setups.get(state);
   const waiting: number[] = [];
-  let best = -1;
-  commands.forEach((command, i) => {
-    if (setup && command.type === 'Move') waiting.push(i);
-    else if (best < 0 || scores[i]! > scores[best]!) best = i;
-  });
+  const top: Ranked[] = [];
+  for (let i = 0; i < commands.length; i++) {
+    if (setup && commands[i]!.type === 'Move') waiting.push(i);
+    else rankIn(top, i, scores[i]!, width);
+  }
   waiting.sort((a, b) => scores[b]! - scores[a]! || a - b);
   for (const i of waiting) {
-    if (best >= 0 && scores[i]! < scores[best]!) break;
+    if (top.length >= width && scores[i]! < top[width - 1]!.score) break;
     scores[i]! -= SETUP_SCALE * EXPOSURE_WEIGHT * setup!.risk((commands[i] as Extract<Command, { type: 'Move' }>).to);
-    if (best < 0 || scores[i]! > scores[best]! || (scores[i] === scores[best] && i < best)) best = i;
+    rankIn(top, i, scores[i]!, width);
   }
-  return { index: best, score: scores[best]! };
+  return top;
 }
+
+/** Put command `index` in its place among the best `width` so far: by score, the earlier command first among equals. */
+function rankIn(top: Ranked[], index: number, score: number, width: number): void {
+  let at = top.length;
+  while (at > 0 && (score > top[at - 1]!.score || (score === top[at - 1]!.score && index < top[at - 1]!.index))) at--;
+  if (at >= width) return;
+  top.splice(at, 0, { index, score });
+  if (top.length > width) top.pop();
+}
+
+/**
+ * Whether an activation is one the beam search may put in another order: one
+ * unit on its own, going by what it has to do ({@link orderScore}). A group, a
+ * Magic User with a spell worth casting and a Leader with a war cry to sound go
+ * when the plain AI says.
+ */
+function openActivation(state: GameState, board: Board, command: Command): boolean {
+  if (command.type !== 'ChooseActivation' || command.group) return false;
+  const unit = unitById(state, command.unitId)!;
+  return magicActivationScore(state, board, command) === undefined && warCryReach(state, unit) < WAR_CRY_QUORUM;
+}
+
+/**
+ * The best plan of `unit`, of the side choosing, were it acting now with
+ * `actions` actions, as {@link planNow} reads it: what {@link planScores} gives
+ * the best thing it could do, with what getting up spares it when it is on the
+ * ground (which takes the first action). And the position the plan leaves: the
+ * unit on the hex it moves to, or the odds that its blow or shot kills or knocks
+ * down and the position with the target gone or on the ground. A position to score, never to play: no dice.
+ */
+function planOf(state: GameState, board: Board, unit: Unit, actions: number): Plan {
+  let acting: GameState = { ...state, phase: 'acting', activeUnitId: unit.id, actionsRemaining: actions };
+  let stood = 0;
+  if (unit.knockedDown) {
+    const units: Unit[] = [];
+    for (const u of state.units) units.push(u.id === unit.id ? { ...u, knockedDown: false } : u);
+    acting = { ...acting, units, actionsRemaining: actions - 1 };
+    stood = Math.max(0, threatOn(state, board, unit) - threatOn(acting, board, unitById(acting, unit.id)!)) * PLAN_SCALE;
+    if (actions <= 1) return { score: stood };
+  }
+  // The same unit in the same position weighs its moves once, whatever the actions it holds ({@link MoveSetup} counts none).
+  let shared = planSetups.get(state);
+  if (!shared) {
+    shared = new Map();
+    planSetups.set(state, shared);
+  }
+  const known = shared.get(unit.id);
+  if (known) setups.set(acting, known);
+  const commands = getLegalCommands(acting);
+  const best = bestCommand(acting, board, commands);
+  const made = setups.get(acting);
+  if (made && !known) shared.set(unit.id, made);
+  const command = commands[best.index]!;
+  const plan: Plan = { score: stood + best.score };
+  if (command.type === 'Move') {
+    const units: Unit[] = [];
+    for (const u of acting.units) units.push(u.id === unit.id ? { ...u, pos: { x: command.to.x, y: command.to.y }, activatedThisRound: true } : u);
+    plan.moved = { ...state, units };
+  } else if (command.type === 'Attack' || command.type === 'Shoot') {
+    const ranged = command.type === 'Shoot';
+    const pressed = command.type === 'Attack' ? command.power === true : command.aimed === true;
+    const target = unitById(acting, command.targetId)!;
+    const o = blowOutcome(acting, board, unitById(acting, unit.id)!, target, pressed, ranged);
+    // A Tough foe on its feet is knocked down by the blow that would have killed it; half the lesser hits are a push, as everywhere.
+    const saved = target.traits.tough && !target.knockedDown;
+    plan.target = target.id;
+    plan.kill = saved ? 0 : o.kill;
+    plan.down = target.knockedDown ? 0 : o.hurt / 2 + (saved ? o.kill : 0);
+    if (plan.kill > 0) {
+      const units: Unit[] = [];
+      for (const u of acting.units) units.push(u.id === target.id ? { ...u, dead: true } : u);
+      plan.killed = { ...state, units };
+    }
+    if (plan.down > 0) {
+      const units: Unit[] = [];
+      for (const u of acting.units) units.push(u.id === target.id ? { ...u, knockedDown: true } : u);
+      plan.downed = { ...state, units };
+    }
+  }
+  return plan;
+}
+
+/** The {@link MoveSetup} of each unit {@link planOf} has made a plan for in a given position, by the unit's id. */
+const planSetups = new WeakMap<GameState, Map<string, MoveSetup>>();
+
+/**
+ * What a position is worth to `side` on the one scale, in {@link blowValue}
+ * terms: the units it still has over the enemy's, at what each is worth, and
+ * what it threatens over what it is exposed to from where everyone stands.
+ */
+function positionValue(state: GameState, board: Board, side: Owner): number {
+  let value = threat(state, board, side) - EXPOSURE_WEIGHT * exposure(state, board, side);
+  for (const u of state.units) {
+    if (!u.dead) value += u.owner === side ? worthOf(state, u) : -worthOf(state, u);
+  }
+  return value;
+}
+
+/** The AI with the search off, as the search calls it. */
+const PLAIN: Policy = { rank: bestCommands, open: openActivation, plan: planOf, leaf: positionValue };
 
 /** A command's score on the ladder (who activates, in every mode, and a spell's target): its kind first, then how good a one of its kind it is. */
 function ladderScore(
