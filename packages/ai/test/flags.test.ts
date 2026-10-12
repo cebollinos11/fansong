@@ -72,6 +72,17 @@ describe('AI in capture-the-flag', () => {
     expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
   });
 
+  it('the unit that can take the enemy flag goes before a friend in contact that will only hold', () => {
+    // Listed first and beside an equal foe: the friend is who went first when anyone in contact did.
+    const s = flagGame([U('friend', 5, 1), U('grabber', 8, 4)], [U('foe', 5, 2)]);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
+  it('the unit that can flank goes before the friend already in contact', () => {
+    const s = flagGame([U('friend', 8, 2), U('flanker', 4, 2)], [U('foe', 7, 2)]);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
   it('returns its own dropped flag when it can reach it', () => {
     let s = flagGame([U('a', 4, 2)], [U('b', 11, 7)]);
     s = withFlags(s, [{ at: { x: 5, y: 2 }, carrier: null }, { at: BASES[1], carrier: null }]);

@@ -90,7 +90,7 @@ function ladderScore(
   kings: KingPlan | undefined,
   command: Command,
 ): number {
-  let score = flags && command.type === 'ChooseActivation' ? flagActivationScore(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
+  let score = scoreCommand(state, board, zones, kings, flags, command);
   if (command.type === 'Move') score -= disengageCost(state, board, command.unitId);
   if (command.type === 'Move') score += lavaMoveEdge(state, board, unitById(state, command.unitId)!, command.to);
   if (command.type === 'Attack') {
@@ -1024,12 +1024,7 @@ class HoldOrder implements ModeOrder {
     const { state, board } = this;
     if (unit.transfixedBy !== undefined) return 0;
     let edge = 0;
-    if (unit.knockedDown) {
-      const units: Unit[] = [];
-      for (const u of state.units) units.push(u.id === unit.id ? { ...u, knockedDown: false } : u);
-      const up: GameState = { ...state, units };
-      edge += actionOdds(state, unit, 1) * Math.max(0, threatOn(state, board, unit) - threatOn(up, board, unitById(up, unit.id)!));
-    }
+    if (unit.knockedDown) edge += actionOdds(state, unit, 1) * stoodGain(state, board, unit);
     const hold = this.view(unit);
     const sent = hold.sent;
     if (!sent || hold.holding) return edge;
@@ -1115,13 +1110,96 @@ class CourtOrder implements ModeOrder {
    */
   edge(unit: Unit, own: number): number {
     if (unit.id !== this.kingId || unit.transfixedBy !== undefined) return 0;
-    if (this.turn === undefined) {
-      const { now, stood } = planNow(this.state, this.board, unit);
-      // Standing on guard for nothing scores 1: that is no reason to go.
-      const plan = Math.max(0, now - 1) / PLAN_SCALE;
-      this.turn = actionOdds(this.state, unit, 1) * stood + actionOdds(this.state, unit, unit.knockedDown ? 2 : 1) * plan;
-    }
+    this.turn ??= turnNow(this.state, this.board, unit);
     return Math.max(0, this.turn - own);
+  }
+}
+
+/**
+ * What `unit` gains by going now, in {@link blowValue} terms: what the best
+ * thing it could do with one action is worth ({@link planNow}) over standing as
+ * it is, by the odds it gets the action, and on the ground what getting up
+ * spares it.
+ */
+function turnNow(state: GameState, board: Board, unit: Unit): number {
+  const { now, stood } = planNow(state, board, unit);
+  // Standing on guard for nothing scores 1: that is no reason to go.
+  const plan = Math.max(0, now - 1) / PLAN_SCALE;
+  return actionOdds(state, unit, 1) * stood + actionOdds(state, unit, unit.knockedDown ? 2 : 1) * plan;
+}
+
+/** What getting up spares `unit`, on the ground: what the enemy can do to it there that it could not do to it on its feet. */
+function stoodGain(state: GameState, board: Board, unit: Unit): number {
+  const units: Unit[] = [];
+  for (const u of state.units) units.push(u.id === unit.id ? { ...u, knockedDown: false } : u);
+  const up: GameState = { ...state, units };
+  return Math.max(0, threatOn(state, board, unit) - threatOn(up, board, unitById(up, unit.id)!));
+}
+
+/** The {@link FlagOrder} of the side choosing in a given state: one per decision, shared by all its activations. */
+const flagOrders = new WeakMap<GameState, FlagOrder>();
+
+function flagOrderOf(state: GameState, board: Board, plan: FlagPlan): FlagOrder {
+  let order = flagOrders.get(state);
+  if (!order) {
+    order = new FlagOrder(state, board, plan);
+    flagOrders.set(state, order);
+  }
+  return order;
+}
+
+/**
+ * Capture-the-flag's part of who goes next ({@link orderEdge}): what a unit's
+ * activation does for the flags, in {@link blowValue} terms, as
+ * {@link planScores} weighs it for the unit acting.
+ *
+ * Its blows count what {@link strikeValue} adds to them ({@link stake}): a blow
+ * at a foe that threatens our carrier is worth what it may spare the carrier
+ * ({@link kingSwing}), and a blow that kills, knocks down or pushes the enemy's
+ * carrier counts the whole capture ({@link stopsCapture}).
+ *
+ * Our carrier goes by what its best plan is worth ({@link turnNow}): its way
+ * home, and a hex with less to fear. A unit on the ground counts what getting
+ * up spares it. A flag a Move could pick up or send home is no part of it: such
+ * a unit goes by its hexes to the flag, after the fighters (counting the
+ * capture for it measured as nothing).
+ */
+class FlagOrder implements ModeOrder {
+  readonly stake: BlowStake;
+  private turn: number | undefined;
+
+  constructor(
+    private readonly state: GameState,
+    private readonly board: Board,
+    private readonly plan: FlagPlan,
+  ) {
+    const court = flagCourt(state, board, plan, state.units[0]!);
+    const capture = pointWorth(state);
+    const quarry = plan.enemyCarrierId;
+    this.stake = (_attacker, target, o) => {
+      const swing = kingSwing(court, o, target);
+      return target.id === quarry ? swing + o.kill * (capture - o.killWorth) + o.hurt * (capture - o.hurtWorth) : swing;
+    };
+  }
+
+  /** Whether `unit` is held beside a standing foe. A carrier is not: it weighs the hack ({@link hackRisk}). */
+  stays(unit: Unit): boolean {
+    return unit.id !== this.plan.carrierId && inMelee(this.state, unit, this.board) && !slipsAway(this.state, unit);
+  }
+
+  /**
+   * What `unit` going now does for the flags and for itself, its blows apart
+   * (`own`). Our carrier: what its best plan is worth. Anyone else, on the
+   * ground: what getting up spares it, by the odds it gets the action.
+   */
+  edge(unit: Unit, own: number): number {
+    const { state, board } = this;
+    if (unit.transfixedBy !== undefined) return 0;
+    if (unit.id === this.plan.carrierId) {
+      this.turn ??= turnNow(state, board, unit);
+      return Math.max(0, this.turn - own);
+    }
+    return unit.knockedDown ? actionOdds(state, unit, 1) * stoodGain(state, board, unit) : 0;
   }
 }
 
@@ -1275,22 +1353,6 @@ function warCryScore(state: GameState, leader: Unit): number {
  */
 function leaderFirst(state: GameState, unit: Unit, score: number): number {
   return warCryReach(state, unit) >= WAR_CRY_QUORUM ? Math.max(score, 110_000) : score;
-}
-
-/**
- * Dice policy: normally 2 dice (enough output, modest turnover risk). When this
- * is the player's last available unit, a turnover benches nothing, and a unit
- * that turns over still takes the actions its successes earned — so 3 dice is
- * strictly best.
- */
-function diceScore(state: GameState, board: Board, command: ChooseActivation): number {
-  const { diceCount } = command;
-  const members = activated(state, board, command);
-  const availableCount = aliveUnits(state, members[0]!.owner).filter((u) => !u.activatedThisRound).length;
-  // A group takes all its members' actions for one roll's risk: better than going alone.
-  const together = command.group ? 4 : 0;
-  if (availableCount <= members.length) return together + diceCount;
-  return together + (diceCount === 2 ? 3 : diceCount === 3 ? 2 : 1);
 }
 
 /** Worth of a unit's 1st, 2nd and 3rd action this activation (later ones matter less). */
@@ -1466,6 +1528,7 @@ function scoreCommand(
   board: Board,
   zones: ZoneView[],
   kings: KingPlan | undefined,
+  flags: FlagPlan | undefined,
   command: Command,
 ): number {
   const player = state.active;
@@ -1478,9 +1541,14 @@ function scoreCommand(
       if (magic !== undefined) return magic;
       if (kings) {
         // The Pig rolls everything when one good roll walks it home.
-        const dash = command.diceCount === 3 && unit.id === kings.ourKing?.id && pigCanGetHome(kings, unit) ? 50 : 0;
+        const dash = command.diceCount === 3 && unit.id === kings.ourKing?.id && canGetHome(kings.goal, unit) ? HOME_DASH : 0;
         const order = kings.goal ? pigActivationScore(state, board, kings, unit) : kingActivationScore(state, board, kings, unit);
         return leaderFirst(state, unit, order) + diceWorth(state, board, zones, kings, command) + dash;
+      }
+      if (flags) {
+        // So does a carrier one good roll from its base.
+        const dash = command.diceCount === 3 && unit.id === flags.carrierId && canGetHome(flags.home, unit) ? HOME_DASH : 0;
+        return leaderFirst(state, unit, flagActivationScore(state, board, flags, unit)) + diceWorth(state, board, zones, kings, command) + dash;
       }
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       let unitScore: number;
@@ -1641,10 +1709,16 @@ function kingHuntDistance(board: Board, plan: KingPlan, from: Vec, enemies: Unit
   return nearestEnemyDistance(board, from, enemies);
 }
 
-/** Whether the golden Pig `pig` could walk into the goal with two Moves: worth rolling for now. */
-function pigCanGetHome(plan: KingPlan, pig: Unit): boolean {
-  return !!plan.goal && walk(plan.goal, pig.pos) <= unitMove(pig) * (pig.knockedDown ? 1 : 2);
+/** Whether `unit`, the golden Pig or a flag carrier, could walk into its `goal` with two Moves: worth rolling for now. */
+function canGetHome(goal: Map<string, number> | undefined, unit: Unit): boolean {
+  return !!goal && walk(goal, unit.pos) <= unitMove(unit) * (unit.knockedDown ? 1 : 2);
 }
+
+/** The activation score of a unit that one roll can take home ({@link canGetHome}): before anyone. */
+const GOES_HOME = 150_000;
+
+/** What its third die is worth to such a unit, over what the dice policy makes of it. */
+const HOME_DASH = 50;
 
 /**
  * Who activates in kill-the-king. Units go as in annihilation
@@ -1692,7 +1766,7 @@ function pigActivationScore(state: GameState, board: Board, plan: KingPlan, unit
     const dist = Math.min(kingHuntDistance(board, plan, unit.pos, enemies, unit.traits.flying), 99);
     return orderScore(state, board, unit, canAttack, dist, plan.ourKing?.id);
   }
-  if (pigCanGetHome(plan, unit)) return 150_000;
+  if (canGetHome(plan.goal, unit)) return GOES_HOME;
   let edge = pigTurns.get(state);
   if (edge === undefined) {
     edge = pigTurn(state, board, plan.goal!, unit);
@@ -1820,13 +1894,6 @@ function flagPlan(state: GameState, board: Board, player: Owner): FlagPlan | und
   };
 }
 
-/** Walking distance from `v` to the nearest flag goal (`FAR` when there is none). */
-function goalDistance(plan: FlagPlan, v: Vec): number {
-  let min = FAR;
-  for (const g of plan.goals) min = Math.min(min, walk(g, v));
-  return min;
-}
-
 const sameVec = (a: Vec | undefined, b: Vec) => !!a && a.x === b.x && a.y === b.y;
 
 /**
@@ -1846,24 +1913,29 @@ function flagDistance(plan: FlagPlan, at: Vec, reach: number): number {
 }
 
 /**
- * Who activates in capture-the-flag, and on how many dice. Our carrier goes
- * first: every activation it waits is a chance to lose the flag. Then anyone
- * who can fight, then the rest by walking distance to the nearest flag goal, or
- * to the nearest foe with no goal left (we carry theirs and ours is home).
+ * Who activates in capture-the-flag. Units go as in annihilation
+ * ({@link orderScore}): by the blow each can strike, what it sets up for its
+ * friends and what a friend could set up for it, with the flags counted in
+ * those blows and in what else a unit has to do ({@link FlagOrder}). Our carrier
+ * goes by what its best plan is worth, and is never the one to step up to a foe
+ * for a friend. With nothing to do yet, a unit goes by its hexes to what the
+ * plan sends it after ({@link flagDistance}, as {@link placeScore} counts them),
+ * or to the nearest foe with no goal left; one held beside a foe goes after all.
+ * One thing is not weighed: a carrier that one roll can take home goes before anyone.
  */
-function flagActivationScore(state: GameState, board: Board, plan: FlagPlan, command: ChooseActivation): number {
-  const enemies = enemiesOf(state, state.active);
-  const unit = unitById(state, command.unitId)!;
-  const magic = magicActivationScore(state, board, command);
-  if (magic !== undefined) return magic;
-  const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
-  const canAttack = enemyDist === 1 || (unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged);
-  const goal = goalDistance(plan, unit.pos);
-  const dist = goal < FAR ? goal : enemyDist;
-  let unitScore = canAttack ? 100_000 : 10_000 - Math.min(dist, 99) * 100;
-  if (unit.id === plan.carrierId) unitScore = 150_000;
-  unitScore = leaderFirst(state, unit, unitScore);
-  return unitScore + diceScore(state, board, command);
+function flagActivationScore(state: GameState, board: Board, plan: FlagPlan, unit: Unit): number {
+  const carries = unit.id === plan.carrierId;
+  if (carries && canGetHome(plan.home, unit)) return GOES_HOME;
+  const order = flagOrderOf(state, board, plan);
+  let dist = 100;
+  if (carries) {
+    dist = Math.min(walk(plan.home, unit.pos), 99);
+  } else if (!order.stays(unit)) {
+    const range = unit.traits.ranged;
+    const goal = flagDistance(plan, unit.pos, range >= 2 ? range : 0);
+    dist = Math.min(goal < FAR ? goal : nearestEnemyDistance(board, unit.pos, enemiesOf(state, state.active)), 99);
+  }
+  return orderScore(state, board, unit, false, dist, plan.carrierId, order);
 }
 
 export function playerLabel(owner: Owner): string {
