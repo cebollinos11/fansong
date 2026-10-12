@@ -221,6 +221,47 @@ describe('AI in the zone modes', () => {
     expect(['Move', 'EndActivation', 'Guard']).toContain(cmd.type);
   });
 
+  it('a unit that can take the hill goes before a holder in contact that will only hold', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    // Three hexes of hill, far apart: ours on one, theirs on another, the third free. So the hill is level.
+    const mine = { x: 2, y: 2 };
+    const free = { x: 9, y: 5 };
+    const hill = [mine, { x: 9, y: 1 }, free];
+    // A foe our holder would lose to stands beside it, off the hill.
+    const bully = board.neighbors(mine).find((v) => board.inBounds(v) && !inZone(hill, v))!;
+    const s = hillGame(
+      [U('holder', mine.x, mine.y), U('taker', 9, 7)],
+      [U('bully', bully.x, bully.y, { combat: 5 }), U('theirs', 9, 1)],
+      hill,
+    );
+    // The holder has nothing to do but hold, and the taker can win the hill this round.
+    expect(chooseCommand(activate(s, 'p0u0', 2)).type).toBe('EndActivation');
+    expect(chooseCommand(activate(s, 'p0u1', 2))).toEqual({ type: 'Move', unitId: 'p0u1', to: free });
+    // So the taker goes first: the holder's roll could only turn the round over before the hill is won.
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
+  it('conquest: a blow that may clear a foe out of a zone goes before a better blow elsewhere', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    // The enemy holds the first zone alone; ours stands beside it, an equal, and was sent to take it.
+    const zone = { x: 8, y: 2 };
+    const zones: [Vec[], Vec[], Vec[]] = [[zone], [{ x: 0, y: 7 }], [{ x: 11, y: 7 }]];
+    const beside = board.neighbors(zone).find((v) => board.inBounds(v))!;
+    // Far from any zone, a stronger friend fights a foe of its own.
+    const brawl = { x: 2, y: 3 };
+    const foe = board.neighbors(brawl).find((v) => board.inBounds(v))!;
+    const s = conquestGame(
+      [U('strong', brawl.x, brawl.y, { combat: 4 }), U('taker', beside.x, beside.y)],
+      [U('foe', foe.x, foe.y), U('holder', zone.x, zone.y)],
+      zones,
+    );
+    // Each strikes when it goes: the equal's blow is worth striking for the zone it may clear.
+    expect(chooseCommand(activate(s, 'p0u1', 2))).toMatchObject({ type: 'Attack', targetId: 'p1u1' });
+    expect(chooseCommand(activate(s, 'p0u0', 2))).toMatchObject({ type: 'Attack', targetId: 'p1u0' });
+    // And the blow for the zone is the one worth more, so it goes first.
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
   it('prefers activating a unit that has a zone to reach over one already holding', () => {
     const s = hillGame([U('a', 5, 1), U('b', 1, 6)], [U('c', 11, 7)]);
     const cmd = chooseCommand(s);
@@ -228,17 +269,18 @@ describe('AI in the zone modes', () => {
   });
 
   it('a unit one step from a zone is not mistaken for one that can attack', () => {
-    // p0u0 is next to the hill with no enemy near; p0u1 is locked in melee.
-    const s = hillGame([U('near-hill', 4, 1), U('in-melee', 1, 6)], [U('foe', 2, 6)]);
+    // p0u0 is next to a hill a friend already holds, with no enemy near; p0u1 has a good blow to strike.
+    const s = hillGame([U('near-hill', 4, 1), U('in-melee', 10, 6, { combat: 5 }), U('holder', 5, 1)], [U('foe', 11, 6, { combat: 2 })]);
     expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
   });
 
   it('a shooter near a zone but with no foe in range is not treated as able to shoot', () => {
-    // The archer is 2 hexes from the hill (inside its shooting band) but no
-    // enemy is in range; the swordsman is locked in melee and should go first.
+    // The archer is 2 hexes from a hill a friend already holds (inside its
+    // shooting band) but no enemy is in range; the swordsman has a good blow
+    // to strike and should go first.
     const s = hillGame(
-      [U('archer', 3, 1, { ranged: 4 }), U('sword', 1, 6)],
-      [U('foe', 2, 6), U('far', 11, 7)],
+      [U('archer', 3, 1, { ranged: 4 }), U('sword', 10, 6, { combat: 5 }), U('holder', 5, 1)],
+      [U('foe', 11, 6, { combat: 2 }), U('far', 0, 7)],
     );
     expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
   });

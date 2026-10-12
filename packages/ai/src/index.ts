@@ -12,6 +12,7 @@ import {
   pigExtracted,
   pigOf,
   getLegalCommands,
+  inMelee,
   groupFor,
   kingOf,
   makeHexGrid,
@@ -32,7 +33,7 @@ import {
   type Vec,
   type WalkRules,
 } from '@fansong/engine';
-import { activationOrder, MoveSetup, threatOn, threatShares, type Standing } from './tactics.js';
+import { actionOdds, activationOrder, MoveSetup, threatOn, threatShares, type BlowStake, type Standing } from './tactics.js';
 import { binomial, blowOutcome, blowValue, KING_WORTH, outcomeValue, ownWorth, pointWorth, successChance, successOdds, type BlowOutcome } from './value.js';
 
 /**
@@ -914,15 +915,17 @@ const orders = new WeakMap<GameState, Map<string, Standing>>();
  * first. So the unit that closes a pincer goes before the one that strikes
  * through it. `undefined` when it has nothing to do yet.
  */
-function orderEdge(state: GameState, board: Board, unit: Unit, sitsOut?: string): number | undefined {
+function orderEdge(state: GameState, board: Board, unit: Unit, sitsOut?: string, hold?: HoldOrder): number | undefined {
   let order = orders.get(state);
   if (!order) {
-    order = activationOrder(state, board, unit.owner, sitsOut);
+    order = activationOrder(state, board, unit.owner, sitsOut, hold?.stake);
     orders.set(state, order);
   }
   const standing = order.get(unit.id);
-  if (!standing || standing.own + standing.gift <= 0) return undefined;
-  return Math.max(-ORDER_SPAN, Math.min(ORDER_SPAN, standing.own + standing.gift - standing.wait));
+  // In the zone modes, what its activation does for the hold on the zones besides its blows.
+  const more = hold ? hold.edge(unit) : 0;
+  if (!standing || standing.own + standing.gift + more <= 0) return undefined;
+  return Math.max(-ORDER_SPAN, Math.min(ORDER_SPAN, standing.own + standing.gift - standing.wait + more));
 }
 
 /** The widest {@link orderEdge}: keeps the fighters' order inside their own band of activation scores. */
@@ -934,19 +937,99 @@ const ORDER_SPAN = 15;
  * sets up for its friends, and a unit a friend could set up waits for it. With
  * nothing to do yet, the one with the fewest hexes (`dist`) to where it is going.
  * `sitsOut` names a unit of its side that never steps up to a foe for a friend.
+ * `hold` is the zone modes' part of it ({@link HoldOrder}).
  */
-function orderScore(state: GameState, board: Board, unit: Unit, canAttack: boolean, dist: number, sitsOut?: string): number {
-  const edge = orderEdge(state, board, unit, sitsOut);
+function orderScore(state: GameState, board: Board, unit: Unit, canAttack: boolean, dist: number, sitsOut?: string, hold?: HoldOrder): number {
+  const edge = orderEdge(state, board, unit, sitsOut, hold);
   return edge !== undefined || canAttack ? 100_000 + (edge ?? 0) * ORDER_SCALE : 10_000 - dist * 100;
 }
 
-/** The best melee blow `unit` could strike from where it stands, as if activated with two actions. */
-function bestBlowNow(state: GameState, board: Board, unit: Unit): number {
-  let best = 0;
-  for (const e of adjacentEnemies(state, unit, board)) {
-    best = Math.max(best, blowValue(state, board, unit, e, false, false, undefined, 2));
+/** The {@link HoldOrder} of the side choosing in a given state: one per decision, shared by all its activations. */
+const holdOrders = new WeakMap<GameState, HoldOrder>();
+
+function holdOrderOf(state: GameState, board: Board, zones: ZoneView[]): HoldOrder {
+  let order = holdOrders.get(state);
+  if (!order) {
+    order = new HoldOrder(state, board, zones);
+    holdOrders.set(state, order);
   }
-  return Math.min(best, 15);
+  return order;
+}
+
+/**
+ * The zone modes' part of who goes next ({@link orderEdge}): what a unit's
+ * activation does for the hold on the zones, in {@link blowValue} terms, as
+ * {@link planScores} weighs it for the unit acting.
+ *
+ * Its blows count the step each may win or lose ({@link stake}, which is
+ * {@link zoneSwing}), so a blow at a foe standing in a zone is worth going for
+ * sooner, and a lone holder's blow at an equal is not. A unit that one Move
+ * takes into the zone it was sent to, or that only has to get up in it, counts
+ * the step that wins ({@link edge}), by the odds it gets the actions. And a
+ * unit on the ground counts what getting up spares it.
+ */
+class HoldOrder {
+  private readonly views = new Map<string, HoldView>();
+  /** What a blow of the side choosing does to the hold on the zones ({@link zoneSwing}). */
+  readonly stake: BlowStake;
+
+  constructor(
+    private readonly state: GameState,
+    private readonly board: Board,
+    private readonly zones: ZoneView[],
+  ) {
+    this.stake = (attacker, target, o, from, ranged) => zoneSwing(this.view(attacker), o, target, from ?? attacker.pos, ranged);
+  }
+
+  private view(unit: Unit): HoldView {
+    let view = this.views.get(unit.id);
+    if (!view) {
+      view = holdView(this.state, this.zones, unit);
+      this.views.set(unit.id, view);
+    }
+    return view;
+  }
+
+  /** Whether `unit` has nowhere to go: on its feet in the zone it was sent to, or held beside a standing foe. */
+  stays(unit: Unit): boolean {
+    return this.view(unit).holding || (inMelee(this.state, unit, this.board) && !slipsAway(this.state, unit));
+  }
+
+  /**
+   * What `unit` going now does for the zones and for itself, its blows apart:
+   * the step of control it wins by walking into the zone it was sent to, when
+   * one Move takes it there (by walking distance: a bound, as for a charge), or
+   * by getting up in it; and, on the ground, what the enemy can do to it there
+   * that it could not do to it on its feet. Each by the odds it gets the actions.
+   */
+  edge(unit: Unit): number {
+    const { state, board } = this;
+    if (unit.transfixedBy !== undefined) return 0;
+    let edge = 0;
+    if (unit.knockedDown) {
+      const units: Unit[] = [];
+      for (const u of state.units) units.push(u.id === unit.id ? { ...u, knockedDown: false } : u);
+      const up: GameState = { ...state, units };
+      edge += actionOdds(state, unit, 1) * Math.max(0, threatOn(state, board, unit) - threatOn(up, board, unitById(up, unit.id)!));
+    }
+    const hold = this.view(unit);
+    const sent = hold.sent;
+    if (!sent || hold.holding) return edge;
+    const key = vecKey(unit.pos);
+    let need = unit.knockedDown ? 1 : 0;
+    if (!sent.keys.has(key)) {
+      if (zoneDistance(unit.pos, sent) > unitMove(unit) || (inMelee(state, unit, board) && !slipsAway(state, unit))) return edge;
+      need++;
+    }
+    // The zone it comes to stand in, and the one it walks out of.
+    let step = 0;
+    for (const c of hold.counts) {
+      const margin = c.others - c.theirs;
+      if (c.zone === sent) step += Math.sign(margin + 1) - Math.sign(margin);
+      else if (!unit.knockedDown && c.zone.keys.has(key)) step += Math.sign(margin) - Math.sign(margin + 1);
+    }
+    return step > 0 ? edge + actionOdds(state, unit, need) * step * hold.point : edge;
+  }
 }
 
 /** A ranged mover's standoff score at `dist` from the nearest foe: short range beats long range. */
@@ -1307,31 +1390,23 @@ function scoreCommand(
         return leaderFirst(state, unit, order) + diceWorth(state, board, zones, kings, command) + dash;
       }
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
-      // Zone modes: a unit already holding a zone has nowhere better to be, so
-      // it activates late; one with a zone to reach counts its distance to it.
-      let dist = enemyDist;
-      let holding = false;
-      if (zones.length > 0) {
-        holding = sitsInZone(zones, unit);
-        const target = holding ? undefined : targetZone(zones, unit);
-        if (target) dist = Math.min(zoneDistance(unit.pos, target), 99);
-      }
-      // A unit that can already fight this turn — in melee, or a shooter with a
-      // foe in range — is the one worth activating first. That is about enemies,
-      // never about how close the unit is to a zone.
-      const canMelee = enemyDist === 1;
-      const canShoot = unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged;
-      const canAttack = canMelee || canShoot;
       let unitScore: number;
       if (zones.length === 0) {
         // Annihilation: whoever has the most to do now goes first ({@link orderScore}),
-        // and with nothing to do yet, the one closest to a foe.
-        unitScore = orderScore(state, board, unit, canAttack, dist);
+        // and with nothing to do yet, the one closest to a foe. A unit that can
+        // already fight, in melee or a shooter with a foe in range, is never
+        // counted as having nothing to do.
+        const canAttack = enemyDist === 1 || (unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged);
+        unitScore = orderScore(state, board, unit, canAttack, enemyDist);
       } else {
-        // Prefer the unit that can already fight — the best fight first, such as
-        // a blow at a downed foe before it stands — else the one closest to a foe.
-        const fight = canMelee ? bestBlowNow(state, board, unit) * ORDER_SCALE : 0;
-        unitScore = canAttack ? 100_000 + fight : holding ? 1_000 : 10_000 - dist * 100;
+        // The zone modes: the same, with the zones counted in what a unit has to
+        // do ({@link HoldOrder}). With nothing to do yet, the one closest to the
+        // zone it was sent to, or to a foe when it was sent to none; and one
+        // with nowhere to go, holding its zone or held beside a foe, goes last.
+        const hold = holdOrderOf(state, board, zones);
+        const target = targetZone(zones, unit);
+        const dist = hold.stays(unit) ? 100 : Math.min(target ? zoneDistance(unit.pos, target) : enemyDist, 99);
+        unitScore = orderScore(state, board, unit, false, dist, undefined, hold);
       }
       unitScore = leaderFirst(state, unit, unitScore);
 

@@ -13,7 +13,7 @@ import {
   type Unit,
   type Vec,
 } from '@fansong/engine';
-import { blowOutcome, successOdds, worthOf } from './value.js';
+import { blowOutcome, successOdds, worthOf, type BlowOutcome } from './value.js';
 
 /**
  * Tactics: what a position is worth, read from the engine's own odds.
@@ -49,6 +49,13 @@ interface Blow {
 
 type Occupied = (v: Vec) => boolean;
 
+/**
+ * What a mode adds to a blow beyond what its target and its striker are worth,
+ * in {@link worthOf} terms: a zone the blow may clear or cost. Given the blow's
+ * odds, the hex a charge would be struck from, and whether it is a shot.
+ */
+export type BlowStake = (attacker: Unit, target: Unit, o: BlowOutcome, from: Vec | undefined, ranged: boolean) => number;
+
 /** The chance of at least so many successes, by Quality, the successes needed and whether inspired. */
 const atLeast = new Map<number, number>();
 
@@ -58,7 +65,7 @@ const atLeast = new Map<number, number>();
  * has gone this round, is going now or is benched only acts in the next one,
  * at a discount.
  */
-function actionOdds(state: GameState, unit: Unit, need: number): number {
+export function actionOdds(state: GameState, unit: Unit, need: number): number {
   const dice = Math.max(need, 2);
   if (dice > maxActivationDice(unit)) return 0;
   const key = (unit.quality * 4 + need) * 2 + (unit.inspired ? 1 : 0);
@@ -97,9 +104,10 @@ function chargeHex(state: GameState, board: Board, occupied: Occupied, attacker:
  * `state`: a strike in contact (one action), a shot within range and sight
  * (one action), or a charge within one Move (two actions). A unit locked in
  * melee only threatens the foes it is in contact with; one on the ground needs
- * an action more to stand. `undefined` when it can't reach.
+ * an action more to stand. `undefined` when it can't reach. `stake` is what
+ * the mode adds to the blow, counted with its lesser outcomes.
  */
-function blowOn(state: GameState, board: Board, occupied: Occupied, attacker: Unit, target: Unit): Blow | undefined {
+function blowOn(state: GameState, board: Board, occupied: Occupied, attacker: Unit, target: Unit, stake?: BlowStake): Blow | undefined {
   if (attacker.transfixedBy !== undefined) return undefined;
   const d = board.distance(attacker.pos, target.pos);
   let need = attacker.knockedDown ? 2 : 1;
@@ -120,7 +128,8 @@ function blowOn(state: GameState, board: Board, occupied: Occupied, attacker: Un
   const p = actionOdds(state, attacker, need);
   if (p <= 0) return undefined;
   const o = blowOutcome(state, board, attacker, target, false, ranged, from);
-  const rest = o.hurt * o.hurtWorth - o.lose * o.lossWorth;
+  let rest = o.hurt * o.hurtWorth - o.lose * o.lossWorth;
+  if (stake) rest += stake(attacker, target, o, from, ranged);
   // An exchange it would lose by is one it does not make: within reach, worth nothing.
   const worthIt = o.kill * o.killWorth + rest > 0;
   return { kill: worthIt ? p * o.kill : 0, rest: worthIt ? p * rest : 0, ...(from ? { from } : {}) };
@@ -229,8 +238,9 @@ export interface Standing {
  * warband with no one near the enemy costs next to nothing.
  *
  * `sitsOut` names a unit that never steps up to a foe for a friend's sake.
+ * `stake` is what the mode adds to a blow of `side`'s ({@link BlowStake}).
  */
-export function activationOrder(state: GameState, board: Board, side: Owner, sitsOut?: string): Map<string, Standing> {
+export function activationOrder(state: GameState, board: Board, side: Owner, sitsOut?: string, stake?: BlowStake): Map<string, Standing> {
   const taken = new Set<string>();
   for (const u of state.units) if (!u.dead) taken.add(vecKey(u.pos));
   // The setter's hex as it leaves it and the one it takes, for the position being scored.
@@ -259,7 +269,7 @@ export function activationOrder(state: GameState, board: Board, side: Owner, sit
   for (let t = 0; t < m; t++) {
     const striking: number[] = [];
     for (let i = 0; i < n; i++) {
-      const blow = blowOn(state, board, occupied, ours[i]!, theirs[t]!);
+      const blow = blowOn(state, board, occupied, ours[i]!, theirs[t]!, stake);
       if (!blow) continue;
       blows[i * m + t] = blow;
       striking.push(i);
@@ -314,7 +324,7 @@ export function activationOrder(state: GameState, board: Board, side: Owner, sit
         scratch.length = 0;
         for (const j of striking) {
           if (j === i) continue;
-          const blow = blowOn(moved, board, occupied, ours[j]!, target);
+          const blow = blowOn(moved, board, occupied, ours[j]!, target, stake);
           scratch.push(blow);
           if (!blow) continue;
           const gain = p * (blow.kill * killWorths[t]! + blow.rest - own[j]!);
