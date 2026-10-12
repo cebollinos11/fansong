@@ -66,9 +66,24 @@ describe('AI in extract the golden Pig', () => {
     expect(moveTo(chooseCommand(alone)).x).toBe(5);
     const reach = activate(pigGame([PIG(2, 4), U('a', 9, 0)], [U('d', 10, 4)], 3), 'p0u0');
     expect(moveTo(chooseCommand(reach)).x).toBe(5);
-    // With a round in hand it still waits for its escort.
-    const spare = activate(pigGame([PIG(2, 4), U('a', 1, 4)], [U('d', 10, 0)], 4), 'p0u0');
+    // With rounds in hand it still waits for its escort.
+    const spare = activate(pigGame([PIG(2, 4), U('a', 1, 4)], [U('d', 10, 0)], 12), 'p0u0');
     expect(chooseCommand(spare)).toEqual({ type: 'EndActivation' });
+  });
+
+  it('the Pig with one round in hand does not stake the game on its dice by waiting', () => {
+    // Three Moves from the goal with four rounds to play: one failed roll while it waits and the clock has it.
+    const s = activate(pigGame([PIG(2, 4), U('a', 1, 4)], [U('d', 10, 0)], 4), 'p0u0');
+    expect(moveTo(chooseCommand(s)).x).toBe(5);
+  });
+
+  it('the Pig beside a standing foe pays the free hack to leave once the clock is against it', () => {
+    // Two Moves from the goal with two rounds to play: held here by one foe, the game is lost.
+    const late = activate(pigGame([PIG(5, 4), U('a', 9, 0)], [U('d', 4, 4)], 2), 'p0u0');
+    expect(moveTo(chooseCommand(late)).x).toBe(8);
+    // With rounds to spare the hack is not worth the hexes: it holds, as it always has.
+    const early = activate(pigGame([PIG(5, 4), U('a', 9, 0)], [U('d', 4, 4)], 12), 'p0u0');
+    expect(chooseCommand(early)).toEqual({ type: 'EndActivation' });
   });
 
   it('the Pig holds beside an equal foe rather than trade blows, and strikes a weak one', () => {
@@ -104,6 +119,18 @@ describe('AI in extract the golden Pig', () => {
     const to = moveTo(chooseCommand(s));
     expect(board.distance(to, { x: 2, y: 1 })).toBeLessThan(board.distance({ x: 8, y: 4 }, { x: 2, y: 1 }));
     expect(board.distance(to, { x: 6, y: 7 })).toBeGreaterThan(1);
+  });
+
+  it('a defender bars the road of a Pig the clock is pressing, and does not stake its hold on a blow', () => {
+    // Three Moves from the goal with three rounds to play. The hunter cannot reach the Pig: it stands across its road.
+    const far = activate(pigGame([PIG(4, 4), U('a', 0, 0)], [U('d', 11, 4)], 3), 'p1u0');
+    expect(moveTo(chooseCommand(far))).toEqual({ x: 6, y: 4 });
+    // Beside a Pig with no round to spare, it holds it there: a lost exchange would let it go.
+    const beside = activate(pigGame([PIG(5, 4), U('a', 0, 0)], [U('d', 6, 4)], 2), 'p1u0');
+    expect(chooseCommand(beside)).toEqual({ type: 'EndActivation' });
+    // With rounds in hand the Pig has time to get round it or past it: the hunter strikes.
+    const early = activate(pigGame([PIG(5, 4), U('a', 0, 0)], [U('d', 6, 4)], 12), 'p1u0');
+    expect(chooseCommand(early)).toEqual({ type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });
   });
 
   it('an escort strikes the foe beside the Pig at odds it would refuse anywhere else', () => {

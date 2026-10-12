@@ -30,9 +30,10 @@ import {
   type Owner,
   type Unit,
   type Vec,
+  type WalkRules,
 } from '@fansong/engine';
 import { activationOrder, MoveSetup, threatShares, type Standing } from './tactics.js';
-import { binomial, blowOutcome, blowValue, outcomeValue, ownWorth, pointWorth, successChance, successOdds, type BlowOutcome } from './value.js';
+import { binomial, blowOutcome, blowValue, KING_WORTH, outcomeValue, ownWorth, pointWorth, successChance, successOdds, type BlowOutcome } from './value.js';
 
 /**
  * Deterministic heuristic opponent. It speaks only `Command`, so the same code
@@ -313,6 +314,8 @@ interface Court {
   shares: Map<string, number> | undefined;
   /** Capture-the-flag only: where everyone but the carrier is sent ({@link flagDistance}). */
   flags: FlagPlan | undefined;
+  /** The golden Pig's hunters only: its road to the goal, once the clock makes a Move of it worth barring ({@link PigRoad}). */
+  road: PigRoad | undefined;
 }
 
 function courtOf(state: GameState, board: Board, plan: KingPlan, unit: Unit, flags?: FlagPlan): Court {
@@ -326,6 +329,7 @@ function courtOf(state: GameState, board: Board, plan: KingPlan, unit: Unit, fla
     chase: { ...plan, threats: [] },
     shares: plan.ourKing ? threatShares(state, board, plan.ourKing) : undefined,
     flags,
+    road: !flags && plan.goal && plan.theirKing ? pigRoad(state, board, plan.goal, plan.theirKing, unit) : undefined,
   };
 }
 
@@ -342,10 +346,11 @@ function flagCourt(state: GameState, board: Board, flags: FlagPlan, unit: Unit):
 }
 
 /**
- * What leaving contact costs a flag carrier, in {@link blowValue} terms: the
- * free hack of each standing foe beside it, by its odds, at what the carrier is
- * worth. Anyone else is held by {@link DISENGAGE_COST}; a carrier's way home is
- * weighed against the blows it would take by staying.
+ * What leaving contact costs a flag carrier or the golden Pig, in
+ * {@link blowValue} terms: the free hack of each standing foe beside it, by its
+ * odds, at what the unit is worth. Anyone else is held by
+ * {@link DISENGAGE_COST}; a carrier's way home, and the Pig's against its clock,
+ * are weighed against the blows they would take by staying.
  */
 function hackRisk(state: GameState, board: Board, unit: Unit): number {
   if (slipsAway(state, unit)) return 0;
@@ -356,6 +361,176 @@ function hackRisk(state: GameState, board: Board, unit: Unit): number {
     risk += o.kill * o.killWorth + o.hurt * o.hurtWorth;
   }
   return risk;
+}
+
+/**
+ * The golden Pig's clock: by the Moves it still has to make, the share of the
+ * game it loses to the round limit ({@link lateness}), counted over the rounds
+ * left once this one is played.
+ */
+interface PigClock {
+  /** Hexes to a Move. */
+  pace: number;
+  /** The share of the game lost with so many Moves still to make. */
+  late: number[];
+}
+
+/**
+ * The share of the game the clock takes from a Pig with `moves` Moves still to
+ * make and `rounds` rounds to make them in, at a Move a round, the pace its
+ * clock is set by: the chance its dice give it a Move in too few of those
+ * rounds, on the two dice the AI usually rolls. A Pig behind that pace counts a
+ * whole game for each round it is behind, so there is always something to gain
+ * by going on.
+ */
+function clockCost(moves: number, rounds: number, quality: number): number {
+  if (moves <= 0) return 0;
+  if (moves > rounds) return moves - rounds;
+  const p = 1 - successOdds(quality, 2, false)[0]!;
+  let short = 0;
+  for (let i = 0; i < moves; i++) short += binomial(rounds, i) * p ** i * (1 - p) ** (rounds - i);
+  return short;
+}
+
+/** The clock of the golden Pig `pig` with `rounds` rounds still to play in; `undefined` with no round limit. */
+function clockOf(goal: Map<string, number>, pig: Unit, rounds: number | undefined): PigClock | undefined {
+  if (rounds === undefined) return undefined;
+  const pace = unitMove(pig);
+  const far = walk(goal, pig.pos);
+  if (far >= FAR) return undefined;
+  const late: number[] = [];
+  // A Move more than it needs from where it stands: as far back as it could go, or be held.
+  for (let moves = 0; moves <= Math.ceil(far / pace) + 2; moves++) late.push(clockCost(moves, Math.max(rounds, 0), pig.quality));
+  return { pace, late };
+}
+
+/** The clock of the golden Pig as it acts: the rounds left are those after this one. */
+function pigClock(state: GameState, goal: Map<string, number>, pig: Unit): PigClock | undefined {
+  const limit = roundLimitOf(state);
+  return clockOf(goal, pig, limit === undefined ? undefined : limit - state.round);
+}
+
+/** The share of the game the clock takes from a Pig standing `far` hexes from the goal ({@link clockCost}). */
+function lateness(clock: PigClock, far: number): number {
+  const moves = Math.ceil(far / clock.pace);
+  return moves < clock.late.length ? clock.late[moves]! : clock.late[clock.late.length - 1]! + (moves - clock.late.length + 1);
+}
+
+/** The clock of the golden Pig as its hunters see it: the rounds left are those it has still to act in. */
+function pigRoad(state: GameState, board: Board, goal: Map<string, number>, pig: Unit, hunter: Unit): PigRoad | undefined {
+  const limit = roundLimitOf(state);
+  const clock = clockOf(goal, pig, limit === undefined ? undefined : limit - state.round + (pig.activatedThisRound ? 0 : 1));
+  if (!clock) return undefined;
+  const moves = Math.ceil(walk(goal, pig.pos) / clock.pace);
+  // With rounds enough in hand a Move lost costs the Pig nothing to speak of: its road is not looked at.
+  if (moves < 1 || (clock.late[moves + 1]! - clock.late[moves]!) * KING_WORTH * PLAN_SCALE < 1) return undefined;
+  return new PigRoad(state, board, goal, pig, hunter, clock, moves);
+}
+
+/**
+ * The golden Pig's road to the goal as a hunter sees it: how much of its next
+ * Move the Pig loses to the hunters in its way, with the hunter acting on a
+ * given hex, and what that is worth on the Pig's clock ({@link clockCost}).
+ *
+ * The Pig's Move is the engine's own walk: it passes no foe, and stops where it
+ * comes beside one. A hex beside a standing foe is no progress either, since
+ * the next Move from there costs a free hack; so a Pig with a standing hunter
+ * beside it loses the whole Move, and one with a hunter across its road loses
+ * the hexes it can no longer make and still be free to go on.
+ */
+class PigRoad {
+  /** Hexes from the Pig to the goal, and how many of them a Move could make. */
+  private readonly far: number;
+  private readonly full: number;
+  /** Whether a standing hunter other than the one acting is beside the Pig. */
+  private pinned = false;
+  /** Hexes of the other hunters, hexes beside one, and hexes beside one on its feet. */
+  private readonly foes = new Set<string>();
+  private readonly stops = new Set<string>();
+  private readonly held = new Set<string>();
+  /** Hexes anyone but the Pig and the hunter acting stands on. */
+  private readonly taken = new Set<string>();
+  /** The hunter acting, for the walk being made: its hex and those beside it. */
+  private at = '';
+  private readonly ring = new Set<string>();
+  private readonly rules: WalkRules;
+  /** The share of a Move lost, by the hunter's hex; `''` with the hunter out of the way. */
+  private readonly lost = new Map<string, number>();
+
+  constructor(
+    state: GameState,
+    private readonly board: Board,
+    private readonly goal: Map<string, number>,
+    private readonly pig: Unit,
+    hunter: Unit,
+    private readonly clock: PigClock,
+    private readonly moves: number,
+  ) {
+    this.far = walk(goal, pig.pos);
+    this.full = Math.min(clock.pace, this.far);
+    for (const u of state.units) {
+      if (u.dead || u.id === pig.id || u.id === hunter.id) continue;
+      this.taken.add(vecKey(u.pos));
+      if (u.owner === pig.owner) continue;
+      this.foes.add(vecKey(u.pos));
+      const up = !isDown(u);
+      if (up && board.distance(u.pos, pig.pos) === 1) this.pinned = true;
+      for (const n of board.neighbors(u.pos)) {
+        this.stops.add(vecKey(n));
+        if (up) this.held.add(vecKey(n));
+      }
+    }
+    this.rules = {
+      passable: (v) => {
+        const key = vecKey(v);
+        return key !== this.at && !this.foes.has(key);
+      },
+      stops: (v) => {
+        const key = vecKey(v);
+        return this.ring.has(key) || this.stops.has(key);
+      },
+    };
+  }
+
+  /** The share of its next Move the Pig loses with the hunter acting standing on `at`, or out of the way with none given. */
+  private loss(at: Vec | undefined): number {
+    if (this.pinned) return 1;
+    const { board, pig, goal, ring } = this;
+    const apart = at ? board.distance(at, pig.pos) : FAR;
+    if (apart === 1) return 1;
+    // Too far off to stand in the way of this Move, or beside it.
+    if (apart > this.clock.pace + 1) at = undefined;
+    const key = at ? vecKey(at) : '';
+    let lost = this.lost.get(key);
+    if (lost !== undefined) return lost;
+    this.at = key;
+    ring.clear();
+    if (at) for (const n of board.neighbors(at)) ring.add(vecKey(n));
+    let best = this.far;
+    for (const hex of board.reachableWithin(pig.pos, this.clock.pace, this.rules)) {
+      const left = goal.get(hex);
+      if (left === undefined || left >= best || hex === key || this.taken.has(hex)) continue;
+      // On the goal it is home, whoever stands beside it.
+      if (left > 0 && (ring.has(hex) || this.held.has(hex))) continue;
+      best = left;
+    }
+    lost = (this.full - (this.far - best)) / this.full;
+    this.lost.set(key, lost);
+    return lost;
+  }
+
+  /** What the Pig's road is worth to its hunters with the hunter acting on `at`, in {@link blowValue} terms: the share of the game the clock takes from it. */
+  worth(at: Vec | undefined): number {
+    const moves = this.moves + this.loss(at);
+    const whole = Math.floor(moves);
+    const late = this.clock.late;
+    return KING_WORTH * (late[whole]! + (moves - whole) * ((late[whole + 1] ?? late[whole]!) - late[whole]!));
+  }
+
+  /** What the hunter acting holds by standing on `at`: what the road is worth with it there, over what it is with it out of the way. */
+  hold(at: Vec): number {
+    return this.worth(at) - this.worth(undefined);
+  }
 }
 
 /**
@@ -441,6 +616,8 @@ function strikeValue(
   let value = outcomeValue(o, pressed, actions);
   if (hold) value += zoneSwing(hold, o, target, from ?? attacker.pos, ranged);
   if (court) value += kingSwing(court, o, target);
+  // A hunter that loses the exchange is down or driven off: it bars the Pig's road no longer.
+  if (court?.road && !ranged) value -= o.lose * court.road.hold(from ?? attacker.pos);
   return value;
 }
 
@@ -508,6 +685,13 @@ const APPROACH = 100;
  * Once the clock leaves it no round to wait in ({@link pigOutOfTime}) it goes
  * for the goal with nothing held back, escort or none.
  * An escort counts its hexes to the foe nearest the Pig, a hunter those to the Pig.
+ * The round limit is on the scale as the share of the game it takes
+ * ({@link clockCost}): a Move of the Pig's is worth what it wins back of that,
+ * escort or none, and so is the free hack it pays to leave a foe, which it
+ * weighs by its odds ({@link hackRisk}) where anyone else is held. To its
+ * hunters the same share is worth standing across its road or beside it
+ * ({@link PigRoad}), and a blow that may cost a hunter its place there counts
+ * that loss.
  * Two things are not weighed: the Pig standing in the goal ends its activation
  * there, and a move that takes it into the goal comes before anything else.
  *
@@ -536,8 +720,15 @@ function planScores(state: GameState, board: Board, commands: Command[], zones: 
   const court = kings ? courtOf(state, board, kings, unit) : flags ? flagCourt(state, board, flags, unit) : undefined;
   // A flag in hand is worth the capture, to the side that holds it and to the one that has lost it.
   const flagWorth = flags ? pointWorth(state) * PLAN_SCALE : 0;
-  const hacks = flags && court!.royal ? hackRisk(state, board, unit) * PLAN_SCALE : disengageCost(state, board, unit.id);
+  // The golden Pig acting, and what the clock makes of where it stands ({@link pigClock}).
+  const clock = court?.home && !flags ? pigClock(state, court.home, unit) : undefined;
+  // A flag carrier and the golden Pig weigh the hacks they would draw; anyone else is held where it stands.
+  const weighsHacks = flags ? court!.royal : !!court?.home;
+  const hacks = weighsHacks ? hackRisk(state, board, unit) * PLAN_SCALE : disengageCost(state, board, unit.id);
   const here = placeScore(board, unit, unit.pos, enemies, sent, court);
+  const lateHere = clock ? lateness(clock, walk(court!.home!, unit.pos)) : 0;
+  const road = court?.road;
+  const roadHere = road ? road.worth(unit.pos) : 0;
   const held = hold ? zoneControl(hold, unit.pos) : 0;
   const last = nothingHeldBack(state, zones, kings);
   const scores: number[] = [];
@@ -569,6 +760,8 @@ function planScores(state: GameState, board: Board, commands: Command[], zones: 
         score += Math.max(0, strike) * PLAN_SCALE + setup - hacks + lavaMoveEdge(state, board, unit, to);
         if (hold) score += (zoneControl(hold, to) - held) * hold.point * PLAN_SCALE;
         if (flags && (sameVec(flags.grab, to) || sameVec(flags.rescue, to))) score += flagWorth;
+        if (clock) score += (lateHere - lateness(clock, walk(court!.home!, to))) * KING_WORTH * PLAN_SCALE;
+        if (road) score += (road.worth(to) - roadHere) * PLAN_SCALE;
         // Our King moves for a gain only: a hex no better than its own is under ending its activation there.
         if (court?.royal) score -= 1;
         break;
