@@ -108,6 +108,24 @@ describe('AI in extract the golden Pig', () => {
     expect(chooseCommand(s)).toEqual({ type: 'ChooseActivation', unitId: 'p0u2', diceCount: 3 });
   });
 
+  it('a Pig held up waits for its escort to go first, and one with an open road goes ahead', () => {
+    const who = (s: GameState): string => (chooseCommand(s) as Extract<Command, { type: 'ChooseActivation' }>).unitId;
+    // Its escort is two hexes ahead: a Move now would be cut short there.
+    expect(who(pigGame([PIG(2, 4), U('a', 4, 4)], [U('d', 10, 0)], 12))).toBe('p0u1');
+    // A foe could charge it three hexes on, and the escort has yet to come up to that foe.
+    expect(who(pigGame([PIG(2, 4), U('a', 5, 1)], [U('d', 10, 4)], 12))).toBe('p0u1');
+    // Its escort well ahead and no foe in reach: waiting would only stake its Move on the escort's dice.
+    expect(who(pigGame([PIG(2, 4), U('a', 8, 7)], [U('d', 10, 0)], 12))).toBe('p0u0');
+    // With no round to spare it waits for no one.
+    expect(who(pigGame([PIG(2, 4), U('a', 4, 4)], [U('d', 10, 0)], 3))).toBe('p0u0');
+  });
+
+  it('the hunter that can flank goes before the friend already in contact', () => {
+    // Listed first and already fighting: the friend is who went first when anyone in contact did.
+    const s = pigGame([PIG(0, 0), U('escort', 7, 4)], [U('friend', 8, 4), U('flanker', 4, 4)]);
+    expect(chooseCommand({ ...s, active: 1 })).toMatchObject({ type: 'ChooseActivation', unitId: 'p1u1' });
+  });
+
   it('a defender strikes the Pig rather than a weaker escort beside it', () => {
     const s = activate(pigGame([PIG(5, 3), U('weak', 5, 5, { combat: 1 })], [U('d', 5, 4)]), 'p1u0');
     expect(chooseCommand(s)).toEqual({ type: 'Attack', attackerId: 'p1u0', targetId: 'p0u0' });

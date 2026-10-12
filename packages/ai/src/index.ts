@@ -32,7 +32,7 @@ import {
   type Vec,
   type WalkRules,
 } from '@fansong/engine';
-import { activationOrder, MoveSetup, threatShares, type Standing } from './tactics.js';
+import { activationOrder, MoveSetup, threatOn, threatShares, type Standing } from './tactics.js';
 import { binomial, blowOutcome, blowValue, KING_WORTH, outcomeValue, ownWorth, pointWorth, successChance, successOdds, type BlowOutcome } from './value.js';
 
 /**
@@ -48,7 +48,11 @@ export function chooseCommand(state: GameState): Command {
   if (commands.length === 0) {
     throw new Error('chooseCommand called with no legal commands');
   }
-  const board = makeHexGrid(state.board);
+  return commands[bestCommand(state, makeHexGrid(state.board), commands).index]!;
+}
+
+/** The best of `commands` in `state`, as {@link chooseCommand} picks it, and what it scored. */
+function bestCommand(state: GameState, board: Board, commands: Command[]): { index: number; score: number } {
   const zones = zonePlan(state, board, state.active);
   const flags = flagPlan(state, board, state.active);
   const kings = kingPlan(state, board, state.active);
@@ -73,7 +77,7 @@ export function chooseCommand(state: GameState): Command {
     scores[i]! -= SETUP_SCALE * EXPOSURE_WEIGHT * setup!.risk((commands[i] as Extract<Command, { type: 'Move' }>).to);
     if (best < 0 || scores[i]! > scores[best]! || (scores[i] === scores[best] && i < best)) best = i;
   }
-  return commands[best]!;
+  return { index: best, score: scores[best]! };
 }
 
 /** A command's score on the ladder (who activates, in every mode, and a spell's target): its kind first, then how good a one of its kind it is. */
@@ -910,10 +914,10 @@ const orders = new WeakMap<GameState, Map<string, Standing>>();
  * first. So the unit that closes a pincer goes before the one that strikes
  * through it. `undefined` when it has nothing to do yet.
  */
-function orderEdge(state: GameState, board: Board, unit: Unit): number | undefined {
+function orderEdge(state: GameState, board: Board, unit: Unit, sitsOut?: string): number | undefined {
   let order = orders.get(state);
   if (!order) {
-    order = activationOrder(state, board, unit.owner);
+    order = activationOrder(state, board, unit.owner, sitsOut);
     orders.set(state, order);
   }
   const standing = order.get(unit.id);
@@ -923,6 +927,18 @@ function orderEdge(state: GameState, board: Board, unit: Unit): number | undefin
 
 /** The widest {@link orderEdge}: keeps the fighters' order inside their own band of activation scores. */
 const ORDER_SPAN = 15;
+
+/**
+ * The activation score of a unit that goes by what it has to do now
+ * ({@link orderEdge}): whoever has the most to do goes first, counting what it
+ * sets up for its friends, and a unit a friend could set up waits for it. With
+ * nothing to do yet, the one with the fewest hexes (`dist`) to where it is going.
+ * `sitsOut` names a unit of its side that never steps up to a foe for a friend.
+ */
+function orderScore(state: GameState, board: Board, unit: Unit, canAttack: boolean, dist: number, sitsOut?: string): number {
+  const edge = orderEdge(state, board, unit, sitsOut);
+  return edge !== undefined || canAttack ? 100_000 + (edge ?? 0) * ORDER_SCALE : 10_000 - dist * 100;
+}
 
 /** The best melee blow `unit` could strike from where it stands, as if activated with two actions. */
 function bestBlowNow(state: GameState, board: Board, unit: Unit): number {
@@ -1287,7 +1303,8 @@ function scoreCommand(
       if (kings) {
         // The Pig rolls everything when one good roll walks it home.
         const dash = command.diceCount === 3 && unit.id === kings.ourKing?.id && pigCanGetHome(kings, unit) ? 50 : 0;
-        return leaderFirst(state, unit, kingActivationScore(state, board, kings, unit)) + diceWorth(state, board, zones, kings, command) + dash;
+        const order = kings.goal ? pigActivationScore(state, board, kings, unit) : kingActivationScore(state, board, kings, unit);
+        return leaderFirst(state, unit, order) + diceWorth(state, board, zones, kings, command) + dash;
       }
       const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
       // Zone modes: a unit already holding a zone has nowhere better to be, so
@@ -1307,11 +1324,9 @@ function scoreCommand(
       const canAttack = canMelee || canShoot;
       let unitScore: number;
       if (zones.length === 0) {
-        // Annihilation: whoever has the most to do now goes first, counting what
-        // it sets up for its friends, and a unit a friend could set up waits for
-        // it. With nothing to do yet, the one closest to a foe.
-        const edge = orderEdge(state, board, unit);
-        unitScore = edge !== undefined || canAttack ? 100_000 + (edge ?? 0) * ORDER_SCALE : 10_000 - dist * 100;
+        // Annihilation: whoever has the most to do now goes first ({@link orderScore}),
+        // and with nothing to do yet, the one closest to a foe.
+        unitScore = orderScore(state, board, unit, canAttack, dist);
       } else {
         // Prefer the unit that can already fight — the best fight first, such as
         // a blow at a downed foe before it stands — else the one closest to a foe.
@@ -1474,14 +1489,83 @@ function kingActivationScore(state: GameState, board: Board, plan: KingPlan, uni
   const nearest = nearestEnemyDistance(board, unit.pos, enemies);
   const canShoot = unit.traits.ranged >= 2 && nearest >= 2 && nearest <= unit.traits.ranged;
   if (unit.id === plan.ourKing?.id) {
-    // The golden Pig goes first when it can get home, else right after the fighters:
-    // the clock is against it, and a turnover before its move costs it a round.
-    if (plan.goal) return pigCanGetHome(plan, unit) ? 150_000 : nearest === 1 ? 100_000 : 60_000;
     if (canShoot) return 100_000;
     return nearest <= 2 ? 50_000 : 1_000;
   }
   if (nearest === 1 || canShoot) return 100_000;
   return 10_000 - Math.min(kingHuntDistance(board, plan, unit.pos, enemies, unit.traits.flying), 99) * 100;
+}
+
+/** The golden Pig's activation score when it waits for its escort: under any of them still to go. */
+const PIG_WAITS = 50;
+
+/** {@link pigTurn} of the Pig of the side choosing in a given state: one per decision, shared by its activations. */
+const pigTurns = new WeakMap<GameState, number>();
+
+/**
+ * Who activates in the golden Pig. Escorts and hunters go as in annihilation
+ * ({@link orderScore}): by the blow each can strike, what it sets up for its
+ * friends and what a friend could set up for it, and with nothing to do yet by
+ * the hexes to their quarry ({@link kingHuntDistance}). The Pig is never the one
+ * to step up to a foe for a friend.
+ *
+ * The Pig goes when going is worth most ({@link pigTurn}): among the fighters,
+ * by what it gains by going now, or after every escort still to go. One thing
+ * is not weighed: a Pig that one roll can take home goes before anyone.
+ */
+function pigActivationScore(state: GameState, board: Board, plan: KingPlan, unit: Unit): number {
+  if (unit.id !== plan.ourKing?.id) {
+    const enemies = enemiesOf(state, state.active);
+    const nearest = nearestEnemyDistance(board, unit.pos, enemies);
+    const canAttack = nearest === 1 || (unit.traits.ranged >= 2 && nearest >= 2 && nearest <= unit.traits.ranged);
+    const dist = Math.min(kingHuntDistance(board, plan, unit.pos, enemies, unit.traits.flying), 99);
+    return orderScore(state, board, unit, canAttack, dist, plan.ourKing?.id);
+  }
+  if (pigCanGetHome(plan, unit)) return 150_000;
+  let edge = pigTurns.get(state);
+  if (edge === undefined) {
+    edge = pigTurn(state, board, plan.goal!, unit);
+    pigTurns.set(state, edge);
+  }
+  return edge > 0 ? 100_000 + Math.min(edge, ORDER_SPAN) * ORDER_SCALE : PIG_WAITS;
+}
+
+/**
+ * What the golden Pig gains by going now rather than after its escort, in
+ * {@link blowValue} terms.
+ *
+ * Going now is worth its best plan as things stand: what {@link planScores}
+ * gives the best thing it could do with the one action its clock counts on, a
+ * Move held to where its escort has come and to where no foe can charge it, or
+ * a blow, or stepping out of a foe's reach. Going last is worth a Move with its
+ * road cleared and screened, at the most a whole Move and what that wins back
+ * on the clock, if no escort still to go turns the round over first, on the two
+ * dice the AI usually rolls. So a Pig with nothing in its way goes ahead, since
+ * waiting only risks its Move; one held up waits for its escort to clear the
+ * way; and the more the clock makes of this round's Move, the less it stakes it
+ * on its escort's dice. A Pig on the ground counts what standing spares it.
+ */
+function pigTurn(state: GameState, board: Board, goal: Map<string, number>, pig: Unit): number {
+  let acting: GameState = { ...state, phase: 'acting', activeUnitId: pig.id, actionsRemaining: 1 };
+  let stood = 0;
+  if (pig.knockedDown) {
+    const units: Unit[] = [];
+    for (const u of state.units) units.push(u.id === pig.id ? { ...u, knockedDown: false } : u);
+    acting = { ...acting, units };
+    stood = Math.max(0, threatOn(state, board, pig) - threatOn(acting, board, unitById(acting, pig.id)!));
+  }
+  const now = bestCommand(acting, board, getLegalCommands(acting)).score;
+  const far = walk(goal, pig.pos);
+  const pace = unitMove(pig);
+  let open = Math.min(pace, far) * APPROACH;
+  const clock = pigClock(state, goal, pig);
+  if (clock) open += (lateness(clock, far) - lateness(clock, Math.max(far - pace, 0))) * KING_WORTH * PLAN_SCALE;
+  let safe = 1;
+  for (const u of state.units) {
+    if (u.dead || u.owner !== pig.owner || u.id === pig.id || u.activatedThisRound) continue;
+    safe *= 1 - successOdds(u.quality, 2, u.inspired)[0]!;
+  }
+  return stood + (now - safe * open) / PLAN_SCALE;
 }
 
 /** Walking distance (steps over passable hexes, never lava) from every reachable hex to the nearest of `targets`. */

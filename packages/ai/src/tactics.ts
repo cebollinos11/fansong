@@ -195,6 +195,14 @@ export function threatShares(state: GameState, board: Board, target: Unit): Map<
   return shares;
 }
 
+/** What the enemy can expect to do to `target` from where everyone stands: {@link exposure}'s share for this one unit. */
+export function threatOn(state: GameState, board: Board, target: Unit): number {
+  const occupied = occupiedBy(state);
+  const blows: (Blow | undefined)[] = [];
+  for (const foe of enemiesOf(state, target.owner)) blows.push(blowOn(state, board, occupied, foe, target));
+  return targetValue(state, target, blows);
+}
+
 /** What activating a unit now is worth to the order of play, in {@link worthOf} terms (see {@link activationOrder}). */
 export interface Standing {
   /** The best blow it can strike itself from where it stands. */
@@ -219,8 +227,10 @@ export interface Standing {
  * same foe are looked at, and of the hexes beside the foe only the nearest and
  * those that close a pincer: outnumbering is the same from any of them. So a
  * warband with no one near the enemy costs next to nothing.
+ *
+ * `sitsOut` names a unit that never steps up to a foe for a friend's sake.
  */
-export function activationOrder(state: GameState, board: Board, side: Owner): Map<string, Standing> {
+export function activationOrder(state: GameState, board: Board, side: Owner, sitsOut?: string): Map<string, Standing> {
   const taken = new Set<string>();
   for (const u of state.units) if (!u.dead) taken.add(vecKey(u.pos));
   // The setter's hex as it leaves it and the one it takes, for the position being scored.
@@ -264,7 +274,8 @@ export function activationOrder(state: GameState, board: Board, side: Owner): Ma
   for (let i = 0; i < n; i++) {
     const setter = ours[i]!;
     // A shooter or a spellcaster keeps its distance: it never steps up to a foe to help a friend.
-    if (setter.transfixedBy !== undefined || setter.traits.ranged >= 2 || setter.traits.magicUser) continue;
+    // Nor does a unit its side keeps out of the fight (`sitsOut`: the golden Pig).
+    if (setter.transfixedBy !== undefined || setter.traits.ranged >= 2 || setter.traits.magicUser || setter.id === sitsOut) continue;
     // It has to get the action to move (two from the ground), and be free to: leaving a melee costs a free hack.
     const p = actionOdds(state, setter, setter.knockedDown ? 2 : 1);
     if (p <= 0) continue;
