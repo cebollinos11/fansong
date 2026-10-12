@@ -85,6 +85,35 @@ describe('AI in capture-the-flag', () => {
     expect(chooseCommand(activate(s, 'p0u0'))).toMatchObject({ type: 'Attack', targetId: 'p1u1' });
   });
 
+  it('strikes the enemy carrier at odds it refuses against anyone else', () => {
+    // A blow at a stronger foe is a loss by the units' own worth: not struck, unless it may stop a capture.
+    const scene = () => flagGame([U('a', 5, 4), U('friend', 1, 1)], [U('strong', 5, 5, { combat: 5 }), U('far', 11, 0)]);
+    expect(chooseCommand(activate(scene(), 'p0u0')).type).not.toBe('Attack');
+    const carried = withFlags(scene(), [{ at: { x: 5, y: 5 }, carrier: 'p1u0' }, { at: BASES[1], carrier: null }]);
+    expect(chooseCommand(activate(carried, 'p0u0'))).toMatchObject({ type: 'Attack', targetId: 'p1u0' });
+  });
+
+  it('the carrier breaks away from a foe that would hold anyone else', () => {
+    // Leaving a standing foe draws a free hack: an ordinary unit never pays it, a carrier weighs it against staying.
+    const scene = () => flagGame([U('a', 6, 4), U('friend', 1, 1)], [U('b', 6, 5), U('far', 11, 0)]);
+    const held = withFlags(scene(), [{ at: BASES[0], carrier: null }, { at: BASES[1], carrier: 'p0u1' }]);
+    expect(chooseCommand(activate(held, 'p0u0')).type).not.toBe('Move');
+    const carrying = withFlags(scene(), [{ at: BASES[0], carrier: null }, { at: { x: 6, y: 4 }, carrier: 'p0u0' }]);
+    const board = makeHexGrid(carrying.board);
+    const to = moveTo(chooseCommand(activate(carrying, 'p0u0')));
+    expect(board.distance(to, BASES[0])).toBeLessThan(board.distance({ x: 6, y: 4 }, BASES[0]));
+  });
+
+  it('the carrier does not stake the flag on an even fight', () => {
+    // An equal foe lies in its way home, two actions in hand: it goes round, and never strikes.
+    let s = flagGame([U('a', 6, 4), U('friend', 1, 1)], [U('b', 4, 4), U('far', 11, 0)]);
+    s = withFlags(s, [{ at: BASES[0], carrier: null }, { at: { x: 6, y: 4 }, carrier: 'p0u0' }]);
+    const board = makeHexGrid(s.board);
+    const acting = { ...activate(s, 'p0u0'), actionsRemaining: 2 };
+    const to = moveTo(chooseCommand(acting));
+    expect(board.distance(to, { x: 4, y: 4 })).toBeGreaterThan(1);
+  });
+
   it('walks around a wall rather than into it', () => {
     // A wall straight east of the unit, open at the top row: walking distance, not hex distance.
     const wall = [1, 2, 3, 4, 5, 6, 7].map((y) => `7,${y}`);

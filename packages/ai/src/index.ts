@@ -2,16 +2,12 @@ import {
   adjacentEnemies,
   airborne,
   aliveUnits,
-  bigMeleeBonus,
-  bigTargetBonus,
   BREAK_FREE_COST,
   canWarCry,
   isDown,
   spellTargets,
   warCryTargets,
   enemiesOf,
-  flyingMeleeBonus,
-  flyingTargetBonus,
   flagAtBase,
   pigExtracted,
   pigOf,
@@ -19,20 +15,11 @@ import {
   groupFor,
   kingOf,
   makeHexGrid,
-  masteryEdge,
-  opportunistBonus,
-  pincerBonus,
-  sharpshooterBonus,
-  shieldwallBonus,
   slipsAway,
-  woodwiseBonus,
-  outnumberedPenalty,
-  rangePenalty,
   roundLimitOf,
   scoringZones,
   shortRange,
   standingInZone,
-  targetScoreOf,
   unitById,
   unitMove,
   vecKey,
@@ -45,7 +32,7 @@ import {
   type Vec,
 } from '@fansong/engine';
 import { activationOrder, MoveSetup, threatShares, type Standing } from './tactics.js';
-import { binomial, blowOutcome, blowValue, KING_WORTH, outcomeValue, successChance, successOdds, worthOf, type BlowOutcome } from './value.js';
+import { binomial, blowOutcome, blowValue, outcomeValue, ownWorth, pointWorth, successChance, successOdds, type BlowOutcome } from './value.js';
 
 /**
  * Deterministic heuristic opponent. It speaks only `Command`, so the same code
@@ -65,9 +52,9 @@ export function chooseCommand(state: GameState): Command {
   const flags = flagPlan(state, board, state.active);
   const kings = kingPlan(state, board, state.active);
 
-  // Every mode but capture-the-flag: the unit acting weighs everything it could do on the one scale.
-  const oneScale = !flags && state.phase === 'acting' && !state.spell && !!state.activeUnitId;
-  const scores = oneScale ? planScores(state, board, commands, zones, kings) : commands.map((command) => ladderScore(state, board, zones, flags, kings, command));
+  // The unit acting weighs everything it could do on the one scale, in every mode.
+  const oneScale = state.phase === 'acting' && !state.spell && !!state.activeUnitId;
+  const scores = oneScale ? planScores(state, board, commands, zones, kings, flags) : commands.map((command) => ladderScore(state, board, zones, flags, kings, command));
 
   // A move scored for its setup has yet to pay for the risk it ends in (see
   // `setupEdge`). The risk only ever lowers a score, so the moves are weighed in
@@ -88,7 +75,7 @@ export function chooseCommand(state: GameState): Command {
   return commands[best]!;
 }
 
-/** A command's score on the ladder (capture-the-flag, and who activates in every mode): its kind first, then how good a one of its kind it is. */
+/** A command's score on the ladder (who activates, in every mode, and a spell's target): its kind first, then how good a one of its kind it is. */
 function ladderScore(
   state: GameState,
   board: Board,
@@ -97,7 +84,7 @@ function ladderScore(
   kings: KingPlan | undefined,
   command: Command,
 ): number {
-  let score = flags ? scoreFlagCommand(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
+  let score = flags && command.type === 'ChooseActivation' ? flagActivationScore(state, board, flags, command) : scoreCommand(state, board, zones, kings, command);
   if (command.type === 'Move') score -= disengageCost(state, board, command.unitId);
   if (command.type === 'Move') score += lavaMoveEdge(state, board, unitById(state, command.unitId)!, command.to);
   if (command.type === 'Attack') {
@@ -168,71 +155,6 @@ function lavaMoveEdge(state: GameState, board: Board, mover: Unit, to: Vec): num
     }
   }
   return edge;
-}
-
-/** Score cost per point a shot loses to range or cover — worth about one point of target Combat. */
-const SHOT_PENALTY_COST = 100;
-
-/**
- * How far a shot at `target` from where `shooter` stands is stacked against it:
- * range, cover and a Woodwise target's trees, less the points a Big, airborne or (to an Opportunist) downed target, a Sharpshooter's eye and a Woodwise shooter's own trees hand the shooter. Negative means
- * the shot is better than an unmodified one.
- */
-function shotPenalty(state: GameState, board: Board, shooter: Unit, target: Unit): number {
-  const occupied = new Set(state.units.filter((u) => !u.dead).map((u) => vecKey(u.pos)));
-  const cover = board.inCover(shooter.pos, target.pos, (v) => occupied.has(vecKey(v))) ? 1 : 0;
-  return (
-    rangePenalty(shooter.traits.ranged, board.distance(shooter.pos, target.pos)) +
-    cover +
-    woodwiseBonus(state, board, target) -
-    woodwiseBonus(state, board, shooter) -
-    bigTargetBonus(target) -
-    flyingTargetBonus(state, target) -
-    opportunistBonus(shooter, target) -
-    sharpshooterBonus(shooter)
-  );
-}
-
-/**
- * How much a two-action blow or shot is worth against swinging twice with the
- * same actions. Kept well below the ±50 steps target selection uses, so it only
- * ever decides *how* to hit the foe the AI already picked, never *which* foe.
- */
-const PRESSED_EDGE = 10;
-
-/**
- * Should the aggressor spend both actions on one pressed blow, or swing twice?
- * Two swings are two chances to kill, so they normally win. The exceptions:
- *
- * - **Melee**, when the match-up is against us (the defender is no weaker, once
- *   outnumbering is counted): each exchange risks *our* neck, so buying better
- *   odds beats buying a second exchange.
- * - **Shooting**, when range and cover have already eaten 2 points: a raw shot
- *   that is unlikely to land at all is not worth firing twice.
- *
- * Returns the bonus to add for the pressed variant (negative = swing twice).
- */
-function pressedEdge(worthIt: boolean, pressed: boolean): number {
-  return pressed === worthIt ? PRESSED_EDGE : -PRESSED_EDGE;
-}
-
-/** How far the melee is stacked our way: our Combat less the foe's, both after size, flight, opportunism, pincers, shieldwalls, woods and outnumbering. */
-function meleeEdge(state: GameState, board: Board, attacker: Unit, target: Unit): number {
-  return (
-    attacker.combat +
-    bigMeleeBonus(attacker, target) +
-    flyingMeleeBonus(state, attacker, target) +
-    opportunistBonus(attacker, target) +
-    pincerBonus(state, board, attacker, target) +
-    woodwiseBonus(state, board, attacker) -
-    outnumberedPenalty(state, attacker, board) -
-    (target.combat +
-      bigMeleeBonus(target, attacker) +
-      opportunistBonus(target, attacker) +
-      shieldwallBonus(state, board, target) +
-      woodwiseBonus(state, board, target) -
-      outnumberedPenalty(state, target, board))
-  );
 }
 
 /** Score per unit of {@link blowValue}: wide enough to rank targets, far below the gap to a move. */
@@ -342,7 +264,7 @@ function holdView(state: GameState, zones: ZoneView[], unit: Unit): HoldView {
   for (const zone of zones) {
     counts.push({ zone, others: standingInZone(state, zone.hexes)[unit.owner] - (up && zone.keys.has(key) ? 1 : 0), theirs: zone.theirs });
   }
-  return { counts, sent, holding: !!sent && up && sent.keys.has(key), point: KING_WORTH / (targetScoreOf(state) ?? 1) };
+  return { counts, sent, holding: !!sent && up && sent.keys.has(key), point: pointWorth(state) };
 }
 
 /** Who holds the zones with the unit acting standing on `at`: per zone 1 for its side, -1 for the enemy, 0 for no one. */
@@ -389,18 +311,51 @@ interface Court {
   chase: KingPlan;
   /** By foe, what its blow adds to what our King is threatened with as things stand ({@link threatShares}). */
   shares: Map<string, number> | undefined;
+  /** Capture-the-flag only: where everyone but the carrier is sent ({@link flagDistance}). */
+  flags: FlagPlan | undefined;
 }
 
-function courtOf(state: GameState, board: Board, plan: KingPlan, unit: Unit): Court {
+function courtOf(state: GameState, board: Board, plan: KingPlan, unit: Unit, flags?: FlagPlan): Court {
   const royal = plan.ourKing?.id === unit.id;
   return {
     plan,
     royal,
     home: royal ? plan.goal : undefined,
-    front: royal && plan.goal ? escortFront(state, plan.goal, unit) : 0,
+    // A flag carrier waits for no one: its friends are on its way home already.
+    front: royal && plan.goal && !flags ? escortFront(state, plan.goal, unit) : 0,
     chase: { ...plan, threats: [] },
     shares: plan.ourKing ? threatShares(state, board, plan.ourKing) : undefined,
+    flags,
   };
+}
+
+/**
+ * Capture-the-flag as a {@link Court}: our carrier is what its side keeps safe
+ * and the enemy's what it hunts, each worth the capture it would make
+ * ({@link worthOf}), and the carrier's base is the goal it walks to, as the
+ * golden Pig's is. So a carrier weighs its own blows and no blow at one is free.
+ */
+function flagCourt(state: GameState, board: Board, flags: FlagPlan, unit: Unit): Court {
+  const ourKing = flags.carrierId === undefined ? undefined : unitById(state, flags.carrierId);
+  const theirKing = flags.enemyCarrierId === null ? undefined : unitById(state, flags.enemyCarrierId);
+  return courtOf(state, board, { ourKing, theirKing, threats: [], goal: flags.home }, unit, flags);
+}
+
+/**
+ * What leaving contact costs a flag carrier, in {@link blowValue} terms: the
+ * free hack of each standing foe beside it, by its odds, at what the carrier is
+ * worth. Anyone else is held by {@link DISENGAGE_COST}; a carrier's way home is
+ * weighed against the blows it would take by staying.
+ */
+function hackRisk(state: GameState, board: Board, unit: Unit): number {
+  if (slipsAway(state, unit)) return 0;
+  let risk = 0;
+  for (const e of adjacentEnemies(state, unit, board)) {
+    if (isDown(e)) continue;
+    const o = blowOutcome(state, board, e, unit, false, false);
+    risk += o.kill * o.killWorth + o.hurt * o.hurtWorth;
+  }
+  return risk;
 }
 
 /**
@@ -432,6 +387,17 @@ function kingSwing(court: Court, o: BlowOutcome, target: Unit): number {
 }
 
 /**
+ * A blow or shot at the enemy's flag carrier, weighed by the capture it may
+ * stop: the flag falls with a carrier that is killed or knocked down, Tough or
+ * not, so each counts the whole capture ({@link pointWorth}), and not the share
+ * of a unit's worth a lesser hit is elsewhere. (As with a zone, a push is taken
+ * to do as much.)
+ */
+function stopsCapture(state: GameState, o: BlowOutcome): void {
+  o.killWorth = o.hurtWorth = pointWorth(state);
+}
+
+/**
  * A blow our King does not strike, whatever the odds: at a foe on its feet that
  * is not the enemy King. It trades blows to end the game or to finish a foe
  * that cannot hit back, and for nothing else. (The golden Pig weighs its blows
@@ -448,7 +414,9 @@ const NO_TRADE = -1_000;
  * {@link blowValue}, and what the mode adds to it: in the zone modes what the
  * blow does to the hold on the zones ({@link zoneSwing}); in kill-the-king what
  * it spares our King ({@link kingSwing}), and the blows our King does not
- * strike ({@link tradesForNothing}).
+ * strike ({@link tradesForNothing}); in capture-the-flag what it spares our
+ * carrier, by the same term, and the capture a blow at the enemy's may stop
+ * ({@link stopsCapture}).
  */
 function strikeValue(
   state: GameState,
@@ -469,6 +437,7 @@ function strikeValue(
   // A blow at the enemy King is struck whatever it may cost the striker, unless that is our King: the game rides on it.
   // Not so a blow at the golden Pig: the clock ends that game, and it is for the Pig to come on.
   if (court && !court.royal && !court.plan.goal && target.id === court.plan.theirKing?.id) o.lossWorth = 0;
+  if (court?.flags && target.id === court.plan.theirKing?.id) stopsCapture(state, o);
   let value = outcomeValue(o, pressed, actions);
   if (hold) value += zoneSwing(hold, o, target, from ?? attacker.pos, ranged);
   if (court) value += kingSwing(court, o, target);
@@ -478,7 +447,7 @@ function strikeValue(
 /** A holder's move out of the zone it was sent to: under ending its activation whatever it would gain. */
 const LEAVE_ZONE = -1_000_000;
 
-/** The golden Pig's move into the goal: over anything else it could do short of standing there already. */
+/** The golden Pig's move into the goal, or a flag carrier's onto its base: over anything else it could do short of standing there already. */
 const PIG_HOME = 2_000_000;
 
 /** The golden Pig ending its activation in the goal, which wins: over everything. */
@@ -541,15 +510,33 @@ const APPROACH = 100;
  * An escort counts its hexes to the foe nearest the Pig, a hunter those to the Pig.
  * Two things are not weighed: the Pig standing in the goal ends its activation
  * there, and a move that takes it into the goal comes before anything else.
+ *
+ * Capture-the-flag (`flags`) is on the scale by what a capture is worth
+ * ({@link pointWorth}: the game), which is what a unit with a flag in its hands
+ * is worth to both sides ({@link worthOf}). So a blow at the enemy carrier, or
+ * a hex that threatens it, counts the capture it may stop ({@link stopsCapture});
+ * a blow our carrier
+ * strikes counts the capture it may lose, and so does every blow it risks, in
+ * the exposure of its moves and its friends', in a friend's blow at a foe that
+ * threatens it ({@link kingSwing}) and in the free hacks it draws by leaving a
+ * foe ({@link hackRisk}). Each unit counts its walking distance to what the
+ * plan sends it after ({@link flagDistance}): the carrier home, the rest to the
+ * enemy flag, to our own where it lies dropped or to the enemy carrier, and
+ * with none of those to the nearest foe. A move that picks the enemy flag up,
+ * or sends our own back to its base, is worth the capture as well: what the
+ * unit is worth from then on, or the enemy's carrier was. One thing is not
+ * weighed: a carrier that can step onto its base does.
  */
-function planScores(state: GameState, board: Board, commands: Command[], zones: ZoneView[], kings?: KingPlan): number[] {
+function planScores(state: GameState, board: Board, commands: Command[], zones: ZoneView[], kings?: KingPlan, flags?: FlagPlan): number[] {
   const unit = unitById(state, state.activeUnitId!)!;
   const enemies = enemiesOf(state, unit.owner);
   const left = state.actionsRemaining - 1;
-  const hacks = disengageCost(state, board, unit.id);
   const hold = zones.length > 0 ? holdView(state, zones, unit) : undefined;
   const sent = hold?.sent;
-  const court = kings ? courtOf(state, board, kings, unit) : undefined;
+  const court = kings ? courtOf(state, board, kings, unit) : flags ? flagCourt(state, board, flags, unit) : undefined;
+  // A flag in hand is worth the capture, to the side that holds it and to the one that has lost it.
+  const flagWorth = flags ? pointWorth(state) * PLAN_SCALE : 0;
+  const hacks = flags && court!.royal ? hackRisk(state, board, unit) * PLAN_SCALE : disengageCost(state, board, unit.id);
   const here = placeScore(board, unit, unit.pos, enemies, sent, court);
   const held = hold ? zoneControl(hold, unit.pos) : 0;
   const last = nothingHeldBack(state, zones, kings);
@@ -581,6 +568,7 @@ function planScores(state: GameState, board: Board, commands: Command[], zones: 
         score = placeScore(board, unit, to, enemies, sent, court) - here;
         score += Math.max(0, strike) * PLAN_SCALE + setup - hacks + lavaMoveEdge(state, board, unit, to);
         if (hold) score += (zoneControl(hold, to) - held) * hold.point * PLAN_SCALE;
+        if (flags && (sameVec(flags.grab, to) || sameVec(flags.rescue, to))) score += flagWorth;
         // Our King moves for a gain only: a hex no better than its own is under ending its activation there.
         if (court?.royal) score -= 1;
         break;
@@ -617,11 +605,17 @@ function planScores(state: GameState, board: Board, commands: Command[], zones: 
  * zone it was sent to; in kill-the-king the enemy King, a shooter counting no
  * nearer than its range; the golden Pig the goal, no nearer than its escort has
  * come, its hunters the Pig and its escort the foe nearest it
- * ({@link kingHuntDistance}); else the nearest foe. Our King is sent nowhere.
+ * ({@link kingHuntDistance}); a flag carrier its base, and its side what the
+ * flag plan sends them after ({@link flagDistance}); else the nearest foe. Our
+ * King is sent nowhere.
  */
 function placeScore(board: Board, unit: Unit, at: Vec, enemies: Unit[], sent: ZoneView | undefined, court: Court | undefined): number {
   if (sent) return -zoneDistance(at, sent) * APPROACH;
   if (court?.home) return -Math.max(walk(court.home, at), court.front) * APPROACH;
+  if (court?.flags) {
+    const goal = flagDistance(court.flags, at, unit.traits.ranged >= 2 ? unit.traits.ranged : 0);
+    return goal < FAR ? -goal * APPROACH : standingScore(unit, nearestEnemyDistance(board, at, enemies));
+  }
   if (court?.royal) return 0;
   // A Magic User keeps its standoff from whoever is nearest, as anywhere.
   if (!court || unit.traits.magicUser) return standingScore(unit, nearestEnemyDistance(board, at, enemies));
@@ -986,7 +980,7 @@ function castValue(state: GameState, board: Board, caster: Unit, target: Unit, p
   });
   const follow = finisher ? TRANSFIX_FINISH : TRANSFIX_ALONE;
   const spent = target.activatedThisRound ? TRANSFIX_SPENT : 1;
-  return caught * worthOf(state, target) * TRANSFIX_WORTH * follow * spent;
+  return caught * ownWorth(state, target) * TRANSFIX_WORTH * follow * spent;
 }
 
 /** The best {@link castValue} a spell of `power` by `caster` could have (0 with no one in reach). */
@@ -1024,7 +1018,7 @@ function magicActivationScore(state: GameState, board: Board, command: ChooseAct
   odds.forEach((prob, successes) => {
     const gain = breakingFree
       ? successes >= BREAK_FREE_COST
-        ? worthOf(state, unit) * (threatened ? 1 : 0.5)
+        ? ownWorth(state, unit) * (threatened ? 1 : 0.5)
         : 0
       : bestCast(state, board, unit, successes);
     worth += prob * (gain - (dice - successes >= 2 ? waiting * MAGIC_BENCH_COST : 0));
@@ -1152,7 +1146,7 @@ function scoreCommand(
 
     case 'Move': {
       const mover = unitById(state, command.unitId)!;
-      // No mode's unit comes here any more: `planScores` weighs its moves, and capture-the-flag scores its own.
+      // No mode's unit comes here any more: `planScores` weighs its moves.
       const dist = nearestEnemyDistance(board, command.to, enemies);
       // A ranged unit seeks a standoff: inside its range but out of melee, so it
       // can shoot next turn instead of being dragged into a fight. (When a shot
@@ -1338,6 +1332,8 @@ interface FlagPlan {
   enemyCarrierId: string | null;
   /** Distance fields to each of grab / rescue / enemy carrier (whichever exist). */
   goals: Map<string, number>[];
+  /** The one of {@link goals} that leads to the enemy carrier. */
+  quarry: Map<string, number> | undefined;
 }
 
 /** The flag plan in capture-the-flag, `undefined` in every other mode. */
@@ -1350,14 +1346,18 @@ function flagPlan(state: GameState, board: Board, player: Owner): FlagPlan | und
   const grab = theirs.carrier === null ? theirs.at : undefined;
   const rescue = mine.carrier === null && !flagAtBase(state, player) ? mine.at : undefined;
   const goals: Map<string, number>[] = [];
-  for (const v of [grab, rescue, mine.carrier !== null ? mine.at : undefined]) if (v) goals.push(distanceField(board, v));
+  if (grab) goals.push(zoneField(state, board, [grab]));
+  if (rescue) goals.push(zoneField(state, board, [rescue]));
+  const quarry = mine.carrier !== null ? zoneField(state, board, [mine.at]) : undefined;
+  if (quarry) goals.push(quarry);
   return {
     carrierId: theirs.carrier ?? undefined,
-    home: distanceField(board, m.objectives.flags[player]),
+    home: zoneField(state, board, [m.objectives.flags[player]]),
     grab,
     rescue,
     enemyCarrierId: mine.carrier,
     goals,
+    quarry,
   };
 }
 
@@ -1371,95 +1371,40 @@ function goalDistance(plan: FlagPlan, v: Vec): number {
 const sameVec = (a: Vec | undefined, b: Vec) => !!a && a.x === b.x && a.y === b.y;
 
 /**
- * Capture-the-flag scoring. Our carrier runs for home — any step closer beats
- * fighting, and stepping onto the base (which wins) beats everything. Everyone
- * else makes for the nearest goal by walking distance: grabbing the enemy flag
- * or returning our own outranks any attack, and a blow or shot at the enemy
- * carrier outranks other attacks. With no goal left (we carry theirs and ours
- * is home) the rest fight as in annihilation.
+ * Walking distance from `at` to the nearest of what the flag plan sends a unit
+ * after: the enemy flag, our own where it lies dropped, the enemy carrier
+ * (`FAR` with none of them). A shooter counts the carrier no nearer than
+ * `reach`, its range.
  */
-function scoreFlagCommand(state: GameState, board: Board, plan: FlagPlan, command: Command): number {
-  const player = state.active;
-  const enemies = enemiesOf(state, player);
-  const goalOrEnemy = (to: Vec) => {
-    const goal = goalDistance(plan, to);
-    if (goal < FAR) return 100_000 - goal * 100;
-    return 100_000 - nearestEnemyDistance(board, to, enemies) * 100;
-  };
-
-  switch (command.type) {
-    case 'ChooseActivation': {
-      const unit = unitById(state, command.unitId)!;
-      const magic = magicActivationScore(state, board, command);
-      if (magic !== undefined) return magic;
-      const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
-      const canAttack = enemyDist === 1 || (unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged);
-      const goal = goalDistance(plan, unit.pos);
-      const dist = goal < FAR ? goal : enemyDist;
-      let unitScore = canAttack ? 100_000 : 10_000 - Math.min(dist, 99) * 100;
-      // The carrier moves first: every activation it waits is a chance to lose the flag.
-      if (unit.id === plan.carrierId) unitScore = 150_000;
-      unitScore = leaderFirst(state, unit, unitScore);
-      return unitScore + diceScore(state, board, command);
-    }
-
-    case 'Attack':
-    case 'Shoot': {
-      const targetId = command.targetId;
-      const target = unitById(state, targetId)!;
-      const attacker = unitById(state, command.attackerId)!;
-      let score = command.type === 'Attack' ? 1_000_000 : 900_000;
-      if (isDown(target)) score += 5_000;
-      score += (6 - target.combat) * 100;
-      if (command.type === 'Attack') {
-        score += (attacker.combat - target.combat) * 50;
-        score += (outnumberedPenalty(state, target, board) - outnumberedPenalty(state, attacker, board)) * 50;
-        score += masteryEdge(attacker, target) * 50;
-        score += pressedEdge(meleeEdge(state, board, attacker, target) < 0, command.power === true);
-      } else {
-        const penalty = shotPenalty(state, board, attacker, target);
-        score -= penalty * SHOT_PENALTY_COST;
-        score += pressedEdge(penalty >= 2, command.aimed === true);
-      }
-      // Knocking the enemy carrier down drops our flag where we can return it.
-      if (targetId === plan.enemyCarrierId) score += 200_000;
-      return score;
-    }
-
-    case 'Move': {
-      const mover = unitById(state, command.unitId)!;
-      const to = command.to;
-      if (mover.id === plan.carrierId) {
-        const now = walk(plan.home, mover.pos);
-        const then = walk(plan.home, to);
-        if (then === 0) return 2_000_000;
-        return (then < now ? 1_100_000 : 100_000) - then * 100;
-      }
-      if (sameVec(plan.grab, to)) return 1_500_000;
-      if (sameVec(plan.rescue, to)) return 1_400_000;
-      return goalOrEnemy(to);
-    }
-
-    case 'Guard':
-      return 1;
-
-    case 'WarCry':
-      return warCryScore(state, unitById(state, command.unitId)!);
-
-    // The AI fights every battle out: it never sounds the retreat.
-    case 'Retreat':
-      return -Infinity;
-
-    case 'Cast':
-      return castScore(state, board, command);
-
-    case 'EndActivation':
-      return 0;
-
-    // Group members act in the order the engine lines them up.
-    case 'SwitchGroupMember':
-      return -1;
+function flagDistance(plan: FlagPlan, at: Vec, reach: number): number {
+  let min = FAR;
+  for (const g of plan.goals) {
+    let d = walk(g, at);
+    if (d < reach && g === plan.quarry) d = reach;
+    if (d < min) min = d;
   }
+  return min;
+}
+
+/**
+ * Who activates in capture-the-flag, and on how many dice. Our carrier goes
+ * first: every activation it waits is a chance to lose the flag. Then anyone
+ * who can fight, then the rest by walking distance to the nearest flag goal, or
+ * to the nearest foe with no goal left (we carry theirs and ours is home).
+ */
+function flagActivationScore(state: GameState, board: Board, plan: FlagPlan, command: ChooseActivation): number {
+  const enemies = enemiesOf(state, state.active);
+  const unit = unitById(state, command.unitId)!;
+  const magic = magicActivationScore(state, board, command);
+  if (magic !== undefined) return magic;
+  const enemyDist = nearestEnemyDistance(board, unit.pos, enemies);
+  const canAttack = enemyDist === 1 || (unit.traits.ranged >= 2 && enemyDist >= 2 && enemyDist <= unit.traits.ranged);
+  const goal = goalDistance(plan, unit.pos);
+  const dist = goal < FAR ? goal : enemyDist;
+  let unitScore = canAttack ? 100_000 : 10_000 - Math.min(dist, 99) * 100;
+  if (unit.id === plan.carrierId) unitScore = 150_000;
+  unitScore = leaderFirst(state, unit, unitScore);
+  return unitScore + diceScore(state, board, command);
 }
 
 export function playerLabel(owner: Owner): string {

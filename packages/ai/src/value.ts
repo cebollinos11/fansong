@@ -1,4 +1,4 @@
-import { combatOdds, isKing, isPig, type Board, type GameState, type Unit, type Vec } from '@fansong/engine';
+import { combatOdds, flagCarriedBy, isKing, isPig, targetScoreOf, type Board, type GameState, type Unit, type Vec } from '@fansong/engine';
 
 /** Traits that make a unit worth more to keep (or to kill), each counted once. */
 const VALUED_TRAITS = [
@@ -20,9 +20,26 @@ function unitValue(u: Unit): number {
 /** What a King is worth in kill-the-king, in {@link unitValue} terms: the game rides on it. */
 export const KING_WORTH = 30;
 
-/** {@link unitValue}, except that a King — or the golden Pig — is worth the game. */
-export function worthOf(state: GameState, u: Unit): number {
+/**
+ * What one point is worth where points win the game, in {@link unitValue}
+ * terms: its share of the game, which is what a King is worth over the points
+ * to win. A flag brought home wins outright, so there it is the whole of it.
+ */
+export function pointWorth(state: GameState): number {
+  return KING_WORTH / (targetScoreOf(state) ?? 1);
+}
+
+/** {@link unitValue}, except that a King, or the golden Pig, is worth the game. A flag in its hands counts nothing. */
+export function ownWorth(state: GameState, u: Unit): number {
   return isKing(state, u.id) || isPig(state, u.id) ? KING_WORTH : unitValue(u);
+}
+
+/**
+ * What a unit is worth to keep or to kill: {@link ownWorth}, except that a unit
+ * carrying a flag is worth the capture it is on its way to make ({@link pointWorth}).
+ */
+export function worthOf(state: GameState, u: Unit): number {
+  return flagCarriedBy(state, u.id) !== undefined ? pointWorth(state) : ownWorth(state, u);
 }
 
 /** How one blow or shot is likely to go, and what each way is worth in {@link worthOf} terms. */

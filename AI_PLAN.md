@@ -208,7 +208,32 @@ What differs from the plan:
 - **Known weaknesses, not fixed (the three variants were spent):** as defender the AI is no better than the ladder was. The Pig beside a standing foe neither strikes it (the exchange is a loss at what the Pig is worth) nor leaves (the free hack still costs 30,000), so one foe can pin it for rounds while the clock runs; with variant 3 about one game in ten as escort is still lost on the clock. Weighing the rounds left as a share of the game is the next thing to try, with the activation order: the Pig going after its escort rather than before.
 - **Tests.** One scene in `pig.test.ts` rested on the ladder: the Pig walking toward the goal now has its escort ahead of it, not behind. The other six pass unchanged. Added: the Pig does not walk ahead of its escort; it stops short of where a foe could charge it; with no round to spare it goes on, ahead of its escort and into reach; it holds beside an equal foe and strikes a weak one; an escort strikes the foe beside the Pig at odds it refuses elsewhere.
 
-Next: flags, which are untouched (ask first).
+**Capture-the-flag, done: 64.1% ±1.9%** over three seeds against the AI with the golden Pig on the one scale, no timeouts, every other mode at exactly 50.0%. On `stone-crown`: 4.54 / 13.5 / 41.6 ms, inside the budget of a 55.5 ms mean and no decision over 100 ms (the owner gave the say-so this mode needed). The unit acting goes through `planScores` as in the golden Pig (`Court`, `kingSwing`, `placeScore`, the Pig's floor for its goal, generalised rather than copied), and the mode is on the scale by what a capture is worth, with no new constant:
+
+- **A capture is worth the game.** A point is `KING_WORTH` over the points to win (`pointWorth`, which the zone modes now share). The engine sets no target score here and ends the game on the first capture (`captureIfHome`), so a capture is `KING_WORTH`, 30.
+- **A unit with a flag in its hands is worth the capture** to both sides (`worthOf`). From that alone: a blow or shot at the enemy carrier and a hex that threatens it count the capture; a blow our carrier strikes counts the capture a lost exchange may cost; and what the enemy can do to it is in the exposure of its own moves and of its friends', in the worth of its guard, and in a friend's blow at a foe that threatens it (`kingSwing`).
+- **Distance.** The carrier counts its walking distance home; everyone else the nearest of the enemy flag, our own where it lies dropped and the enemy carrier (`flagDistance`), at `APPROACH` a hex; with none of those, the nearest foe as in annihilation.
+- **One hard floor**, as planned: a carrier that can step onto its base does.
+- **Gone**: `scoreFlagCommand`'s scoring of a blow, a shot, a move and a guard, and with it the ladder's last helpers for those (`pressedEdge`, `meleeEdge`, `shotPenalty`). What is left of it is `flagActivationScore`: who activates and with how many dice, as before.
+- **Left as they were**: `flagPlan`, the activation order, the dice, and magic, which still counts a carrier at its own worth (`ownWorth`) for whether to cast and at whom, since that is part of who activates. The last-unit rule of annihilation holds here.
+
+Three variants were benched, each over the same three seeds (±1.9%), none with a timeout:
+
+1. **The terms above, a carrier's free hacks by their odds, a lesser hit on the enemy carrier at the usual 0.3 of its worth: 63.9%.**
+2. **Variant 1, but the carrier held in contact by `DISENGAGE_COST` like anyone: 62.4%.**
+3. **Variant 1, and a blow that knocks down or pushes the enemy carrier counts the whole capture, as does a kill it would save against by being Tough (`stopsCapture`): 64.1%.** Kept, as the best and as what the plan asked ("the capture it may stop by its odds"). The three are within the margin of each other.
+
+What differs from the plan:
+
+- **Picking the enemy flag up, and sending our own home, are worth the capture too**, as a term of the move. With distance alone the last hex onto a flag was worth 100 points, and a unit one hex from its own dropped flag walked past it toward a foe. It is the same worth the flag has in a carrier's hands, not a new one, and not a floor: a unit beside a standing foe still weighs the free hack against it.
+- **A carrier's free hacks are weighed by their odds** (`hackRisk`), at what it is worth, where anyone else is still held by `DISENGAGE_COST`. They are blows it risks, and the ladder let a carrier break away too. Alone it measured as noise (variant 2).
+- **A shooter counts the enemy carrier no nearer than its range**, as it does the enemy King.
+- **The distance fields are cached per map and hex** (`zoneField`), which `flagPlan` worked out afresh at every call: the mean on `stone-crown` fell from 19.9 ms to 4.5. The choice is the same.
+- **Decided alone, as the run was unattended:** the first timing run on `stone-crown` showed a 139 ms decision, with 193 ms for the baseline in the same run. Three later runs gave maxima of 34.8, 41.6 and 36.2 ms (baseline 40.9, 54.7, 42.3), so the first was taken for the machine and not the AI.
+- **Not weighed**: that a knocked-down carrier takes the flag back for free when it stands; what a unit does by standing between the enemy and our flag (no one is sent to guard it, as before); and reach is still one Move and a strike.
+- **Tests.** No scene rested on the ladder: the eight there were pass unchanged. Added: a blow at the enemy carrier at odds refused against anyone else, a carrier that leaves a foe an ordinary unit is held by, and a carrier that does not end its move beside an equal foe on its way home.
+
+Next: Phase 5, or the weaknesses noted under kill-the-king and the golden Pig.
 
 ## Phase 5 (optional): lookahead
 
@@ -237,6 +262,7 @@ Win rate against the AI of the phase before, from `pnpm play bench --baseline �
 | 4: conquest on the one scale | 50.0% | 50.0% | 50.0% | **59.2%** (three seeds, ±1.9%) | 50.0% | 50.0% | conquest: 5.28 / 11.3 / 43.3 |
 | 4: kill-the-king on the one scale | 50.0% | **59.7%** (three seeds, ±1.9%) | 50.0% | 50.0% | 50.0% | 50.0% | king: 4.07 / 13.5 / 37.5 |
 | 4: the golden Pig on the one scale | 50.0% | 50.0% | 50.0% | 50.0% | 50.0% | **62.9%** (three seeds, ±1.9%) | pig: 4.13 / 11.3 / 25.3 |
+| 4: capture-the-flag on the one scale | 50.0% | 50.0% | 50.0% | 50.0% | **64.1%** (three seeds, ±1.9%) | 50.0% | flags: 4.54 / 13.5 / 41.6 |
 
 The budget that follows from the baseline: a mean of at most 3.6 ms and no decision over 100 ms, in annihilation on `stone-crown`.
 
