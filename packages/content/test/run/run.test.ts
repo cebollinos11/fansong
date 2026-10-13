@@ -1,8 +1,13 @@
 import { createGame } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
+  battleLimit,
   defaultKing,
+  fieldedCost,
   fieldedUnits,
+  generateRoute,
+  enemyCost,
+  unitCost,
   generateBattle,
   legalRunActions,
   newRun,
@@ -237,6 +242,92 @@ describe('the briefing', () => {
     s = runStep(s, { type: 'bench', unitId: ids[1]!, benched: false });
     expect(fieldedUnits(s).map((u) => u.id)).toEqual(ids.slice(0, 2));
     expect(runStep(s, { type: 'startBattle' }).battle!.fielded).toEqual(ids.slice(0, 2));
+  });
+
+  /** A run at `round` with a roster too big for any limit there: every unit of it several times over, up to the cap. */
+  const swollen = (seed: number, round: number, node?: number): RunState => {
+    const s = atStep(seed, round, node === undefined ? {} : { node });
+    const extra = [1, 2, 3].flatMap((k) => s.roster.map((u) => ({ ...u, id: `${u.id}x${k}`, unit: { ...u.unit, name: `${u.unit.name} x${k}`, leader: undefined } })));
+    return clone({ ...s, roster: [...s.roster, ...extra].slice(0, RUN_TUNING.rosterCap) });
+  };
+
+  it('opens on a warband that fits the point limit: the Leader, then the costliest that fit', () => {
+    let limited = 0;
+    for (let seed = 1; seed <= 30; seed++)
+      for (const round of [1, 4, 6, RUN_TUNING.enemy.bossEvery]) {
+        const map = swollen(seed, round);
+        // Benches made before do not carry: the battle fields who fits it.
+        map.roster[0]!.benched = true;
+        const s = runStep(map, legalRunActions(map)[0]!);
+        if (s.phase !== 'briefing') continue;
+        checkState(s);
+        const node = s.route!.nodes[s.route!.going!]!;
+        const limit = battleLimit(enemyCost(s.battle!), node.limit);
+        expect(s.battle!.limit).toBe(limit);
+        expect(s.battle!.limitKind).toBe(node.limit);
+        const fielded = fieldedUnits(s);
+        expect(fieldedCost(s)).toBeLessThanOrEqual(limit);
+        if (fielded.length < s.roster.length) limited++;
+        // The Leader fights, and at a boss it is still there to be King.
+        const leader = s.roster.find((u) => u.unit.leader)!;
+        expect(fielded).toContain(leader);
+        // Nobody left out would still fit.
+        const left = limit - fieldedCost(s);
+        const out = s.roster.filter((u) => u.benched);
+        expect(out.length).toBe(s.roster.length - fielded.length);
+        for (const u of out) expect(unitCost(u.unit)).toBeGreaterThan(left);
+        // It may start as it stands, on ground sized for those who fight.
+        expect(runActionError(s, { type: 'startBattle' })).toBeNull();
+        expect(s.battle!.map).toEqual(generateBattle(seed, round, node, fielded.length).map);
+        expect(runStep(s, { type: 'startBattle' }).battle!.fielded).toEqual(fielded.map((u) => u.id));
+      }
+    expect(limited).toBeGreaterThan(60);
+  });
+
+  it('refuses to field a unit the point limit has no room for, but always lets one unit fight', () => {
+    const s = runStep(swollen(8, 5), legalRunActions(swollen(8, 5))[0]!);
+    const limit = s.battle!.limit!;
+    const out = s.roster.find((u) => u.benched)!;
+    const left = limit - fieldedCost(s);
+    expect(runActionError(s, { type: 'bench', unitId: out.id, benched: false })).toBe(`${out.unit.name} needs ${unitCost(out.unit)} pts, ${left} left`);
+    expect(legalRunActions(s)).not.toContainEqual({ type: 'bench', unitId: out.id, benched: false });
+    // A swap is a bench, then a field.
+    let swapped = s;
+    for (const u of fieldedUnits(s).slice(1)) swapped = runStep(swapped, { type: 'bench', unitId: u.id, benched: true });
+    expect(runActionError(swapped, { type: 'bench', unitId: out.id, benched: false })).toBeNull();
+
+    // One unit alone may cost more than the limit; a second beside it may not.
+    const dear = clone(s);
+    dear.battle!.limit = 10;
+    for (const u of dear.roster) u.benched = true;
+    delete dear.roster[0]!.benched;
+    expect(fieldedCost(dear)).toBeGreaterThan(10);
+    expect(runActionError(dear, { type: 'startBattle' })).toBeNull();
+    expect(runActionError(dear, { type: 'bench', unitId: dear.roster[1]!.id, benched: false })).toMatch(/pts, 0 left$/);
+    // A warband over the limit, however it came about, does not start.
+    delete dear.roster[1]!.benched;
+    expect(runActionError(dear, { type: 'startBattle' })).toMatch(/over this battle's limit of 10/);
+    // A briefing saved before battles had limits has none.
+    delete dear.battle!.limit;
+    expect(runActionError(dear, { type: 'startBattle' })).toBeNull();
+    expect(runActionError(dear, { type: 'bench', unitId: dear.roster[2]!.id, benched: false })).toBeNull();
+  });
+
+  it('meets a small enemy at a skirmish, fields no more than it costs, and is paid as for a battle of the usual strength', () => {
+    let met = 0;
+    for (let seed = 1; seed <= 400 && met < 5; seed++) {
+      const node = generateRoute(seed, 1).nodes.find((n) => n.limit === 'skirmish');
+      if (!node) continue;
+      met++;
+      const s = runStep(swollen(seed, node.step, node.id), { type: 'travel', nodeId: node.id });
+      const cost = enemyCost(s.battle!);
+      expect(s.battle).toMatchObject({ limitKind: 'skirmish', limit: battleLimit(cost, 'skirmish'), threat: node.threat });
+      // About a skirmish's points, far under the step's own; over only to make up its three units.
+      if (s.battle!.enemy.units.length > RUN_TUNING.enemy.minUnits) expect(cost).toBeLessThanOrEqual(RUN_TUNING.limits.skirmish.points);
+      expect(s.battle!.rewardValue).toBe(rewardValue(node.step, 1));
+      expect(fieldedCost(s) <= cost || fieldedUnits(s).length === 1).toBe(true);
+    }
+    expect(met).toBe(5);
   });
 
   it('keeps a unit that sits out off the field, unless nobody else is left', () => {

@@ -167,6 +167,23 @@ export const RUN_TUNING = {
       spareGold: 3,
     },
   },
+  /** How many points the player may field against an enemy. */
+  limits: {
+    /** Every battle: at most `share` times the enemy's cost, but never under `floor` points, which a warband only outgrows around step 4. */
+    ceiling: { share: 1.2, floor: 250 },
+    /** No battle before this step has a tighter limit: until then the ceiling's floor lets a young warband through whole. */
+    fromRound: 4,
+    /** How often a plain battle node from that step on is each tighter kind (or none). */
+    kinds: { none: 70, skirmish: 10, even: 12, underdog: 8 },
+    /** A small enemy of about `points`, whatever the step, and no more fielded than it costs. */
+    skirmish: { points: 100, share: 1 },
+    /** No more fielded than the enemy costs. */
+    even: { share: 1 },
+    /** Less fielded than the enemy costs. */
+    underdog: { share: 0.9 },
+    /** XP every unit that fought a won battle of the kind earns on top of its own. */
+    xp: { skirmish: 1, even: 1, underdog: 2 },
+  },
   /** The small shop in the field after a battle: mending and a recruit, no reroll, no selling. */
   fieldShop: { recruits: 1, upgrades: 0 },
   /** A market's shop. */

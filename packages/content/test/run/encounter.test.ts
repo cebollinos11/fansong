@@ -2,6 +2,7 @@ import { createGame, gameMode } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
   availableAdvances,
+  battleLimit,
   buildMatch,
   enemyPoints,
   generateBattle,
@@ -46,6 +47,24 @@ describe('enemyPoints', () => {
   });
 });
 
+describe('battleLimit', () => {
+  it('is a share of what the enemy costs: 120% with a floor, or the tighter share of a marked battle', () => {
+    const { ceiling, even, underdog, skirmish } = RUN_TUNING.limits;
+    expect(battleLimit(1000)).toBe(Math.round(1000 * ceiling.share));
+    expect(battleLimit(ceiling.floor + 1)).toBe(Math.round((ceiling.floor + 1) * ceiling.share));
+    // A small enemy still lets a drafted warband through.
+    expect(battleLimit(80)).toBe(ceiling.floor);
+    expect(battleLimit(Math.floor(ceiling.floor / ceiling.share))).toBe(ceiling.floor);
+    expect(ceiling.floor).toBeGreaterThanOrEqual(RUN_TUNING.draft.budget);
+    // The tighter kinds have no floor.
+    expect(battleLimit(103, 'skirmish')).toBe(Math.round(103 * skirmish.share));
+    expect(battleLimit(80, 'even')).toBe(Math.round(80 * even.share));
+    expect(battleLimit(250, 'underdog')).toBe(Math.round(250 * underdog.share));
+    expect(battleLimit(250, 'underdog')).toBeLessThan(battleLimit(250, 'even'));
+    expect(battleLimit(1000, 'even')).toBeLessThan(battleLimit(1000));
+  });
+});
+
 describe('generateBattle', () => {
   it('is the same for the same seed, round and node, whatever the roster size does to the board', () => {
     const node = { id: 3, budget: 1.1 };
@@ -55,6 +74,14 @@ describe('generateBattle', () => {
     expect(b.enemy).toEqual(a.enemy);
     expect(b.mode).toBe(a.mode);
     expect(b.seed).toBe(a.seed);
+    // The count may wait for the enemy: it is asked for once, between the enemy and the ground.
+    let asked = 0;
+    const counted = generateBattle(42, 3, node, (enemy) => {
+      asked++;
+      expect(enemy).toEqual(a.enemy);
+      return 4;
+    });
+    expect([asked, counted]).toEqual([1, a]);
     expect(generateBattle(43, 3, node, 4)).not.toEqual(a);
     expect(generateBattle(42, 4, node, 4)).not.toEqual(a);
     // Another node of the same step is another battle, and so is the same node after a retreat.

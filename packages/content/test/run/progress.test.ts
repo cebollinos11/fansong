@@ -88,6 +88,26 @@ describe('XP', () => {
     expect(xpFor({ kills: 2, killCosts: [10, 31], fate: 'survived' }, 30)).toBe(fought + 2 * perKill + costlierKill);
   });
 
+  it('pays every unit that fought a battle under a tighter point limit a bonus, by its kind', () => {
+    const { fought, perKill } = RUN_TUNING.xp;
+    const bonus = RUN_TUNING.limits.xp;
+    for (const kind of ['skirmish', 'even', 'underdog'] as const) {
+      expect(bonus[kind]).toBeGreaterThan(0);
+      expect(xpFor({ kills: 0, killCosts: [], fate: 'fell' }, 30, kind)).toBe(fought + bonus[kind]);
+      expect(xpFor({ kills: 1, killCosts: [10], fate: 'survived' }, 30, kind)).toBe(fought + perKill + bonus[kind]);
+    }
+
+    // A won battle hands it out, and says why; the plain ceiling pays none.
+    const s = inBattle(4);
+    const plain = runStep(s, { type: 'devWin' });
+    expect(plain.aftermath!.limitKind).toBeUndefined();
+    expect(plain.aftermath!.units.map((l) => l.xp)).toEqual(s.battle!.fielded!.map(() => fought));
+    const tight = runStep({ ...s, battle: { ...s.battle!, limitKind: 'underdog' } }, { type: 'devWin' });
+    expect(tight.aftermath!.limitKind).toBe('underdog');
+    expect(tight.aftermath!.units.map((l) => l.xp)).toEqual(s.battle!.fielded!.map(() => fought + bonus.underdog));
+    expect(tight.roster.map((u) => u.xp)).toEqual(s.roster.map((u) => u.xp + fought + bonus.underdog));
+  });
+
   it('levels at the thresholds and no further', () => {
     const [a, b, c, d] = RUN_TUNING.xp.levels as [number, number, number, number];
     expect([0, a - 1, a, b - 1, b, c - 1, c, d - 1, d, 500].map(levelFor)).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);

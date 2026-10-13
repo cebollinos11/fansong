@@ -1,19 +1,20 @@
 import type { GameConfig } from '@fansong/engine';
+import { unitCost } from '../cost.js';
 import { DEFAULT_BOARD, defaultKing } from '../deploy.js';
 import { getMap } from '../mapRegistry.js';
 import { configFromSetup, type MapLookup, type MatchSetup } from '../match.js';
 import { PRESET_ROSTERS } from '../presets.js';
-import type { Warband } from '../warband.js';
+import { warbandCost, type Warband } from '../warband.js';
 import { applyAdvance } from './advance.js';
 import { leaderOffer, troopOffer } from './draft.js';
-import { enemyCost, generateBattle, isBossRound, scoutEnemy } from './encounter.js';
+import { battleLimit, enemyCost, generateBattle, isBossRound, scoutEnemy } from './encounter.js';
 import { eventChoices, resolveEvent, rollEvent } from './events.js';
 import { applyAftermath, applyRetreat, applyReward, missionRewards, rewardKinds, rewardNeedsUnit, rewardsClaimable, rewardValue, rollLevelUps } from './progress.js';
 import { battleReport } from './report.js';
 import { scheduleRivals } from './rivals.js';
 import { makeRunRandom, type RunRandom } from './rng.js';
 import { actOf, generateRoute, isFight, openNodes } from './route.js';
-import { enlist, fieldedUnits, fitUnits, isWounded, playerWarband, renameUnit, rosterCost, rosterUnit } from './roster.js';
+import { enlist, fieldedCost, fieldedUnits, fitToLimit, fitUnits, isWounded, playerWarband, renameUnit, rosterCost, rosterUnit } from './roster.js';
 import { buyRecruit, buyUpgrade, healUnit, rerollShop, sellUnit, shopStock } from './shop.js';
 import { buyBanner, makeCamp, takeTraining, trainUnit } from './stops.js';
 import { RUN_TUNING } from './tuning.js';
@@ -84,23 +85,40 @@ function leaveNode(s: RunState): void {
 /**
  * Meet the battle waiting at `node` (mutates `s`). The enemy comes from the
  * seed, the step, the node and the retreats made at the step alone; what
- * winning pays is rolled for the roster as it stands, so it can be taken.
+ * winning pays is rolled for the roster as it stands, so it can be taken. The
+ * enemy's cost sets how many points may be fielded, and the roster is benched
+ * and fielded anew to fit, so the briefing opens on a warband that may fight.
  */
 function enterBattle(s: RunState, node: Pick<RouteNode, 'id'> & Partial<RouteNode>, plain = false): void {
   const retreats = s.retreats ?? 0;
   const rival = node.rival ? s.rivals?.find((r) => r.round === s.round)?.warband : undefined;
-  const { mode, map, seed, enemy } = generateBattle(s.seed, s.round, node, s.roster.length, rival, retreats);
-  const value = plain ? 0 : rewardValue(s.round, enemy.threat);
+  let limit = 0;
+  // The ground is sized for the units the limit lets through, not the whole roster.
+  const fitted = (met: { warband: Warband }) => {
+    limit = battleLimit(warbandCost(met.warband), node.limit);
+    fitToLimit(s, limit);
+    return fieldedUnits(s).length;
+  };
+  const { mode, map, seed, enemy } = generateBattle(s.seed, s.round, node, fitted, rival, retreats);
+  // A skirmish's enemy is small by design: it pays as a battle of the step's usual strength.
+  const value = plain ? 0 : rewardValue(s.round, node.limit === 'skirmish' ? 1 : enemy.threat);
   const kind = node.rewardKind !== undefined && rewardKinds(s).includes(node.rewardKind) ? node.rewardKind : 'gold';
   const rewards = plain ? [] : missionRewards(s, kind, value, roll(s));
-  s.battle = { mode, faction: enemy.faction, enemy: enemy.warband, map, seed, threat: enemy.threat, rewards, rewardValue: value };
+  s.battle = { mode, faction: enemy.faction, enemy: enemy.warband, map, seed, threat: enemy.threat, limit, rewards, rewardValue: value };
+  if (node.limit) s.battle.limitKind = node.limit;
   if (enemy.king !== undefined) s.battle.enemyKing = enemy.king;
   if (node.kind === 'elite') s.battle.elite = true;
   if (plain) s.battle.plain = true;
   s.phase = 'briefing';
   delete s.offer;
-  // A bench that would leave nobody to fight is cleared.
-  if (fitUnits(s).every((u) => u.benched)) for (const u of s.roster) delete u.benched;
+}
+
+/** Throws if the warband about to be fielded is over the battle's point limit; a lone unit never is. */
+function checkLimit(s: RunState, message: (over: number) => string): void {
+  const limit = s.battle?.limit;
+  if (limit === undefined || fieldedUnits(s).length <= 1) return;
+  const over = fieldedCost(s) - limit;
+  if (over > 0) throw new Error(message(over));
 }
 
 /** Move on from a training ground (mutates `s`): to the field shop if it was an elite's pay, else back to the map. */
@@ -199,6 +217,10 @@ export function runStep(state: RunState, action: RunAction): RunState {
       if (action.benched) u.benched = true;
       else delete u.benched;
       if (fitUnits(s).every((x) => x.benched)) throw new Error('someone has to fight');
+      if (!action.benched) {
+        const cost = unitCost(u.unit);
+        checkLimit(s, (over) => `${u.unit.name} needs ${cost} pts, ${Math.max(0, cost - over)} left`);
+      }
       break;
     }
     case 'setKing': {
@@ -213,6 +235,7 @@ export function runStep(state: RunState, action: RunAction): RunState {
       const battle = s.battle!;
       const fielded = fieldedUnits(s);
       const warband = playerWarband(s);
+      checkLimit(s, (over) => `the warband is ${over} pts over this battle's limit of ${battle.limit}`);
       const setup: MatchSetup = {
         presets: ['run', battle.faction],
         warbands: [warband, battle.enemy],

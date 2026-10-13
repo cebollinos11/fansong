@@ -1,6 +1,7 @@
 import { recordReplay } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
 import {
+  enemyPoints,
   scoutEnemy,
   generateRoute,
   isFight,
@@ -117,7 +118,7 @@ describe('generateRoute', () => {
             if (n.step <= RUN_TUNING.modes.annihilationThrough) expect(n.mode).toBe('annihilation');
             kinds.add(n.rewardKind!);
           }
-          if (n.kind === 'battle') {
+          if (n.kind === 'battle' && n.limit !== 'skirmish') {
             expect(n.budget).toBeGreaterThanOrEqual(RUN_TUNING.mission.threat.min);
             expect(n.budget).toBeLessThan(RUN_TUNING.mission.threat.max);
           }
@@ -174,6 +175,38 @@ describe('the kinds of node', () => {
     }
     expect(seen.battle! / middle).toBeGreaterThan(0.45);
     expect(seen.training! / middle).toBeLessThan(0.1);
+  });
+
+  it('gives some plain battles a tighter point limit, never early in the run, and a skirmish only where enemies have outgrown it', () => {
+    const { fromRound, skirmish, kinds: weights } = RUN_TUNING.limits;
+    const seen: Record<string, number> = { none: 0, skirmish: 0, even: 0, underdog: 0 };
+    for (const seed of SEEDS.slice(0, 200))
+      for (const act of [1, 2]) {
+        const route = generateRoute(seed, act);
+        const at = `seed ${seed} act ${act}`;
+        for (const n of route.nodes) {
+          const usual = enemyPoints(n.step);
+          // Where a limit may be: a plain battle, above the bottom row, once the run is a few steps old.
+          const may = n.kind === 'battle' && rowOf(route, n.id) > 0 && n.step >= fromRound;
+          if (!may) {
+            expect(n.limit, at).toBeUndefined();
+            continue;
+          }
+          seen[n.limit ?? 'none']!++;
+          if (n.limit !== 'skirmish') continue;
+          // A skirmish is a smaller enemy than the step would otherwise send, and the map shows it as one.
+          expect(usual * RUN_TUNING.mission.threat.min, at).toBeGreaterThan(skirmish.points);
+          expect(n.budget, at).toBe(skirmish.points / usual);
+          const met = scoutEnemy(seed, n.step, n);
+          expect(n.threat, at).toBe(met.threat);
+          // (Over its points only when made up to the fewest units an enemy fields.)
+          if (met.warband.units.length > RUN_TUNING.enemy.minUnits) expect(n.threat!, at).toBeLessThan(RUN_TUNING.mission.threat.min);
+        }
+      }
+    // Each kind turns up about as often as its weight says.
+    const total = Object.values(seen).reduce((a, b) => a + b, 0);
+    const all = Object.values(weights).reduce((a, b) => a + b, 0);
+    for (const kind of Object.keys(weights) as (keyof typeof weights)[]) expect(Math.abs(seen[kind]! / total - weights[kind] / all), kind).toBeLessThan(0.05);
   });
 
   it('leaves a road with as few as three fights below the boss, and one that is all fights but its last step', () => {

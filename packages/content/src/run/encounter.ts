@@ -9,7 +9,7 @@ import { advanceCost, applyAdvance, availableAdvances } from './advance.js';
 import { makeRunRandom, RUN_STREAM, type RunRandom } from './rng.js';
 import { uniquelyNamed } from './roster.js';
 import { RUN_TUNING } from './tuning.js';
-import type { Advance, RouteNode, RunBattle } from './types.js';
+import type { Advance, LimitKind, RouteNode, RunBattle } from './types.js';
 
 /**
  * What a step of the route throws at the player. Difficulty is the enemy's
@@ -22,7 +22,8 @@ import type { Advance, RouteNode, RunBattle } from './types.js';
  * A node's encounter comes from the run's seed, the step and the node alone,
  * whatever the player did before it: the same seed always meets the same
  * enemies on the same ground. (Only the board's size follows the number of
- * units on it.) A battle met after a retreat is rolled anew, by how many
+ * units on it.) How many points the player may bring follows from the enemy
+ * met: see {@link battleLimit}. A battle met after a retreat is rolled anew, by how many
  * retreats the step has seen.
  */
 
@@ -218,17 +219,37 @@ export function scoutEnemy(seed: number, round: number, node: BattleNode, retrea
 }
 
 /**
+ * Most points the player may field against an enemy costing `enemyCost`: the
+ * ceiling every battle has (a share of that cost, never under its floor), or
+ * the tighter share of a node of `kind`, which has no floor.
+ */
+export function battleLimit(enemyCost: number, kind?: LimitKind): number {
+  const { ceiling } = RUN_TUNING.limits;
+  if (kind) return Math.round(RUN_TUNING.limits[kind].share * enemyCost);
+  return Math.max(ceiling.floor, Math.round(ceiling.share * enemyCost));
+}
+
+/**
  * The battle waiting at `node` in `round`, but for the player's side of it, for
- * a roster of `playerUnits`. The enemy is of the faction and budget the node
+ * `playerUnits` on the player's side (a number, or what the enemy met lets
+ * onto the field). The enemy is of the faction and budget the node
  * rolled, in the node's mode (each rolled here if the node names none); a
  * `rival` (a past run's warband) fights in its place. The ground is sized for
  * the two warbands. `retreats` counts the times the player has already
  * retreated at this step: each meets a fresh encounter, even at the same node.
  */
-export function generateBattle(seed: number, round: number, node: BattleNode, playerUnits: number, rival?: Warband, retreats = 0): Encounter {
+export function generateBattle(
+  seed: number,
+  round: number,
+  node: BattleNode,
+  playerUnits: number | ((enemy: Enemy) => number),
+  rival?: Warband,
+  retreats = 0,
+): Encounter {
   const { rnd, mode, enemy } = meet(seed, round, node, rival, retreats);
+  const units = typeof playerUnits === 'number' ? playerUnits : playerUnits(enemy);
   const mapSeed = rnd.int(0, 2 ** 31 - 1);
-  return { mode, map: generateRunMap(round, playerUnits + enemy.warband.units.length, mapSeed), seed: rnd.int(0, 2 ** 31 - 1), enemy };
+  return { mode, map: generateRunMap(round, units + enemy.warband.units.length, mapSeed), seed: rnd.int(0, 2 ** 31 - 1), enemy };
 }
 
 /** Point cost of a battle's enemy warband. */

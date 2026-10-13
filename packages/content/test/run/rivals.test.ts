@@ -63,7 +63,9 @@ describe('a run with rivals', () => {
         expect(node).toMatchObject({ kind: 'battle', faction: RIVAL_FACTION, threat: warbandCost(rival.warband) / enemyPoints(rival.round) });
         // Take the mark away and the map is the one the run would have had anyway.
         const plain = generateRoute(seed, actOf(rival.round)).nodes[node.id]!;
-        expect({ ...node, rival: undefined, faction: plain.faction, threat: plain.threat }).toEqual({ ...plain, rival: undefined });
+        // (A rival's node has no tighter point limit, whatever the plain one would have had.)
+        expect(node.limit).toBeUndefined();
+        expect({ ...node, rival: undefined, faction: plain.faction, threat: plain.threat, budget: plain.budget, limit: plain.limit }).toEqual({ ...plain, rival: undefined });
 
         const there = runStep(atStep(seed, rival.round, { past: PAST, node: node.id }), { type: 'travel', nodeId: node.id });
         expect(there.battle).toMatchObject({ faction: RIVAL_FACTION, enemy: rival.warband, mode: node.mode, threat: node.threat });

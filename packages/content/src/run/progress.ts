@@ -16,6 +16,7 @@ import type {
   AftermathLine,
   BattleReport,
   Injury,
+  LimitKind,
   RewardOption,
   RunState,
   RunUnit,
@@ -29,10 +30,11 @@ export function levelFor(xp: number): number {
   return RUN_TUNING.xp.levels.filter((at) => xp >= at).length;
 }
 
-/** XP a unit costing `ownCost` earns from a won battle. */
-export function xpFor(report: UnitReport, ownCost: number): number {
+/** XP a unit costing `ownCost` earns from a won battle; more if it was fought under a tighter point limit of `limitKind`. */
+export function xpFor(report: UnitReport, ownCost: number, limitKind?: LimitKind): number {
   const { fought, perKill, costlierKill } = RUN_TUNING.xp;
-  return fought + report.kills * perKill + report.killCosts.filter((c) => c > ownCost).length * costlierKill;
+  const bonus = limitKind ? RUN_TUNING.limits.xp[limitKind] : 0;
+  return fought + bonus + report.kills * perKill + report.killCosts.filter((c) => c > ownCost).length * costlierKill;
 }
 
 /** Gold a won `round` pays. */
@@ -101,7 +103,7 @@ export function rollLevelUps(s: RunState, rnd: RunRandom): void {
 }
 
 /**
- * Settle a won battle (mutates `s`): every fielded unit earns XP; a turncoat is
+ * Settle a won battle (mutates `s`): every fielded unit earns XP (more under a tighter point limit); a turncoat is
  * gone; each fallen unit rolls for injury; the win pays gold; the round is
  * logged; and the levels earned are put up for choosing. Units that sat the
  * battle out are fit again.
@@ -125,7 +127,7 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
       lose();
       continue;
     }
-    line.xp = xpFor(r, unitCost(u.unit));
+    line.xp = xpFor(r, unitCost(u.unit), battle.limitKind);
     u.xp += line.xp;
     u.kills += r.kills;
     if (r.fate !== 'fell') continue;
@@ -135,6 +137,7 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
   const gold = goldFor(s.round, report);
   s.gold += gold;
   s.aftermath = { gold, units: lines };
+  if (battle.limitKind) s.aftermath.limitKind = battle.limitKind;
   s.log.push({
     round: s.round,
     mode: battle.mode,

@@ -3,7 +3,10 @@ import { getLegalCommands, makeHexGrid, recordReplay, type Command, type GameSta
 import { expect } from 'vitest';
 import {
   actOf,
+  battleLimit,
   enemyPoints,
+  fieldedCost,
+  fieldedUnits,
   generateRoute,
   legalRunActions,
   newRun,
@@ -84,6 +87,12 @@ export function checkState(s: RunState): void {
     expect(Boolean(s.battle.plain)).toBe(s.battle.rewards.length === 0);
     if (s.battle.enemy.units.length > RUN_TUNING.enemy.minUnits) expect(warbandCost(s.battle.enemy)).toBeLessThanOrEqual(enemyPoints(s.round, hardest));
     expect(validateMap(s.battle.map, s.battle.mode).errors).toEqual([]);
+    // The limit is the enemy's cost at the node's share, and the warband fielded is within it, or is one unit.
+    const kind = s.route?.nodes[s.route.going!]?.limit;
+    expect(s.battle.limitKind).toBe(kind);
+    expect(s.battle.limit).toBe(battleLimit(warbandCost(s.battle.enemy), kind));
+    if (fieldedUnits(s).length > 1) expect(fieldedCost(s)).toBeLessThanOrEqual(s.battle.limit!);
+    if (s.phase === 'battle') expect(s.battle.fielded).toEqual(fieldedUnits(s).map((u) => u.id));
   }
   expect(Boolean(s.battle)).toBe(s.phase === 'briefing' || s.phase === 'battle');
   const owed = { draft: ['draft'], aftermath: ['reward'], reward: ['reward'], shop: ['shop'], stop: ['camp', 'training', 'event'] } as Record<string, string[]>;

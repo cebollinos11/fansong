@@ -3,7 +3,7 @@ import { warbandCost } from '../warband.js';
 import { enemyPoints, RIVAL_FACTION, rollMode, scoutEnemy } from './encounter.js';
 import { makeRunRandom, RUN_STREAM, type RunRandom } from './rng.js';
 import { RUN_TUNING } from './tuning.js';
-import type { NodeKind, RewardOption, Route, RouteNode, RunRival } from './types.js';
+import type { LimitKind, NodeKind, RewardOption, Route, RouteNode, RunRival } from './types.js';
 
 /**
  * The act's map: rows of nodes joined by branching paths, all of which end at
@@ -66,6 +66,8 @@ function rollKinds(nodes: readonly RouteNode[], first: number, rnd: RunRandom): 
  * here what the map shows of it: its enemy's faction and budget, its mode and
  * the kind of reward; its threat is that of the warband that budget will buy.
  * A rival due at one of the act's steps takes a battle node of that step.
+ * Last of all, some of the plain battles left are given a tighter point limit
+ * (see {@link rollLimits}).
  */
 export function generateRoute(seed: number, act: number, rivals: readonly RunRival[] = []): Route {
   // Scouting every fight is slow in the later acts, and the rules ask for the same route again and again.
@@ -158,7 +160,37 @@ function drawRoute(seed: number, act: number, rivals: readonly RunRival[]): Rout
     node.threat = warbandCost(rival.warband) / enemyPoints(node.step);
   }
 
+  rollLimits(nodes, base + 1, seed, rnd);
   return { act, nodes, at: null, path: [], closed: [] };
+}
+
+/**
+ * Give some plain battles a tighter point limit, by weight (mutates `nodes`;
+ * `first` is the step of the bottom row). Never the bottom row, a rival's node,
+ * or a step before `limits.fromRound`. A skirmish is rolled only where the step's
+ * weakest enemy would cost more than a skirmish's does; its node's budget is
+ * cut to that, and its threat scouted again. A rival's node is rolled for like
+ * any other and the roll thrown away, so a run meets the same limits whether or
+ * not it has rivals.
+ */
+function rollLimits(nodes: readonly RouteNode[], first: number, seed: number, rnd: RunRandom): void {
+  const { fromRound, kinds: weights, skirmish } = RUN_TUNING.limits;
+  const rolled = Object.keys(weights) as (keyof typeof weights)[];
+  for (const node of nodes) {
+    const usual = enemyPoints(node.step);
+    if (node.kind !== 'battle' || node.step === first || node.step < fromRound) continue;
+    const small = usual * RUN_TUNING.mission.threat.min > skirmish.points;
+    const kind: LimitKind | 'none' = rnd.weighted(
+      rolled.filter((k) => k !== 'skirmish' || small),
+      (k) => weights[k],
+    );
+    if (kind === 'none' || node.rival) continue;
+    node.limit = kind;
+    if (kind === 'skirmish') {
+      node.budget = skirmish.points / usual;
+      node.threat = scoutEnemy(seed, node.step, node).threat;
+    }
+  }
 }
 
 /** The nodes the run may travel to now: those the last one leads to (the bottom row, at the act's start), but for the closed. None while a node is being played. */

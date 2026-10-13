@@ -58,6 +58,13 @@ export type RewardOption =
   /** Mends the oldest lasting wound of a unit of the player's choice. */
   | { kind: 'mend' };
 
+/**
+ * A battle that lets fewer points onto the field than most: a `skirmish`
+ * against a small enemy, an `even` fight at the enemy's own cost, or one fought
+ * as the `underdog`, at less than it.
+ */
+export type LimitKind = 'skirmish' | 'even' | 'underdog';
+
 /** What a place on the route is. A `battle`, an `elite` and the act's `boss` are fights; the rest are stops. */
 export type NodeKind = 'battle' | 'elite' | 'market' | 'camp' | 'training' | 'mystery' | 'boss';
 
@@ -87,6 +94,8 @@ export interface RouteNode {
   rewardKind?: RewardOption['kind'];
   /** A past run's warband waits here. */
   rival?: true;
+  /** Plain battles: the tighter limit on the points fielded here, if it has one. */
+  limit?: LimitKind;
 }
 
 /** An act's map: its nodes, bottom row first and the boss last, and where on it the run stands. */
@@ -158,6 +167,10 @@ export interface RunBattle {
   seed: number;
   /** How hard it is: the enemy's cost over the step's budget. */
   threat: number;
+  /** Most points the player may field (a lone unit may always fight). Absent in a run saved before battles had limits: no limit. */
+  limit?: number;
+  /** The node's tighter kind of limit, if it has one: a win pays its units extra XP. */
+  limitKind?: LimitKind;
   /** What winning pays, all of it. At most one part needs a unit to go to. */
   rewards: RewardOption[];
   /** What `rewards` are worth in gold: paid instead if they can no longer be taken. */
@@ -230,6 +243,8 @@ export interface Aftermath {
   retreated?: true;
   /** The battle had no reward at stake (an ambush): the field shop comes next. */
   plain?: true;
+  /** The battle was won under a tighter limit of this kind: the XP shown includes its bonus. */
+  limitKind?: LimitKind;
 }
 
 /** One line of the run's history. */
@@ -282,7 +297,7 @@ export type RunAction =
   | { type: 'draftPick'; index: number }
   /** Map: go to an open node of the route. */
   | { type: 'travel'; nodeId: number }
-  /** Briefing: leave a unit out of the battle, or put it back. */
+  /** Briefing: leave a unit out of the battle, or put it back (if the battle's point limit has room for it). */
   | { type: 'bench'; unitId: string; benched: boolean }
   /** Briefing of a boss round: make a unit the King. */
   | { type: 'setKing'; unitId: string }

@@ -103,6 +103,30 @@ export function playerWarband(s: RunState): Warband {
   return { name: RUN_WARBAND_NAME, units: fieldedUnits(s).map((u) => ({ ...u.unit })) };
 }
 
+/** Point cost of the warband the next battle fields. */
+export function fieldedCost(s: RunState): number {
+  return fieldedUnits(s).reduce((sum, u) => sum + unitCost(u.unit), 0);
+}
+
+/**
+ * Bench and field the roster for a battle that lets `limit` points through
+ * (mutates `s`), forgetting who was benched before: the Leader goes first (the
+ * costliest unit, if nobody leads), then the rest from the costliest down, each
+ * if it still fits. The first is fielded whatever it costs, so someone fights.
+ */
+export function fitToLimit(s: RunState, limit: number): void {
+  for (const u of s.roster) delete u.benched;
+  const cost = (u: RunUnit) => unitCost(u.unit);
+  // A stable sort: units of one cost keep their roster order.
+  const byCost = [...fitUnits(s)].sort((a, b) => cost(b) - cost(a));
+  const order = [...byCost.filter((u) => u.unit.leader), ...byCost.filter((u) => !u.unit.leader)];
+  let left = limit;
+  order.forEach((u, i) => {
+    if (i === 0 || cost(u) <= left) left -= cost(u);
+    else u.benched = true;
+  });
+}
+
 /** Mend a unit's oldest lasting wound (mutates it); throws if it has none. */
 export function mendOldest(u: RunUnit): void {
   const wound = u.wounds?.[0];
