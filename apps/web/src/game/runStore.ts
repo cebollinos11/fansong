@@ -86,6 +86,12 @@ function kinded(raw: unknown, kinds: readonly string[], what: string): Record<st
 }
 
 const STEP_KINDS = ['trait', 'combat', 'quality'];
+const LIMIT_KINDS = ['skirmish', 'even', 'underdog'];
+
+/** A tighter kind of point limit, where there is one. A run saved before battles had limits names none. */
+function limitKind(v: unknown, message: string): void {
+  if (v !== undefined && !(typeof v === 'string' && LIMIT_KINDS.includes(v))) fail(message);
+}
 
 /** What a battle pays: a list of rewards. */
 function parseRewards(raw: unknown): unknown[] {
@@ -102,6 +108,8 @@ function parseRewards(raw: unknown): unknown[] {
 function parseBattle(raw: Record<string, unknown>): Record<string, unknown> {
   if (typeof raw.faction !== 'string' || typeof raw.threat !== 'number' || !(raw.threat >= 0)) fail('bad battle');
   count(raw.rewardValue, 'bad battle');
+  if (raw.limit !== undefined) count(raw.limit, 'bad battle');
+  limitKind(raw.limitKind, 'bad battle');
   return { ...raw, enemy: parseWarband(raw.enemy), rewards: parseRewards(raw.rewards) };
 }
 
@@ -129,6 +137,7 @@ function parseRoute(raw: unknown): Record<string, unknown> {
     if (node.mode !== undefined && typeof node.mode !== 'string') fail(bad);
     if (node.rewardKind !== undefined && !(typeof node.rewardKind === 'string' && REWARD_KINDS.includes(node.rewardKind))) fail(bad);
     if (node.rival !== undefined && node.rival !== true) fail(bad);
+    limitKind(node.limit, bad);
   });
   if (raw.at !== null) index(raw.at);
   if (raw.going !== undefined) index(raw.going);

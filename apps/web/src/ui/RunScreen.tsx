@@ -387,6 +387,14 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
       <section className="run-panel run-yours">
         <h2 className="muster-label side-label-0">Your warband</h2>
         <p className="muster-meta">{view.fielded}</p>
+        {view.limit ? (
+          <p className={view.limit.kind ? `muster-meta run-limit ${view.limit.kind}` : 'muster-meta run-limit'} title={view.limit.help}>
+            <strong>
+              {view.limit.label}: {view.limit.points} pts
+            </strong>{' '}
+            ({view.limit.left} left). {view.limit.help}
+          </p>
+        ) : null}
         <ul className="run-units">
           {view.units.map((u) => (
             <UnitCard
@@ -398,6 +406,7 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
                   {u.king ? <span className="run-flag king">♛ King</span> : null}
                   {u.view.sitsOut ? <span className="run-flag">Hurt: sits this one out</span> : null}
                   {u.view.benched && !u.view.sitsOut ? <span className="run-flag">Benched</span> : null}
+                  {u.view.benched && u.bench?.error ? <span className="run-flag run-refused">{u.bench.error}</span> : null}
                 </>
               }
             >
@@ -407,7 +416,7 @@ function Briefing({ view, act }: { view: BriefingView; act: Act }): JSX.Element 
                 </Go>
               ) : null}
               {u.bench ? (
-                <Go choice={u.bench} act={act} title={u.view.benched ? 'Put it back in the battle' : 'Leave it out of this battle'}>
+                <Go choice={u.bench} act={act} title={u.view.benched ? `Put it back in the battle (${u.view.cost} pts)` : 'Leave it out of this battle'}>
                   {u.view.benched ? 'Field' : 'Bench'}
                 </Go>
               ) : null}
@@ -454,6 +463,11 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
             <Rewards rewards={view.rewards} />
           </>
         )}
+        {view.bonus ? (
+          <p className="muster-meta run-limit-bonus">
+            {view.bonus.label} won: every unit that fought earns +{view.bonus.xp} XP on top of its own (counted below).
+          </p>
+        ) : null}
         <table className="run-table">
           <thead>
             <tr>

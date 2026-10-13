@@ -6787,6 +6787,40 @@ button.trait-add[aria-expanded='true'] {
   pointer-events: none;
 }
 
+/* A battle with a tighter point limit: a small badge on its corner. */
+.run-node .run-node-limit circle {
+  fill: #1d2430;
+  stroke: #e6c15a;
+  stroke-width: 1.5;
+}
+
+.run-node-limit text {
+  fill: #e6c15a;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.run-node .run-node-limit.underdog circle {
+  stroke: #e0563f;
+}
+
+.run-node-limit.underdog text {
+  fill: #e0563f;
+}
+
+.run-flag.run-refused {
+  color: #e0563f;
+}
+
+.run-limit strong {
+  color: #e6c15a;
+}
+
+.run-limit.underdog strong {
+  color: #e0563f;
+}
+
 .run-node.elite circle {
   stroke: #e0563f;
 }

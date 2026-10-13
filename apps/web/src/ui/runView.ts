@@ -8,6 +8,7 @@ import {
   eventChoices,
   eventText,
   eventTitle,
+  fieldedCost,
   fieldedUnits,
   isBossRound,
   isFight,
@@ -30,6 +31,7 @@ import {
   upgradePrice,
   type Advance,
   type AftermathLine,
+  type LimitKind,
   type MapDef,
   type NodeKind,
   type RewardOption,
@@ -355,6 +357,34 @@ export const NODE_INFO: Record<NodeKind, { label: string; glyph: string; help: s
   boss: { label: 'Boss', glyph: '♛', help: "The act's champion and its escort, in a fight to kill the King. There is no way round." },
 };
 
+const percent = (share: number) => `${Math.round(share * 100)}%`;
+const bonusXp = (kind: LimitKind) => `Every unit that fights it earns +${RUN_TUNING.limits.xp[kind]} XP if it is won.`;
+
+/**
+ * What each tighter kind of point limit is called, a sign for the map, and what
+ * it asks and pays.
+ */
+export const LIMIT_INFO: Record<LimitKind, { label: string; glyph: string; help: string }> = {
+  skirmish: {
+    label: 'Skirmish',
+    glyph: '◐',
+    help: `A small warband of about ${RUN_TUNING.limits.skirmish.points} points, and you may field no more points than it costs. ${bonusXp('skirmish')}`,
+  },
+  even: {
+    label: 'Even fight',
+    glyph: '=',
+    help: `You may field no more points than the enemy costs. ${bonusXp('even')}`,
+  },
+  underdog: {
+    label: 'Underdog',
+    glyph: '▼',
+    help: `You may field only ${percent(RUN_TUNING.limits.underdog.share)} of the points the enemy costs. ${bonusXp('underdog')}`,
+  },
+};
+
+/** The limit every battle has, for the map's blurb and the briefing. */
+export const CEILING_HELP = `You may field up to ${percent(RUN_TUNING.limits.ceiling.share)} of the points the enemy costs (never fewer than ${RUN_TUNING.limits.ceiling.floor}). One unit may always fight, whatever it costs.`;
+
 const REWARD_KINDS: Record<RewardOption['kind'], string> = {
   recruit: 'a recruit',
   boost: 'training for one unit',
@@ -384,6 +414,8 @@ export interface RouteNodeView {
   skulls?: number;
   /** A fight's faction, as a unit to draw in shadow; none for a rival. */
   look?: string;
+  /** A battle with a tighter point limit: its kind, name and sign. */
+  limit?: { kind: LimitKind; label: string; glyph: string };
   /** What is known of it from here, a line each: its danger, mode, enemy and pay, or what the stop offers. */
   lines: string[];
   /** Go there; `null` unless it is open. */
@@ -411,6 +443,7 @@ function nodeLines(node: RouteNode): string[] {
   const maxSkulls = RUN_TUNING.mission.skulls;
   const skulls = node.kind === 'battle' ? missionSkulls(node.threat ?? 1) : maxSkulls;
   const lines = [`${'☠'.repeat(skulls)} ${node.kind === 'boss' ? 'Boss' : node.kind === 'elite' ? 'Elite' : threatLabel(skulls, maxSkulls)}`];
+  if (node.limit) lines.push(`${LIMIT_INFO[node.limit].glyph} ${LIMIT_INFO[node.limit].label}: ${LIMIT_INFO[node.limit].help}`);
   if (node.mode) lines.push(MODE_LABELS[node.mode]);
   lines.push(node.rival ? 'The warband a past run of yours ended with' : `Against ${PRESET_ROSTERS[node.faction ?? '']?.name ?? 'an unknown warband'}`);
   if (node.rewardKind) lines.push(`Pays ${REWARD_KINDS[node.rewardKind]}`);
@@ -452,6 +485,7 @@ export function routeView(s: RunState): RouteView | null {
     if (isFight(node.kind)) view.skulls = node.kind === 'battle' ? missionSkulls(node.threat ?? 1) : RUN_TUNING.mission.skulls;
     const lead = PRESET_ROSTERS[node.faction ?? '']?.units[0]?.unit;
     if (lead && !node.rival) view.look = lead;
+    if (node.limit) view.limit = { kind: node.limit, label: LIMIT_INFO[node.limit].label, glyph: LIMIT_INFO[node.limit].glyph };
     return view;
   });
 
@@ -479,7 +513,7 @@ export interface BriefingUnit {
   view: UnitView;
   /** Whether it fights this battle. */
   fielded: boolean;
-  /** Bench it or put it back; `null` for a unit sitting this battle out hurt. */
+  /** Bench it or put it back (refused, with the reason, if the point limit has no room for it); `null` for a unit sitting this battle out hurt. */
   bench: Choice | null;
   /** Boss rounds: whether it is the King. */
   king: boolean;
@@ -500,8 +534,14 @@ export interface BriefingView {
   /** Whether the battlefield has lava on it. */
   lava: boolean;
   units: BriefingUnit[];
-  /** "5 units · 118 pts take the field". */
+  /** "5 units · 212 / 240 pts take the field": who fights, at what cost, out of what the battle allows. */
   fielded: string;
+  /**
+   * The most points this battle lets onto the field, and what is left of them;
+   * a tighter kind of limit has a name, and `help` says what the limit is.
+   * `null` for a briefing saved before battles had limits.
+   */
+  limit: { points: number; left: number; kind: LimitKind | null; label: string; help: string } | null;
   /** Whether this battle can be retreated from, and what that costs (see {@link retreatNote}). */
   retreat: { banners: number; note: string };
   start: Choice;
@@ -513,6 +553,8 @@ export function briefingView(s: RunState): BriefingView | null {
   const boss = battle.mode === 'kill-the-king';
   const fielded = fieldedUnits(s);
   const warband = playerWarband(s);
+  const cost = fieldedCost(s);
+  const kind = battle.limitKind ?? null;
   const kingId = boss ? (fielded.find((u) => u.id === battle.playerKing) ?? fielded[defaultKing(warband.units)])?.id : undefined;
   return {
     mode: MODE_LABELS[battle.mode],
@@ -532,7 +574,17 @@ export function briefingView(s: RunState): BriefingView | null {
         crown: boss && fights && u.id !== kingId ? choice(s, { type: 'setKing', unitId: u.id }) : null,
       };
     }),
-    fielded: `${fielded.length} ${fielded.length === 1 ? 'unit' : 'units'} · ${warband.units.reduce((sum, u) => sum + unitCost(u), 0)} pts take the field`,
+    fielded: `${fielded.length} ${fielded.length === 1 ? 'unit' : 'units'} · ${cost}${battle.limit === undefined ? '' : ` / ${battle.limit}`} pts take the field`,
+    limit:
+      battle.limit === undefined
+        ? null
+        : {
+            points: battle.limit,
+            left: Math.max(0, battle.limit - cost),
+            kind,
+            label: kind ? LIMIT_INFO[kind].label : 'Point limit',
+            help: kind ? `${LIMIT_INFO[kind].help} One unit may always fight, whatever it costs.` : CEILING_HELP,
+          },
     retreat: { banners: s.banners, note: retreatNote(s.banners) },
     start: choice(s, { type: 'startBattle' }),
   };
@@ -675,6 +727,8 @@ export interface AftermathView {
   rewards: RewardLine[];
   /** Whether the battle had no reward at stake (an ambush): the field shop comes next. */
   plain: boolean;
+  /** Won under a tighter point limit: its name, and the XP each unit that fought got for it (already in the lines). */
+  bonus: { label: string; xp: number } | null;
   /** Levels waiting to be spent: one choice of advances per unit at a time. */
   levelUps: LevelUpView[];
   next: Choice;
@@ -693,6 +747,7 @@ export function aftermathView(s: RunState): AftermathView | null {
     gold: s.aftermath.gold,
     rewards: s.offer?.kind === 'reward' ? s.offer.rewards.map(rewardLine) : [],
     plain: s.aftermath.plain === true,
+    bonus: s.aftermath.limitKind ? { label: LIMIT_INFO[s.aftermath.limitKind].label, xp: RUN_TUNING.limits.xp[s.aftermath.limitKind] } : null,
     lines: s.aftermath.units.map((line) => ({ unitId: line.unitId, name: line.name, kills: line.kills, xp: line.xp, ...fateText(line) })),
     levelUps: levelUps(s),
     next: choice(s, { type: 'continue' }),

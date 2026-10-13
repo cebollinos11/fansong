@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react';
 import type { RunAction, RunState } from '@fansong/content';
 import { LookSprite } from './Picker.js';
 import { nodeImageUrl } from './nodeArt.js';
-import { routeView, type RouteNodeView, type RouteView } from './runView.js';
+import { CEILING_HELP, routeView, type RouteNodeView, type RouteView } from './runView.js';
 
 const BASE = import.meta.env.BASE_URL;
 
@@ -22,6 +22,9 @@ export function RunMap({ run, act, roster }: { run: RunState; act: (action: RunA
         <h2 className="muster-label">{view.place}</h2>
         <p className="muster-meta">
           Pick your road to the boss. A battle pays in experience, gold and its reward; the enemy grows with every step, fought or not.
+        </p>
+        <p className="muster-meta">
+          Every battle limits the points you field: {CEILING_HELP} A marked battle is tighter, and pays those who fight it extra experience.
         </p>
         <div className="run-route-layout">
           <RouteMap view={view} act={act} hover={hover} onHover={setHover} />
@@ -85,6 +88,14 @@ export function RouteMap({
               <text className="run-node-skulls" y={34} textAnchor="middle">
                 {'☠︎'.repeat(n.skulls)}
               </text>
+            ) : null}
+            {n.limit ? (
+              <g className={`run-node-limit ${n.limit.kind}`} transform="translate(19 -19)" data-limit={n.limit.kind}>
+                <circle r={8} />
+                <text y={3.5} textAnchor="middle">
+                  {n.limit.glyph}
+                </text>
+              </g>
             ) : null}
             {n.state === 'closed' ? <path className="run-node-cross" d="M-17 -17 L17 17 M17 -17 L-17 17" /> : null}
           </g>

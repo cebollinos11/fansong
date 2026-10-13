@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
 import {
+  fieldedCost,
   injuryFor,
   legalRunActions,
   missionSkulls,
@@ -45,6 +46,7 @@ import {
   aftermathView,
   briefingView,
   campView,
+  CEILING_HELP,
   draftView,
   eventView,
   fateText,
@@ -54,6 +56,7 @@ import {
   renameError,
   standingUnits,
   levelLine,
+  LIMIT_INFO,
   NODE_INFO,
   overView,
   placeLine,
@@ -425,6 +428,79 @@ describe('the run screens', () => {
     let alone = s;
     for (const u of s.roster.slice(1)) alone = runStep(alone, { type: 'bench', unitId: u.id, benched: true });
     expect(briefingView(alone)!.units[0]!.bench!.error).toBe('someone has to fight');
+  });
+
+  it("shows the battle's point limit, who it leaves out, and why a unit can't be fielded", () => {
+    const s = playTo(newRun(11), 'briefing');
+    const cost = fieldedCost(s);
+    const limit = s.battle!.limit!;
+    // A drafted warband is under the first battle's limit: all of it fights.
+    const view = briefingView(s)!;
+    expect(view.fielded).toBe(`${s.roster.length} units · ${cost} / ${limit} pts take the field`);
+    expect(view.limit).toEqual({ points: limit, left: limit - cost, kind: null, label: 'Point limit', help: CEILING_HELP });
+    expect(CEILING_HELP).toContain(`${RUN_TUNING.limits.ceiling.floor}`);
+
+    // A battle too small for the warband: the unit left out can't be put back, and the button says what it would take.
+    const out = s.roster.at(-1)!;
+    const room = cost - unitCost(out.unit);
+    const tight: RunState = {
+      ...s,
+      roster: s.roster.map((u) => (u === out ? { ...u, benched: true } : u)),
+      battle: { ...s.battle!, limit: room + 1, limitKind: 'underdog' },
+    };
+    const short = briefingView(tight)!;
+    expect(short.fielded).toBe(`${s.roster.length - 1} units · ${room} / ${room + 1} pts take the field`);
+    expect(short.limit).toMatchObject({ points: room + 1, left: 1, kind: 'underdog', label: LIMIT_INFO.underdog.label });
+    expect(short.limit!.help).toContain(`+${RUN_TUNING.limits.xp.underdog} XP`);
+    expect(short.units.at(-1)).toMatchObject({ fielded: false, bench: { error: `${out.unit.name} needs ${unitCost(out.unit)} pts, 1 left` } });
+    expect(short.start.error).toBeNull();
+    // Bench another, and there is room.
+    const swapped = taken(tight, short.units[0]!.bench!);
+    expect(briefingView(swapped)!.units.at(-1)!.bench!.error === null).toBe(unitCost(out.unit) <= unitCost(s.roster[0]!.unit) + 1);
+
+    // Each tighter kind has a name, a sign of its own and a line that says what it asks and pays.
+    const kinds = ['skirmish', 'even', 'underdog'] as const;
+    expect(Object.keys(LIMIT_INFO).sort()).toEqual([...kinds].sort());
+    expect(new Set(kinds.map((k) => LIMIT_INFO[k].glyph)).size).toBe(kinds.length);
+    for (const k of kinds) expect(LIMIT_INFO[k].help).toContain(`+${RUN_TUNING.limits.xp[k]} XP`);
+    // The map marks such a battle, and says so among what is known of it.
+    const map = playTo(newRun(11), 'map');
+    const id = openNodes(map.route!)[0]!;
+    for (const k of kinds) {
+      const route = { ...map.route!, nodes: map.route!.nodes.map((n) => (n.id === id ? { ...n, limit: k } : n)) };
+      const node = routeView({ ...map, route })!.nodes[id]!;
+      expect(node.limit).toEqual({ kind: k, label: LIMIT_INFO[k].label, glyph: LIMIT_INFO[k].glyph });
+      expect(node.lines).toHaveLength(5);
+      expect(node.lines[1]).toBe(`${LIMIT_INFO[k].glyph} ${LIMIT_INFO[k].label}: ${LIMIT_INFO[k].help}`);
+    }
+    expect(routeView(map)!.nodes.every((n) => n.limit === undefined || map.route!.nodes[n.id]!.limit === n.limit.kind)).toBe(true);
+    expect(routeView(map)!.nodes[id]!.limit).toBeUndefined();
+
+    // Won under a tighter limit, the aftermath names the bonus its XP includes.
+    const battle = runStep(tight, { type: 'startBattle' });
+    const won = aftermathView(runStep(battle, { type: 'devWin' }))!;
+    expect(won.bonus).toEqual({ label: LIMIT_INFO.underdog.label, xp: RUN_TUNING.limits.xp.underdog });
+    expect(won.lines.map((l) => l.xp)).toEqual(battle.battle!.fielded!.map(() => RUN_TUNING.xp.fought + RUN_TUNING.limits.xp.underdog));
+    expect(aftermathView(WON)!.bonus).toBeNull();
+  });
+
+  it('loads a run saved before battles had point limits, and plays it without one', () => {
+    const s = playTo(newRun(11), 'briefing');
+    const { limit: _limit, ...battle } = s.battle!;
+    const old: RunState = { ...s, battle };
+    const storage = memoryStorage();
+    expect(saveRun(storage, old)).toBe(true);
+    const loaded = loadRun(storage)!;
+    expect(loaded).toEqual(old);
+    const view = briefingView(loaded)!;
+    expect(view.limit).toBeNull();
+    expect(view.fielded).toBe(`${s.roster.length} units · ${fieldedCost(s)} pts take the field`);
+    expect(view.start.error).toBeNull();
+    expect(view.units.every((u) => u.bench?.error === null)).toBe(true);
+    // A limit that is not one is not a run.
+    expect(() => parseRun({ ...s, battle: { ...s.battle!, limitKind: 'ambush' } })).toThrow(/bad battle/);
+    expect(() => parseRun({ ...s, battle: { ...s.battle!, limit: -1 } })).toThrow(/bad battle/);
+    expect(parseRun({ ...s, battle: { ...s.battle!, limit: 90, limitKind: 'even' } }).battle).toMatchObject({ limit: 90, limitKind: 'even' });
   });
 
   it('crowns a King on a boss round', () => {
