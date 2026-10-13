@@ -2,53 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { createGame, DEFAULT_SURRENDER, makeHexGrid, reduce, getLegalCommands, tossInitiative, vecKey } from '@fansong/engine';
 import { unitCost } from '../src/cost.js';
 import { warbandCost } from '../src/warband.js';
-import { buildMatch, DEFAULT_BOARD, DEFAULT_MAP, defaultPigRounds, GOLDEN_PIG, layOutWarband } from '../src/deploy.js';
+import { buildMatch, DEFAULT_BOARD, DEFAULT_MAP, defaultPigRounds, GOLDEN_PIG } from '../src/deploy.js';
 import { listMaps } from '../src/mapRegistry.js';
 import { supportedModes } from '../src/mapValidate.js';
 import { PRESETS } from '../src/presets.js';
 
 const board = DEFAULT_BOARD;
-
-describe('layOutWarband', () => {
-  it('places player 0 on the left edge and player 1 on the right edge', () => {
-    const p0 = layOutWarband(PRESETS['iron-wardens-medium']!.units, 0, board);
-    const p1 = layOutWarband(PRESETS['ashfang-raiders-medium']!.units, 1, board);
-    expect(p0.every((s) => s.pos.x === 0)).toBe(true); // one column fits
-    expect(p1.every((s) => s.pos.x === board.width - 1)).toBe(true);
-  });
-
-  it('keeps every model in bounds with no two sharing a cell', () => {
-    // A deliberately overflowing roster to exercise column wrapping.
-    const units = Array.from({ length: board.height + 3 }, (_, i) => ({
-      name: `U${i}`,
-      quality: 4,
-      combat: 2,
-    }));
-    const specs = layOutWarband(units, 0, board);
-    const seen = new Set<string>();
-    for (const s of specs) {
-      expect(s.pos.x).toBeGreaterThanOrEqual(0);
-      expect(s.pos.x).toBeLessThan(board.width);
-      expect(s.pos.y).toBeGreaterThanOrEqual(0);
-      expect(s.pos.y).toBeLessThan(board.height);
-      const key = vecKey(s.pos);
-      expect(seen.has(key), `collision at ${key}`).toBe(false);
-      seen.add(key);
-    }
-  });
-
-  it('wraps overflow into a second column inward from the edge', () => {
-    const units = Array.from({ length: board.height + 1 }, (_, i) => ({
-      name: `U${i}`,
-      quality: 4,
-      combat: 2,
-    }));
-    const p0 = layOutWarband(units, 0, board);
-    const p1 = layOutWarband(units, 1, board);
-    expect(p0.some((s) => s.pos.x === 1)).toBe(true);
-    expect(p1.some((s) => s.pos.x === board.width - 2)).toBe(true);
-  });
-});
 
 describe('buildMatch', () => {
   it('produces a config that createGame accepts and can start reducing', () => {

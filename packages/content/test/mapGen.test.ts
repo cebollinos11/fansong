@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { GAME_MODES as MODES, MAX_ELEVATION } from '@fansong/engine';
 import {
   FEATURE_SHARE_MAX,
+  DEPLOY_DEPTH,
   FLAG_EDGE_DISTANCE,
   generateRandomMap,
   MAP_LIMITS,
@@ -56,6 +57,19 @@ describe('generateRandomMap', () => {
         expect(map.hexes[y * map.width + x]).toEqual(map.hexes[m.y * map.width + m.x]);
       }
     expect(map.objectives.flags![1]).toEqual(mirrorHex(map, map.objectives.flags![0]));
+  });
+
+  it('deploys each side in the two columns of its home edge, whatever the size', () => {
+    expect(DEPLOY_DEPTH).toBe(2);
+    for (const symmetric of [true, false])
+      for (const [w, h] of sizes) {
+        const map = generateRandomMap(w, h, 1, { symmetric });
+        const [z0, z1] = map.deployZones;
+        expect(z0).toHaveLength(2 * h);
+        expect(z1).toHaveLength(2 * h);
+        expect(z0.every((v) => v.x < 2)).toBe(true);
+        expect(z1.every((v) => v.x >= w - 2)).toBe(true);
+      }
   });
 
   it('sets each flag base 3–5 hexes in from its home edge', () => {

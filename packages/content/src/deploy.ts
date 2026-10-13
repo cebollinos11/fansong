@@ -11,7 +11,7 @@ export interface BoardSize {
 
 export interface MatchOptions {
   seed: number;
-  /** Legacy flat board (edge-column deployment). Ignored when `map` is given. */
+  /** Legacy flat board, deploying in the two columns of each home edge. Ignored when `map` is given. */
   board?: BoardSize;
   /** Battlefield to play on: its terrain, and deploy zones units are laid out in. */
   map?: MapDef;
@@ -151,38 +151,22 @@ function toSpec(unit: WarbandUnit, pos: Vec): UnitSpec {
 }
 
 /**
- * Deterministic deployment: line a warband up in its home column(s). Player 0
- * deploys from the left edge rightward, player 1 from the right edge leftward.
- * Each column holds up to `board.height` models, vertically centred; overflow
- * wraps into the next column inward. No two placements collide.
+ * Where a hex's centre lies on the plane, relative to the centre of a
+ * `width`×`height` board (the mean of every hex centre), as a squared distance.
+ * Odd columns sit half a row lower, as on the engine's grid.
  */
-export function layOutWarband(units: WarbandUnit[], owner: Owner, board: BoardSize): UnitSpec[] {
-  const perColumn = Math.max(1, board.height);
-  const specs: UnitSpec[] = [];
-
-  units.forEach((unit, i) => {
-    const column = Math.floor(i / perColumn);
-    const rowIndex = i % perColumn;
-    // How many models share this column, to centre them vertically.
-    const inColumn = Math.min(perColumn, units.length - column * perColumn);
-    const top = Math.floor((board.height - inColumn) / 2);
-
-    const x = owner === 0 ? column : board.width - 1 - column;
-    const y = top + rowIndex;
-    specs.push(toSpec(unit, { x, y }));
-  });
-
-  return specs;
+function centreDistance(v: Vec, width: number, height: number): number {
+  const dx = ((v.x - (width - 1) / 2) * Math.sqrt(3)) / 2;
+  const dy = v.y + (v.x & 1) / 2 - ((height - 1) / 2 + Math.floor(width / 2) / (2 * width));
+  return dx * dx + dy * dy;
 }
 
 /**
- * Deterministic deployment into a map's deploy zone for `owner`. The zone is cut
- * into ranks by hex distance to the nearest enemy deploy hex; the rank farthest
- * from the enemy fills first, overflow spills into the next rank forward. Each
- * rank runs across the enemy direction (by row when the enemy lies left/right,
- * by column when above/below) and its models take a centred run of its hexes.
- *
- * On {@link DEFAULT_MAP} this is exactly {@link layOutWarband}'s placement.
+ * Deterministic deployment into a map's deploy zone for `owner`: the warband
+ * takes the hexes of the zone nearest the centre of the board, one each (ties
+ * go to the lower row, then the lower column). The models then stand on them in
+ * roster order across the enemy direction: by row when the enemy lies
+ * left/right, by column when above/below.
  *
  * A warband too big for its zone fills the zone, then spills onto the nearest
  * open ground outside it (see {@link overflowHexes}), never onto the enemy's
@@ -197,33 +181,19 @@ export function layOutInZone(units: WarbandUnit[], owner: Owner, map: MapDef, ta
       `map "${map.id}" has room for only ${zone.length + overflow.length} of player ${owner}'s ${units.length} models`,
     );
 
-  const grid = makeHexGrid({ width: map.width, height: map.height, blocked: [] });
-  const depth = (v: Vec) =>
-    enemy.length === 0 ? 0 : Math.min(...enemy.map((e) => grid.distance(v, e)));
   const mean = (vs: Vec[], k: 'x' | 'y') => (vs.length === 0 ? 0 : vs.reduce((s, v) => s + v[k], 0) / vs.length);
-  // Ranks run perpendicular to the line between the two zones.
+  // The line runs perpendicular to the one between the two zones.
   const sideways =
     Math.abs(mean(enemy, 'x') - mean(zone, 'x')) >= Math.abs(mean(enemy, 'y') - mean(zone, 'y'));
   const across = (a: Vec, b: Vec) => (sideways ? a.y - b.y || a.x - b.x : a.x - b.x || a.y - b.y);
+  const off = (v: Vec) => centreDistance(v, map.width, map.height);
 
-  const ranks = new Map<number, Vec[]>();
-  for (const v of zone) {
-    const d = depth(v);
-    ranks.set(d, [...(ranks.get(d) ?? []), v]);
-  }
-  const ordered = [...ranks.entries()].sort((a, b) => b[0] - a[0]).map(([, hexes]) => hexes.sort(across));
-
-  const specs: UnitSpec[] = [];
-  let next = 0;
-  for (const rank of ordered) {
-    const count = Math.min(rank.length, units.length - next);
-    if (count <= 0) break;
-    const start = Math.floor((rank.length - count) / 2);
-    for (let i = 0; i < count; i++) specs.push(toSpec(units[next + i]!, { ...rank[start + i]! }));
-    next += count;
-  }
-  overflow.slice(0, units.length - next).forEach((v, i) => specs.push(toSpec(units[next + i]!, { ...v })));
-  return specs;
+  const chosen = zone
+    .slice()
+    .sort((a, b) => off(a) - off(b) || a.y - b.y || a.x - b.x)
+    .slice(0, units.length)
+    .sort(across);
+  return [...chosen, ...overflow.slice(0, units.length - chosen.length)].map((v, i) => toSpec(units[i]!, { ...v }));
 }
 
 /**
@@ -260,7 +230,7 @@ function overflowHexes(map: MapDef, zone: Vec[], avoid: Vec[], count: number): V
  *
  * With `opts.map` the board takes the map's terrain and warbands deploy into its
  * zones (the map must pass `validateMap`); otherwise the legacy flat `opts.board`
- * (default {@link DEFAULT_BOARD}) with edge-column deployment is used.
+ * (default {@link DEFAULT_BOARD}), deploying in the two columns of each home edge, is used.
  *
  * `opts.mode` adds `mode` to the config: objective modes take the map's
  * objectives (the map must provide them), kill-the-king flags each side's King,
@@ -274,8 +244,8 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
   const mode = opts.mode ?? 'annihilation';
   const escort: Owner | undefined = mode === 'golden-pig' ? (opts.escort ?? 0) : undefined;
   if (escort !== undefined && escort !== 0 && escort !== 1) throw new Error(`escort must be player 0 or 1, got ${String(escort)}`);
-  // The Pig deploys first, so it lands in the back rank, and trades places with
-  // whoever stands in the middle of it; its spec then goes last, so every other
+  // The Pig deploys first, then trades places with whoever stands in the middle
+  // of the rank farthest from the enemy; its spec then goes last, so every other
   // unit keeps the id it has in any other mode.
   const fielded = (w: Warband, owner: Owner) => (owner === escort ? [GOLDEN_PIG, ...w.units] : w.units);
   const field = opts.map ?? flatMap((opts.board ?? DEFAULT_BOARD).width, (opts.board ?? DEFAULT_BOARD).height);
@@ -285,7 +255,8 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
     const grid = makeHexGrid({ width: field.width, height: field.height, blocked: [] });
     const enemy = field.deployZones[owner === 0 ? 1 : 0];
     const depth = (v: Vec) => Math.min(...enemy.map((e) => grid.distance(v, e)));
-    const rank = specs.filter((s) => depth(s.pos) === depth(pig!.pos));
+    const back = Math.max(...specs.map((s) => depth(s.pos)));
+    const rank = specs.filter((s) => depth(s.pos) === back);
     const centre = { x: rank.reduce((n, s) => n + s.pos.x, 0) / rank.length, y: rank.reduce((n, s) => n + s.pos.y, 0) / rank.length };
     const off = (s: UnitSpec) => (s.pos.x - centre.x) ** 2 + (s.pos.y - centre.y) ** 2;
     const middle = rank.reduce((best, s) => (off(s) < off(best) ? s : best));
@@ -314,7 +285,7 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
     config = {
       seed: opts.seed,
       board: { width: board.width, height: board.height },
-      warbands: [pigLast(layOutWarband(fielded(p0, 0), 0, board), 0), pigLast(layOutWarband(fielded(p1, 1), 1, board), 1)],
+      warbands: [pigLast(layOutInZone(fielded(p0, 0), 0, field), 0), pigLast(layOutInZone(fielded(p1, 1), 1, field), 1)],
       initiativeLeader: opts.initiativeLeader ?? tossInitiative(opts.seed),
     };
     // The goal is the defender's edge column.

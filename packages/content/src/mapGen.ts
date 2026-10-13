@@ -63,6 +63,9 @@ export const CLUMPING_RANGE = { min: 0.25, max: 2.5 } as const;
 /** How far in from its home edge a flag base sits. */
 export const FLAG_EDGE_DISTANCE = { min: 3, max: 5 } as const;
 
+/** How many home-edge columns a generated deploy zone takes, on a map of any size. */
+export const DEPLOY_DEPTH = 2;
+
 type Random = { next: () => number; int: (lo: number, hi: number) => number };
 
 /** Simple stateful wrapper over the engine's pure mulberry32 RNG. */
@@ -117,10 +120,9 @@ function objectiveLayout(w: number, h: number, rnd: Random, symmetric: boolean):
   const grid = makeHexGrid({ width: w, height: h, blocked: [] });
   const blob = (center: Vec, r: number): Vec[] => [center, ...grid.cellsWithin(center, r)];
 
-  // Home-edge columns, deep enough to hold a full warband.
-  const depth = Math.max(2, Math.ceil(MAP_LIMITS.minDeployHexes / h), w >= 24 ? 3 : 0);
+  // The two home-edge columns: room for a full warband on even the shortest map.
   const deploy0: Vec[] = [];
-  for (let x = 0; x < depth; x++) for (let y = 0; y < h; y++) deploy0.push({ x, y });
+  for (let x = 0; x < DEPLOY_DEPTH; x++) for (let y = 0; y < h; y++) deploy0.push({ x, y });
   const deploy1 = deploy0.map(mirror);
   const deployKeys = new Set([...deploy0, ...deploy1].map(vecKey));
 

@@ -80,7 +80,21 @@ describe('layOutInZone', () => {
     }
   });
 
-  it('fills the rank farthest from the enemy first on top/bottom zones', () => {
+  it('takes the zone hexes nearest the centre of the board', () => {
+    // Four models: the middle of the column facing the enemy, in roster order down it.
+    const p0 = layOutInZone(units(4), 0, DEFAULT_MAP);
+    const p1 = layOutInZone(units(4), 1, DEFAULT_MAP);
+    expect(p0.map((s) => s.pos)).toEqual([3, 4, 5, 6].map((y) => ({ x: 1, y })));
+    expect(p1.map((s) => s.pos)).toEqual([3, 4, 5, 6].map((y) => ({ x: 10, y })));
+    expect(p0.map((s) => s.name)).toEqual(['U0', 'U1', 'U2', 'U3']);
+    // A bigger warband clumps round them, stepping back before it reaches the corners.
+    const big = layOutInZone(units(12), 0, DEFAULT_MAP).map((s) => vecKey(s.pos));
+    expect(big).toContain('0,5');
+    expect(big).not.toContain('1,0');
+    expect(big).not.toContain('1,9');
+  });
+
+  it('does the same on top/bottom zones', () => {
     const width = 8;
     const map: MapDef = {
       ...flatMap(width, 10),
@@ -89,13 +103,14 @@ describe('layOutInZone', () => {
         [...row(9, width), ...row(8, width)],
       ],
     };
-    const p0 = layOutInZone(units(10), 0, map);
-    const p1 = layOutInZone(units(10), 1, map);
-    // The back row holds 8; the remaining 2 step forward, centred.
-    expect(p0.filter((s) => s.pos.y === 0)).toHaveLength(8);
-    expect(p0.filter((s) => s.pos.y === 1).map((s) => s.pos.x)).toEqual([3, 4]);
-    expect(p1.filter((s) => s.pos.y === 9)).toHaveLength(8);
-    expect(p1.filter((s) => s.pos.y === 8).map((s) => s.pos.x)).toEqual([3, 4]);
+    const p0 = layOutInZone(units(4), 0, map);
+    const p1 = layOutInZone(units(4), 1, map);
+    // The row facing the enemy, about its middle: a row of hexes zigzags, and
+    // the columns that dip towards the centre come first.
+    expect(p0.every((s) => s.pos.y === 1)).toBe(true);
+    expect(p0.map((s) => s.pos.x)).toEqual([1, 3, 4, 5]);
+    expect(p1.every((s) => s.pos.y === 8)).toBe(true);
+    expect(p1.map((s) => s.pos.x)).toEqual([2, 3, 4, 6]);
   });
 
   it('spills a warband too big for its zone onto the nearest open hexes', () => {

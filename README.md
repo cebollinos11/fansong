@@ -178,7 +178,8 @@ seed replays identically).
   `free-company`, `night-haunt`, `greenwood-elves`. Large: `bonefield-legion`,
   `wild-menagerie`. Small: `gryphon-eyrie`, `wolf-pack`, `hogwallow-farm`. Between
   them they field every trait but Magic User (army builder only, for now), and each is proven legal by the test suite.
-- **Deploy** (`buildMatch`) — lays two warbands out facing off and emits an
+- **Deploy** (`buildMatch`) — lays two warbands out facing off, each on the
+  hexes of its deploy zone nearest the centre of the board, and emits an
   engine `GameConfig`; the CLI and any future UI share it.
 
 `packages/content/test` covers the costing and validation; the
