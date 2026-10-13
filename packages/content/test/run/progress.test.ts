@@ -22,6 +22,7 @@ import {
   RUN_TUNING,
   runStep,
   statErrors,
+  surrenderShares,
   unitCost,
   xpFor,
   type BattleReport,
@@ -157,6 +158,37 @@ describe('the aftermath', () => {
     // One battle's XP is not yet a level.
     expect(xp).toBeLessThan(RUN_TUNING.xp.levels[0]!);
     expect(s.pending).toBeUndefined();
+  });
+
+  it('splits a surrendered enemy\'s kill XP evenly, the odd points going to the first units', () => {
+    const { perKill, fought } = RUN_TUNING.xp;
+    expect(surrenderShares(0, 3)).toEqual([0, 0, 0]);
+    expect(surrenderShares(3, 0)).toEqual([]);
+    expect(surrenderShares(3, 3)).toEqual([perKill, perKill, perKill]);
+    for (const [survivors, sharers] of [[1, 3], [2, 5], [4, 3], [7, 2]] as const) {
+      const shares = surrenderShares(survivors, sharers);
+      expect(shares.reduce((a, b) => a + b, 0)).toBe(survivors * perKill);
+      expect(Math.max(...shares) - Math.min(...shares)).toBeLessThanOrEqual(1);
+      expect(shares).toEqual([...shares].sort((a, b) => b - a));
+    }
+
+    // In the aftermath: everyone who fought and stayed loyal shares it, fallen or not; a turncoat gets none, and nobody a kill.
+    const s = inBattle(6);
+    const n = s.battle!.fielded!.length;
+    expect(n).toBeGreaterThanOrEqual(3);
+    const report: BattleReport = { ...reportOf(s, (_, i) => (i === 0 ? 'turned' : i === 1 ? 'fell' : 'survived')), surrendered: 2 };
+    const shares = surrenderShares(2, n - 1);
+    applyAftermath(s, report, makeRunRandom(6, 1, 9));
+    expect(s.aftermath!.surrender).toEqual({ units: 2, xp: 2 * perKill });
+    expect(s.aftermath!.units.map((l) => l.xp)).toEqual([0, ...shares.map((x) => fought + x)]);
+    expect(s.aftermath!.units.every((l) => l.kills === 0)).toBe(true);
+    expect(s.log.at(-1)!.kills).toBe(0);
+
+    // No surrender, no share and no note.
+    const plain = inBattle(6);
+    applyAftermath(plain, reportOf(plain, () => 'survived'), makeRunRandom(6, 1, 9));
+    expect(plain.aftermath!.surrender).toBeUndefined();
+    expect(plain.aftermath!.units.every((l) => l.xp === fought)).toBe(true);
   });
 
   it('loses a turncoat, brings back one that fled, and rolls for each one that fell', () => {

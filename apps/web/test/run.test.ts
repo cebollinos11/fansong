@@ -484,6 +484,20 @@ describe('the run screens', () => {
     expect(aftermathView(WON)!.bonus).toBeNull();
   });
 
+  it('says in the aftermath when a surrendered enemy\'s XP was shared out, and keeps it through a save', () => {
+    const { surrender: _surrender, ...fought } = WON.aftermath!;
+    expect(aftermathView({ ...WON, aftermath: fought })!.surrender).toBeNull();
+    const shared: RunState = { ...WON, aftermath: { ...WON.aftermath!, surrender: { units: 2, xp: 4 } } };
+    expect(aftermathView(shared)!.surrender).toBe(
+      "The enemy surrendered: the 2 units it had left are nobody's kills, but the 4 XP they were worth is shared out among everyone who fought (counted below).",
+    );
+    expect(aftermathView({ ...WON, aftermath: { ...WON.aftermath!, surrender: { units: 1, xp: 2 } } })!.surrender).toBe(
+      "The enemy surrendered: its last unit is nobody's kill, but the 2 XP it was worth is shared out among everyone who fought (counted below).",
+    );
+    expect(parseRun(JSON.parse(JSON.stringify(shared))).aftermath!.surrender).toEqual({ units: 2, xp: 4 });
+    expect(() => parseRun({ ...shared, aftermath: { ...shared.aftermath!, surrender: { units: 2 } } })).toThrow(/bad aftermath/);
+  });
+
   it('loads a run saved before battles had point limits, and plays it without one', () => {
     const s = playTo(newRun(11), 'briefing');
     const { limit: _limit, ...battle } = s.battle!;

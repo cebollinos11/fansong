@@ -133,7 +133,7 @@ No change. The AI could later learn to protect points near the threshold; that i
 
 - **`surrenderedSide(state)`** was added to the engine beside `surrenderingSide`. A finished state keeps no reason for its ending, and the game-over screen needs one: only a surrender ends a game at the top of a round, with nobody activated and both sides on the field.
 - **The opt-out stops at `MatchOptions.surrender: false`.** `MatchSetup` has no such field, since nothing needed it and there is no setup toggle.
-- **Run rewards: gold yes, kill XP no.** `enemyPointsKilled` only feeds gold (`goldFor`). XP comes from each unit's own `kills` and `killCosts`, so a surrender pays the full gold but not the XP of the kills that were never made.
+- **Run rewards: gold in full, kill XP shared out.** `enemyPointsKilled` only feeds gold (`goldFor`); XP comes from each unit's own `kills` and `killCosts`, so the plan's default paid no XP for the survivors. Added afterwards: each survivor is worth `xp.perKill`, split evenly among the units that fought and did not turn (`surrenderShares`). Still no kill credit, and no `costlierKill` bonus.
 - **The golden fixture was not re-blessed.** It is a raw `GameConfig`, not one built by content, so it has no rule and its hash is unchanged.
 - **The dev sandbox keeps the points honest**: a spawned unit is priced and added to its side's starting points, a removed one taken off, and the effect demos stage their scenes without the rule (the *Forced surrender* demo sets it itself).
 - **Tests that assumed annihilation ends with one side wiped out** (`selfPlay/harness.ts`, `tools/cli/test/preset-match.test.ts`) now accept a forced surrender too.

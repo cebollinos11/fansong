@@ -234,6 +234,11 @@ export function parseRun(raw: unknown): RunState {
   if (raw.aftermath !== undefined) {
     if (!isRecord(raw.aftermath)) fail('bad aftermath');
     count(raw.aftermath.gold, 'bad aftermath');
+    if (raw.aftermath.surrender !== undefined) {
+      if (!isRecord(raw.aftermath.surrender)) fail('bad aftermath');
+      count(raw.aftermath.surrender.units, 'bad aftermath');
+      count(raw.aftermath.surrender.xp, 'bad aftermath');
+    }
     for (const line of list(raw.aftermath.units, 'bad aftermath')) {
       if (!isRecord(line) || typeof line.unitId !== 'string' || typeof line.name !== 'string' || typeof line.fate !== 'string') fail('bad aftermath');
       count(line.kills, 'bad aftermath');

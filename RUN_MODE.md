@@ -239,7 +239,7 @@ What was found, and changed:
 
 Annihilation battles play the engine's forced surrender rule ([SURRENDER_PLAN.md](SURRENDER_PLAN.md)): as a round begins, a side with at most 30% of its starting points on the field, facing three times what it has left, gives up. `runBattleConfig` gets it from `buildMatch` like any other annihilation match; boss battles (kill-the-king) and the zone modes do not have it.
 
-- **A surrendering enemy is a win like any other.** `battleReport` adds its survivors to `enemyPointsKilled`, so the gold (`gold.killShare`) is what finishing them off would have paid. Nobody is credited with them: `kills` and `killCosts` only ever count real kills, so the XP for those last kills (`xp.perKill`, `xp.costlierKill`) is not earned.
+- **A surrendering enemy is a win like any other.** `battleReport` adds its survivors to `enemyPointsKilled`, so the gold (`gold.killShare`) is what finishing them off would have paid. Nobody is credited with them: `kills` and `killCosts` only ever count real kills. Their kill XP is shared out instead: `BattleReport.surrendered` counts the survivors, and `applyAftermath` splits `xp.perKill` for each of them evenly among the fielded units that did not turn, fallen or not, any odd points going one each to the first of them (`surrenderShares`). `xp.costlierKill` is not paid, since it depends on who would have struck. `Aftermath.surrender` records the count and the XP shared, for the aftermath screen's note.
 - **The player is rarely forced.** A side that can still sound the retreat is exempt, and that is the player with a banner in hand and a living Leader. With no banner, or the Leader dead, a forced surrender loses the battle and the run, as any loss does.
 
 `pnpm play run --seeds 200` (balanced route, `--retreat never`), the same seeds before and after:
@@ -247,9 +247,10 @@ Annihilation battles play the engine's forced surrender rule ([SURRENDER_PLAN.md
 | | Mean step | Median | Died at step 1 | Beat boss 1 | Battles won | Annihilation won |
 |---|---|---|---|---|---|---|
 | Before | 4.9 | 4 | 17% | 20% | 76% of 833 | 83% of 546 |
-| With forced surrender | 5.0 | 4 | 17% | 18% | 76% of 829 | 83% of 547 |
+| With forced surrender, no XP for the survivors | 5.0 | 4 | 17% | 18% | 76% of 829 | 83% of 547 |
+| **With forced surrender, their kill XP shared out** | 4.9 | 4 | 17% | 17% | 76% of 819 | 83% of 551 |
 
-Nothing moved beyond noise, so `RUN_TUNING` was left alone. The rule mostly ends battles the pilot had already won, a round or so sooner.
+Nothing moved beyond noise, so `RUN_TUNING` was left alone. The rule mostly ends battles the pilot had already won, a round or so sooner, and the shared XP is a few points a battle.
 
 ## Deviations from the limits' plan
 

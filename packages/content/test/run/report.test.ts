@@ -1,6 +1,6 @@
 import { runReplay, type GameEvent, type GameState, type Replay } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { battleReport, enemyCost, goldFor, legalRunActions, runStep, unitCost, type RunState } from '../../src/index.js';
+import { battleReport, enemyCost, goldFor, legalRunActions, RUN_TUNING, runStep, unitCost, xpFor, type RunState } from '../../src/index.js';
 import { drafted, inBattle, playBattle } from './helpers.js';
 
 /** Check a report against the replay's own events and final state. */
@@ -67,16 +67,24 @@ describe('battleReport', () => {
   it('pays a forced surrender as if the survivors had fallen, with no kills credited for them', () => {
     const { s, replay } = battleEnding((final, events) => final.winner === 0 && bySurrender(events));
     const run = runReplay(replay);
-    const survivors = run.final.units.filter((u) => u.owner === 1 && !u.dead);
+    const survivors = run.final.units.filter((u) => u.owner === 1 && !u.dead && u.id.startsWith('p1'));
     expect(survivors.length).toBeGreaterThan(0);
     const report = battleReport(replay, s.battle!.fielded!);
     expect(report.enemyPointsKilled).toBe(report.enemyPoints);
+    expect(report.surrendered).toBe(survivors.length);
     const fallen = run.events.flat().filter((e) => (e.type === 'UnitKilled' || e.type === 'UnitRouted') && e.unitId.startsWith('p1'));
     expect(Object.values(report.units).reduce((n, u) => n + u.kills, 0)).toBeLessThanOrEqual(fallen.length);
     // The run settles it as any other win, on the full gold.
     const won = runStep(s, { type: 'battleResult', replay });
     expect(won.phase).toBe('aftermath');
     expect(won.aftermath!.gold).toBe(goldFor(s.round, report));
+    // And the XP its survivors' kills would have paid is shared out.
+    expect(won.aftermath!.surrender).toEqual({ units: survivors.length, xp: survivors.length * RUN_TUNING.xp.perKill });
+    const own = s.battle!.fielded!.map((id) => {
+      const r = report.units[id]!;
+      return r.fate === 'turned' ? 0 : xpFor(r, unitCost(s.roster.find((u) => u.id === id)!.unit), s.battle!.limitKind);
+    });
+    expect(won.aftermath!.units.reduce((sum, l) => sum + l.xp, 0)).toBe(own.reduce((a, b) => a + b, 0) + survivors.length * RUN_TUNING.xp.perKill);
     checkReport(s, replay);
   });
 

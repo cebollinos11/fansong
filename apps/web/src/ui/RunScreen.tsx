@@ -468,6 +468,7 @@ function Aftermath({ run, view, act }: { run: RunState; view: AftermathView; act
             {view.bonus.label} won: every unit that fought earns +{view.bonus.xp} XP on top of its own (counted below).
           </p>
         ) : null}
+        {view.surrender ? <p className="muster-meta run-limit-bonus">{view.surrender}</p> : null}
         <table className="run-table">
           <thead>
             <tr>

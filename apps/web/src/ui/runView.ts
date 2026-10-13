@@ -729,9 +729,17 @@ export interface AftermathView {
   plain: boolean;
   /** Won under a tighter point limit: its name, and the XP each unit that fought got for it (already in the lines). */
   bonus: { label: string; xp: number } | null;
+  /** The enemy was forced to surrender: what to say of the XP its survivors were worth (already in the lines). */
+  surrender: string | null;
   /** Levels waiting to be spent: one choice of advances per unit at a time. */
   levelUps: LevelUpView[];
   next: Choice;
+}
+
+/** What the aftermath says of an enemy that surrendered with `units` on the field, worth `xp` between those who fought. */
+function surrenderText({ units, xp }: { units: number; xp: number }): string {
+  const left = units === 1 ? "its last unit is nobody's kill, but the" : `the ${units} units it had left are nobody's kills, but the`;
+  return `The enemy surrendered: ${left} ${xp} XP ${units === 1 ? 'it was' : 'they were'} worth is shared out among everyone who fought (counted below).`;
 }
 
 export function aftermathView(s: RunState): AftermathView | null {
@@ -748,6 +756,7 @@ export function aftermathView(s: RunState): AftermathView | null {
     rewards: s.offer?.kind === 'reward' ? s.offer.rewards.map(rewardLine) : [],
     plain: s.aftermath.plain === true,
     bonus: s.aftermath.limitKind ? { label: LIMIT_INFO[s.aftermath.limitKind].label, xp: RUN_TUNING.limits.xp[s.aftermath.limitKind] } : null,
+    surrender: s.aftermath.surrender ? surrenderText(s.aftermath.surrender) : null,
     lines: s.aftermath.units.map((line) => ({ unitId: line.unitId, name: line.name, kills: line.kills, xp: line.xp, ...fateText(line) })),
     levelUps: levelUps(s),
     next: choice(s, { type: 'continue' }),

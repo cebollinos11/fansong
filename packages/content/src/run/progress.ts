@@ -37,6 +37,19 @@ export function xpFor(report: UnitReport, ownCost: number, limitKind?: LimitKind
   return fought + bonus + report.kills * perKill + report.killCosts.filter((c) => c > ownCost).length * costlierKill;
 }
 
+/**
+ * The XP a surrendered enemy's survivors are worth, shared out: each of
+ * `survivors` pays as a kill would (`xp.perKill`), and the pool is split evenly
+ * among the `sharers` who fought, any odd points going one each to the first of
+ * them. Returns each sharer's part, in their order.
+ */
+export function surrenderShares(survivors: number, sharers: number): number[] {
+  if (sharers <= 0) return [];
+  const pool = survivors * RUN_TUNING.xp.perKill;
+  const each = Math.floor(pool / sharers);
+  return Array.from({ length: sharers }, (_, i) => each + (i < pool % sharers ? 1 : 0));
+}
+
 /** Gold a won `round` pays. */
 export function goldFor(round: number, report: BattleReport): number {
   const { perWin, perRound, killShare } = RUN_TUNING.gold;
@@ -103,7 +116,8 @@ export function rollLevelUps(s: RunState, rnd: RunRandom): void {
 }
 
 /**
- * Settle a won battle (mutates `s`): every fielded unit earns XP (more under a tighter point limit); a turncoat is
+ * Settle a won battle (mutates `s`): every fielded unit earns XP (more under a tighter point limit, and a share
+ * of what a surrendered enemy's survivors were worth: see {@link surrenderShares}); a turncoat is
  * gone; each fallen unit rolls for injury; the win pays gold; the round is
  * logged; and the levels earned are put up for choosing. Units that sat the
  * battle out are fit again.
@@ -111,6 +125,10 @@ export function rollLevelUps(s: RunState, rnd: RunRandom): void {
 export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom): void {
   const battle = s.battle!;
   for (const u of s.roster) delete u.sitsOut;
+
+  // An enemy that surrendered: what its survivors' kills would have paid goes to everyone who fought and stayed loyal.
+  const sharers = battle.fielded!.filter((id) => report.units[id]!.fate !== 'turned');
+  const shares = surrenderShares(report.surrendered ?? 0, sharers.length);
 
   const lines: AftermathLine[] = [];
   let losses = 0;
@@ -127,7 +145,7 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
       lose();
       continue;
     }
-    line.xp = xpFor(r, unitCost(u.unit), battle.limitKind);
+    line.xp = xpFor(r, unitCost(u.unit), battle.limitKind) + shares[sharers.indexOf(unitId)]!;
     u.xp += line.xp;
     u.kills += r.kills;
     if (r.fate !== 'fell') continue;
@@ -138,6 +156,7 @@ export function applyAftermath(s: RunState, report: BattleReport, rnd: RunRandom
   s.gold += gold;
   s.aftermath = { gold, units: lines };
   if (battle.limitKind) s.aftermath.limitKind = battle.limitKind;
+  if (report.surrendered) s.aftermath.surrender = { units: report.surrendered, xp: shares.reduce((sum, x) => sum + x, 0) };
   s.log.push({
     round: s.round,
     mode: battle.mode,

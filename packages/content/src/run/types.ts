@@ -215,6 +215,8 @@ export interface BattleReport {
   enemyPointsKilled: number;
   /** The player's Leader sounded the retreat in it (whoever then won). */
   retreated: boolean;
+  /** The enemy was forced to surrender: how many of its own units were still on the field. Absent otherwise. */
+  surrendered?: number;
 }
 
 /** What became of a fallen unit. */
@@ -245,6 +247,8 @@ export interface Aftermath {
   plain?: true;
   /** The battle was won under a tighter limit of this kind: the XP shown includes its bonus. */
   limitKind?: LimitKind;
+  /** The enemy surrendered with `units` still on the field: the `xp` their kills would have paid was shared out (the XP shown includes each unit's share). */
+  surrender?: { units: number; xp: number };
 }
 
 /** One line of the run's history. */

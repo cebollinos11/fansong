@@ -508,7 +508,9 @@ design as built, and [RETREAT_PLAN.md](RETREAT_PLAN.md) that of the retreat.
   to call it, a lost battle ends the run as before. The enemy never retreats.
 - **Surrender** — an annihilation battle of a run plays the forced surrender
   rule. An enemy that surrenders is beaten: the gold counts its survivors as if
-  they had fallen, but no unit earns kill XP for them. You are never forced
+  they had fallen. They are nobody's kills, but the XP those kills would have
+  paid (2 each) is shared out evenly among every unit of yours that fought,
+  fallen or not, and the aftermath says so. You are never forced
   while you hold a banner and your Leader lives, since you could still retreat;
   without either, being forced to surrender loses the battle and the run.
 - **After a win** — every unit that fought earns XP (more for kills, more again

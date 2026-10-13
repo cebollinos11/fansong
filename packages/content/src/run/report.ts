@@ -24,7 +24,8 @@ function specCost(spec: UnitSpec): number {
  * `leftBehind`.
  *
  * When the enemy was forced to surrender, its survivors count toward
- * `enemyPointsKilled` as if they had fallen, but are nobody's kills.
+ * `enemyPointsKilled` as if they had fallen, but are nobody's kills:
+ * `surrendered` counts them, for the XP the aftermath shares out.
  */
 export function battleReport(replay: Replay, fielded: readonly string[]): BattleReport {
   const [mine, theirs] = replay.config.warbands;
@@ -75,8 +76,13 @@ export function battleReport(replay: Replay, fielded: readonly string[]): Battle
   // An enemy forced to surrender is beaten whole: its survivors pay as the
   // fallen do, though no unit is credited with them.
   const surrendered = run.events.flat().some((e) => e.type === 'GameOver' && e.reason === 'surrender');
+  let survivors = 0;
   if (surrendered && winner === 0) {
-    for (const u of run.final.units) if (!u.dead && u.owner === 1 && u.id.startsWith('p1')) enemyPointsKilled += cost.get(u.id)!;
+    for (const u of run.final.units) {
+      if (u.dead || u.owner !== 1 || !u.id.startsWith('p1')) continue;
+      enemyPointsKilled += cost.get(u.id)!;
+      survivors++;
+    }
   }
   const retreated = run.final.retreat?.owner === 0;
   if (retreated && winner === 1) {
@@ -89,5 +95,6 @@ export function battleReport(replay: Replay, fielded: readonly string[]): Battle
     enemyPoints: theirs.reduce((sum, spec) => sum + specCost(spec), 0),
     enemyPointsKilled,
     retreated,
+    ...(survivors > 0 ? { surrendered: survivors } : {}),
   };
 }
