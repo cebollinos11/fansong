@@ -1,4 +1,4 @@
-import { combatOdds, isKing, isPig, type Board, type GameState, type Unit, type Vec } from '@fansong/engine';
+import { combatOdds, flagCarriedBy, isKing, isPig, targetScoreOf, type Board, type GameState, type Unit, type Vec } from '@fansong/engine';
 
 /** Traits that make a unit worth more to keep (or to kill), each counted once. */
 const VALUED_TRAITS = [
@@ -18,11 +18,28 @@ function unitValue(u: Unit): number {
 }
 
 /** What a King is worth in kill-the-king, in {@link unitValue} terms: the game rides on it. */
-const KING_WORTH = 30;
+export const KING_WORTH = 30;
 
-/** {@link unitValue}, except that a King — or the golden Pig — is worth the game. */
-export function worthOf(state: GameState, u: Unit): number {
+/**
+ * What one point is worth where points win the game, in {@link unitValue}
+ * terms: its share of the game, which is what a King is worth over the points
+ * to win. A flag brought home wins outright, so there it is the whole of it.
+ */
+export function pointWorth(state: GameState): number {
+  return KING_WORTH / (targetScoreOf(state) ?? 1);
+}
+
+/** {@link unitValue}, except that a King, or the golden Pig, is worth the game. A flag in its hands counts nothing. */
+export function ownWorth(state: GameState, u: Unit): number {
   return isKing(state, u.id) || isPig(state, u.id) ? KING_WORTH : unitValue(u);
+}
+
+/**
+ * What a unit is worth to keep or to kill: {@link ownWorth}, except that a unit
+ * carrying a flag is worth the capture it is on its way to make ({@link pointWorth}).
+ */
+export function worthOf(state: GameState, u: Unit): number {
+  return flagCarriedBy(state, u.id) !== undefined ? pointWorth(state) : ownWorth(state, u);
 }
 
 /** How one blow or shot is likely to go, and what each way is worth in {@link worthOf} terms. */
@@ -42,7 +59,8 @@ export interface BlowOutcome {
  * The exact odds of a blow or shot by `attacker` on `target`, and the worth of
  * each outcome: a kill is the target's whole worth (a Tough save turns it into a
  * knockdown), a lesser hit — knocked down or pushed — a share of it, and a lost
- * melee costs a share of the attacker's.
+ * melee costs a share of the attacker's: a larger one than the lesser hit, for
+ * the friends it leaves exposed, unless `even` (see {@link blowValue}).
  */
 export function blowOutcome(
   state: GameState,
@@ -52,6 +70,7 @@ export function blowOutcome(
   pressed: boolean,
   ranged: boolean,
   from?: Vec,
+  even = false,
 ): BlowOutcome {
   const odds = combatOdds(state, attacker.id, target.id, { pressed, ranged, from, board });
   const at = from ?? attacker.pos;
@@ -59,7 +78,7 @@ export function blowOutcome(
   const killWorth = target.traits.tough && !target.knockedDown ? vt * 0.5 : vt;
   // A push off the map is a kill: about half of a lesser win or loss is a push.
   const hurtWorth = edgeBehind(board, target.pos, at) ? (killWorth + vt * 0.3) / 2 : vt * 0.3;
-  const lossWorth = worthOf(state, attacker) * (!ranged && edgeBehind(board, at, target.pos) ? 0.7 : 0.4);
+  const lossWorth = worthOf(state, attacker) * (!ranged && edgeBehind(board, at, target.pos) ? 0.7 : even ? 0.3 : 0.4);
   return { kill: odds.kill, hurt: odds.win - odds.kill, lose: odds.lose, killWorth, hurtWorth, lossWorth };
 }
 
@@ -67,6 +86,9 @@ export function blowOutcome(
  * What a blow or shot by `attacker` on `target` is worth, from its
  * {@link blowOutcome}. A single swing with a second action behind it counts
  * that follow-up too, so it compares fairly against a pressed one.
+ *
+ * `even` weighs a lost exchange as no more than the lesser hit it is: the view
+ * of a unit with no friend left for its fall to expose.
  */
 export function blowValue(
   state: GameState,
@@ -77,8 +99,13 @@ export function blowValue(
   ranged: boolean,
   from?: Vec,
   actions = state.actionsRemaining,
+  even = false,
 ): number {
-  const o = blowOutcome(state, board, attacker, target, pressed, ranged, from);
+  return outcomeValue(blowOutcome(state, board, attacker, target, pressed, ranged, from, even), pressed, actions);
+}
+
+/** What a blow or shot with the given {@link blowOutcome} is worth, struck with `actions` actions in hand (see {@link blowValue}). */
+export function outcomeValue(o: BlowOutcome, pressed: boolean, actions: number): number {
   const ev = o.kill * o.killWorth + o.hurt * o.hurtWorth - o.lose * o.lossWorth;
   return !pressed && actions >= 2 ? ev * 1.8 : ev;
 }

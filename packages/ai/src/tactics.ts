@@ -13,7 +13,7 @@ import {
   type Unit,
   type Vec,
 } from '@fansong/engine';
-import { blowOutcome, successOdds, worthOf } from './value.js';
+import { blowOutcome, successOdds, worthOf, type BlowOutcome } from './value.js';
 
 /**
  * Tactics: what a position is worth, read from the engine's own odds.
@@ -49,6 +49,13 @@ interface Blow {
 
 type Occupied = (v: Vec) => boolean;
 
+/**
+ * What a mode adds to a blow beyond what its target and its striker are worth,
+ * in {@link worthOf} terms: a zone the blow may clear or cost. Given the blow's
+ * odds, the hex a charge would be struck from, and whether it is a shot.
+ */
+export type BlowStake = (attacker: Unit, target: Unit, o: BlowOutcome, from: Vec | undefined, ranged: boolean) => number;
+
 /** The chance of at least so many successes, by Quality, the successes needed and whether inspired. */
 const atLeast = new Map<number, number>();
 
@@ -58,7 +65,7 @@ const atLeast = new Map<number, number>();
  * has gone this round, is going now or is benched only acts in the next one,
  * at a discount.
  */
-function actionOdds(state: GameState, unit: Unit, need: number): number {
+export function actionOdds(state: GameState, unit: Unit, need: number): number {
   const dice = Math.max(need, 2);
   if (dice > maxActivationDice(unit)) return 0;
   const key = (unit.quality * 4 + need) * 2 + (unit.inspired ? 1 : 0);
@@ -97,9 +104,10 @@ function chargeHex(state: GameState, board: Board, occupied: Occupied, attacker:
  * `state`: a strike in contact (one action), a shot within range and sight
  * (one action), or a charge within one Move (two actions). A unit locked in
  * melee only threatens the foes it is in contact with; one on the ground needs
- * an action more to stand. `undefined` when it can't reach.
+ * an action more to stand. `undefined` when it can't reach. `stake` is what
+ * the mode adds to the blow, counted with its lesser outcomes.
  */
-function blowOn(state: GameState, board: Board, occupied: Occupied, attacker: Unit, target: Unit): Blow | undefined {
+function blowOn(state: GameState, board: Board, occupied: Occupied, attacker: Unit, target: Unit, stake?: BlowStake): Blow | undefined {
   if (attacker.transfixedBy !== undefined) return undefined;
   const d = board.distance(attacker.pos, target.pos);
   let need = attacker.knockedDown ? 2 : 1;
@@ -120,7 +128,8 @@ function blowOn(state: GameState, board: Board, occupied: Occupied, attacker: Un
   const p = actionOdds(state, attacker, need);
   if (p <= 0) return undefined;
   const o = blowOutcome(state, board, attacker, target, false, ranged, from);
-  const rest = o.hurt * o.hurtWorth - o.lose * o.lossWorth;
+  let rest = o.hurt * o.hurtWorth - o.lose * o.lossWorth;
+  if (stake) rest += stake(attacker, target, o, from, ranged);
   // An exchange it would lose by is one it does not make: within reach, worth nothing.
   const worthIt = o.kill * o.killWorth + rest > 0;
   return { kill: worthIt ? p * o.kill : 0, rest: worthIt ? p * rest : 0, ...(from ? { from } : {}) };
@@ -171,6 +180,38 @@ export function exposure(state: GameState, board: Board, side: Owner): number {
   return threat(state, board, side === 0 ? 1 : 0);
 }
 
+/**
+ * What each foe's blow adds to what `target` is threatened with as things
+ * stand, by the foe's id: the whole of it ({@link exposure}'s share for this
+ * one unit) less the same with that foe gone. Foes with no blow on it are left out.
+ */
+export function threatShares(state: GameState, board: Board, target: Unit): Map<string, number> {
+  const occupied = occupiedBy(state);
+  const foes = enemiesOf(state, target.owner);
+  const blows: (Blow | undefined)[] = [];
+  for (const foe of foes) blows.push(blowOn(state, board, occupied, foe, target));
+  const shares = new Map<string, number>();
+  const whole = targetValue(state, target, blows);
+  if (whole <= 0) return shares;
+  for (let i = 0; i < foes.length; i++) {
+    const blow = blows[i];
+    if (!blow) continue;
+    blows[i] = undefined;
+    const share = whole - targetValue(state, target, blows);
+    blows[i] = blow;
+    if (share > 0) shares.set(foes[i]!.id, share);
+  }
+  return shares;
+}
+
+/** What the enemy can expect to do to `target` from where everyone stands: {@link exposure}'s share for this one unit. */
+export function threatOn(state: GameState, board: Board, target: Unit): number {
+  const occupied = occupiedBy(state);
+  const blows: (Blow | undefined)[] = [];
+  for (const foe of enemiesOf(state, target.owner)) blows.push(blowOn(state, board, occupied, foe, target));
+  return targetValue(state, target, blows);
+}
+
 /** What activating a unit now is worth to the order of play, in {@link worthOf} terms (see {@link activationOrder}). */
 export interface Standing {
   /** The best blow it can strike itself from where it stands. */
@@ -195,8 +236,11 @@ export interface Standing {
  * same foe are looked at, and of the hexes beside the foe only the nearest and
  * those that close a pincer: outnumbering is the same from any of them. So a
  * warband with no one near the enemy costs next to nothing.
+ *
+ * `sitsOut` names a unit that never steps up to a foe for a friend's sake.
+ * `stake` is what the mode adds to a blow of `side`'s ({@link BlowStake}).
  */
-export function activationOrder(state: GameState, board: Board, side: Owner): Map<string, Standing> {
+export function activationOrder(state: GameState, board: Board, side: Owner, sitsOut?: string, stake?: BlowStake): Map<string, Standing> {
   const taken = new Set<string>();
   for (const u of state.units) if (!u.dead) taken.add(vecKey(u.pos));
   // The setter's hex as it leaves it and the one it takes, for the position being scored.
@@ -225,7 +269,7 @@ export function activationOrder(state: GameState, board: Board, side: Owner): Ma
   for (let t = 0; t < m; t++) {
     const striking: number[] = [];
     for (let i = 0; i < n; i++) {
-      const blow = blowOn(state, board, occupied, ours[i]!, theirs[t]!);
+      const blow = blowOn(state, board, occupied, ours[i]!, theirs[t]!, stake);
       if (!blow) continue;
       blows[i * m + t] = blow;
       striking.push(i);
@@ -240,7 +284,8 @@ export function activationOrder(state: GameState, board: Board, side: Owner): Ma
   for (let i = 0; i < n; i++) {
     const setter = ours[i]!;
     // A shooter or a spellcaster keeps its distance: it never steps up to a foe to help a friend.
-    if (setter.transfixedBy !== undefined || setter.traits.ranged >= 2 || setter.traits.magicUser) continue;
+    // Nor does a unit its side keeps out of the fight (`sitsOut`: the golden Pig).
+    if (setter.transfixedBy !== undefined || setter.traits.ranged >= 2 || setter.traits.magicUser || setter.id === sitsOut) continue;
     // It has to get the action to move (two from the ground), and be free to: leaving a melee costs a free hack.
     const p = actionOdds(state, setter, setter.knockedDown ? 2 : 1);
     if (p <= 0) continue;
@@ -279,7 +324,7 @@ export function activationOrder(state: GameState, board: Board, side: Owner): Ma
         scratch.length = 0;
         for (const j of striking) {
           if (j === i) continue;
-          const blow = blowOn(moved, board, occupied, ours[j]!, target);
+          const blow = blowOn(moved, board, occupied, ours[j]!, target, stake);
           scratch.push(blow);
           if (!blow) continue;
           const gain = p * (blow.kill * killWorths[t]! + blow.rest - own[j]!);
@@ -361,6 +406,8 @@ export class MoveSetup {
   /** Every unit's distance from the destination being scored. */
   private readonly fromThere: number[];
   private readonly scratch: (Blow | undefined)[] = [];
+  /** What {@link partial} gave for each destination asked for. */
+  private readonly partials = new Map<string, { threat: number; exposure: number }>();
 
   private readonly board: Board;
 
@@ -573,16 +620,35 @@ export class MoveSetup {
    * by leaving its hex, and not yet what it meets at `to`.
    */
   partial(to: Vec): { threat: number; exposure: number } {
-    this.units.forEach((u, i) => (this.fromThere[i] = this.board.distance(u.pos, to)));
-    return {
-      threat: this.shift(to, true, this.theirs),
-      exposure: this.shift(to, false, this.ours) - this.riskHere(),
-    };
+    const key = vecKey(to);
+    let part = this.partials.get(key);
+    if (!part) {
+      this.units.forEach((u, i) => (this.fromThere[i] = this.board.distance(u.pos, to)));
+      part = {
+        threat: this.shift(to, true, this.theirs),
+        exposure: this.shift(to, false, this.ours) - this.riskHere(),
+      };
+      this.partials.set(key, part);
+    }
+    return part;
   }
 
   /** What the enemy can expect to do to the mover where it stands now. */
   private riskHere(): number {
     return (this.here ??= targetValue(this.state, this.mover, this.theirs.map((a) => this.baseBlow(a, this.me))));
+  }
+
+  /**
+   * What standing on guard where it is spares the mover: what the enemy can
+   * expect to do to it as it stands, less the same with its riposte waiting for
+   * them. Never negative.
+   */
+  guardGain(): number {
+    const { mover } = this;
+    const stance: GameState = { ...this.state, units: this.state.units.map((u) => (u.id === mover.id ? { ...u, guarding: true } : u)) };
+    const braced = unitById(stance, mover.id)!;
+    const blows = this.theirs.map((a) => blowOn(stance, this.board, this.occupied, this.units[a]!, braced));
+    return Math.max(0, this.riskHere() - targetValue(stance, braced, blows));
   }
 
   /** What the enemy can expect to do to the mover standing on `to`. Never negative. */

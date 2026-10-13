@@ -23,8 +23,8 @@ const cry: Command = { type: 'WarCry', unitId: 'p0u0' };
 
 describe('AI Leader', () => {
   it('war cries before anything else when two or more friends are still to activate', () => {
-    // Even with a foe to hit, the cry comes first.
-    const s = activate(game([U('cap', 5, 4, { leader: true }), U('a', 1, 1), U('b', 1, 6)], [U('foe', 5, 3)]), 'p0u0');
+    // Even with a foe to hit, the cry comes first. (A weaker foe: one blow at an equal is not worth a Leader's neck.)
+    const s = activate(game([U('cap', 5, 4, { leader: true }), U('a', 1, 1), U('b', 1, 6)], [U('foe', 5, 3, { combat: 2 })]), 'p0u0');
     expect(chooseCommand(s)).toEqual(cry);
     // Then it gets on with the fight.
     expect(chooseCommand(reduce(s, cry).state).type).toBe('Attack');

@@ -72,6 +72,17 @@ describe('AI in capture-the-flag', () => {
     expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
   });
 
+  it('the unit that can take the enemy flag goes before a friend in contact that will only hold', () => {
+    // Listed first and beside an equal foe: the friend is who went first when anyone in contact did.
+    const s = flagGame([U('friend', 5, 1), U('grabber', 8, 4)], [U('foe', 5, 2)]);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
+  it('the unit that can flank goes before the friend already in contact', () => {
+    const s = flagGame([U('friend', 8, 2), U('flanker', 4, 2)], [U('foe', 7, 2)]);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
+  });
+
   it('returns its own dropped flag when it can reach it', () => {
     let s = flagGame([U('a', 4, 2)], [U('b', 11, 7)]);
     s = withFlags(s, [{ at: { x: 5, y: 2 }, carrier: null }, { at: BASES[1], carrier: null }]);
@@ -83,6 +94,35 @@ describe('AI in capture-the-flag', () => {
     let s = flagGame([U('a', 5, 4)], [U('weak', 5, 3, { combat: 1 }), U('carrier', 5, 5, { combat: 4 })]);
     s = withFlags(s, [{ at: { x: 5, y: 5 }, carrier: 'p1u1' }, { at: BASES[1], carrier: null }]);
     expect(chooseCommand(activate(s, 'p0u0'))).toMatchObject({ type: 'Attack', targetId: 'p1u1' });
+  });
+
+  it('strikes the enemy carrier at odds it refuses against anyone else', () => {
+    // A blow at a stronger foe is a loss by the units' own worth: not struck, unless it may stop a capture.
+    const scene = () => flagGame([U('a', 5, 4), U('friend', 1, 1)], [U('strong', 5, 5, { combat: 5 }), U('far', 11, 0)]);
+    expect(chooseCommand(activate(scene(), 'p0u0')).type).not.toBe('Attack');
+    const carried = withFlags(scene(), [{ at: { x: 5, y: 5 }, carrier: 'p1u0' }, { at: BASES[1], carrier: null }]);
+    expect(chooseCommand(activate(carried, 'p0u0'))).toMatchObject({ type: 'Attack', targetId: 'p1u0' });
+  });
+
+  it('the carrier breaks away from a foe that would hold anyone else', () => {
+    // Leaving a standing foe draws a free hack: an ordinary unit never pays it, a carrier weighs it against staying.
+    const scene = () => flagGame([U('a', 6, 4), U('friend', 1, 1)], [U('b', 6, 5), U('far', 11, 0)]);
+    const held = withFlags(scene(), [{ at: BASES[0], carrier: null }, { at: BASES[1], carrier: 'p0u1' }]);
+    expect(chooseCommand(activate(held, 'p0u0')).type).not.toBe('Move');
+    const carrying = withFlags(scene(), [{ at: BASES[0], carrier: null }, { at: { x: 6, y: 4 }, carrier: 'p0u0' }]);
+    const board = makeHexGrid(carrying.board);
+    const to = moveTo(chooseCommand(activate(carrying, 'p0u0')));
+    expect(board.distance(to, BASES[0])).toBeLessThan(board.distance({ x: 6, y: 4 }, BASES[0]));
+  });
+
+  it('the carrier does not stake the flag on an even fight', () => {
+    // An equal foe lies in its way home, two actions in hand: it goes round, and never strikes.
+    let s = flagGame([U('a', 6, 4), U('friend', 1, 1)], [U('b', 4, 4), U('far', 11, 0)]);
+    s = withFlags(s, [{ at: BASES[0], carrier: null }, { at: { x: 6, y: 4 }, carrier: 'p0u0' }]);
+    const board = makeHexGrid(s.board);
+    const acting = { ...activate(s, 'p0u0'), actionsRemaining: 2 };
+    const to = moveTo(chooseCommand(acting));
+    expect(board.distance(to, { x: 4, y: 4 })).toBeGreaterThan(1);
   });
 
   it('walks around a wall rather than into it', () => {

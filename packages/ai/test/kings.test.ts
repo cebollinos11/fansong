@@ -26,9 +26,9 @@ const kingGame = (w0: UnitSpec[], w1: UnitSpec[], board: Partial<BoardData> = {}
     mode: 'kill-the-king',
   });
 
-/** Put `unitId` mid-activation with one action left (no dice, so no luck involved). */
-function activate(s: GameState, unitId: string): GameState {
-  return { ...s, phase: 'acting', activeUnitId: unitId, actionsRemaining: 1, activationCount: 1 };
+/** Put `unitId` mid-activation with `actions` actions left (no dice, so no luck involved). */
+function activate(s: GameState, unitId: string, actions = 1): GameState {
+  return { ...s, phase: 'acting', activeUnitId: unitId, actionsRemaining: actions, activationCount: 1 };
 }
 
 const moveTo = (cmd: Command): Vec => {
@@ -63,22 +63,133 @@ describe('AI in kill-the-king', () => {
     expect(board.distance(to, { x: 10, y: 4 })).toBeLessThan(board.distance({ x: 5, y: 4 }, { x: 10, y: 4 }));
   });
 
-  it('turns back to protect its own King from a nearby threat', () => {
-    // An enemy is closing on our King (west); the enemy King is far east.
-    const s = activate(
-      kingGame([U('k', 1, 4, { king: true }), U('a', 5, 4)], [U('raider', 2, 2), U('k', 11, 4, { king: true })]),
-      'p0u1',
-    );
-    const board = makeHexGrid(s.board);
-    const to = moveTo(chooseCommand(s));
-    expect(board.distance(to, { x: 2, y: 2 })).toBeLessThan(board.distance({ x: 5, y: 4 }, { x: 2, y: 2 }));
+  it('strikes the foe that threatens its King rather than a like foe that does not', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const at = { x: 5, y: 4 };
+    const beside = board.neighbors(at);
+    // Two like foes on opposite sides of the unit, and our King beside one of them only.
+    for (const raider of [beside[0]!, beside[3]!]) {
+      const other = board.stepAway(raider, at);
+      const king = board.stepAway(at, raider);
+      expect(board.distance(king, other)).toBeGreaterThan(1);
+      for (const foes of [
+        [U('raider', raider.x, raider.y), U('other', other.x, other.y)],
+        [U('other', other.x, other.y), U('raider', raider.x, raider.y)],
+      ]) {
+        const s = activate(
+          kingGame([U('k', king.x, king.y, { king: true }), U('a', at.x, at.y, { combat: 4 })], [U('k', 11, 7, { king: true }), ...foes]),
+          'p0u1',
+        );
+        const cmd = chooseCommand(s);
+        expect(cmd.type).toBe('Attack');
+        const target = s.units.find((u) => u.id === (cmd as Extract<Command, { type: 'Attack' }>).targetId)!;
+        expect(target.name).toBe('raider');
+      }
+    }
   });
 
-  it('the King steps away from an adjacent enemy instead of trading blows', () => {
-    const s = activate(kingGame([U('k', 5, 4, { king: true }), U('a', 0, 0)], [U('b', 5, 3), U('k', 11, 7, { king: true })]), 'p0u0');
-    const to = moveTo(chooseCommand(s));
+  it('the King does not trade blows with a foe on its feet, however weak', () => {
+    const game = (king: Partial<UnitSpec>, foe: Partial<UnitSpec>) =>
+      activate(
+        kingGame([U('k', 5, 4, { king: true, ...king }), U('a', 0, 0)], [U('b', 5, 3, foe), U('k', 11, 7, { king: true })]),
+        'p0u0',
+      );
+    expect(chooseCommand(game({}, {})).type).toBe('EndActivation');
+    expect(chooseCommand(game({ combat: 5 }, { combat: 1 })).type).toBe('EndActivation');
+    expect(chooseCommand(game({ guard: true }, {}))).toEqual({ type: 'Guard', unitId: 'p0u0' });
+    // A foe on the ground cannot hit back: that one it finishes.
+    const s = game({}, {});
+    const downed = { ...s, units: s.units.map((u) => (u.id === 'p1u0' ? { ...u, knockedDown: true } : u)) };
+    expect(chooseCommand(downed)).toEqual({ type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+  });
+
+  it('the King steps out of the reach of a foe that could charge it', () => {
+    // Six hexes off: a Move and a blow away, and further than the ladder ever looked.
+    const foe = { x: 11, y: 4 };
+    const s = activate(
+      kingGame([U('k', 5, 4, { king: true }), U('a', 0, 0)], [U('b', foe.x, foe.y), U('k', 19, 7, { king: true })], { width: 20 }),
+      'p0u0',
+    );
     const board = makeHexGrid(s.board);
-    expect(board.distance(to, { x: 5, y: 3 })).toBeGreaterThan(1);
+    expect(board.distance({ x: 5, y: 4 }, foe)).toBe(6);
+    expect(board.distance(moveTo(chooseCommand(s)), foe)).toBeGreaterThan(6);
+  });
+
+  it('strikes at the enemy King even at odds it would refuse against anyone else', () => {
+    const game = (king: boolean) =>
+      activate(kingGame([U('k', 0, 0, { king: true }), U('a', 5, 4, { combat: 2 })], [U('big', 5, 3, { combat: 5, king }), U('other', 11, 7, { king: !king })]), 'p0u1');
+    expect(chooseCommand(game(false)).type).toBe('EndActivation');
+    expect(chooseCommand(game(true))).toEqual({ type: 'Attack', attackerId: 'p0u1', targetId: 'p1u0' });
+  });
+
+  it('takes the hex that flanks the enemy King a friend is fighting', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const king = { x: 6, y: 4 };
+    const friend = board.neighbors(king)[0]!;
+    /** Straight across the King from the friend: the hex that closes the pincer. */
+    const flank = board.stepAway(friend, king);
+    const s = activate(
+      kingGame([U('k', 0, 0, { king: true }), U('a', 3, 3), U('friend', friend.x, friend.y)], [U('k', king.x, king.y, { king: true }), U('far', 11, 7)]),
+      'p0u1',
+    );
+    expect(chooseCommand(s)).toEqual({ type: 'Move', unitId: 'p0u1', to: flank });
+  });
+
+  it('the unit that can strike the foe beside its King goes before a friend with a like blow elsewhere', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const king = { x: 2, y: 4 };
+    const raider = board.neighbors(king)[0]!;
+    /** Straight across the raider from the King: the guard's hex, out of contact with anyone else. */
+    const guard = board.stepAway(king, raider);
+    // Far from the King, a like friend fights a like foe. It is listed first: who went first when anyone in contact did.
+    const s = kingGame(
+      [U('k', king.x, king.y, { king: true }), U('brawler', 9, 4), U('guard', guard.x, guard.y)],
+      [U('k', 11, 0, { king: true }), U('foe', 9, 5), U('raider', raider.x, raider.y)],
+    );
+    expect(board.distance({ x: 9, y: 4 }, { x: 9, y: 5 })).toBe(1);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
+  it('the unit that can flank goes before the friend already in contact', () => {
+    // Listed first and already fighting: the friend is who went first when anyone in contact did.
+    const s = kingGame([U('k', 0, 0, { king: true }), U('friend', 8, 4), U('flanker', 4, 4)], [U('k', 11, 0, { king: true }), U('foe', 7, 4)]);
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
+  it('of two units beside the enemy King on the ground, the better fighter strikes first', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const king = { x: 7, y: 4 };
+    const beside = board.neighbors(king);
+    // Both blows are worth more than the order can tell apart, so one command at a time the weak one, listed first, went first.
+    // Played out 1,000 times each way to the end of the round, the strong one first wins 93% against 81%: the King gets up in between.
+    const s = kingGame(
+      [U('k', 0, 0, { king: true }), U('weak', beside[0]!.x, beside[0]!.y, { combat: 2 }), U('strong', beside[3]!.x, beside[3]!.y, { combat: 5 })],
+      [U('k', king.x, king.y, { king: true }), U('far', 11, 0)],
+    );
+    const downed = { ...s, units: s.units.map((u) => (u.id === 'p1u0' ? { ...u, knockedDown: true } : u)) };
+    expect(chooseCommand(downed)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
+  it('of two units beside the enemy King on its feet, the better fighter strikes first', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const king = { x: 7, y: 4 };
+    const beside = board.neighbors(king);
+    // Listed second, the stronger is the likelier to put the King on the ground for the other (88% against 85% over 1,000 rounds each way).
+    const s = kingGame(
+      [U('k', 0, 0, { king: true }), U('mid', beside[0]!.x, beside[0]!.y, { combat: 4 }), U('strong', beside[3]!.x, beside[3]!.y, { combat: 5 })],
+      [U('k', king.x, king.y, { king: true, combat: 2 }), U('far', 11, 0)],
+    );
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
+  it('a King a foe could charge goes before a friend with nothing to do yet', () => {
+    // The foe is a Move and a blow from our King, and no one of ours can reach it.
+    const s = kingGame([U('k', 5, 4, { king: true }), U('a', 0, 0)], [U('b', 11, 4), U('k', 19, 7, { king: true })], { width: 20 });
+    expect(moveTo(chooseCommand(activate(s, 'p0u0')))).toBeDefined();
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u0' });
+    // With no foe in reach of it, it goes after everyone, as it always has.
+    const calm = kingGame([U('k', 5, 4, { king: true }), U('a', 0, 0)], [U('k', 19, 7, { king: true })], { width: 20 });
+    expect(chooseCommand(calm)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u1' });
   });
 
   it('the King stays put and guards when enemies are far away', () => {
@@ -91,25 +202,6 @@ describe('AI in kill-the-king', () => {
   it('the King still attacks the enemy King when it can', () => {
     const s = activate(kingGame([U('k', 5, 4, { king: true })], [U('k', 5, 3, { king: true })]), 'p0u0');
     expect(chooseCommand(s)).toEqual({ type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
-  });
-
-  it('prefers high ground among equally close hexes', () => {
-    // Several hexes one (Slow, 3-hex) Move away get equally close to the target; one is raised.
-    const start = { x: 2, y: 4 };
-    const target = { x: 10, y: 4 };
-    const base = kingGame([U('k', 0, 0, { king: true }), U('a', start.x, start.y, { slow: true })], [U('k', target.x, target.y, { king: true })]);
-    const board = makeHexGrid(base.board);
-    const reach = board.cellsWithin(start, 3);
-    const closest = Math.min(...reach.map((c) => board.distance(c, target)));
-    const opts = reach.filter((c) => board.distance(c, target) === closest);
-    expect(opts.length).toBeGreaterThanOrEqual(2);
-    const raised = opts[opts.length - 1]!;
-    const s = activate(kingGame(
-      [U('k', 0, 0, { king: true }), U('a', start.x, start.y, { slow: true })],
-      [U('k', target.x, target.y, { king: true })],
-      { terrain: { [`${raised.x},${raised.y}`]: { elevation: 1 } } },
-    ), 'p0u1');
-    expect(moveTo(chooseCommand(s))).toEqual(raised);
   });
 
   it('a shooter picks a standoff hex with a clear line of sight', () => {

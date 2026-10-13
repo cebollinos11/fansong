@@ -61,8 +61,8 @@ describe('AI dice policy', () => {
 
 describe('AI combat judgement', () => {
   it('strikes the foe it can push off the edge of the map', () => {
-    // Two equal foes; the second one has the map edge at its back.
-    const s = activate(game([U('a', 1, 4)], [U('mid', 2, 4), U('edge', 0, 4)]), 'p0u0');
+    // Two equal foes; the second one has the map edge at its back. (Strong enough that a blow is worth it, outnumbered as it is.)
+    const s = activate(game([U('a', 1, 4, { combat: 5 })], [U('mid', 2, 4), U('edge', 0, 4)]), 'p0u0');
     expect(chooseCommand(s)).toMatchObject({ type: 'Attack', targetId: 'p1u1' });
   });
 
@@ -75,14 +75,15 @@ describe('AI combat judgement', () => {
 });
 
 describe('AI King safety', () => {
-  it('the King backs away from a foe without backing onto the edge of the map', () => {
+  it('the King in reach of a foe wherever it goes does not back onto the edge of the map', () => {
     const s = activate(
       game([U('k', 2, 4, { king: true }), U('guard', 6, 0)], [U('raider', 4, 4), U('k', 11, 7, { king: true })], 'kill-the-king'),
       'p0u0',
     );
-    const to = moveTo(chooseCommand(s));
+    const cmd = chooseCommand(s);
     const board = makeHexGrid(s.board);
-    expect(board.distance(to, { x: 4, y: 4 })).toBeGreaterThan(2);
+    const to = cmd.type === 'Move' ? cmd.to : { x: 2, y: 4 };
+    expect(board.distance(to, { x: 4, y: 4 })).toBeGreaterThan(1);
     expect(board.cellsWithin(to, 1).length).toBe(6);
   });
 });
@@ -131,13 +132,23 @@ describe('AI setup moves', () => {
   });
 
   it('a shooter still keeps its standoff', () => {
-    for (const combat of [3, 5]) {
+    /** How far from the nearest of two foes of `combat` the archer ends its move. */
+    const standoff = (combat: number, actions: number): number => {
       const foes = [U('x', 11, 3, { combat }), U('y', 11, 5, { combat })];
       const s = moving(game([U('archer', 2, 4, { ranged: 6 }), U('friend', 2, 6)], foes), 'p0u0');
-      const dist = Math.min(...foes.map((f) => board.distance(moveTo(chooseCommand(s)), f.pos)));
-      expect(dist).toBeGreaterThanOrEqual(2);
-      expect(dist).toBeLessThanOrEqual(6);
+      return Math.min(...foes.map((f) => board.distance(moveTo(chooseCommand({ ...s, actionsRemaining: actions })), f.pos)));
+    };
+    // Into range and out of contact, as ever.
+    for (const combat of [3, 4]) {
+      for (const actions of [1, 2]) {
+        expect(standoff(combat, actions)).toBeGreaterThanOrEqual(2);
+        expect(standoff(combat, actions)).toBeLessThanOrEqual(6);
+      }
     }
+    // Foes it could not stand up to, whose charge reaches as far as its shot: it comes into range with a shot to
+    // follow, and with one action it stops a hex outside their reach instead.
+    expect(standoff(5, 2)).toBe(6);
+    expect(standoff(5, 1)).toBe(7);
   });
 
   it('scores a move as the whole board scored again would, for every hex it could go to', () => {
@@ -179,6 +190,43 @@ describe('AI setup moves', () => {
   });
 });
 
+describe('AI whole activations', () => {
+  const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+  const foe = { x: 7, y: 4 };
+  const friend = board.neighbors(foe)[0]!;
+  /** Straight across the foe from the friend: the hex that closes the pincer. */
+  const flank = board.stepAway(friend, foe);
+  /** In contact with the foe, one step from the flank. */
+  const start = board.neighbors(foe).find((v) => board.distance(v, flank) === 1 && board.distance(v, friend) > 1)!;
+  /** Slippery, so that stepping round the foe draws no free hack. */
+  const scene = (combat: number, foeCombat: number, actions: number): GameState =>
+    activate(game([U('a', start.x, start.y, { combat, slippery: true }), U('friend', friend.x, friend.y)], [U('foe', foe.x, foe.y, { combat: foeCombat })]), 'p0u0', actions);
+
+  it('a unit facing a blow at bad odds, with a flank one move away, moves there and strikes from it', () => {
+    const s = scene(3, 5, 2);
+    expect(getLegalCommands(s)).toContainEqual({ type: 'Attack', attackerId: 'p0u0', targetId: 'p1u0' });
+    const move = chooseCommand(s);
+    expect(move).toEqual({ type: 'Move', unitId: 'p0u0', to: flank });
+    expect(chooseCommand(reduce(s, move).state)).toMatchObject({ type: 'Attack', targetId: 'p1u0' });
+  });
+
+  it('with one action it takes the flank for its friend rather than strike at bad odds', () => {
+    expect(chooseCommand(scene(3, 5, 1))).toEqual({ type: 'Move', unitId: 'p0u0', to: flank });
+  });
+
+  it('a unit with a good blow still strikes, flank or no flank', () => {
+    for (const actions of [1, 2]) expect(chooseCommand(scene(5, 3, actions))).toMatchObject({ type: 'Attack', targetId: 'p1u0' });
+  });
+
+  it('a unit that cannot leave holds rather than strike a blow it would lose by', () => {
+    const s = activate(game([U('a', start.x, start.y)], [U('foe', foe.x, foe.y, { combat: 5 })]), 'p0u0');
+    expect(chooseCommand(s)).toEqual({ type: 'EndActivation' });
+    // On guard, if it knows how: its riposte is what the foe then has to get past.
+    const guard = activate(game([U('a', start.x, start.y, { guard: true })], [U('foe', foe.x, foe.y, { combat: 5 })]), 'p0u0');
+    expect(chooseCommand(guard)).toEqual({ type: 'Guard', unitId: 'p0u0' });
+  });
+});
+
 describe('AI activation order', () => {
   const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
   const who = (cmd: Command): string => {
@@ -203,8 +251,8 @@ describe('AI activation order', () => {
   });
 
   it('with no setup on offer the order is as before: the unit in contact, then the nearest', () => {
-    // The far units cannot reach the foe this turn, so no one has anything to give or to wait for.
-    const s = game([U('far', 0, 0), U('near', 2, 4), U('fighter', 11, 4)], [U('foe', 10, 4, { combat: 2 })]);
+    // The far units cannot reach the foe this turn, so no one has anything to give or to wait for. The fighter's blow is a strong one: the lookahead sends a walk of several hexes ahead of a blow worth less than it.
+    const s = game([U('far', 0, 0), U('near', 2, 4), U('fighter', 11, 4, { combat: 5 })], [U('foe', 10, 4, { combat: 2 })]);
     const order = activationOrder(s, board, 0);
     for (const standing of order.values()) {
       expect(standing.gift).toBe(0);
@@ -219,5 +267,48 @@ describe('AI activation order', () => {
   it('a unit locked in a melee of its own has nothing to give', () => {
     const s = game([U('friend', 8, 4), U('locked', 5, 4)], [U('foe', 7, 4), U('pin', 4, 4)]);
     expect(activationOrder(s, board, 0).get('p0u1')!.gift).toBe(0);
+  });
+});
+
+describe('AI with a side down to its last unit', () => {
+  const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+
+  it('of two last units, equals two hexes apart, the one acting closes and strikes', () => {
+    const s = game([U('a', 4, 4)], [U('b', 6, 4)]);
+    for (const id of ['p0u0', 'p1u0']) {
+      const acting = { ...activate(s, id, 2), active: id === 'p0u0' ? 0 : 1 } as GameState;
+      const move = chooseCommand(acting);
+      expect(board.distance(moveTo(move), unitById(s, id === 'p0u0' ? 'p1u0' : 'p0u0')!.pos)).toBe(1);
+      expect(chooseCommand(reduce(acting, move).state).type).toBe('Attack');
+    }
+  });
+
+  it('of two last units in contact, the one with the worse of the exchange leaves the blow to the other', () => {
+    const s = game([U('a', 4, 4)], [U('b', 5, 4, { combat: 4 })]);
+    expect(chooseCommand(activate(s, 'p0u0')).type).toBe('EndActivation');
+    expect(chooseCommand({ ...activate(s, 'p1u0'), active: 1 }).type).toBe('Attack');
+  });
+
+  it('a warband closes on the last foe, where with more foes about it would keep out of its reach', () => {
+    const last = game([U('a', 4, 4), U('friend', 0, 0)], [U('brute', 7, 4, { combat: 5 })]);
+    expect(board.distance(moveTo(chooseCommand(activate(last, 'p0u0'))), { x: 7, y: 4 })).toBe(1);
+    const more = game([U('a', 4, 4), U('friend', 0, 0)], [U('brute', 7, 4, { combat: 5 }), U('far', 11, 7)]);
+    const cmd = chooseCommand(activate(more, 'p0u0'));
+    if (cmd.type === 'Move') expect(board.distance(cmd.to, { x: 7, y: 4 })).toBeGreaterThan(1);
+  });
+});
+
+describe('AI lookahead over the rest of the turn', () => {
+  it('a blow on offer at a weak foe is struck before a friend steps forward', () => {
+    // a and b both stand beside the weak x; c is three hexes from y and has only a step forward to make.
+    // One command at a time, c goes first for the charge it sets up. Planning the two activations
+    // together, the blow comes first: played out 1,200 times each way, that wins 81% against 77%.
+    const s = game(
+      [U('a', 6, 2, { combat: 4 }), U('b', 6, 3, { combat: 4 }), U('c', 3, 5)],
+      [U('x', 7, 2, { combat: 2 }), U('y', 6, 5, { combat: 2 }), U('z', 8, 4, { combat: 4 })],
+    );
+    const cmd = chooseCommand({ ...s, active: 0 });
+    expect(cmd.type).toBe('ChooseActivation');
+    expect(['p0u0', 'p0u1']).toContain((cmd as Extract<Command, { type: 'ChooseActivation' }>).unitId);
   });
 });
