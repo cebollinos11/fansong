@@ -74,7 +74,7 @@ interface RunState {
 | **Training** | Name a unit, then take 1 of **3** advances it lacks: free, and it spends no level. The choice of unit is final; the ground may be passed by until a unit is named |
 | **Mystery** | One seeded event (below), settled by one choice |
 
-1. **Draft** — pick a leader (1 of 3), then troops (1 of 3, repeated) until the draft budget is spent. Leaders come from `PRESET_UNITS` via `presetUnit` (`presets.ts`); troops from `TROOP_POOL`, the preset units that lead nobody (see Growth). All costed by `unitCost` (`cost.ts`).
+1. **Draft** — pick a leader (1 of 3), then troops (1 of 3, repeated) until the draft budget is spent. The leader is any preset unit (`LEADER_POOL`), given the Leader trait if it has none, that then costs at most `draft.leaderMax` (60) points; troops from `TROOP_POOL`, the preset units that lead nobody (see Growth). All costed by `unitCost` (`cost.ts`).
 2. **Map** — travel to an open node.
 3. **Briefing** — shows the mode, map thumbnail (`ui/mapThumb.ts`), the enemy as silhouettes with a skull rating, and the reward in full. Player may bench units (roster cap 12) and, at the boss, pick their King. The enemy roster is only seen in the battle.
 4. **Battle** — ordinary local match: `MatchSetup { warbands: [player, enemy], seats: ['human','ai'], seed, mapId, mode, kings }`.

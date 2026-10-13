@@ -6,10 +6,12 @@ import {
   PRESET_ROSTERS,
   PRESET_UNITS,
   recruitOffer,
+  RUN_TUNING,
   SEA_CREATURES,
   statErrors,
   troopOffer,
   TROOP_POOL,
+  unitCost,
 } from '../../src/index.js';
 
 describe('the units a run drafts and recruits', () => {
@@ -20,9 +22,21 @@ describe('the units a run drafts and recruits', () => {
       expect(statErrors(PRESET_UNITS[name]!), name).toEqual([]);
       expect(name.length, name).toBeLessThanOrEqual(NAME_LIMITS.unit);
     }
-    expect(TROOP_POOL.length + LEADER_POOL.length).toBe(names.length - SEA_CREATURES.length);
+    const leaders = names.filter((name) => PRESET_UNITS[name]!.leader && !SEA_CREATURES.includes(name));
+    expect(TROOP_POOL.length + leaders.length).toBe(names.length - SEA_CREATURES.length);
     expect(TROOP_POOL.some((u) => u.leader)).toBe(false);
-    expect(LEADER_POOL.every((u) => u.leader)).toBe(true);
+  });
+
+  it('let any preset unit lead that costs no more than the draft allows as a Leader', () => {
+    const { leaderMax } = RUN_TUNING.draft;
+    expect(LEADER_POOL.every((u) => u.leader && unitCost(u) <= leaderMax)).toBe(true);
+    expect(new Set(LEADER_POOL.map((u) => u.name)).size).toBe(LEADER_POOL.length);
+    // Troops lead too, at the price of the trait; no unit over the cap does.
+    expect(LEADER_POOL.some((u) => TROOP_POOL.some((t) => t.name === u.name))).toBe(true);
+    for (const t of TROOP_POOL) {
+      const led = { ...t, leader: true };
+      expect(LEADER_POOL.some((u) => u.name === t.name), t.name).toBe(unitCost(led) <= leaderMax);
+    }
   });
 
   it('offer units no warband fields beside the ones they do', () => {

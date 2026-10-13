@@ -3,6 +3,7 @@ import {
   applyAdvance,
   applyWound,
   availableAdvances,
+  availableWounds,
   enemyPoints,
   generateBattle,
   generateRoute,
@@ -38,14 +39,15 @@ function at(kind: NodeKind, from = 1): RunState {
   return runStep(s, { type: 'travel', nodeId });
 }
 
-/** `s` with its first unit carrying a lasting wound and its second sitting out. */
+/** `s` with its first unit carrying two lasting wounds and its second sitting out. */
 function hurt(s: RunState): RunState {
   const next = clone(s);
   const [a, b] = next.roster;
   a!.unit = applyWound(a!.unit, { kind: 'combat' });
   a!.wounds = [{ kind: 'combat' }];
-  a!.unit = applyWound(a!.unit, { kind: 'trait', trait: 'slow' });
-  a!.wounds.push({ kind: 'trait', trait: 'slow' });
+  const maiming = availableWounds(a!.unit).find((w) => w.kind === 'trait')!;
+  a!.unit = applyWound(a!.unit, maiming);
+  a!.wounds.push(maiming);
   if (b) b.sitsOut = true;
   return next;
 }

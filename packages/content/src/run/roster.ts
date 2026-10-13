@@ -3,6 +3,7 @@ import { PRESET_UNITS, presetUnit } from '../presets.js';
 import type { Warband, WarbandUnit } from '../warband.js';
 import { NAME_LIMITS } from '../warband.js';
 import { mendWound } from './advance.js';
+import { RUN_TUNING } from './tuning.js';
 import type { RunState, RunUnit } from './types.js';
 
 /** The name the player's warband fights under. */
@@ -25,8 +26,10 @@ const POOL: WarbandUnit[] = Object.keys(PRESET_UNITS)
   .filter((name) => !SEA_CREATURES.includes(name))
   .map((name) => presetUnit(name)!);
 
-/** The preset units that can lead a drafted warband. */
-export const LEADER_POOL: readonly WarbandUnit[] = POOL.filter((u) => u.leader);
+/** The units that can lead a drafted warband: every preset unit, made a Leader if it isn't one, that costs no more than the draft allows. */
+export const LEADER_POOL: readonly WarbandUnit[] = POOL.map((u) => (u.leader ? u : { ...u, leader: true })).filter(
+  (u) => unitCost(u) <= RUN_TUNING.draft.leaderMax,
+);
 
 /** The units offered as troops and recruits: the preset units that lead nobody. */
 export const TROOP_POOL: readonly WarbandUnit[] = POOL.filter((u) => !u.leader);

@@ -12,8 +12,7 @@ import { RUN_TUNING } from './tuning.js';
 
 /** The leaders a new run chooses between. */
 export function leaderOffer(rnd: RunRandom): WarbandUnit[] {
-  const { budget, offers } = RUN_TUNING.draft;
-  return rnd.sample(LEADER_POOL.filter((u) => unitCost(u) <= budget), offers);
+  return rnd.sample(LEADER_POOL, RUN_TUNING.draft.offers);
 }
 
 /** The troops the next pick chooses between with `points` left: empty once nothing is affordable. */

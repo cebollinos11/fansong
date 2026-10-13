@@ -8,6 +8,8 @@ export const RUN_TUNING = {
   draft: {
     /** Points the starting warband is drafted to. */
     budget: 150,
+    /** Most points the leader may cost, with the Leader trait it is given if it had none. */
+    leaderMax: 60,
     /** Units shown per draft pick. */
     offers: 3,
   },
