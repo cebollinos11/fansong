@@ -26,6 +26,18 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  /* It's a game, not a document: dragging or long-pressing shouldn't highlight labels. Text worth copying opts back in. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+code,
+pre {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* --- Main menu (ui/MenuScreen.tsx) -------------------------------------- */
@@ -534,6 +546,7 @@ fieldset label {
   font-weight: 700;
   letter-spacing: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  -webkit-user-select: all;
   user-select: all;
 }
 
@@ -5819,6 +5832,7 @@ button.trait-add[aria-expanded='true'] {
 }
 
 .run-seed {
+  -webkit-user-select: all;
   user-select: all;
 }
 
