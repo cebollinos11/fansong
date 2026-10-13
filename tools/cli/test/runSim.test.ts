@@ -176,7 +176,7 @@ describe('the retreat policy', () => {
 
   it('gives up a losing battle once, spends the banner, and takes another road at the same step', () => {
     let seen = 0;
-    for (let seed = 1; seed <= 12 && seen < 2; seed++) {
+    for (let seed = 1; seed <= 40 && seen < 2; seed++) {
       const run = simulateRun(seed, 4, 'safe', 'losing', 1);
       expect(simulateRun(seed, 4, 'safe', 'losing', 1)).toEqual(run);
       const fled = run.battles.filter((b) => b.retreated);

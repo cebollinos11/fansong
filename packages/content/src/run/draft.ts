@@ -6,8 +6,8 @@ import { RUN_TUNING } from './tuning.js';
 
 /**
  * The draft: a leader, then troops one pick at a time until the budget can buy
- * no more. Every offer is of different units the remaining points can pay for: a preset
- * leader, then troops, preset or wild.
+ * no more. Every offer is of different preset units the remaining points can pay for: a
+ * leader, then troops.
  */
 
 /** The leaders a new run chooses between. */

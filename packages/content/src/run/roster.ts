@@ -4,19 +4,32 @@ import type { Warband, WarbandUnit } from '../warband.js';
 import { NAME_LIMITS } from '../warband.js';
 import { mendWound } from './advance.js';
 import type { RunState, RunUnit } from './types.js';
-import { WILD_UNITS } from './wild.js';
 
 /** The name the player's warband fights under. */
 export const RUN_WARBAND_NAME = 'Your Warband';
 
-/** Every preset unit. */
-const POOL: WarbandUnit[] = Object.keys(PRESET_UNITS).map((name) => presetUnit(name)!);
+/** Preset units a run leaves out for now: creatures of the sea, until there is water for them. */
+export const SEA_CREATURES: readonly string[] = [
+  ...Object.keys(PRESET_UNITS).filter((name) => /^(Merman|Mermaid|Naga) /.test(name)),
+  'Caribe',
+  'Hunter Caribe',
+  'Cuttle Fish',
+  'Kraken',
+  'Tentacle of the Deep',
+  'Great Seahorse',
+  'Water Serpent',
+];
+
+/** Every preset unit a run can field. */
+const POOL: WarbandUnit[] = Object.keys(PRESET_UNITS)
+  .filter((name) => !SEA_CREATURES.includes(name))
+  .map((name) => presetUnit(name)!);
 
 /** The preset units that can lead a drafted warband. */
 export const LEADER_POOL: readonly WarbandUnit[] = POOL.filter((u) => u.leader);
 
-/** The units offered as troops and recruits: the preset units that lead nobody, and every wild unit. */
-export const TROOP_POOL: readonly WarbandUnit[] = [...POOL.filter((u) => !u.leader), ...WILD_UNITS];
+/** The units offered as troops and recruits: the preset units that lead nobody. */
+export const TROOP_POOL: readonly WarbandUnit[] = POOL.filter((u) => !u.leader);
 
 /**
  * `unit` under a name none of `taken` has: its own, or numbered (`Wolf 2`,

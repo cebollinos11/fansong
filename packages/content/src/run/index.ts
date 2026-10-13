@@ -2,7 +2,6 @@ export * from './tuning.js';
 export * from './types.js';
 export * from './rng.js';
 export * from './advance.js';
-export * from './wild.js';
 export * from './roster.js';
 export * from './draft.js';
 export * from './encounter.js';
