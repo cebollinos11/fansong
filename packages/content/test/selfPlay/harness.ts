@@ -6,7 +6,9 @@ import {
   makeHexGrid,
   reduce,
   gameMode,
+  livingPoints,
   MODE_RULES,
+  surrenderedSide,
   type GameEvent,
   type GameMode,
   type GameState,
@@ -138,9 +140,20 @@ export function everyMapCompletes(mode: GameMode): void {
         const over = overs[0]!;
         expect(over.winner).toBe(state.winner);
         if (mode === 'annihilation') {
-          expect(over.reason).toBeUndefined();
           const alive = (p: 0 | 1) => state.units.some((u) => u.owner === p && !u.dead);
-          expect(alive(0) && alive(1)).toBe(false);
+          if (over.reason === 'surrender') {
+            // A forced surrender: the loser is far behind on points, with units still on the field.
+            const loser = over.winner === 0 ? 1 : 0;
+            const living = livingPoints(state);
+            expect(alive(0) && alive(1)).toBe(true);
+            expect(living[loser]).toBeLessThanOrEqual(0.3 * state.surrender!.start[loser]);
+            expect(living[over.winner]).toBeGreaterThanOrEqual(3 * living[loser]);
+            expect(surrenderedSide(state)).toBe(loser);
+          } else {
+            expect(over.reason).toBeUndefined();
+            expect(alive(0) && alive(1)).toBe(false);
+            expect(surrenderedSide(state)).toBeUndefined();
+          }
           continue;
         }
         expect(EXPECTED_REASONS[mode]).toContain(over.reason);

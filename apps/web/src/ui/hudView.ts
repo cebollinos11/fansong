@@ -1,4 +1,4 @@
-import { BASE_MOVE, BREAK_FREE_COST, DUMB_MAX_DICE, SPELL_RANGES, TRANSFIX_BONUS, livingCount, routThreshold, SPEED_STEP, type GameState, type Owner, type Unit } from '@fansong/engine';
+import { BASE_MOVE, BREAK_FREE_COST, DUMB_MAX_DICE, SPELL_RANGES, TRANSFIX_BONUS, livingCount, livingPoints, routThreshold, SPEED_STEP, surrenderedSide, surrenderingSide, type GameState, type Owner, type Unit } from '@fansong/engine';
 import { getPreset, isAiSeat, type MatchSetup } from '@fansong/content';
 
 // Pure HUD presentation (no DOM), so every label and warning is unit-testable.
@@ -90,6 +90,56 @@ export const BROKEN_HELP =
 
 /** The small print under the "warband breaks!" banner. */
 export const BROKEN_VERDICT_DETAIL = 'survivors test nerve or flee · the battle goes on';
+
+/** Where a game with the forced surrender rule stands on points. */
+export interface SurrenderStatus {
+  /** Points each side still has on the field, and the points it started with. */
+  living: [number, number];
+  start: [number, number];
+  /** The side that gives up when this round ends, unless things change first. */
+  surrendering: Owner | null;
+  /** The side that did give up, once the game has ended that way. */
+  surrendered: Owner | null;
+}
+
+/** The points picture of a game that plays the forced surrender rule; `null` for one that doesn't. */
+export function surrenderStatus(state: GameState): SurrenderStatus | null {
+  if (!state.surrender) return null;
+  return {
+    living: livingPoints(state),
+    start: [state.surrender.start[0], state.surrender.start[1]],
+    surrendering: surrenderingSide(state) ?? null,
+    surrendered: surrenderedSide(state) ?? null,
+  };
+}
+
+/** A share as a whole percentage. */
+const percent = (share: number): string => `${Math.round(share * 100)}%`;
+
+/** The rule, for the points count's tooltip. */
+export function surrenderHelp(state: GameState, owner: Owner): string {
+  const status = surrenderStatus(state);
+  if (!status || !state.surrender) return '';
+  const { ownShare, ratio } = state.surrender;
+  return `${status.living[owner]} of ${status.start[owner]} points still on the field. A warband down to ${percent(ownShare)} of its starting points, facing ${ratio} times what it has left, surrenders as the next round begins. One that can still sound the retreat is never forced`;
+}
+
+/** What the "surrenders" warning means: there is still this round to turn it round. */
+export const SURRENDERING_HELP =
+  'Too far behind on points: this warband surrenders as the next round begins, unless it wins points back, or costs the enemy enough, before this one ends';
+
+/** The small print under the "surrenders!" banner. */
+export const SURRENDER_VERDICT_DETAIL = 'too far behind on points to fight on';
+
+/** How a forced surrender is summed up once the game is over, naming the sides by `names`; `null` for any other ending. */
+export function surrenderLine(state: GameState, names: readonly [string, string]): string | null {
+  const status = surrenderStatus(state);
+  if (!status || status.surrendered === null) return null;
+  const loser = status.surrendered;
+  const winner: Owner = loser === 0 ? 1 : 0;
+  const had = names[loser] === 'You' ? 'You had' : `${names[loser]} had`;
+  return `Forced surrender · ${had} ${status.living[loser]} of ${status.start[loser]} points left, against ${status.living[winner]}`;
+}
 
 /**
  * What being inspired does. The sure 6 only guarantees one action: two failures

@@ -228,8 +228,8 @@ export function roundLimitWinner(state: GameState): Owner {
 
 /**
  * End the game (mutates `s`). The `GameOver` event names its reason only in an
- * objective mode, at a round limit or after a retreat, so an ordinary
- * annihilation game's events are unchanged.
+ * objective mode, at a round limit, after a retreat or on a forced surrender,
+ * so an ordinary annihilation game's events are unchanged.
  */
 export function finishGame(s: GameState, events: GameEvent[], winner: Owner, reason: GameOverReason): void {
   s.winner = winner;
@@ -237,7 +237,7 @@ export function finishGame(s: GameState, events: GameEvent[], winner: Owner, rea
   s.activeUnitId = null;
   s.actionsRemaining = 0;
   delete s.group;
-  events.push(s.mode || reason === 'roundLimit' || reason === 'retreat' ? { type: 'GameOver', winner, reason } : { type: 'GameOver', winner });
+  events.push(s.mode || reason === 'roundLimit' || reason === 'retreat' || reason === 'surrender' ?{ type: 'GameOver', winner, reason } : { type: 'GameOver', winner });
 }
 
 /**

@@ -38,6 +38,7 @@ import {
 } from './mode.js';
 import { freeTransfixed, releaseVictims, resolveCombatMorale, type FreeHacks } from './morale.js';
 import { rollD6, rollDice } from './rng.js';
+import { checkSurrender } from './surrender.js';
 import {
   adjacentEnemies,
   airborne,
@@ -1572,6 +1573,8 @@ function endRound(s: GameState, events: GameEvent[]): void {
     events.push({ type: 'UnitStoodUp', unitId: u.id, reassembled: true });
     regrabOnStandUp(s, events, u);
   }
+  // A side too far behind on points gives the game up as the new round begins.
+  checkSurrender(s, events);
 }
 
 /**

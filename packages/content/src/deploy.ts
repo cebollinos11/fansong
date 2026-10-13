@@ -1,4 +1,4 @@
-import { LIMIT_RANGE, makeHexGrid, tossInitiative, vecKey, type GameConfig, type GameLimits, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
+import { DEFAULT_SURRENDER, LIMIT_RANGE, makeHexGrid, tossInitiative, vecKey, type GameConfig, type GameLimits, type GameMode, type Owner, type UnitSpec, type Vec } from '@fansong/engine';
 import { profileRange, unitCost } from './cost.js';
 import { flatMap, mapHexAt, mapToBoard, type MapDef } from './map.js';
 import { validateMap } from './mapValidate.js';
@@ -34,6 +34,11 @@ export interface MatchOptions {
   escort?: Owner;
   /** Custom round limit / target score; omitted = the mode's defaults. */
   limits?: GameLimits;
+  /**
+   * `false` plays annihilation without the forced surrender rule, which is
+   * otherwise on (see `DEFAULT_SURRENDER`). No other mode ever uses it.
+   */
+  surrender?: false;
 }
 
 /**
@@ -261,7 +266,9 @@ function overflowHexes(map: MapDef, zone: Vec[], avoid: Vec[], count: number): V
  * objectives (the map must provide them), kill-the-king flags each side's King,
  * and "Extract the golden Pig" adds the {@link GOLDEN_PIG} to the escort's side,
  * makes the defender's deploy zone the goal and sets the round limit (see
- * {@link defaultPigRounds}) unless `opts.limits` names one.
+ * {@link defaultPigRounds}) unless `opts.limits` names one. Annihilation gets
+ * the forced surrender rule, each unit's spec carrying its point cost, unless
+ * `opts.surrender` is `false`.
  */
 export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameConfig {
   const mode = opts.mode ?? 'annihilation';
@@ -323,7 +330,15 @@ export function buildMatch(p0: Warband, p1: Warband, opts: MatchOptions): GameCo
     const map = opts.map ?? flatMap(board.width, board.height);
     config.limits = { ...config.limits, roundLimit: defaultPigRounds(map, escort) };
   }
-  if (mode === 'annihilation') return config;
+  if (mode === 'annihilation') {
+    // A lost fight to the last is not played out. Each spec carries its unit's
+    // cost (a warband deploys in its own order), which the engine only sums.
+    if (opts.surrender !== false) {
+      config.surrender = { ...DEFAULT_SURRENDER };
+      [p0, p1].forEach((w, owner) => config.warbands[owner]!.forEach((spec, i) => (spec.points = unitCost(w.units[i]!))));
+    }
+    return config;
+  }
   config.mode = mode;
   if (mode === 'kill-the-king') {
     const kings = opts.kings ?? [defaultKing(p0.units), defaultKing(p1.units)];

@@ -20,7 +20,7 @@ import {
   type UnitTraits,
   type Vec,
 } from '@fansong/engine';
-import { profileRange, type WarbandUnit } from '@fansong/content';
+import { profileRange, unitCost, type WarbandUnit } from '@fansong/content';
 
 /**
  * The dev sandbox's rule-bending operations. Everything here is pure: each edit
@@ -65,8 +65,8 @@ export function nextUnitId(state: GameState, owner: Owner): string {
 
 /**
  * Put a fresh unit from `profile` on `pos`. It counts toward its side's starting
- * strength (the rout threshold), as if it had been deployed. Throws if the hex
- * can't take it.
+ * strength (the rout threshold, and the points a forced surrender is measured
+ * against), as if it had been deployed. Throws if the hex can't take it.
  */
 export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, pos: Vec): GameState {
   const problem = placementProblem(state, pos, undefined, profile.flying === true);
@@ -115,6 +115,11 @@ export function spawnUnit(state: GameState, owner: Owner, profile: WarbandUnit, 
   };
   if (profile.look !== undefined) unit.look = profile.look;
   if (profile.tint !== undefined) unit.tint = profile.tint;
+  // Under the forced surrender rule it is priced, and adds to the points its side started with.
+  if (s.surrender) {
+    unit.points = unitCost(profile);
+    s.surrender.start[owner] += unit.points;
+  }
   s.units.push(unit);
   s.startCount[owner] += 1;
   return s;
@@ -131,6 +136,7 @@ export function removeUnit(state: GameState, id: string): GameState {
   s.units = s.units.filter((u) => u.id !== id);
   if (s.group) s.group.pending = s.group.pending.filter((p) => p.unitId !== id);
   s.startCount[unit.owner] = Math.max(0, s.startCount[unit.owner] - 1);
+  if (s.surrender) s.surrender.start[unit.owner] = Math.max(0, s.surrender.start[unit.owner] - (unit.points ?? 0));
   if (s.activeUnitId === id) dropActivation(s);
   return s;
 }

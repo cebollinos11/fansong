@@ -1,7 +1,7 @@
 import { createMatchFromPresets, type MatchSetup } from '@fansong/content';
 import { ROUT_FRACTION, type GameState, type Owner, type UnitTraits } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { BROKEN_HELP, INSPIRED_HELP, breaksAtHelp, TRAIT_HELP, WAR_CRY_HELP, armyName, leavePrompt, seatLabel, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, breaksAtHelp, TRAIT_HELP, WAR_CRY_HELP, armyName, leavePrompt, seatLabel, surrenderHelp, surrenderLine, surrenderStatus, traitLine, traitTags, turnPhrase, waitingLine, warbandStatus } from '../src/ui/hudView.js';
 
 const VS_AI: MatchSetup = {
   presets: ['iron-wardens-medium', 'ashfang-raiders-medium'],
@@ -124,6 +124,31 @@ describe('warbandStatus', () => {
 
   it('reports a benched warband', () => {
     expect(warbandStatus({ ...fresh, benched: [true, false] }, 0).benched).toBe(true);
+  });
+});
+
+describe('surrenderStatus', () => {
+  const fresh = createMatchFromPresets(VS_AI);
+  const [start0, start1] = fresh.surrender!.start;
+
+  it('gives the points on each side, and nothing in a game without the rule', () => {
+    expect(surrenderStatus(fresh)).toEqual({ living: [start0, start1], start: [start0, start1], surrendering: null, surrendered: null });
+    expect(surrenderStatus(createMatchFromPresets({ ...VS_AI, mode: 'kill-the-king' }))).toBeNull();
+    expect(surrenderLine(fresh, ['You', 'AI'])).toBeNull();
+    expect(surrenderHelp(fresh, 0)).toContain(`${start0} of ${start0} points`);
+    expect(surrenderHelp(fresh, 0)).toContain('30%');
+  });
+
+  it('warns of the side about to surrender, and sums the surrender up once it has', () => {
+    const lopsided = reduceTo(fresh, 1, 1);
+    const left = lopsided.units.find((u) => u.owner === 1 && !u.dead)!.points!;
+    expect(surrenderStatus(lopsided)).toMatchObject({ living: [start0, left], surrendering: 1, surrendered: null });
+    const over: GameState = { ...lopsided, phase: 'gameOver', winner: 0 };
+    expect(surrenderStatus(over)).toMatchObject({ surrendering: null, surrendered: 1 });
+    expect(surrenderLine(over, ['You', 'AI'])).toBe(`Forced surrender · AI had ${left} of ${start1} points left, against ${start0}`);
+    expect(surrenderLine({ ...reduceTo(fresh, 0, 1), phase: 'gameOver', winner: 1 }, ['You', 'AI'])).toMatch(/^Forced surrender · You had /);
+    // A game won by wiping the enemy out is no surrender.
+    expect(surrenderLine({ ...reduceTo(fresh, 1, 0), phase: 'gameOver', winner: 0 }, ['You', 'AI'])).toBeNull();
   });
 });
 

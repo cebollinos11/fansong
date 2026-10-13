@@ -209,6 +209,11 @@ export interface Unit {
    * Omitted otherwise.
    */
   retreated?: true;
+  /**
+   * Its point cost, for the forced surrender rule (see {@link GameState.surrender}).
+   * Omitted in a game without that rule, so its state's shape is unchanged.
+   */
+  points?: number;
 }
 
 export type Phase = 'awaitingActivation' | 'acting' | 'gameOver';
@@ -272,6 +277,12 @@ export interface GameState {
    * by the call and never cleared: a side retreats once a game.
    */
   retreat?: { owner: Owner; hex: Vec };
+  /**
+   * The forced surrender rule (see `surrenderingSide`): its thresholds, and the
+   * points player 0 and player 1 started with. Omitted when the game was set up
+   * without it, so an ordinary state's shape (and every replay hash) is unchanged.
+   */
+  surrender?: { ownShare: number; ratio: number; start: [number, number] };
 }
 
 /** A group activation in progress: the members still to act behind the active one. */
@@ -698,7 +709,7 @@ export type GameEvent =
   | { type: 'GameOver'; winner: Owner; reason?: GameOverReason };
 
 /** Why a game ended: last side standing, target score, round cap, king slain, flag captured, golden Pig fallen, golden Pig extracted, or the loser retreated. */
-export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag' | 'pig' | 'extracted' | 'retreat';
+export type GameOverReason = 'annihilation' | 'score' | 'roundLimit' | 'king' | 'flag' | 'pig' | 'extracted' | 'retreat' | 'surrender';
 
 export interface ReduceResult {
   state: GameState;

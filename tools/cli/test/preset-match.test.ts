@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chooseCommand } from '@fansong/ai';
 import { buildMatch, DEFAULT_BOARD, PRESET_IDS, PRESETS } from '@fansong/content';
-import { createGame, reduce, type GameState } from '@fansong/engine';
+import { createGame, reduce, surrenderedSide, type GameState } from '@fansong/engine';
 
 const STEP_CAP = 20_000;
 
@@ -27,7 +27,10 @@ describe('preset warband matches (engine + content + ai)', () => {
       expect(final.winner === 0 || final.winner === 1).toBe(true);
       const alive0 = final.units.filter((u) => u.owner === 0 && !u.dead).length;
       const alive1 = final.units.filter((u) => u.owner === 1 && !u.dead).length;
-      expect(alive0 === 0 || alive1 === 0).toBe(true);
+      // One side is wiped out, or was forced to surrender to the winner.
+      const surrendered = surrenderedSide(final);
+      if (surrendered === undefined) expect(alive0 === 0 || alive1 === 0).toBe(true);
+      else expect(surrendered).toBe(final.winner === 0 ? 1 : 0);
     }
   });
 

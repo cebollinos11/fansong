@@ -3,7 +3,7 @@ import { airborne, spellRange, unitById, unitMove, type GameState, type Owner } 
 import type { Interaction } from '../game/interaction.js';
 import type { MatchSetup } from '@fansong/content';
 import type { ClientStatus } from '../game/client.js';
-import { BROKEN_HELP, INSPIRED_HELP, RETREAT_HELP, RETREAT_PROMPT, TRANSFIXED_HELP, WAR_CRY_HELP, breaksAtHelp, leavePrompt, seatLabel, traitTags, waitingLine, warbandStatus } from './hudView.js';
+import { BROKEN_HELP, INSPIRED_HELP, RETREAT_HELP, RETREAT_PROMPT, SURRENDERING_HELP, TRANSFIXED_HELP, WAR_CRY_HELP, breaksAtHelp, leavePrompt, seatLabel, surrenderHelp, surrenderLine, surrenderStatus, traitTags, waitingLine, warbandStatus } from './hudView.js';
 import { BattleLogView, type LogFocus } from './BattleLogView.js';
 import { itemText, type BattleLog } from './log.js';
 import { sideNames } from './sides.js';
@@ -177,6 +177,8 @@ export function Hud(props: Props): JSX.Element {
   const mode = modeHud(state, names);
   // Always on show, annihilation included: nobody should have to guess how to win.
   const goal = objective(state);
+  const points = surrenderStatus(state);
+  const surrender = surrenderLine(state, names);
   const callout = props.log.callout;
   const acting = humanTurn && state.phase === 'acting';
 
@@ -267,6 +269,17 @@ export function Hud(props: Props): JSX.Element {
         <span className="play-side-count" title={`${warband.alive} of ${fielded} units alive`}>
           {warband.alive}/{fielded}
         </span>
+        {points ? (
+          <span className="play-side-count" title={surrenderHelp(state, owner)}>
+            {points.living[owner]} pts
+          </span>
+        ) : null}
+        {/* A forced surrender ends the game at the round's end: say so while there is a round left to answer it. */}
+        {points?.surrendering === owner ? (
+          <span className="warn" title={SURRENDERING_HELP}>
+            surrenders next round
+          </span>
+        ) : null}
         {/* A rout is a sudden collapse; say it is coming, not just that it came. */}
         {warband.breaksAt !== null && !gameOver ? (
           <span className="warn" title={breaksAtHelp(warband.breaksAt)}>
@@ -302,6 +315,7 @@ export function Hud(props: Props): JSX.Element {
           {side(1)}
         </div>
         {mode && mode.lines.length > 0 ? <div className="play-lines">{mode.lines.join(' · ')}</div> : null}
+        {surrender ? <div className="play-lines">{surrender}</div> : null}
         {banner ? <div className="banner net">{banner}</div> : null}
         {callout?.tone === 'objective' ? (
           // Keyed by entry id so each new scoring/flag event replays the fade-in/out animation.

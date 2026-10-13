@@ -1,5 +1,5 @@
 import { createGame, getLegalCommands, makeHexGrid, rollDice, type GameState, type Vec } from '@fansong/engine';
-import { DEFAULT_SETUP } from '@fansong/content';
+import { createMatchFromPresets, DEFAULT_SETUP, unitCost } from '@fansong/content';
 import { describe, expect, it } from 'vitest';
 import {
   activateUnit,
@@ -68,6 +68,18 @@ describe('sandbox units', () => {
     const s = removeUnit(spawnUnit(state, 0, FIGHTER, { x: 0, y: 0 }), 'p0u0');
     expect(nextUnitId(s, 0)).toBe('p0u2');
     expect(s.startCount[0]).toBe(1);
+  });
+
+  it('prices a spawned unit under the forced surrender rule, and keeps the starting points in step', () => {
+    const state = createMatchFromPresets(DEFAULT_SETUP);
+    const start = state.surrender!.start;
+    const hex = { x: 5, y: 5 };
+    const s = spawnUnit(state, 1, FIGHTER, hex);
+    expect(s.units.at(-1)!.points).toBe(unitCost(FIGHTER));
+    expect(s.surrender!.start).toEqual([start[0], start[1] + unitCost(FIGHTER)]);
+    expect(removeUnit(s, s.units.at(-1)!.id).surrender!.start).toEqual(start);
+    // A game without the rule gets no points.
+    expect('points' in spawnUnit(duel().state, 0, FIGHTER, { x: 0, y: 0 }).units.at(-1)!).toBe(false);
   });
 
   it('teleports and patches units', () => {

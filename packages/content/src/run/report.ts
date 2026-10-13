@@ -22,6 +22,9 @@ function specCost(spec: UnitSpec): number {
  * The battle is `retreated` when the player's Leader sounded the retreat in it.
  * If it was then lost, every player unit still on the field at the end was
  * `leftBehind`.
+ *
+ * When the enemy was forced to surrender, its survivors count toward
+ * `enemyPointsKilled` as if they had fallen, but are nobody's kills.
  */
 export function battleReport(replay: Replay, fielded: readonly string[]): BattleReport {
   const [mine, theirs] = replay.config.warbands;
@@ -69,6 +72,12 @@ export function battleReport(replay: Replay, fielded: readonly string[]): Battle
   }
 
   const winner = run.final.phase === 'gameOver' ? run.final.winner : null;
+  // An enemy forced to surrender is beaten whole: its survivors pay as the
+  // fallen do, though no unit is credited with them.
+  const surrendered = run.events.flat().some((e) => e.type === 'GameOver' && e.reason === 'surrender');
+  if (surrendered && winner === 0) {
+    for (const u of run.final.units) if (!u.dead && u.owner === 1 && u.id.startsWith('p1')) enemyPointsKilled += cost.get(u.id)!;
+  }
   const retreated = run.final.retreat?.owner === 0;
   if (retreated && winner === 1) {
     for (const unit of Object.values(units)) if (unit.fate === 'survived') unit.fate = 'leftBehind';

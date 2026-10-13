@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { createGame, makeHexGrid, reduce, getLegalCommands, tossInitiative, vecKey } from '@fansong/engine';
+import { createGame, DEFAULT_SURRENDER, makeHexGrid, reduce, getLegalCommands, tossInitiative, vecKey } from '@fansong/engine';
+import { unitCost } from '../src/cost.js';
+import { warbandCost } from '../src/warband.js';
 import { buildMatch, DEFAULT_BOARD, DEFAULT_MAP, defaultPigRounds, GOLDEN_PIG, layOutWarband } from '../src/deploy.js';
 import { listMaps } from '../src/mapRegistry.js';
 import { supportedModes } from '../src/mapValidate.js';
@@ -84,6 +86,40 @@ describe('buildMatch', () => {
     // Whoever wins the toss is the side to act.
     const state = createGame(buildMatch(PRESETS['iron-wardens-medium']!, PRESETS['night-haunt-medium']!, { seed: 40, board }));
     expect(state.active).toBe(state.initiativeLeader);
+  });
+});
+
+describe('buildMatch: forced surrender', () => {
+  const p0 = PRESETS['iron-wardens-medium']!;
+  const p1 = PRESETS['ashfang-raiders-medium']!;
+  const map = listMaps().find((m) => m.id === 'old-forest')!;
+
+  it('turns the rule on in annihilation, each spec carrying its unit\'s cost', () => {
+    for (const config of [buildMatch(p0, p1, { seed: 3 }), buildMatch(p0, p1, { seed: 3, map }), buildMatch(p0, p1, { seed: 3, mode: 'annihilation' })]) {
+      expect(config.surrender).toEqual(DEFAULT_SURRENDER);
+      expect(config.warbands[0].map((s) => s.points)).toEqual(p0.units.map(unitCost));
+      expect(config.warbands[1].map((s) => s.points)).toEqual(p1.units.map(unitCost));
+      expect(createGame(config).surrender).toEqual({ ...DEFAULT_SURRENDER, start: [warbandCost(p0), warbandCost(p1)] });
+    }
+  });
+
+  it('leaves it off in every other mode', () => {
+    for (const mode of supportedModes(map).filter((m) => m !== 'annihilation')) {
+      const config = buildMatch(p0, p1, { seed: 3, map, mode });
+      expect('surrender' in config).toBe(false);
+      expect(config.warbands.flat().some((s) => 'points' in s)).toBe(false);
+      expect('surrender' in createGame(config)).toBe(false);
+    }
+  });
+
+  it('can be opted out of, which adds nothing to the config', () => {
+    const off = buildMatch(p0, p1, { seed: 3, map, surrender: false });
+    expect('surrender' in off).toBe(false);
+    expect(off.warbands.flat().some((s) => 'points' in s)).toBe(false);
+    const on = buildMatch(p0, p1, { seed: 3, map });
+    delete on.surrender;
+    for (const spec of on.warbands.flat()) delete spec.points;
+    expect(JSON.stringify(on)).toBe(JSON.stringify(off));
   });
 });
 

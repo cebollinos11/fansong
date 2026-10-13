@@ -579,6 +579,29 @@ export const EFFECT_DEMOS: readonly EffectDemo[] = [
     shows: (ev) => has(ev, 'UnitRetreated') && !has(ev, 'GameOver'),
   },
   {
+    id: 'surrender',
+    group: 'Traits',
+    label: 'Forced surrender',
+    hint: 'The round ends with one side far behind on points: it surrenders, its last unit walks off, and the winners cheer.',
+    stage: (s) => {
+      s.spawn(0, ELF, s.attacker);
+      s.spawn(0, ELF, s.flank);
+      s.spawn(0, BOW, s.behind);
+      s.spawn(1, BONES, s.beyond);
+      // The last activation of the round. The lone skeleton is all that is left of a warband four times its cost.
+      s.act('p0u0');
+      s.edit((state) => {
+        for (const u of state.units) {
+          u.activatedThisRound = true;
+          u.points = 20;
+        }
+        state.surrender = { ownShare: 0.3, ratio: 3, start: [60, 80] };
+      });
+      return { type: 'EndActivation' };
+    },
+    shows: (ev) => ev.some((e) => e.type === 'GameOver' && e.reason === 'surrender'),
+  },
+  {
     id: 'shieldwall',
     group: 'Traits',
     label: 'Shieldwall',
@@ -827,6 +850,8 @@ export function stageScene(state: GameState, demo: Pick<EffectDemo, 'label' | 's
   delete s.spell;
   delete s.retreat;
   delete s.retreatZones;
+  // No scene is cut short by a forced surrender; the one that shows it sets the rule itself.
+  delete s.surrender;
 
   const scene: Scene = {
     ...spots,

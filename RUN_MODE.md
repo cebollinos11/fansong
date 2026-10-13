@@ -235,6 +235,22 @@ What was found, and changed:
 - **The target is not met.** A run still dies about 0.8 steps sooner than before limits, and fewer beat the first boss (21% against 27% on average); the median is 4–5, under the 5–8 aimed at. Step 1 is untouched. Roughly a quarter of the gap is the tighter battles (the last three rows of the 50-seed table, which is a noisy measure of it); the rest is the ceiling itself at steps 4 and 5, where a warband used to outpoint its enemy by 1.6–1.7 to 1 and now fields about 1.3 to 1. With the AI in the player's seat that is the difference between winning about 80% of those battles and winning 60–65%. `limits.kinds` and `limits.xp` were left as planned: the tighter battles read as deadly because an even fight is roughly a coin toss for the AI pilot (see Open risks), which a player choosing who to field should beat.
 - **Tighter battles can mostly be gone round.** Over 500 seeds and two acts, every road on from a place leads to an Even or Underdog fight at 3.5% of places (636 of 18,279, and 556 of those are places with only one road on); 41% of acts have such a place somewhere. In the sim about one run in ten was walked into a tighter battle with no other kind of road open (8–14 per 100 runs, by route). No rule against it was added.
 
+### Forced surrender
+
+Annihilation battles play the engine's forced surrender rule ([SURRENDER_PLAN.md](SURRENDER_PLAN.md)): as a round begins, a side with at most 30% of its starting points on the field, facing three times what it has left, gives up. `runBattleConfig` gets it from `buildMatch` like any other annihilation match; boss battles (kill-the-king) and the zone modes do not have it.
+
+- **A surrendering enemy is a win like any other.** `battleReport` adds its survivors to `enemyPointsKilled`, so the gold (`gold.killShare`) is what finishing them off would have paid. Nobody is credited with them: `kills` and `killCosts` only ever count real kills, so the XP for those last kills (`xp.perKill`, `xp.costlierKill`) is not earned.
+- **The player is rarely forced.** A side that can still sound the retreat is exempt, and that is the player with a banner in hand and a living Leader. With no banner, or the Leader dead, a forced surrender loses the battle and the run, as any loss does.
+
+`pnpm play run --seeds 200` (balanced route, `--retreat never`), the same seeds before and after:
+
+| | Mean step | Median | Died at step 1 | Beat boss 1 | Battles won | Annihilation won |
+|---|---|---|---|---|---|---|
+| Before | 4.9 | 4 | 17% | 20% | 76% of 833 | 83% of 546 |
+| With forced surrender | 5.0 | 4 | 17% | 18% | 76% of 829 | 83% of 547 |
+
+Nothing moved beyond noise, so `RUN_TUNING` was left alone. The rule mostly ends battles the pilot had already won, a round or so sooner.
+
 ## Deviations from the limits' plan
 
 - **The floor is 250, not the draft budget**, and **tighter battles start at `limits.fromRound`**, a number of its own: see Tuning.

@@ -281,6 +281,16 @@ seed-reproducible and unit-tested headlessly; the clients only learn to draw it.
   - **Fleeing** — a unit that fails runs back to its own edge of the map,
     taking free hacks from any foe it turns its back on; one already on its
     edge leaves the field. A failed check never knocks a unit down.
+  - **Forced surrender** (annihilation only) — a lost fight is not played out
+    to the last unit. As each new round begins, a warband **surrenders** when
+    the units it still has on the field cost at most **30%** of the points it
+    started with *and* the enemy's cost at least **three times** as much. Points
+    are counted by who holds a unit now, so a turncoat counts for its new side,
+    and a unit knocked down or transfixed counts in full. It is only checked
+    between rounds: the HUD shows each side's points and warns *surrenders next
+    round* while there is still a round to win some back. A side that can still
+    sound the retreat, or has, is never forced. The objective modes do not use
+    it, since a side far behind on points can still win them.
 
 - **Replays** — a `Replay` is just `GameConfig + command list`. `runReplay`
   reproduces the whole game from it; `hashGameState` + a committed golden fixture
@@ -355,7 +365,8 @@ absent when unused.
   | Warpaths | a long 40×28 board: three roads through forest and rock, a conquest zone on each | king-of-the-hill, conquest, capture-the-flag |
 
 - **Game modes** (chosen in Setup or with `--mode`; the map must support it):
-  - **annihilation** — the default: destroy or rout the enemy warband.
+  - **annihilation** — the default: destroy or rout the enemy warband, or leave
+    it so far behind on points that it surrenders (see **Forced surrender**).
   - **kill-the-king** — each side has one **King** (♛; picked in Setup, the most
     expensive unit by default). Your King falls → you lose at once.
   - **king-of-the-hill** — at each round boundary, whoever has more standing
@@ -495,6 +506,11 @@ design as built, and [RETREAT_PLAN.md](RETREAT_PLAN.md) that of the retreat.
   new.) Each boss beaten adds a banner, a market sells them, and a fallen
   standard is one; you carry three at most. With none left, or with no Leader
   to call it, a lost battle ends the run as before. The enemy never retreats.
+- **Surrender** — an annihilation battle of a run plays the forced surrender
+  rule. An enemy that surrenders is beaten: the gold counts its survivors as if
+  they had fallen, but no unit earns kill XP for them. You are never forced
+  while you hold a banner and your Leader lives, since you could still retreat;
+  without either, being forced to surrender loses the battle and the run.
 - **After a win** — every unit that fought earns XP (more for kills, more again
   for killing something costlier) and levels up at 6 / 14 / 24 / 36 XP, choosing
   one of two advances: a trait it lacks, Combat +1 or Quality −1. Then the

@@ -1,6 +1,7 @@
 import type { BoardData, HexTerrain, Vec } from './board.js';
 import { createModeState, normalizeLimits, type GameLimits, type GameMode, type ModeObjectives } from './mode.js';
 import { seedRng } from './rng.js';
+import type { SurrenderRule } from './surrender.js';
 import type { GameState, Owner, Unit } from './types.js';
 
 export interface UnitSpec {
@@ -72,6 +73,8 @@ export interface UnitSpec {
   look?: string;
   /** Cosmetic: a colour blended into its sprite (see {@link Unit.tint}). */
   tint?: string;
+  /** Point cost, for the forced surrender rule. Needed when {@link GameConfig.surrender} is set; ignored otherwise. */
+  points?: number;
 }
 
 export interface GameConfig {
@@ -99,6 +102,12 @@ export interface GameConfig {
    * (or both empty), nobody can and the game is the ordinary one.
    */
   retreatZones?: [Vec[], Vec[]];
+  /**
+   * Forced surrender: at the start of a round, a side far enough behind on
+   * points gives up (see `surrenderingSide`). Every unit must then carry its
+   * `points`. Omitted, nobody is ever forced and the game is the ordinary one.
+   */
+  surrender?: SurrenderRule;
 }
 
 function makeUnit(spec: UnitSpec, owner: Owner, index: number): Unit {
@@ -234,6 +243,23 @@ export function createGame(config: GameConfig): GameState {
   const zones = config.retreatZones;
   if (zones && (zones[0].length > 0 || zones[1].length > 0)) {
     state.retreatZones = [zones[0].map((v) => ({ x: v.x, y: v.y })), zones[1].map((v) => ({ x: v.x, y: v.y }))];
+  }
+  // And the surrender rule: without it no unit carries points, whatever its spec says.
+  const rule = config.surrender;
+  if (rule) {
+    if (!(rule.ownShare > 0 && rule.ownShare <= 1)) throw new Error('surrender: ownShare must be above 0 and at most 1');
+    if (!(rule.ratio >= 1)) throw new Error('surrender: ratio must be at least 1');
+    const start: [number, number] = [0, 0];
+    config.warbands.forEach((specs, owner) =>
+      specs.forEach((spec, i) => {
+        const points = spec.points;
+        if (typeof points !== 'number' || !Number.isFinite(points) || points <= 0)
+          throw new Error(`surrender: unit '${spec.name}' needs its point cost`);
+        units.find((u) => u.id === `p${owner}u${i}`)!.points = points;
+        start[owner as Owner] += points;
+      }),
+    );
+    state.surrender = { ownShare: rule.ownShare, ratio: rule.ratio, start };
   }
   return state;
 }

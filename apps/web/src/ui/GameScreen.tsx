@@ -143,7 +143,8 @@ export function GameScreen({ client, onExit, onWatchReplay, onRematch, onFinishe
         // have played out — never while they're still on screen. Held back from
         // the queue too, so whatever plays next stays hidden until it clears.
         const roundEnded = t.events.find((e): e is Extract<GameEvent, { type: 'RoundEnded' }> => e.type === 'RoundEnded');
-        if (roundEnded) {
+        // A round that opens on a forced surrender is never played: nothing to announce.
+        if (roundEnded && !t.events.some((e) => e.type === 'GameOver')) {
           setRoundAnnounce({ round: roundEnded.round, owner: roundEnded.nextLeader });
           queue.hold(ROUND_ANNOUNCE_MS);
         }

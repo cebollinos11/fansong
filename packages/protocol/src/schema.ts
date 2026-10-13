@@ -222,6 +222,7 @@ export const unitSchema = z
     warCried: z.boolean(),
     transfixedBy: z.string().optional(),
     retreated: z.literal(true).optional(),
+    points: z.number().positive().optional(),
   })
   .strict();
 
@@ -245,7 +246,10 @@ export const gameLimitsSchema = z
   .object({ roundLimit: limitValue.nullable().optional(), targetScore: limitValue.optional() })
   .strict();
 
-export const flagStateSchema = z.object({ at: vecSchema, carrier: z.string().nullable() }).strict();
+/** The forced surrender thresholds; see the engine's `SurrenderRule`. */
+export const surrenderRuleSchema = z.object({ ownShare: z.number().positive().max(1), ratio: z.number().min(1).max(1000) }).strict();
+
+export const flagStateSchema =z.object({ at: vecSchema, carrier: z.string().nullable() }).strict();
 
 export const modeStateSchema = z
   .object({
@@ -288,6 +292,7 @@ export const gameStateSchema = z
     spell: z.object({ power: z.number().int() }).strict().optional(),
     retreatZones: z.tuple([z.array(vecSchema), z.array(vecSchema)]).optional(),
     retreat: z.object({ owner: ownerSchema, hex: vecSchema }).strict().optional(),
+    surrender: surrenderRuleSchema.extend({ start: z.tuple([z.number(), z.number()]) }).strict().optional(),
   })
   .strict();
 
@@ -490,7 +495,7 @@ export const gameEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('GameOver'),
     winner: ownerSchema,
-    reason: z.enum(['annihilation', 'score', 'roundLimit', 'king', 'flag', 'pig', 'extracted', 'retreat']).optional(),
+    reason: z.enum(['annihilation', 'score', 'roundLimit', 'king', 'flag', 'pig', 'extracted', 'retreat', 'surrender']).optional(),
   }),
 ]);
 
@@ -542,6 +547,8 @@ export const unitSpecSchema = z
     pig: z.boolean().optional(),
     look: z.string().max(64).optional(),
     tint: tintSchema.optional(),
+    // A point cost, for the forced surrender rule: far above any the point-buy can give.
+    points: z.number().positive().max(10_000).optional(),
   })
   .strict()
   .refine((u) => !(u.slow && u.fast), { message: 'a unit cannot be both slow and fast' })
@@ -579,6 +586,7 @@ export const gameConfigSchema = z
         z.array(vecSchema).max(MAP_LIMITS.maxWidth * MAP_LIMITS.maxHeight),
       ])
       .optional(),
+    surrender: surrenderRuleSchema.optional(),
   })
   .strict();
 

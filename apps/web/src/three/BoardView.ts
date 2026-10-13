@@ -37,8 +37,8 @@ import {
   type ZoneScoreText,
 } from './rollOverlay.js';
 import { describeActivation, describeCombat, describeNerve, describeResist } from '../ui/rollView.js';
-import { COLOR_NAMES, sidePossessive, type SideNames } from '../ui/sides.js';
-import { BROKEN_VERDICT_DETAIL } from '../ui/hudView.js';
+import { COLOR_NAMES, sideName, sidePossessive, type SideNames } from '../ui/sides.js';
+import { BROKEN_VERDICT_DETAIL, SURRENDER_VERDICT_DETAIL } from '../ui/hudView.js';
 import type { PlanPreview, ReachTile } from '../game/planView.js';
 import { BoardChunks } from './chunks.js';
 import {
@@ -2063,8 +2063,13 @@ export class BoardView {
         const lost = this.localSeats?.length === 1 && !this.localSeats.includes(e.winner);
         // A retreat's stragglers make for their edge as the battle ends. Only a
         // picture: what became of them is settled afterwards, off the field.
-        if (e.reason === 'retreat') {
+        // So do the survivors of a side forced to surrender, once it has been said.
+        if (e.reason === 'retreat' || e.reason === 'surrender') {
           this.at(t + 400, () => {
+            if (e.reason === 'surrender') {
+              const loser: Owner = e.winner === 0 ? 1 : 0;
+              this.rolls.addVerdict({ text: `${sideName(this.sideNames, loser, true)} ${this.sideNames[loser] === 'You' ? 'surrender' : 'surrenders'}!`, detail: SURRENDER_VERDICT_DETAIL, on: [], tone: 'kill' }, this.now);
+            }
             for (const obj of this.units.values()) {
               if (obj.owner === e.winner || obj.state.dead || obj.fade) continue;
               obj.retreated = true;

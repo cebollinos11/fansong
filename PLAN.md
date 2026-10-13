@@ -339,6 +339,15 @@ no rules — remove three.js and the game still runs in the CLI.
       win reason): without zones nothing is offered, so the golden replay was
       not re-blessed and `REPLAY_VERSION` is still 2. The AI never retreats.
       `pnpm play run --retreat losing` measures what a banner is worth.
+    - **Forced surrender** — ✅ ([SURRENDER_PLAN.md](SURRENDER_PLAN.md)) a rule
+      of every annihilation game, not only a run's: as a round begins, a side
+      with at most 30% of its starting points left, facing three times as
+      much, gives up. Optional state like the retreat (`GameConfig.surrender`,
+      `UnitSpec.points`, `GameState.surrender`, `Unit.points`, the
+      `'surrender'` win reason); content's `buildMatch` turns it on for
+      annihilation and stamps each unit's cost, since the engine knows no
+      costs. The golden replay is a raw config without it, so it was not
+      re-blessed, and `REPLAY_VERSION` is still 2.
     - **Battles** are ordinary local matches: the client plays
       `runBattleConfig` and hands the replay back as the `battleResult` action.
     - **Sim** — `pnpm play run` pilots whole runs with the AI in both seats and

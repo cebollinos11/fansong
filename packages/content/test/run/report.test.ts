@@ -1,6 +1,6 @@
-import { runReplay, type Replay } from '@fansong/engine';
+import { runReplay, type GameEvent, type GameState, type Replay } from '@fansong/engine';
 import { describe, expect, it } from 'vitest';
-import { battleReport, enemyCost, legalRunActions, runStep, unitCost, type RunState } from '../../src/index.js';
+import { battleReport, enemyCost, goldFor, legalRunActions, runStep, unitCost, type RunState } from '../../src/index.js';
 import { drafted, inBattle, playBattle } from './helpers.js';
 
 /** Check a report against the replay's own events and final state. */
@@ -33,11 +33,28 @@ function checkReport(s: RunState, replay: Replay): void {
   if (turned.size === 0) {
     const kills = events.filter((e) => e.type === 'UnitKilled' && e.unitId.startsWith('p1') && e.byId !== null);
     expect(Object.values(report.units).reduce((n, u) => n + u.kills, 0)).toBe(kills.length);
-    const dead = run.final.units.filter((u) => u.owner === 1 && u.dead);
+    // An enemy forced to surrender pays for its survivors too.
+    const surrendered = report.winner === 0 && events.some((e) => e.type === 'GameOver' && e.reason === 'surrender');
+    const paid = run.final.units.filter((u) => u.owner === 1 && (u.dead || surrendered));
     const enemy = s.battle!.enemy.units;
-    expect(report.enemyPointsKilled).toBe(dead.reduce((sum, u) => sum + unitCost(enemy[Number(u.id.slice(3))]!), 0));
+    expect(report.enemyPointsKilled).toBe(paid.reduce((sum, u) => sum + unitCost(enemy[Number(u.id.slice(3))]!), 0));
+    if (surrendered) expect(report.enemyPointsKilled).toBe(report.enemyPoints);
   }
 }
+
+/** The first seed (from 1) whose first battle, AI in both seats, ends as `ending` says. */
+function battleEnding(ending: (final: GameState, events: GameEvent[]) => boolean, banners?: number): { s: RunState; replay: Replay } {
+  for (let seed = 1; seed <= 60; seed++) {
+    const s = { ...inBattle(seed), ...(banners === undefined ? {} : { banners }) };
+    if (s.battle!.mode !== 'annihilation') continue;
+    const replay = playBattle(s);
+    const run = runReplay(replay);
+    if (ending(run.final, run.events.flat())) return { s, replay };
+  }
+  throw new Error('no such battle in 60 seeds');
+}
+
+const bySurrender = (events: GameEvent[]) => events.some((e) => e.type === 'GameOver' && e.reason === 'surrender');
 
 describe('battleReport', () => {
   it('agrees with the replay it reads', () => {
@@ -45,6 +62,30 @@ describe('battleReport', () => {
       const s = inBattle(seed);
       checkReport(s, playBattle(s));
     }
+  });
+
+  it('pays a forced surrender as if the survivors had fallen, with no kills credited for them', () => {
+    const { s, replay } = battleEnding((final, events) => final.winner === 0 && bySurrender(events));
+    const run = runReplay(replay);
+    const survivors = run.final.units.filter((u) => u.owner === 1 && !u.dead);
+    expect(survivors.length).toBeGreaterThan(0);
+    const report = battleReport(replay, s.battle!.fielded!);
+    expect(report.enemyPointsKilled).toBe(report.enemyPoints);
+    const fallen = run.events.flat().filter((e) => (e.type === 'UnitKilled' || e.type === 'UnitRouted') && e.unitId.startsWith('p1'));
+    expect(Object.values(report.units).reduce((n, u) => n + u.kills, 0)).toBeLessThanOrEqual(fallen.length);
+    // The run settles it as any other win, on the full gold.
+    const won = runStep(s, { type: 'battleResult', replay });
+    expect(won.phase).toBe('aftermath');
+    expect(won.aftermath!.gold).toBe(goldFor(s.round, report));
+    checkReport(s, replay);
+  });
+
+  it('ends the run when the player, with no banner to retreat under, is the one forced to surrender', () => {
+    const { s, replay } = battleEnding((final, events) => final.winner === 1 && bySurrender(events), 0);
+    const report = battleReport(replay, s.battle!.fielded!);
+    expect(report.retreated).toBe(false);
+    expect(Object.values(report.units).some((u) => u.fate === 'survived')).toBe(true);
+    expect(runStep(s, { type: 'battleResult', replay }).phase).toBe('over');
   });
 
   it('maps engine units back to the roster when someone is benched', () => {
