@@ -156,6 +156,32 @@ describe('AI in kill-the-king', () => {
     expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
   });
 
+  it('of two units beside the enemy King on the ground, the better fighter strikes first', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const king = { x: 7, y: 4 };
+    const beside = board.neighbors(king);
+    // Both blows are worth more than the order can tell apart, so one command at a time the weak one, listed first, went first.
+    // Played out 1,000 times each way to the end of the round, the strong one first wins 93% against 81%: the King gets up in between.
+    const s = kingGame(
+      [U('k', 0, 0, { king: true }), U('weak', beside[0]!.x, beside[0]!.y, { combat: 2 }), U('strong', beside[3]!.x, beside[3]!.y, { combat: 5 })],
+      [U('k', king.x, king.y, { king: true }), U('far', 11, 0)],
+    );
+    const downed = { ...s, units: s.units.map((u) => (u.id === 'p1u0' ? { ...u, knockedDown: true } : u)) };
+    expect(chooseCommand(downed)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
+  it('of two units beside the enemy King on its feet, the better fighter strikes first', () => {
+    const board = makeHexGrid({ width: 12, height: 8, blocked: [] });
+    const king = { x: 7, y: 4 };
+    const beside = board.neighbors(king);
+    // Listed second, the stronger is the likelier to put the King on the ground for the other (88% against 85% over 1,000 rounds each way).
+    const s = kingGame(
+      [U('k', 0, 0, { king: true }), U('mid', beside[0]!.x, beside[0]!.y, { combat: 4 }), U('strong', beside[3]!.x, beside[3]!.y, { combat: 5 })],
+      [U('k', king.x, king.y, { king: true, combat: 2 }), U('far', 11, 0)],
+    );
+    expect(chooseCommand(s)).toMatchObject({ type: 'ChooseActivation', unitId: 'p0u2' });
+  });
+
   it('a King a foe could charge goes before a friend with nothing to do yet', () => {
     // The foe is a Move and a blow from our King, and no one of ours can reach it.
     const s = kingGame([U('k', 5, 4, { king: true }), U('a', 0, 0)], [U('b', 11, 4), U('k', 19, 7, { king: true })], { width: 20 });

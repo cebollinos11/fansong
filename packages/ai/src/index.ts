@@ -113,6 +113,18 @@ function openActivation(state: GameState, board: Board, command: Command): boole
 }
 
 /**
+ * Whether an open activation is of a unit the order cannot tell from the others
+ * like it: in kill-the-king, one with more to do than the order's span
+ * ({@link ORDER_SPAN}), a blow at the enemy King most often.
+ */
+function tiedActivation(state: GameState, board: Board, command: Command): boolean {
+  if (command.type !== 'ChooseActivation') return false;
+  const plan = kingPlan(state, board, state.active);
+  if (!plan || plan.goal) return false;
+  return orderEdge(state, board, unitById(state, command.unitId)!, plan.ourKing?.id, courtOrderOf(state, board, plan)) === ORDER_SPAN;
+}
+
+/**
  * The best plan of `unit`, of the side choosing, were it acting now with
  * `actions` actions, as {@link planNow} reads it: what {@link planScores} gives
  * the best thing it could do, with what getting up spares it when it is on the
@@ -158,7 +170,9 @@ function planOf(state: GameState, board: Board, unit: Unit, actions: number): Pl
     plan.target = target.id;
     plan.kill = saved ? 0 : o.kill;
     plan.down = target.knockedDown ? 0 : o.hurt / 2 + (saved ? o.kill : 0);
-    if (plan.kill > 0) {
+    // The enemy King's death is the game: nothing follows it.
+    if (plan.kill > 0 && state.mode?.kings && kingOf(state, target.owner) === target.id) plan.ends = true;
+    else if (plan.kill > 0) {
       const units: Unit[] = [];
       for (const u of acting.units) units.push(u.id === target.id ? { ...u, dead: true } : u);
       plan.killed = { ...state, units };
@@ -189,7 +203,7 @@ function positionValue(state: GameState, board: Board, side: Owner): number {
 }
 
 /** The AI with the search off, as the search calls it. */
-const PLAIN: Policy = { rank: bestCommands, open: openActivation, plan: planOf, leaf: positionValue };
+const PLAIN: Policy = { rank: bestCommands, open: openActivation, tied: tiedActivation, plan: planOf, leaf: positionValue };
 
 /** A command's score on the ladder (who activates, in every mode, and a spell's target): its kind first, then how good a one of its kind it is. */
 function ladderScore(
