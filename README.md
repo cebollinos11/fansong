@@ -458,6 +458,20 @@ design as built, and [RETREAT_PLAN.md](RETREAT_PLAN.md) that of the retreat.
 - **Briefing** — the mode, a thumbnail of the battlefield, the enemy still in
   shadow and the reward in full. Bench units here (a hurt unit sits out on its
   own). Who the enemy really is shows only on the field.
+- **Point limits** — every battle caps the points you may field at **120% of
+  what the enemy costs**, and never at fewer than 250, so the cap first bites
+  around step 4. The briefing opens with a warband that fits (your Leader, then
+  your costliest units that still fit) and shows the limit and what is left of
+  it; bench one unit to field another. A unit the limit has no room for cannot
+  be fielded, and its card says what it would take; one unit may always fight,
+  whatever it costs. Benches are made anew for each battle. Some plain
+  battles, marked on the map, are tighter, and every unit that fights one
+  earns extra XP if it is won:
+  - **Skirmish** (+1 XP) — a small warband of about 100 points however late
+    it is met, and you field no more points than it costs. It pays what a
+    battle of the usual strength would.
+  - **Even fight** (+1 XP) — you field no more points than the enemy costs.
+  - **Underdog** (+2 XP) — you field at most 90% of what the enemy costs.
 - **Battle** — an ordinary match against the AI. Leaving midway keeps the run
   but not the battle: it starts over from its first move, on the same dice.
 - **Retreat** — a run starts with one **retreat banner** (shown on every run

@@ -17,6 +17,7 @@ FanSong has one-off matches (vs AI, hotseat, online) and a single-player **run**
 | Shops | A small field shop after each battle (mending and one recruit); the full shop only at Market nodes |
 | Retreat | Fall back to the map: the fled node closes, another branch is picked |
 | Regular modes | Annihilation, conquest, king-of-the-hill |
+| Point limits | Every battle caps the points fielded at 120% of the enemy's cost (never under 250); some plain battles are tighter (Skirmish, Even, Underdog) and pay extra XP. Design in [RUN_LIMITS_PLAN.md](RUN_LIMITS_PLAN.md) |
 | Persistence | Resume between any two steps; a battle left midway **restarts** (same seed, same enemy). Local best-run records. Run seed shown and enterable |
 
 The first version of run mode was a flat list of rounds, each a pick of 1 of 3 missions, with a boss every 5th. The map replaced it; what it kept is noted where it matters.
@@ -30,7 +31,8 @@ The first version of run mode was a flat list of rounds, each a pick of 1 of 3 m
 ```ts
 interface RunUnit { id: string; unit: WarbandUnit; xp: number; level: number; kills: number; sitsOut?: boolean; benched?: boolean; wounds?: Wound[] }
 interface RouteNode { id: number; step: number; lane: number; kind: NodeKind; next: number[];
-  budget?: number; threat?: number; faction?: string; mode?: GameMode; rewardKind?: RewardOption['kind']; rival?: true }
+  budget?: number; threat?: number; faction?: string; mode?: GameMode; rewardKind?: RewardOption['kind']; rival?: true;
+  limit?: 'skirmish' | 'even' | 'underdog' }       // a plain battle with a tighter point limit
 interface Route { act: number; nodes: RouteNode[]; at: number | null; path: number[]; going?: number; closed: number[] }
 interface RunState {
   version: 3; seed: number; round: number;          // round = the step along the route about to be / being played
@@ -40,7 +42,8 @@ interface RunState {
   retreats?: number;                                 // retreats made at this step: re-keys the next battle
   route?: Route;                                     // the act's map (absent only during the draft)
   offer?: ...; pending?: ...;                        // draft / owed reward / shop stock / camp / training / event; level-up choices
-  battle?: { map: MapDef; enemy: Warband; elite?: true; plain?: true; ... };  // the node's battle; reused on restart
+  battle?: { map: MapDef; enemy: Warband; elite?: true; plain?: true;
+             limit?: number; limitKind?: LimitKind; ... };  // the node's battle and the points it lets the player field; reused on restart
   log: RoundSummary[];                               // per battle: step, mode, enemy, kills, losses
 }
 ```
@@ -56,6 +59,7 @@ interface RunState {
 - **Shape:** 5 lanes × 6 rows, the boss above them. Four walks go up from the bottom row, each a step to the lane left, ahead or right, leaning toward ground no walk has trodden and never crossing a road already there; the nodes are the places they pass. Then neighbouring nodes the walks left unjoined get a **side road** (chance `route.sideRoads`, 0.8) where it crosses nothing. Every node of the top row leads to the boss. About 18 nodes an act; a wandering run has a choice of roads on about two steps in three.
 - **Kinds:** row 1 is all battles. Row 6 is camps and markets (one of each if it has two nodes). Rows 2–5 are rolled by weight (`route.kinds`: battle 45, mystery 15, elite 15, market 10, camp 8, training 7), but an elite waits no lower than row 3 and **no stop follows a stop** — so row 5, under a row of stops, is all fights. Every act is given an elite and a market if the rolls left it without.
 - **What a fight shows:** rolled at generation, and drawn on the map: its **threat** (skulls: a battle's enemy is bought with 75–130% of the step's budget, an elite's with 140–160%, and the skulls count what the warband that buys really costs), its **faction** (a silhouette), its **mode** and the **kind of reward**. The enemy warband, the battlefield and the reward itself are rolled on arrival, for the roster as it stands.
+- **Point limits:** rolled last, after everything above, so a seed's map and kinds are what they were before limits existed. Each plain battle that is not in row 1, and is at step 4 or later (`limits.fromRound`), is a **Skirmish**, an **Even fight**, an **Underdog** fight or none of them by weight (`limits.kinds`: none 70, skirmish 10, even 12, underdog 8). A skirmish is rolled only where the step's weakest enemy (`mission.threat.min` of its budget) would cost more than `skirmish.points`; its node's `budget` becomes `skirmish.points / enemyPoints(step)` and its threat is scouted again, so the map shows the small enemy it is. A rival's node is rolled for and the roll thrown away: it never has a tighter limit, and the rest of the map is the same with or without rivals.
 - **Rivals:** a past run's warband, scheduled for a step as before (`run/rivals.ts`), takes a battle node of that step, marked on the map. If that step has no plain battle node (or the road taken misses the one it has), the rival is not met.
 
 `Route.at` is the node last finished, `path` the road taken, `going` the node being played, `closed` the nodes retreated from. `openNodes(route)` is what `at` leads to (the bottom row at an act's start), less the closed.
@@ -76,13 +80,32 @@ interface RunState {
 
 1. **Draft** — pick a leader (1 of 3), then troops (1 of 3, repeated) until the draft budget is spent. The leader is any preset unit (`LEADER_POOL`), given the Leader trait if it has none, that then costs at most `draft.leaderMax` (60) points; troops from `TROOP_POOL`, the preset units that lead nobody (see Growth). All costed by `unitCost` (`cost.ts`).
 2. **Map** — travel to an open node.
-3. **Briefing** — shows the mode, map thumbnail (`ui/mapThumb.ts`), the enemy as silhouettes with a skull rating, and the reward in full. Player may bench units (roster cap 12) and, at the boss, pick their King. The enemy roster is only seen in the battle.
+3. **Briefing** — shows the mode, map thumbnail (`ui/mapThumb.ts`), the enemy as silhouettes with a skull rating, the reward in full, and the battle's **point limit** (below). It opens on a warband that fits the limit; the player may bench units and field others in their place (roster cap 12) and, at the boss, pick their King. The enemy roster is only seen in the battle.
 4. **Battle** — ordinary local match: `MatchSetup { warbands: [player, enemy], seats: ['human','ai'], seed, mapId, mode, kings }`.
 5. **Aftermath** (win only) — XP, level-ups, injury rolls.
 6. **Reward** — claim what the battle promised (a boost or mending asks which unit). If nobody can take it any more, it is paid as gold of the same worth.
 7. **Field shop** — mending, and one recruit (`fieldShop` in `RUN_TUNING`); no reroll, no selling, no upgrades. The free `EAGER_CADET` still stands in when the gold in hand buys nobody, so a wiped roster can refill. Then back to the map, a step on. Loss at step 4 → `over`, record saved.
 
 **Retreat** (rules in [RETREAT_PLAN.md](RETREAT_PLAN.md)): a run holds retreat banners (1 at the start, +1 per boss beaten, more from markets and the fallen standard, at most 3). With one in hand the battle's config carries the player's deploy zone as its retreat zone, and the Leader may sound the retreat. The call spends the banner, whoever then wins. A battle lost after it does not end the run: its aftermath has no XP or gold (units left behind roll the harsher `leftBehind` table), there is no reward, and after the field shop the run **falls back to the map at the same step, with the fled node closed**. If that would leave no road open, or the node was the boss, the node stays open and is met again with a new enemy (`RunState.retreats` keys the encounter stream).
+
+### Point limits (`run/encounter.ts`, `run/roster.ts`)
+
+Every battle lets only so many points onto the player's side, set on arrival from the enemy actually met (`battleLimit(enemyCost, kind)` → `RunBattle.limit`):
+
+| Battle | Points the player may field | Bonus XP on a win |
+|---|---|---|
+| Any (battle, elite, boss, rival, ambush) | 120% of the enemy's cost, never under 250 (`limits.ceiling`) | none |
+| **Skirmish** | 100% of the enemy's cost; the enemy is about 100 points whatever the step | +1 a unit |
+| **Even fight** | 100% of the enemy's cost | +1 a unit |
+| **Underdog** | 90% of the enemy's cost | +2 a unit |
+
+- **The floor** keeps the limit off the opening: a drafted warband of 150 points meets 80–120 at steps 1–3 and is about 210 strong by step 3, and that edge is what makes the first steps survivable (see Tuning). At 250 the limit first leaves units out around step 4, which is also the first step a tighter battle may be at.
+- **One unit may always fight**, whatever it costs. A second that takes the warband over the limit is refused, with what it needs and what is left ("Wolf needs 31 pts, 12 left"), so a swap is a bench, then a field.
+- **The briefing starts ready.** On arrival every bench is cleared and `fitToLimit` fields the Leader (the costliest unit, if nobody leads), then the rest from the costliest down, each if it still fits. `startBattle` is therefore always legal on arrival, and the sim's pilot needs no picker of its own. The price: a bench made by hand does not carry to the next battle.
+- **A skirmish's enemy** is built by `generateEnemy` as any other, on the small budget its node holds (it may cost more, to make up its three units; the limit follows what it really costs). Its reward is priced at threat 1, not at its tiny share of the step's budget, so it pays what a battle of the usual strength would.
+- **The bonus XP** goes to every unit that fought a won battle of the kind (`limits.xp`, added in `xpFor`); the aftermath says so.
+- **The battlefield** is sized for the units the limit lets through and the enemy's, not for the whole roster.
+- A battle saved before limits existed has no `limit`, which means none: `RunState.version` is still 3.
 
 ### Mystery events (`run/events.ts`)
 
@@ -110,7 +133,7 @@ An ambush fought is a battle at the mystery's own node: fled, it closes that nod
 ### Growth (`run/progress.ts`, `run/shop.ts`, `run/stops.ts`)
 
 - **Battle report:** pure `battleReport(replay)` re-runs the commands through `reduce`, collecting `UnitKilled { unitId, byId }` → kills per player unit, who fell.
-- **XP:** +1 for fighting, +2 per kill, +1 more for killing a costlier unit. Levels at 6 / 14 / 24 / 36 XP (cap 4). Each level: choose 1 of 2 advances — an existing favorable trait the unit lacks, Combat +1, or Quality −1, within `STAT_BOUNDS` and `statErrors`. A camp's drill is the only XP not earned in battle.
+- **XP:** +1 for fighting, +2 per kill, +1 more for killing a costlier unit; +1 or +2 more for every unit that fought a won Skirmish, Even fight or Underdog fight (see Point limits). Levels at 6 / 14 / 24 / 36 XP (cap 4). Each level: choose 1 of 2 advances — an existing favorable trait the unit lacks, Combat +1, or Quality −1, within `STAT_BOUNDS` and `statErrors`. A camp's drill is the only XP not earned in battle.
 - **Injury (d6 per fallen unit):** 1 dead; 2 lasting wound (Combat −1, Quality +1, or an unfavorable trait); 3 sits out next battle; 4–6 recovers. Fled units return unhurt; a turncoat (Disloyal) is gone.
 - **Reward (per battle, its kind shown on the map and all of it in the briefing):** worth `(base + perRound × round) × (1 + slope × (threat − 1))` in gold (floor `min`; a boss pays `boss` times the base), where a recruit is worth its points, a boost its shop price for the roster's median taker, a mending the shop's heal price. The node's kind — recruit, boost, purse, mending — is kept if the roster can take it on arrival (a purse if not), then something of that kind worth about the value is rolled, topped up in gold (or all gold if nothing fits).
 - **Gold:** flat per win + per step + share of enemy points killed. **Recruits** (reward and shops) come from `TROOP_POOL`, as the draft's troops do: every preset unit that leads nobody, whether or not a warband fields it (sea creatures left out for now: `SEA_CREATURES`). **Shops:** recruits at `unitCost` (if the gold in hand buys none of them, a free `EAGER_CADET`, Q4+ C2, is added), upgrades at cost delta × multiplier, heal a wound; a market also rerolls for a price, buys units back and sells banners.
@@ -119,7 +142,7 @@ An ambush fought is a battle at the mystery's own node: fled, it closes that nod
 
 - `game/runStore.ts` — load/save `fansong.run` and `fansong.runRecords`, following `game/armies.ts` (explicit `MapStorage`, untrusted parse, never throws). Saved on every step. A save of another `version` is dropped, so runs from before the map are not resumed.
 - `ui/RunScreen.tsx` + `ui/runView.ts` (pure view-model, tested) — draft, briefing, aftermath, reward, shop/market, camp, training, event, game-over/records. Unit cards reuse `ArmyBuilderScreen` / `armyView.ts` pieces.
-- `ui/RunMap.tsx` — the map as an SVG drawn from the pure `routeView(s)`: nodes with x/y (the boss on top), roads, each node's state (`here | open | closed | passed | ahead`) and what is known of it (skulls, mode, faction, kind of reward, or what the stop offers). Clicking an open node travels there; a card per open node beside the map says the same and has a button.
+- `ui/RunMap.tsx` — the map as an SVG drawn from the pure `routeView(s)`: nodes with x/y (the boss on top), roads, each node's state (`here | open | closed | passed | ahead`) and what is known of it (skulls, a badge and a line for a tighter point limit, mode, faction, kind of reward, or what the stop offers). Clicking an open node travels there; a card per open node beside the map says the same and has a button.
 - `ui/nodeArt.ts` — each kind of node is drawn with a Wesnoth item or scenery image (a sword, a flaming sword, a merchant's tent, a campfire, a training dummy, a signpost, a dragon statue), vendored by the sprite importer and credited in `public/sprites/CREDITS.md`.
 - `App.tsx` — `View` `{ kind: 'run' }`; a `RunHost` that shows `RunScreen` or, in `battle`, a `LocalMatchClient` built with a `MapLookup` that returns the run's generated map. With `?dev=1`, `window.fansongRun` gives `state()` and `step(action)` (and, in a battle, the `client`).
 - `MenuScreen.tsx` — "Run" button; shows "Continue run (act, step)" when one is saved; new-run dialog takes an optional seed.
@@ -127,7 +150,7 @@ An ambush fought is a battle at the mystery's own node: fled, it closes that nod
 
 ### Calibration tool (`tools/cli`)
 
-`pnpm play run --seeds N`: the AI plays the player's seat too, with a greedy auto-picker for draft/reward/shop, and reports how deep runs get, how each step and kind of node went, and how often each kind was visited. `--route safe|balanced|greedy` sets the way up the map (default `balanced`): `safe` takes a stop where there is one and else the weakest enemy; `greedy` the strongest enemy, an elite before anyone; `balanced` the enemy nearest the step's usual strength. At a camp the picker rests if anyone is hurt and drills if not; at a training ground its costliest unit takes the dearest advance; it hires the sellsword and the deserter, leaves the shrine alone, digs for the cache, fights an ambush (a `safe` run pays the toll when it can) and sells the standard; it buys or raises a banner only with `--retreat losing`. Committed, unlike the AI bench.
+`pnpm play run --seeds N`: the AI plays the player's seat too, with a greedy auto-picker for draft/reward/shop, and reports how deep runs get, how each step, kind of node and kind of point limit went (with the roster's points beside the points fielded, and how often the limit left someone out), and how often each kind was visited. The pilot fields the warband the briefing opens on. `--route safe|balanced|greedy` sets the way up the map (default `balanced`): `safe` takes a stop where there is one and else the weakest enemy; `greedy` the strongest enemy, an elite before anyone; `balanced` the enemy nearest the step's usual strength. At a camp the picker rests if anyone is hurt and drills if not; at a training ground its costliest unit takes the dearest advance; it hires the sellsword and the deserter, leaves the shrine alone, digs for the cache, fights an ambush (a `safe` run pays the toll when it can) and sells the standard; it buys or raises a banner only with `--retreat losing`. Committed, unlike the AI bench.
 
 ## Tuning
 
@@ -162,6 +185,64 @@ The three roads come out level, each in its own way, as the plan hoped: `safe` d
 
 The earlier passes, on the first version, set the things the map kept: the fewest units an enemy fields, the leaderless patrols of the first steps, the XP thresholds (6 / 14 / 24 / 36) and the reward formula (base 30, +4 a step, slope 2.5).
 
+### Point limits
+
+Measured against the game as it stood just before limits (the tables above are older: the AI and the preset units have changed since). `--retreat never` throughout. The sim's pilot fields the warband the briefing opens on, and its way up the map counts a battle with a tighter limit as a strong enemy, so `safe` goes round one where it can and `greedy` goes for it.
+
+**200 seeds a route:**
+
+| | Route | Mean step | Median | Died at step 1 | Beat boss 1 |
+|---|---|---|---|---|---|
+| Before limits | safe | 6.3 | 5 | 8% | 27% |
+| | balanced | 5.7 | 5 | 17% | 26% |
+| | greedy | 5.5 | 5 | 24% | 28% |
+| As first built (ceiling 120%, floor 150) | safe | 4.8 | 4 | 8% | 14% |
+| | balanced | 4.6 | 4 | 17% | 19% |
+| | greedy | 4.2 | 3 | 24% | 16% |
+| **As tuned (ceiling 120%, floor 250)** | safe | 5.6 | 5 | 8% | 21% |
+| | balanced | 4.9 | 4 | 17% | 20% |
+| | greedy | 4.7 | 4 | 24% | 22% |
+
+**50 seeds a route** (the same seeds before and after; a rate here is good to about ±7 points):
+
+| | Route | Mean step | Median | Died at step 1 | Beat boss 1 |
+|---|---|---|---|---|---|
+| Before limits | safe | 5.5 | 5 | 12% | 22% |
+| | balanced | 5.6 | 5 | 18% | 26% |
+| | greedy | 6.0 | 7 | 26% | 36% |
+| As tuned | safe | 4.8 | 5 | 12% | 12% |
+| | balanced | 5.1 | 4 | 18% | 24% |
+| | greedy | 4.9 | 5 | 26% | 26% |
+| As tuned, but with no tighter battles on the map | safe | 5.1 | 5 | 12% | 16% |
+| | balanced | 5.3 | 4 | 18% | 24% |
+| | greedy | 5.0 | 5 | 26% | 24% |
+
+How each kind of limit went, as tuned (200 seeds a route, the three routes together):
+
+| Limit | Fought | Won |
+|---|---|---|
+| Ceiling, nobody left out | 1505 | 81% |
+| Ceiling, somebody left out | 741 | 73% |
+| Skirmish | 76 | 38% |
+| Even fight | 65 | 45% |
+| Underdog | 36 | 33% |
+
+What was found, and changed:
+
+- **The floor was the first thing to bind, not the ceiling.** At 150 (the draft budget) it left someone out of 95% of the battles of step 2 and 90% of step 3, where a warband is 175–215 points strong against 90–130: deaths at step 3 went from 12–14% of runs to 19–22%. `ceiling.floor` 150 → **250**: steps 1–3 are as they were (16–29% of step-3 battles leave someone out), and the limit starts to matter at step 4.
+- **Tighter battles start at a step of their own** (`limits.fromRound`, 4). They were to start where the ceiling passes its floor, which with the floor at 250 would have been step 6: none in act 1 at all.
+- **Raising the ceiling further bought nothing.** Floor 200 with a ceiling of 140%, floor 250 with 130% and floor 300 with 120% all came out within noise of floor 250 with 120% (mean step 4.7–5.7 by route), so the ceiling stays at the 120% that was asked for.
+- **The target is not met.** A run still dies about 0.8 steps sooner than before limits, and fewer beat the first boss (21% against 27% on average); the median is 4–5, under the 5–8 aimed at. Step 1 is untouched. Roughly a quarter of the gap is the tighter battles (the last three rows of the 50-seed table, which is a noisy measure of it); the rest is the ceiling itself at steps 4 and 5, where a warband used to outpoint its enemy by 1.6–1.7 to 1 and now fields about 1.3 to 1. With the AI in the player's seat that is the difference between winning about 80% of those battles and winning 60–65%. `limits.kinds` and `limits.xp` were left as planned: the tighter battles read as deadly because an even fight is roughly a coin toss for the AI pilot (see Open risks), which a player choosing who to field should beat.
+- **Tighter battles can mostly be gone round.** Over 500 seeds and two acts, every road on from a place leads to an Even or Underdog fight at 3.5% of places (636 of 18,279, and 556 of those are places with only one road on); 41% of acts have such a place somewhere. In the sim about one run in ten was walked into a tighter battle with no other kind of road open (8–14 per 100 runs, by route). No rule against it was added.
+
+## Deviations from the limits' plan
+
+- **The floor is 250, not the draft budget**, and **tighter battles start at `limits.fromRound`**, a number of its own: see Tuning.
+- **A rival's node is rolled for, and the roll thrown away**, so that a run's limits are the same with or without rivals (the plan only said a rival's node has none).
+- **`Aftermath.limitKind`** was added, so the aftermath can say where the extra XP came from.
+- **`generateBattle` takes the player's unit count or a function of the enemy met**: the enemy is built first, the limit and the fitted warband follow from it, and the ground is sized last, with the dice in the order they always had.
+- **The sim's road picker knows the limits** (above); the plan left the pilot alone.
+
 ## Deviations from the map's plan
 
 - **Side roads.** Four walks alone left a wandering run with a choice of roads on only about two steps in five. The generator also joins neighbouring nodes the walks left unjoined (`route.sideRoads`), and the walks lean toward untrodden ground (`route.spread`); roads still never cross.
@@ -177,6 +258,7 @@ The earlier passes, on the first version, set the things the map kept: the fewes
 - `pnpm test` and `pnpm typecheck`; golden replay unchanged (no engine edits).
 - `packages/content/test/run/`: `route.test.ts` (same seed → same route; every node reachable and reaching the boss; no crossing roads; the kind rules over 500 seeds; a random walk of `legalRunActions` over 200 seeds that never gets stuck or throws, retreats included), `stops.test.ts`, `events.test.ts` (each event's each choice), and the older suites moved from missions to the map. `apps/web/test/run.test.ts` covers the view-models and the save format.
 - `pnpm play run --seeds 200 --route safe|balanced|greedy`: no crashes, same seed → same result.
+- Point limits: `encounter.test.ts` (the limit for each kind, and the floor), `run.test.ts` (the briefing opens on a warband that fits, Leader first; a unit the limit has no room for is refused, one unit alone never is; a skirmish's enemy and pay), `route.test.ts` (where a tighter battle may be, over 200 seeds and two acts), `progress.test.ts` (the bonus XP), and `checkState` holds every briefing and battle of the random walk to its limit. Live: a tighter battle's badge and line on the map, the briefing's limit and its fitted warband, a refused Field, a bench that makes room, and the bonus XP in the aftermath.
 - Live (Playwright, per CLAUDE.md): a seeded run → draft → the map with the boss on top → travel → win → field shop → map; reload mid-map (resumes); a market (and a banner bought), a camp (rest, and drill with a level spent), a training ground, an elite (won, then its free training and the field shop), a mystery (a choice and its result; an ambush's briefing); a retreat, and the node shown closed.
 
 ## Open risks
