@@ -2,15 +2,21 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'reac
 import { profileMove, profileRange, unitCost, warbandCost, type MapDef, type Warband, type WarbandUnit } from '@fansong/content';
 import { tintPixels } from '../three/spriteTint.js';
 import { spriteFor, spriteUrl } from '../three/unitSprites.js';
+import { TRAIT_INFO, traitsOf, traitTitle } from './armyView.js';
 import { unitKinds } from './unitKinds.js';
 import { mapThumb, type MapThumbData } from './mapThumb.js';
 import { StatIcons, type UnitStats } from './StatIcons.js';
 
-/** One choice in a {@link Picker}: a card with a picture, a name and a line of detail. */
+/**
+ * One choice in a {@link Picker}: a card with a picture, a name and a line of detail.
+ * A unit's card is a compact row that also lists its `tags` (traits) and an `aside` (cost).
+ */
 export interface PickerItem {
   key: string;
   title: string;
   detail?: ReactNode;
+  tags?: ReactNode;
+  aside?: ReactNode;
   preview: ReactNode;
   disabled?: boolean;
 }
@@ -20,7 +26,7 @@ export interface PickerGroup {
   items: readonly PickerItem[];
 }
 
-/** Card sizes: wide map thumbnails, warband sprite strips, single units or bare sprites. */
+/** Card sizes: wide map thumbnails, warband sprite strips, rows of single units or bare sprites. */
 export type PickerKind = 'map' | 'warband' | 'unit' | 'sprite';
 
 /** Offer a text filter once there are more cards than this. */
@@ -150,8 +156,12 @@ export function Picker({
                         onClick={() => pick(it.key)}
                       >
                         <span className="picker-preview">{it.preview}</span>
-                        <span className="picker-title">{it.title}</span>
-                        {it.detail ? <span className="picker-detail">{it.detail}</span> : null}
+                        <span className="picker-text">
+                          <span className="picker-title">{it.title}</span>
+                          {it.detail ? <span className="picker-detail">{it.detail}</span> : null}
+                        </span>
+                        {it.tags ? <span className="picker-tags">{it.tags}</span> : null}
+                        {it.aside ? <span className="picker-aside">{it.aside}</span> : null}
                       </button>
                     ))}
                   </div>
@@ -302,9 +312,30 @@ export function unitLine(u: WarbandUnit, cost: number | null = unitCost(u)): JSX
   );
 }
 
-/** A gallery card for a unit. */
-export function unitItem(key: string, u: WarbandUnit, detail: ReactNode = unitLine(u)): PickerItem {
-  return { key, title: u.name, detail, preview: <UnitSprite unit={u} /> };
+/** A unit's traits as small chips, each explaining itself on hover; nothing for a unit with none. */
+export function traitChips(u: WarbandUnit): ReactNode {
+  const traits = traitsOf(u);
+  if (traits.length === 0) return null;
+  return traits.map((t) => (
+    <span key={t} className="trait-chip plain" title={traitTitle(t)}>
+      {TRAIT_INFO[t].label}
+    </span>
+  ));
+}
+
+/**
+ * A gallery row for a unit: its sprite, name, numbers and traits, and its cost
+ * at the end (pass `null` for none). `detail` replaces the numbers and traits.
+ */
+export function unitItem(key: string, u: WarbandUnit, cost: number | null = unitCost(u), detail?: ReactNode): PickerItem {
+  return {
+    key,
+    title: u.name,
+    detail: detail ?? unitLine(u, null),
+    tags: detail === undefined ? traitChips(u) : null,
+    aside: cost === null ? null : `${cost} pts`,
+    preview: <UnitSprite unit={u} />,
+  };
 }
 
 /** A gallery card for a whole warband: its units side by side. */

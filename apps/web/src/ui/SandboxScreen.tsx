@@ -17,7 +17,7 @@ import {
   type WarbandUnit,
 } from '@fansong/content';
 import { playableArmies } from '../game/armies.js';
-import { Picker, unitItem, unitLine } from './Picker.js';
+import { Picker, unitItem } from './Picker.js';
 import { traitPatch } from './armyView.js';
 import { StatIcon } from './StatIcons.js';
 import { TraitEditor } from './TraitEditor.js';
@@ -454,7 +454,7 @@ function SpawnSection({
         groups={() =>
           groups.map((g) => ({
             label: g,
-            items: palette.filter((p) => p.group === g).map((p) => unitItem(p.key, p.unit, unitLine(p.unit, null))),
+            items: palette.filter((p) => p.group === g).map((p) => unitItem(p.key, p.unit, null)),
           }))
         }
         onPick={(key) => {

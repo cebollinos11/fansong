@@ -4243,7 +4243,8 @@ button.trait-add[aria-expanded='true'] {
 }
 
 .picker-unit {
-  --card: 130px;
+  --card: 300px;
+  gap: 6px 10px;
 }
 
 .picker-sprite {
@@ -4274,14 +4275,70 @@ button.trait-add[aria-expanded='true'] {
   min-height: 44px;
 }
 
-.picker-unit .unit-sprite,
 .picker-sprite .unit-sprite {
   width: 64px;
   height: 64px;
 }
 
+/* Only a unit's row lays its name and numbers out together. */
+.picker-text {
+  display: contents;
+}
+
 .picker-title {
   font-weight: 600;
+}
+
+/* A unit is a compact row: sprite, then name and numbers over its traits, then its cost. */
+.picker-dialog .picker-unit .picker-card {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'preview text aside'
+    'preview tags aside';
+  align-items: center;
+  gap: 3px 8px;
+  padding: 5px 10px 5px 6px;
+  text-align: left;
+}
+
+.picker-unit .picker-preview {
+  grid-area: preview;
+  min-height: 0;
+}
+
+.picker-unit .unit-sprite {
+  width: 40px;
+  height: 40px;
+}
+
+.picker-unit .picker-text {
+  grid-area: text;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.picker-tags {
+  grid-area: tags;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.picker-tags .trait-chip {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.picker-aside {
+  grid-area: aside;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .picker-detail {

@@ -4,7 +4,7 @@ import { browserStorage } from '../game/customMaps.js';
 import { downloadJson } from '../game/replay-io.js';
 import { UnitRow, UnitTableHead } from './ArmyBuilderScreen.js';
 import { moveUnit } from './armyView.js';
-import { Picker, unitItem, unitLine, warbandItem } from './Picker.js';
+import { Picker, unitItem, warbandItem } from './Picker.js';
 import {
   addLine,
   copyUnit,
@@ -409,7 +409,7 @@ function WarbandPane({
           groups={() => [
             {
               items: sorted.map((u) =>
-                unitItem(u.ref, u.unit, statErrors(u.unit).length === 0 ? unitLine(u.unit) : 'needs fixing'),
+                statErrors(u.unit).length === 0 ? unitItem(u.ref, u.unit) : unitItem(u.ref, u.unit, null, 'needs fixing'),
               ),
             },
           ]}
