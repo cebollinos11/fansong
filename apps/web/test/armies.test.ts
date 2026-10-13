@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PRESET_IDS, PRESETS, type Warband, type WarbandUnit } from '@fansong/content';
+import { PRESET_IDS, PRESET_UNITS, PRESETS, type Warband, type WarbandUnit } from '@fansong/content';
 import {
   ARMIES_KEY,
   armyChoice,
@@ -24,6 +24,7 @@ import {
   copyLabel,
   EDITOR_TRAITS,
   moveUnit,
+  presetTemplates,
   renumberRun,
   templateUnit,
   TRAIT_GROUPS,
@@ -294,5 +295,24 @@ describe('the army builder reached from a setup screen', () => {
     expect(choiceAfterBuilder(armyChoice('a1'), null, [], first)).toBe(first);
     // An army edited until it breaks the rules never reaches the playable list.
     expect(choiceAfterBuilder(armyChoice('gone'), 'gone', armies, first)).toBe(first);
+  });
+});
+
+describe('presetTemplates', () => {
+  const groups = presetTemplates();
+  const group = (label: string): WarbandUnit[] => groups.find((g) => g.label === label)?.units ?? [];
+
+  it('lists every preset unit exactly once, and nothing else', () => {
+    const names = groups.flatMap((g) => g.units.map((u) => u.name));
+    expect([...names].sort()).toEqual(Object.keys(PRESET_UNITS).sort());
+    expect(groups.every((g) => g.units.length > 0)).toBe(true);
+  });
+
+  it('groups units by folk, a tinted variant keeping its look and tint', () => {
+    expect(group('Dwarves').map((u) => u.name)).toContain('Dwarvish Fighter');
+    const butcher = group('Trolls and ogres').find((u) => u.name === 'Ogre Butcher');
+    expect(butcher).toBeDefined();
+    expect(PRESET_UNITS['Ogre Butcher']!.tint).toBeDefined();
+    expect(templateUnit(butcher!, [])).toMatchObject({ name: 'Ogre Butcher', look: 'Ogre', tint: PRESET_UNITS['Ogre Butcher']!.tint });
   });
 });

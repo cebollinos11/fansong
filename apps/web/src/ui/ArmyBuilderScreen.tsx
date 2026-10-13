@@ -290,7 +290,7 @@ export function ArmyBuilderScreen({ onExit, start, onUse, backLabel = '⟵ Back'
               kind="unit"
               groups={() =>
                 presetTemplates().map((group, g) => ({
-                  label: group.preset,
+                  label: group.label,
                   items: group.units.map((t, u) => unitItem(`${g}:${u}`, t)),
                 }))
               }

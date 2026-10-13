@@ -2,7 +2,9 @@ import { BASE_MOVE, DUMB_MAX_DICE, SPEED_STEP } from '@fansong/engine';
 import {
   ARMY_RULES,
   PRESET_IDS,
+  PRESET_UNITS,
   PRESETS,
+  presetUnit,
   SHOOTER_KINDS,
   SHOOTER_NAMES,
   SHOOTER_RANGE,
@@ -51,13 +53,22 @@ const LOOK_FOLK: readonly [RegExp, string][] = [
   [/^dunefolk\//, 'Dunefolk'],
 ];
 
+const OTHER_FOLK = 'Beasts and monsters';
+
+/** Every folk, in the order the pickers list them. */
+const FOLK_LABELS: readonly string[] = [...LOOK_FOLK.map(([, label]) => label), OTHER_FOLK];
+
+/** The folk `look` belongs to. */
+function folkOf(look: string): string {
+  const sprite = UNIT_SPRITES[look];
+  return (sprite !== undefined && LOOK_FOLK.find(([folder]) => folder.test(sprite))?.[1]) || OTHER_FOLK;
+}
+
 /** {@link LOOKS} sorted into folk, for the look picker. */
-export const LOOK_GROUPS: readonly { label: string; looks: readonly string[] }[] = [...LOOK_FOLK.map(([, label]) => label), 'Beasts and monsters']
-  .map((label) => ({
-    label,
-    looks: LOOKS.filter((l) => (LOOK_FOLK.find(([folder]) => folder.test(UNIT_SPRITES[l]!))?.[1] ?? 'Beasts and monsters') === label),
-  }))
-  .filter((g) => g.looks.length > 0);
+export const LOOK_GROUPS: readonly { label: string; looks: readonly string[] }[] = FOLK_LABELS.map((label) => ({
+  label,
+  looks: LOOKS.filter((l) => folkOf(l) === label),
+})).filter((g) => g.looks.length > 0);
 
 /** `value` clamped into `stat`'s legal range and rounded to a whole number. */
 export function clampStat(stat: EditableStat, value: number): number {
@@ -262,9 +273,19 @@ export function templateUnit(template: WarbandUnit, units: readonly WarbandUnit[
   return { ...template, name: uniqueName(template.name, units), look: template.look ?? template.name };
 }
 
-/** Every preset unit, grouped by preset, as templates for "Add unit". */
-export function presetTemplates(): { preset: string; units: WarbandUnit[] }[] {
-  return PRESET_IDS.map((id) => ({ preset: PRESETS[id]!.name, units: PRESETS[id]!.units }));
+let templates: { label: string; units: WarbandUnit[] }[] | undefined;
+
+/** Every preset unit, once, grouped by folk and sorted cheapest first, as templates for "Add a preset unit". */
+export function presetTemplates(): { label: string; units: WarbandUnit[] }[] {
+  if (templates) return templates;
+  const all = Object.keys(PRESET_UNITS).map((name) => presetUnit(name)!);
+  templates = FOLK_LABELS.map((label) => ({
+    label,
+    units: all
+      .filter((u) => folkOf(u.look ?? u.name) === label)
+      .sort((a, b) => unitCost(a) - unitCost(b) || a.name.localeCompare(b.name)),
+  })).filter((g) => g.units.length > 0);
+  return templates;
 }
 
 /** A new, empty-ish army. */
