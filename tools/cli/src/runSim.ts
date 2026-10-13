@@ -10,6 +10,7 @@ import {
   playerWarband,
   recruitPrice,
   restHelps,
+  rosterCost,
   runBattleConfig,
   runStep,
   RUN_TUNING,
@@ -18,6 +19,7 @@ import {
   unitCost,
   upgradePrice,
   warbandCost,
+  type LimitKind,
   type NodeKind,
   type RouteNode,
   type RunAction,
@@ -43,7 +45,8 @@ import { CliError } from './options.js';
 /**
  * Which way up the map the sim's player goes: `safe` takes a stop where there
  * is one and else the weakest enemy, `greedy` the strongest enemy (an elite
- * before anyone), `balanced` the enemy nearest the step's usual strength.
+ * before anyone), `balanced` the enemy nearest the step's usual strength. A
+ * battle with a tighter point limit counts as a strong enemy (see `danger`).
  */
 export type RoutePolicy = 'safe' | 'balanced' | 'greedy';
 const ROUTE_POLICIES: readonly RoutePolicy[] = ['safe', 'balanced', 'greedy'];
@@ -199,9 +202,18 @@ function worth(s: RunState, action: RunAction): { points: number; price: number 
   }
 }
 
-/** How dangerous a node looks from the map: a fight's threat, nothing for a stop. */
+/**
+ * How dangerous a node looks from the map: a fight's threat, nothing for a
+ * stop. A battle with a tighter point limit is no easier for its enemy being
+ * small, since no more may be fielded against it: it counts as a battle of the
+ * usual strength at least, and as harder by as much as its limit is tighter
+ * than the ceiling every battle has.
+ */
 function danger(node: RouteNode): number {
-  return isFight(node.kind) ? (node.threat ?? 1) : 0;
+  if (!isFight(node.kind)) return 0;
+  const threat = node.threat ?? 1;
+  const { ceiling } = RUN_TUNING.limits;
+  return node.limit ? (Math.max(1, threat) * ceiling.share) / RUN_TUNING.limits[node.limit].share : threat;
 }
 
 /** Which of the open `nodes` a policy travels to. Ties go to the first listed. */
@@ -242,7 +254,8 @@ function eventPreference(s: RunState, index: number, route: RoutePolicy, retreat
 /**
  * The greedy picker: of the legal actions, the one worth the most points — in
  * the shop, the most points per gold, buying until nothing worth its price is
- * left. It fields everyone, never rerolls and never sells, and goes up the map
+ * left. It fields the warband the briefing opens on (everyone the battle's
+ * point limit lets through), never rerolls and never sells, and goes up the map
  * as `route` says. At a camp it rests if anyone is hurt and drills if not; at
  * a training ground its costliest unit takes the dearest advance. It buys a
  * retreat banner only when it means to use one (`retreat` `'losing'`) and has
@@ -352,6 +365,11 @@ export interface BattleStat {
   won: boolean;
   playerUnits: number;
   playerPoints: number;
+  /** What the whole roster cost, fielded or not. */
+  rosterPoints: number;
+  /** Most points the battle let the player field, and the node's tighter kind of limit (`null`: only the ceiling every battle has). */
+  limit: number;
+  limitKind: LimitKind | null;
   enemyUnits: number;
   enemyPoints: number;
   /** The battle's threat: the enemy's cost over the step's budget. */
@@ -410,6 +428,7 @@ export function simulateRun(
     const battle = s.battle!;
     const node = s.route!.nodes[s.route!.going!]!.kind;
     const fielded = playerWarband(s);
+    const rosterPoints = rosterCost(s);
     const replay = recordReplay(runBattleConfig(s), retreat === 'losing' ? retreatPilot(retreatShare) : chooseCommand, BATTLE_STEP_CAP);
     if (replay.commands.length >= BATTLE_STEP_CAP) {
       end = 'stalled';
@@ -430,6 +449,9 @@ export function simulateRun(
       won: logged.won,
       playerUnits: fielded.units.length,
       playerPoints: warbandCost(fielded),
+      rosterPoints,
+      limit: battle.limit ?? Infinity,
+      limitKind: battle.limitKind ?? null,
       enemyUnits: battle.enemy.units.length,
       enemyPoints: warbandCost(battle.enemy),
       threat: battle.threat,
@@ -449,14 +471,14 @@ export function battleLine(seed: number, b: BattleStat): string {
   const versus = `${b.playerUnits}u/${b.playerPoints}pt vs ${b.enemyUnits}u/${b.enemyPoints}pt`;
   const result = b.won ? 'WON ' : b.retreated ? 'FLED' : 'LOST';
   const flight = b.retreated ? ` · ${b.gotAway} got away, ${b.leftBehind} left behind (${b.leftDead} died)` : '';
-  const kind = b.node === 'battle' || b.node === 'boss' ? '' : ` (${b.node})`;
+  const kind = b.limitKind ? ` (${b.limitKind}, limit ${b.limit})` : b.node === 'battle' || b.node === 'boss' ? '' : ` (${b.node})`;
   return `seed ${seed} step ${String(b.round).padStart(2)} ${result} ${versus.padEnd(26)} ${b.mode}${b.boss ? ' (boss)' : ''}${kind} · ${b.enemy}${flight}`;
 }
 
 const pct = (n: number, of: number) => (of === 0 ? '  -' : `${Math.round((100 * n) / of)}%`.padStart(4));
 const mean = (xs: number[]) => (xs.length === 0 ? 0 : xs.reduce((a, b) => a + b, 0) / xs.length);
 
-/** The report: how deep the runs got, and how each step, node kind and mode went. */
+/** The report: how deep the runs got, and how each step, node kind, point limit and mode went. */
 export function summarize(results: RunResult[]): string {
   const lines: string[] = [];
   // The step a run died at, or stood at when the cap stopped it.
@@ -487,7 +509,7 @@ export function summarize(results: RunResult[]): string {
     );
   }
   const last = Math.max(0, ...battles.map((b) => b.round));
-  lines.push('', ' step  fought   won  died here  player pts  enemy pts (budget)  threat  reward  units');
+  lines.push('', ' step  fought   won  died here  roster pts  player pts  benched  enemy pts (budget)  threat  reward  units');
   for (let round = 1; round <= last; round++) {
     const here = battles.filter((b) => b.round === round);
     if (here.length === 0) continue;
@@ -500,7 +522,10 @@ export function summarize(results: RunResult[]): string {
         String(here.length).padStart(7),
         pct(won, here.length).padStart(5),
         pct(died, results.length).padStart(10),
+        mean(here.map((b) => b.rosterPoints)).toFixed(0).padStart(11),
         mean(here.map((b) => b.playerPoints)).toFixed(0).padStart(11),
+        // Battles in which the limit kept somebody off the field.
+        pct(here.filter((b) => b.playerPoints < b.rosterPoints).length, here.length).padStart(8),
         `${mean(here.map((b) => b.enemyPoints)).toFixed(0)} (${enemyPoints(round)})`.padStart(19),
         mean(here.map((b) => b.threat)).toFixed(2).padStart(7),
         mean(here.map((b) => b.reward)).toFixed(0).padStart(7),
@@ -518,6 +543,8 @@ export function summarize(results: RunResult[]): string {
     }
   };
   by('node', (b) => b.node);
+  // How each kind of point limit went; `ceiling (binding)` is a battle with no tighter limit that still left somebody out.
+  by('limit', (b) => b.limitKind ?? (b.playerPoints < b.rosterPoints ? 'ceiling (binding)' : 'ceiling'));
   by('mode', (b) => b.mode);
   by('enemy', (b) => b.enemy);
   return lines.join('\n');

@@ -54,7 +54,7 @@ describe('autoPick', () => {
       s = runStep(s, action);
     }
     expect(s.phase).toBe('battle');
-    // Everyone is fielded.
+    // Everyone is fielded: a drafted warband is within the first battle's point limit.
     expect(s.battle!.fielded).toEqual(s.roster.map((u) => u.id));
   });
 
@@ -78,7 +78,13 @@ describe('simulateRun', () => {
     expect(a.wins).toBe(a.battles.filter((b) => b.won).length);
     if (a.end === 'lost') expect(a.final.phase).toBe('over');
     else expect(a.final.round).toBe(4);
-    for (const b of a.battles) expect(b.playerUnits).toBeLessThanOrEqual(RUN_TUNING.rosterCap);
+    for (const b of a.battles) {
+      expect(b.playerUnits).toBeLessThanOrEqual(RUN_TUNING.rosterCap);
+      // What fights is within the battle's point limit (one unit always may), and is no more than the roster.
+      expect(b.playerPoints <= b.limit || b.playerUnits === 1).toBe(true);
+      expect(b.playerPoints).toBeLessThanOrEqual(b.rosterPoints);
+      expect(b.limit).toBeGreaterThanOrEqual(b.limitKind ? 1 : RUN_TUNING.limits.ceiling.floor);
+    }
   });
 
   it('goes up the map the way its policy names', () => {
@@ -97,6 +103,12 @@ describe('simulateRun', () => {
     expect(routePick([fight!, stop, elite], 'safe')).toBe(stop);
     expect(routePick([stop, fight!, elite], 'greedy')).toBe(elite);
     expect(routePick([stop, elite, { ...fight!, threat: 0.9 }], 'balanced').threat).toBe(0.9);
+    // A battle with a tighter point limit is no safe road, however small its enemy: the greedy way, not the safe one.
+    const skirmish = { ...fight!, id: 92, threat: 0.4, limit: 'skirmish' as const };
+    const weak = { ...fight!, id: 93, threat: 0.8 };
+    expect(routePick([skirmish, weak], 'safe')).toBe(weak);
+    expect(routePick([weak, skirmish], 'greedy')).toBe(skirmish);
+    expect(routePick([weak, { ...skirmish, limit: 'underdog' as const }, skirmish], 'greedy').limit).toBe('underdog');
   });
 
   it('rests or drills at a camp, trains its costliest unit, and buys a banner only to use one', () => {
@@ -211,6 +223,12 @@ describe('the report', () => {
     expect(text).toMatch(/visits a run: battle \d\.\d/);
     expect(text).toMatch(/step {2}fought/);
     expect(text).toMatch(/node +fought/);
+    expect(text).toMatch(/roster pts {2}player pts {2}benched/);
+    expect(text).toMatch(/limit +fought +won\nceiling +\d+/);
+    // A battle under a tighter limit is counted under its kind, and its line says so.
+    const tight = { ...results[0]!.battles[0]!, limitKind: 'underdog' as const, limit: 90 };
+    expect(summarize([{ ...results[0]!, battles: [tight] }])).toMatch(/\nunderdog +1 /);
+    expect(battleLine(5, tight)).toMatch(/\(underdog, limit 90\)/);
     expect(text).toMatch(/annihilation/);
     expect(text).toContain(results[0]!.battles[0]!.enemy);
     expect(battleLine(5, results[0]!.battles[0]!)).toMatch(/^seed 5 step {2}1 (WON |LOST)/);
