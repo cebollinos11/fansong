@@ -3969,7 +3969,7 @@ button.trait-add[aria-expanded='true'] {
 /* The "+ Trait" menu (ui/TraitEditor.tsx): name, cost to this unit, and what it does. */
 .trait-menu {
   position: fixed;
-  z-index: 50;
+  z-index: 70; /* over the army builder overlay (60), which it is opened from */
   width: 320px;
   overflow-y: auto;
   padding: 4px;
