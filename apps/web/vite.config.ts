@@ -95,11 +95,15 @@ function sfxRecorder(): Plugin {
   };
 }
 
+/** Built files the offline worker fetches on demand, not up front: unit sprites and their missiles. */
+const LAZY_FILES = /^sprites\/(units|projectiles)\//;
+
 /**
  * Build only: writes `sw.js`, the service worker that keeps the whole game on
  * the device so the installed app opens offline. It is `src/pwa/sw.js` under a
  * list of every built file with a hash of its contents, so any change to the
- * build is a new worker, which fetches just the files whose hash is new.
+ * build is a new worker, which fetches just the files whose hash is new. The
+ * unit art is listed apart (`LAZY`): the worker fetches it as the game shows it.
  */
 function offlineWorker(): Plugin {
   let root = '';
@@ -122,9 +126,12 @@ function offlineWorker(): Plugin {
       };
       walk(outDir);
       delete files['sw.js'];
-      const sorted = Object.fromEntries(Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1)));
+      const sorted = Object.entries(files).sort(([a], [b]) => (a < b ? -1 : 1));
+      // The unit art is thousands of images: the worker keeps each as it is first shown.
+      const lazy = ([file]: [string, string]): boolean => LAZY_FILES.test(file);
       const worker = readFileSync(path.resolve(root, 'src/pwa/sw.js'), 'utf8');
-      writeFileSync(path.join(outDir, 'sw.js'), `const FILES = ${JSON.stringify(sorted)};
+      writeFileSync(path.join(outDir, 'sw.js'), `const FILES = ${JSON.stringify(Object.fromEntries(sorted.filter((f) => !lazy(f))))};
+const LAZY = ${JSON.stringify(Object.fromEntries(sorted.filter(lazy)))};
 
 ${worker}`);
     },

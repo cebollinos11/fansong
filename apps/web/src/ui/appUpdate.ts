@@ -1,9 +1,13 @@
 import { useSyncExternalStore } from 'react';
+import { PRESETS } from '@fansong/content';
+import { loadArmies } from '../game/armies.js';
+import { browserStorage } from '../game/customMaps.js';
+import { spritesToKeep } from './offlineSprites.js';
 
 /**
  * The offline copy of the game and its updates. A built app registers the
- * service worker (`src/pwa/sw.js`), which keeps every file on the device and
- * serves the page from that copy. A newer build downloads in the background and
+ * service worker (`src/pwa/sw.js`), which keeps every file on the device (the
+ * unit art as it is shown, see `offlineSprites.ts`) and serves the page from that copy. A newer build downloads in the background and
  * then serves every later load, so an open page is one reload behind it; the
  * menu's update check (`ui/UpdateCheck.tsx`) looks for one now and reloads into it.
  */
@@ -75,6 +79,11 @@ export function startOffline(): void {
         if (state === 'off') set('idle');
       })
       .catch(() => {});
+    // The worker keeps unit art only as it is shown; have it fetch ahead what the player can field.
+    void navigator.serviceWorker.ready.then((reg) => {
+      const warbands = [...Object.values(PRESETS), ...loadArmies(browserStorage()).map((army) => army.warband)];
+      reg.active?.postMessage({ type: 'keep', paths: spritesToKeep(warbands) });
+    });
   });
 }
 
